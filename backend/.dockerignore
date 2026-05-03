@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.pyo
+test_output
+test_api.py
+.git
+.gitignore
+.dockerignore
+Dockerfile
+data/*

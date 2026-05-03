@@ -7,9 +7,13 @@ from typing import Dict, List
 from dataclasses import dataclass, field
 
 # ===================== 环境与路径配置 =====================
-BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 开发环境：__file__ 推导的父目录（F:\Door\）
+# Docker 环境：当前工作目录 /app/
+_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if not os.path.isdir(_base):
+    _base = os.getcwd()
 
-DATA_DIR = os.path.join(BASE_PATH, 'data')
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(_base, 'data'))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 HISTORY_FILE = os.path.join(DATA_DIR, 'order_history.json')
@@ -17,7 +21,7 @@ CUSTOM_OPTIONS_FILE = os.path.join(DATA_DIR, 'custom_options.json')
 TASKS_DB_FILE = os.path.join(DATA_DIR, 'tasks_database.json')
 USERS_DB_FILE = os.path.join(DATA_DIR, 'users_database.json')
 
-TEMPLATE_PATH = os.path.join(BASE_PATH, 'template.dxf')
+TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(_base, 'template.dxf'))
 
 
 # ===================== 核心配置 =====================
