@@ -1,0 +1,240 @@
+"use client";
+
+import { useState, type ChangeEvent } from "react";
+import type { DoorFormData } from "@/lib/types";
+import {
+  DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
+  QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
+  MATERIALS, HANDLES, LOCKS, HINGES,
+} from "@/lib/types";
+import ClipboardUpload from "./ClipboardUpload";
+
+interface Props {
+  data: DoorFormData;
+  onChange: (data: DoorFormData) => void;
+  readOnly?: boolean;
+  /** 额外插槽：底部操作按钮区 */
+  children?: React.ReactNode;
+}
+
+function Input({ label, value, onChange, placeholder, type = "text" }: {
+  label: string; value: string | number; onChange: (v: string) => void;
+  placeholder?: string; type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
+      />
+    </div>
+  );
+}
+
+function Select({ label, value, options, onChange }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
+      >
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Checkbox({ label, checked, onChange }: {
+  label: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4" />
+      {label}
+    </label>
+  );
+}
+
+export default function DoorForm({ data, onChange, readOnly, children }: Props) {
+  const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
+    onChange({ ...data, [key]: value });
+  };
+
+  const isTwoFixed = data.door_type === "两定两开";
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 左列：订单信息 + 材质 */}
+      <div className="space-y-4">
+        <Card title="订单基础信息">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="订货单位" value={data.dhdw} onChange={(v) => set("dhdw", v)} />
+            <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
+            <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
+            <Input label="交期" value={data.dhrq} onChange={(v) => set("dhrq", v)} />
+            <Input label="数量(樘)" value={data.sl} onChange={(v) => set("sl", v)} />
+            <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
+          </div>
+        </Card>
+
+        <Card title="材质与外观">
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="制作材料" value={data.zzcl} options={MATERIALS} onChange={(v) => set("zzcl", v)} />
+            <Input label="表面颜色" value={data.ys} onChange={(v) => set("ys", v)} />
+            <Input label="正面款式" value={data.zmks} onChange={(v) => set("zmks", v)} />
+            <Input label="反面款式" value={data.fmks} onChange={(v) => set("fmks", v)} />
+            <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
+            <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
+          </div>
+          <div className="mt-3 flex gap-6">
+            {BZ_OPTIONS.map((o) => (
+              <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                <input type="radio" name="bz" checked={data.sel_bz === o} onChange={() => set("sel_bz", o)} />
+                {o}
+              </label>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* 中列：结构 + 尺寸 */}
+      <div className="space-y-4">
+        <Card title="结构与开向">
+          <Select label="门型" value={data.door_type} options={DOOR_TYPES} onChange={(v) => set("door_type", v)} />
+          <div className="flex gap-6 mt-3">
+            <div className="flex gap-4">
+              {KX_OPTIONS.map((o) => (
+                <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input type="radio" name="kx" checked={data.sel_kx === o} onChange={() => set("sel_kx", o)} />
+                  {o}
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-4">
+              {NK_OPTIONS.map((o) => (
+                <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input type="radio" name="nk" checked={data.sel_nk === o} onChange={() => set("sel_nk", o)} />
+                  {o}
+                </label>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="尺寸输入中心">
+          <Checkbox label="切换为见光尺寸" checked={data.use_light_size} onChange={(v) => set("use_light_size", v)} />
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {data.use_light_size ? (
+              <>
+                <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
+                <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
+              </>
+            ) : (
+              <>
+                <Input label="洞口总宽(W)" value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+                <Input label="洞口总高(H)" value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+              </>
+            )}
+          </div>
+          {data.door_type === "子母门" && (
+            <Input label="母门单扇宽" value={data.mother_door_width} type="number" onChange={(v) => set("mother_door_width", Number(v))} />
+          )}
+          {["折叠四开门", "两定两开"].includes(data.door_type) && (
+            <Input label="中门单扇宽" value={data.mid_door_width} type="number" onChange={(v) => set("mid_door_width", Number(v))} />
+          )}
+        </Card>
+
+        <Card title="边框与下槛截面">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
+            <Input label="右框宽 (外/内)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
+            <Input label="上框宽 (外/内)" value={data.fw_top_str} onChange={(v) => set("fw_top_str", v)} />
+            <Select label="下槛方案" value={data.threshold_type} options={THRESHOLD_OPTIONS} onChange={(v) => set("threshold_type", v)} />
+          </div>
+          {data.threshold_type === "高低槛" ? (
+            <Input label="下槛高度 (低/高)" value={data.th_str} onChange={(v) => set("th_str", v)} />
+          ) : (
+            <Input label="平底槛厚度(mm)" value={data.pdk} onChange={(v) => set("pdk", v)} />
+          )}
+        </Card>
+      </div>
+
+      {/* 右列：五金 + 包套 + 批注 */}
+      <div className="space-y-4">
+        <Card title="五金锁具">
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="正面拉手" value={data.zmls} options={HANDLES} onChange={(v) => set("zmls", v)} />
+            <Select label="反面拉手" value={data.fmls} options={HANDLES} onChange={(v) => set("fmls", v)} />
+            <Select label="锁体类型" value={data.st_val} options={LOCKS} onChange={(v) => set("st_val", v)} />
+            <Select label="合页样式" value={data.sel_hys} options={HINGES} onChange={(v) => set("sel_hys", v)} />
+          </div>
+          <div className="mt-3">
+            <Select label="单扇合页数量" value={data.hysl} options={HYSL_OPTIONS} onChange={(v) => set("hysl", v)} />
+          </div>
+        </Card>
+
+        <Card title="包套与附加件">
+          <div className="flex gap-4 mb-3">
+            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => set("has_outer", v)} />
+            <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
+            {(data.has_outer || data.has_inner) && (
+              <Input label="压框" value={data.overlap} type="number" onChange={(v) => set("overlap", Number(v))} />
+            )}
+          </div>
+          {data.has_outer && (
+            <Input label="外包套宽" value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
+          )}
+          {data.has_inner && (
+            <Input label="内包套宽" value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
+          )}
+          <div className="flex gap-3 mt-3">
+            <Select label="气窗" value={data.sel_qc} options={QC_OPTIONS} onChange={(v) => set("sel_qc", v)} />
+            <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
+            <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => set("has_pillar", v)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {data.sel_qc !== "无" && (
+              <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
+            )}
+            {data.has_mm && (
+              <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
+            )}
+          </div>
+          {data.has_pillar && isTwoFixed && (
+            <Input label="立柱宽(外/内)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
+          )}
+        </Card>
+
+        <Card title="车间生产批注">
+          <textarea
+            value={data.sm}
+            onChange={(e) => set("sm", e.target.value)}
+            placeholder="补充图纸外的额外加工要求..."
+            rows={3}
+            className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)] resize-none"
+          />
+        </Card>
+
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** 白色悬浮卡片容器 */
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5">
+      <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-4 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
+      {children}
+    </div>
+  );
+}

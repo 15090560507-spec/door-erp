@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F2F2F7;
+  --foreground: #1C1C1E;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Header / Footer 隐藏 (Streamlit 兼容) */
+header, footer { display: none !important; }
+
+/* 导航按钮内凹按压效果 - 通过组件内联样式实现 */
