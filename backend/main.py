@@ -18,7 +18,7 @@ from database import UserDatabaseManager, TaskDatabaseManager
 from models import (
     CADRequest,
     LoginRequest, LoginResponse,
-    UserCreateRequest,
+    UserCreateRequest, ResetPasswordRequest,
     TaskCreateRequest, TaskUpdateRequest, TaskResponse, TaskListResponse,
 )
 from drawing import run_integrated_system
@@ -306,6 +306,17 @@ def delete_user(uid: str):
     return {"success": True, "message": f"已删除账号: {uid}"}
 
 
+@app.put("/api/users/{uid}/reset-password")
+def reset_password(uid: str, req: ResetPasswordRequest):
+    """重置用户密码"""
+    users = user_db.load_all_users()
+    if uid not in users:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    users[uid]["password"] = req.new_pwd
+    user_db.save(users)
+    return {"success": True, "message": f"已重置 {uid} 的密码"}
+
+
 # ===================== API: 任务管理 =====================
 @app.get("/api/tasks", response_model=TaskListResponse)
 def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YYYY.MM.DD"),
@@ -386,6 +397,20 @@ def delete_task(task_id: str):
         raise HTTPException(status_code=404, detail="任务不存在")
     task_db.delete_task(task_id)
     return {"success": True, "message": f"已删除任务: {task_id}"}
+
+
+# ===================== 后台管理 =====================
+@app.get("/api/admin/tasks")
+def admin_list_all_tasks():
+    """管理员上帝视角：返回全部订单数据（纯文本，不含 Base64 图片）"""
+    all_tasks = task_db.load_all_tasks()
+    stripped = []
+    for t in all_tasks:
+        t = dict(t)
+        t.pop("ref_img_b64", None)
+        t.pop("drawing_img_b64", None)
+        stripped.append(t)
+    return {"tasks": stripped, "total": len(stripped)}
 
 
 # ===================== 健康检查 =====================

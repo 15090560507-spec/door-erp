@@ -78,6 +78,10 @@ class UserCreateRequest(BaseModel):
     name: str
 
 
+class ResetPasswordRequest(BaseModel):
+    new_pwd: str
+
+
 class UserDeleteRequest(BaseModel):
     uid: str
 

@@ -33,7 +33,16 @@ export async function deleteUser(uid: string) {
   return data;
 }
 
+export async function resetPassword(uid: string, newPwd: string) {
+  const { data } = await api.put(`/users/${uid}/reset-password`, { new_pwd: newPwd });
+  return data;
+}
+
 // ===================== 任务 =====================
+export async function getAllTasks(): Promise<TaskListResponse> {
+  const { data } = await api.get<TaskListResponse>("/admin/tasks");
+  return data;
+}
 export async function getTasks(params?: {
   date?: string;
   status?: string;

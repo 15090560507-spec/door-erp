@@ -1,11 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { MODULE_OPTIONS } from "@/lib/types";
 import type { ModuleName } from "@/lib/types";
 
 export default function TopNav() {
   const { user, module, setModule, logout } = useAuth();
+  const router = useRouter();
 
   const adminItems = [...MODULE_OPTIONS, { title: "后台管理", module: "后台管理" as ModuleName }];
   const items = user?.role === "超级管理员" ? adminItems : MODULE_OPTIONS;
@@ -35,7 +37,13 @@ export default function TopNav() {
         {items.map((item) => (
           <button
             key={item.module}
-            onClick={() => setModule(item.module)}
+            onClick={() => {
+              if (item.module === "后台管理") {
+                router.push("/admin");
+              } else {
+                setModule(item.module);
+              }
+            }}
             style={{
               ...(module === item.module ? activeStyle : inactiveStyle),
               padding: "8px 20px",
