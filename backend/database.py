@@ -3,12 +3,42 @@
 包含: UserDatabaseManager, TaskDatabaseManager
 使用本地 JSON 文件进行数据持久化（后续迁移到 PostgreSQL）
 """
+import hashlib
 import json
 import os
 import tempfile
 from typing import Dict, List, Optional
 
 from config import USERS_DB_FILE, TASKS_DB_FILE
+
+# ===================== 密码哈希工具 =====================
+_HASH_ITERATIONS = 100_000
+_HASH_PREFIX = "pbkdf2:sha256:"
+
+
+def hash_password(password: str) -> str:
+    """使用 PBKDF2-SHA256 对密码进行哈希"""
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _HASH_ITERATIONS)
+    return _HASH_PREFIX + str(_HASH_ITERATIONS) + ":" + salt.hex() + ":" + dk.hex()
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """验证密码是否匹配存储的哈希值"""
+    if not stored.startswith(_HASH_PREFIX):
+        return False
+    try:
+        _, iterations_str, salt_hex, dk_hex = stored.split(":")
+        salt = bytes.fromhex(salt_hex)
+        dk_stored = bytes.fromhex(dk_hex)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, int(iterations_str))
+        return dk == dk_stored
+    except (ValueError, AttributeError):
+        return False
+
+
+def is_hashed(stored: str) -> bool:
+    return stored.startswith(_HASH_PREFIX)
 
 
 # ===================== 用户权限管理 =====================
@@ -17,16 +47,16 @@ class UserDatabaseManager:
         self.file_path = file_path
         if not os.path.exists(self.file_path):
             default_users = {
-                "admin": {"password": "admin888", "role": "超级管理员", "name": "系统管理员", "default_module": "后台管理"},
-                "A": {"password": "123", "role": "录入员", "name": "销售小A", "default_module": "图纸信息录入"},
-                "B": {"password": "123", "role": "绘图员", "name": "技术小B", "default_module": "图纸绘制"},
-                "C": {"password": "123", "role": "初审员", "name": "初审小C", "default_module": "图纸初审"},
-                "D": {"password": "123", "role": "总工", "name": "总工小D", "default_module": "图纸终审"}
+                "admin": {"password": hash_password("admin888"), "role": "超级管理员", "name": "系统管理员", "default_module": "后台管理"},
+                "A": {"password": hash_password("123"), "role": "录入员", "name": "销售小A", "default_module": "图纸信息录入"},
+                "B": {"password": hash_password("123"), "role": "绘图员", "name": "技术小B", "default_module": "图纸绘制"},
+                "C": {"password": hash_password("123"), "role": "初审员", "name": "初审小C", "default_module": "图纸初审"},
+                "D": {"password": hash_password("123"), "role": "总工", "name": "总工小D", "default_module": "图纸终审"}
             }
             self._atomic_save(default_users)
         else:
-            # 每次启动确保 admin 超级管理员账号存在
-            self._ensure_admin_exists()
+            # 每次启动：确保 admin 存在 + 迁移明文密码
+            self._startup_ensure_and_migrate()
 
     def load_all_users(self) -> Dict:
         try:
@@ -52,29 +82,56 @@ class UserDatabaseManager:
                 os.unlink(tmp)
             raise
 
-    def _ensure_admin_exists(self):
-        """启动时检查：确保 admin 超级管理员账号始终存在"""
+    def _startup_ensure_and_migrate(self):
+        """启动时：确保 admin 存在 + 强制更新密码 + 迁移所有明文密码"""
         try:
             users = self.load_all_users()
-            if "admin" not in users:
+            changed = False
+
+            # 1. 确保 admin 存在，并强制使用加密后的 admin888
+            if "admin" not in users or not is_hashed(users["admin"].get("password", "")):
                 users["admin"] = {
-                    "password": "admin888",
+                    "password": hash_password("admin888"),
                     "role": "超级管理员",
                     "name": "系统管理员",
                     "default_module": "后台管理"
                 }
+                changed = True
+
+            # 2. 迁移所有其他用户的明文密码
+            for uid, info in users.items():
+                pwd = info.get("password", "")
+                if pwd and not is_hashed(pwd):
+                    # 明文密码 -> 哈希（保留原密码，登录时自动升级）
+                    info["password"] = hash_password(pwd)
+                    changed = True
+
+            if changed:
                 self._atomic_save(users)
         except Exception:
             # 启动时的自动检查失败不应阻止服务启动
             pass
 
     def authenticate(self, uid: str, pwd: str) -> Optional[Dict]:
+        """验证用户登录。支持哈希密码，并自动升级遗留的明文记录"""
         users = self.load_all_users()
-        if uid in users and users[uid]["password"] == pwd:
-            user_info = users[uid].copy()
-            user_info["uid"] = uid
-            return user_info
-        return None
+        if uid not in users:
+            return None
+        stored = users[uid].get("password", "")
+
+        if is_hashed(stored):
+            if not verify_password(pwd, stored):
+                return None
+        else:
+            # 遗留明文密码 — 直接比对后升级为哈希
+            if stored != pwd:
+                return None
+            users[uid]["password"] = hash_password(pwd)
+            self._atomic_save(users)
+
+        user_info = users[uid].copy()
+        user_info["uid"] = uid
+        return user_info
 
     def add_or_update_user(self, uid: str, pwd: str, role: str, name: str):
         users = self.load_all_users()
@@ -86,7 +143,7 @@ class UserDatabaseManager:
             "总工": "图纸终审"
         }
         users[uid] = {
-            "password": pwd,
+            "password": hash_password(pwd),
             "role": role,
             "name": name,
             "default_module": module_map.get(role, "图纸信息录入")

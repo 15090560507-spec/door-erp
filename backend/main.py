@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from config import DATA_DIR
-from database import UserDatabaseManager, TaskDatabaseManager
+from database import UserDatabaseManager, TaskDatabaseManager, hash_password
 from models import (
     CADRequest,
     LoginRequest, LoginResponse,
@@ -312,7 +312,7 @@ def reset_password(uid: str, req: ResetPasswordRequest):
     users = user_db.load_all_users()
     if uid not in users:
         raise HTTPException(status_code=404, detail="用户不存在")
-    users[uid]["password"] = req.new_pwd
+    users[uid]["password"] = hash_password(req.new_pwd)
     user_db.save(users)
     return {"success": True, "message": f"已重置 {uid} 的密码"}
 
