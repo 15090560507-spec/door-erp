@@ -16,13 +16,16 @@ class UserDatabaseManager:
         self.file_path = file_path
         if not os.path.exists(self.file_path):
             default_users = {
-                "admin": {"password": "888888", "role": "超级管理员", "name": "系统管理员", "default_module": "后台管理"},
+                "admin": {"password": "admin888", "role": "超级管理员", "name": "系统管理员", "default_module": "后台管理"},
                 "A": {"password": "123", "role": "录入员", "name": "销售小A", "default_module": "图纸信息录入"},
                 "B": {"password": "123", "role": "绘图员", "name": "技术小B", "default_module": "图纸绘制"},
                 "C": {"password": "123", "role": "初审员", "name": "初审小C", "default_module": "图纸初审"},
                 "D": {"password": "123", "role": "总工", "name": "总工小D", "default_module": "图纸终审"}
             }
             self.save(default_users)
+        else:
+            # 每次启动确保 admin 超级管理员账号存在
+            self._ensure_admin_exists()
 
     def load_all_users(self) -> Dict:
         try:
@@ -34,6 +37,18 @@ class UserDatabaseManager:
     def save(self, users: Dict):
         with open(self.file_path, 'w', encoding='utf-8') as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
+
+    def _ensure_admin_exists(self):
+        """启动时检查：确保 admin 超级管理员账号始终存在"""
+        users = self.load_all_users()
+        if "admin" not in users:
+            users["admin"] = {
+                "password": "admin888",
+                "role": "超级管理员",
+                "name": "系统管理员",
+                "default_module": "后台管理"
+            }
+            self.save(users)
 
     def authenticate(self, uid: str, pwd: str) -> Optional[Dict]:
         users = self.load_all_users()
