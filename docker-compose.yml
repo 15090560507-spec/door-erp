@@ -22,13 +22,12 @@ services:
       dockerfile: Dockerfile
       args:
         # 构建时注入：前端在浏览器中请求后端的地址
-        # 生产环境改为 http://<服务器IP>:8000/api
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+        NEXT_PUBLIC_API_URL: http://124.223.87.161:8000/api
     container_name: door-frontend
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+      - NEXT_PUBLIC_API_URL=http://124.223.87.161:8000/api
     depends_on:
       - backend
     restart: unless-stopped
