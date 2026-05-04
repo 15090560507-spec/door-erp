@@ -13,7 +13,8 @@ services:
       - DATA_DIR=/app/data
       - TEMPLATE_PATH=/app/template.dxf
     volumes:
-      - door_data:/app/data
+      # 数据持久化：JSON 数据库文件映射到宿主机 ./data 目录，防止重启丢失
+      - ./data:/app/data
     restart: unless-stopped
 
   frontend:
@@ -31,6 +32,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  door_data:

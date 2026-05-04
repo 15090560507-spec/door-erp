@@ -27,17 +27,27 @@ export default function DashboardPage() {
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [cadBlob, setCadBlob] = useState<Blob | null>(null);
   const [cadLoading, setCadLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [filterDate, setFilterDate] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (date?: string, status?: string) => {
     setLoading(true);
     try {
-      let params: { status?: string } = {};
-      if (module === "图纸绘制") params.status = "待绘制";
-      else if (module === "图纸初审") params.status = "待初审";
-      else if (module === "图纸终审") params = {};
+      let params: { status?: string; date?: string } = {};
+      // 手动筛选优先，否则按模块默认筛选
+      if (status) {
+        params.status = status;
+      } else if (module === "图纸绘制") {
+        params.status = "待绘制";
+      } else if (module === "图纸初审") {
+        params.status = "待初审";
+      }
+      if (date) params.date = date;
       const res = await getTasks(params);
-      if (module === "图纸终审") {
+      if (!status && module === "图纸终审") {
         setTasks(res.tasks.filter((t) => t.status === "待终审" || t.status === "已通过"));
       } else {
         setTasks(res.tasks);
@@ -49,8 +59,8 @@ export default function DashboardPage() {
   }, [module]);
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    fetchTasks(filterDate, filterStatus);
+  }, [fetchTasks, filterDate, filterStatus]);
 
   useEffect(() => {
     if (activeTaskId) {
@@ -85,14 +95,17 @@ export default function DashboardPage() {
 
   // ===================== 录入模块 =====================
   const handleSubmitOrder = async () => {
+    setSubmitting(true);
     try {
       await createTask({ params: formData, ref_text: refText, ref_img_b64: refImgB64 });
-      flash("订单提交成功，已流转至绘图部！", "success");
+      setToast({ text: "订单提交成功，已流转至绘图部！", type: "success" });
+      setTimeout(() => setToast(null), 3000);
       setFormData(DEFAULT_FORM_DATA);
       setRefText("");
       setRefImgB64(null);
-      fetchTasks();
+      fetchTasks(filterDate, filterStatus);
     } catch { flash("提交失败", "error"); }
+    setSubmitting(false);
   };
 
   const handleQuickCad = async () => {
@@ -131,7 +144,7 @@ export default function DashboardPage() {
       });
       flash("成功流转至初审！", "success");
       backToList();
-      fetchTasks();
+      fetchTasks(filterDate, filterStatus);
     } catch { flash("提交失败", "error"); }
   };
 
@@ -142,7 +155,7 @@ export default function DashboardPage() {
       await updateTask(activeTaskId, { status: targetStatus, review_feedback: reviewFeedback });
       flash("已打回修改", "success");
       backToList();
-      fetchTasks();
+      fetchTasks(filterDate, filterStatus);
     } catch { flash("操作失败", "error"); }
   };
 
@@ -154,7 +167,7 @@ export default function DashboardPage() {
       await updateTask(activeTaskId, { status: nextStatus, review_feedback: msg });
       flash(msg, "success");
       backToList();
-      fetchTasks();
+      fetchTasks(filterDate, filterStatus);
     } catch { flash("操作失败", "error"); }
   };
 
@@ -165,6 +178,20 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* 居中 Toast 弹窗 */}
+      {toast && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-in fade-in">
+          <div className={`rounded-2xl px-8 py-6 shadow-2xl text-center max-w-sm mx-4 ${
+            toast.type === "success"
+              ? "bg-white text-[#1C1C1E]"
+              : "bg-white text-[#FF3B30]"
+          }`}>
+            <div className="text-4xl mb-3">{toast.type === "success" ? "✅" : "❌"}</div>
+            <p className="text-[17px] font-semibold">{toast.text}</p>
+          </div>
+        </div>
+      )}
+
       {message && (
         <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${
           message.type === "success" ? "bg-[#E5FBE5] text-[#34C759]" :
@@ -382,9 +409,10 @@ export default function DashboardPage() {
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={handleSubmitOrder}
-                    className="flex-1 py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-sm hover:opacity-90 transition-all"
+                    disabled={submitting}
+                    className="flex-1 py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    提交订单 (流转至绘图部)
+                    {submitting ? "提交中..." : "提交订单 (流转至绘图部)"}
                   </button>
                   <button
                     onClick={handleQuickCad}
@@ -401,10 +429,45 @@ export default function DashboardPage() {
           {/* 其他模块任务列表 */}
           {module !== "图纸信息录入" && (
             <div>
+              {/* 筛选栏 */}
+              <div className="flex flex-wrap items-center gap-3 mb-4 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-3">
+                <label className="text-[13px] font-medium text-[#8E8E93]">筛选:</label>
+                <input
+                  type="date"
+                  value={filterDate ? filterDate.replace(/\./g, "-") : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFilterDate(v ? v.replace(/-/g, ".") : "");
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                />
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                >
+                  <option value="">全部状态</option>
+                  <option value="待绘制">待绘制</option>
+                  <option value="待初审">待初审</option>
+                  <option value="待终审">待终审</option>
+                  <option value="待修改">待修改</option>
+                  <option value="已通过">已通过</option>
+                </select>
+                {(filterDate || filterStatus) && (
+                  <button
+                    onClick={() => { setFilterDate(""); setFilterStatus(""); }}
+                    className="px-3 py-1.5 text-xs text-[#007AFF] font-medium hover:underline"
+                  >
+                    清除筛选
+                  </button>
+                )}
+              </div>
+
               <h4 className="text-lg font-semibold text-[#1C1C1E] mb-4">
                 {module === "图纸绘制" && "待绘制任务"}
                 {module === "图纸初审" && "待初审任务"}
                 {module === "图纸终审" && "待终审 / 已通过任务"}
+                {(filterDate || filterStatus) && " (已筛选)"}
               </h4>
               {loading ? (
                 <p className="text-[#8E8E93] text-sm">加载中...</p>
@@ -420,7 +483,7 @@ export default function DashboardPage() {
                     }}
                     onDelete={module === "图纸绘制" ? async (task) => {
                       await deleteTask(task.id);
-                      fetchTasks();
+                      fetchTasks(filterDate, filterStatus);
                     } : undefined}
                   />
                 ))

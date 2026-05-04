@@ -310,7 +310,7 @@ def delete_user(uid: str):
 @app.get("/api/tasks", response_model=TaskListResponse)
 def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YYYY.MM.DD"),
                status: Optional[str] = Query(None, description="按状态筛选")):
-    """获取任务列表，支持按日期和状态筛选"""
+    """获取任务列表，支持按日期和状态筛选（不返回 Base64 图片数据以优化性能）"""
     all_tasks = task_db.load_all_tasks()
     filtered = []
     for t in all_tasks:
@@ -318,6 +318,10 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
             continue
         if status and t.get("status") != status:
             continue
+        # 列表接口不返回 Base64 图片数据，减少传输量
+        t = dict(t)
+        t.pop("ref_img_b64", None)
+        t.pop("drawing_img_b64", None)
         filtered.append(t)
     return TaskListResponse(tasks=filtered, total=len(filtered))
 

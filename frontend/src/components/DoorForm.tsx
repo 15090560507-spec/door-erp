@@ -208,7 +208,7 @@ export default function DoorForm({ data, onChange, readOnly, children }: Props) 
               <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
             )}
           </div>
-          {data.has_pillar && isTwoFixed && (
+          {data.has_pillar && (
             <Input label="立柱宽(外/内)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
           )}
         </Card>
