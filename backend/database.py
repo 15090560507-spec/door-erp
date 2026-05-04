@@ -5,6 +5,7 @@
 """
 import json
 import os
+import tempfile
 from typing import Dict, List, Optional
 
 from config import USERS_DB_FILE, TASKS_DB_FILE
@@ -22,7 +23,7 @@ class UserDatabaseManager:
                 "C": {"password": "123", "role": "初审员", "name": "初审小C", "default_module": "图纸初审"},
                 "D": {"password": "123", "role": "总工", "name": "总工小D", "default_module": "图纸终审"}
             }
-            self.save(default_users)
+            self._atomic_save(default_users)
         else:
             # 每次启动确保 admin 超级管理员账号存在
             self._ensure_admin_exists()
@@ -35,20 +36,37 @@ class UserDatabaseManager:
             return {}
 
     def save(self, users: Dict):
-        with open(self.file_path, 'w', encoding='utf-8') as f:
-            json.dump(users, f, ensure_ascii=False, indent=2)
+        self._atomic_save(users)
+
+    def _atomic_save(self, users: Dict):
+        """原子写入：先写临时文件再原子替换，防止并发读写导致数据损坏"""
+        dirname = os.path.dirname(self.file_path) or "."
+        os.makedirs(dirname, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=dirname, suffix=".json")
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(users, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.file_path)
+        except Exception:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
 
     def _ensure_admin_exists(self):
         """启动时检查：确保 admin 超级管理员账号始终存在"""
-        users = self.load_all_users()
-        if "admin" not in users:
-            users["admin"] = {
-                "password": "admin888",
-                "role": "超级管理员",
-                "name": "系统管理员",
-                "default_module": "后台管理"
-            }
-            self.save(users)
+        try:
+            users = self.load_all_users()
+            if "admin" not in users:
+                users["admin"] = {
+                    "password": "admin888",
+                    "role": "超级管理员",
+                    "name": "系统管理员",
+                    "default_module": "后台管理"
+                }
+                self._atomic_save(users)
+        except Exception:
+            # 启动时的自动检查失败不应阻止服务启动
+            pass
 
     def authenticate(self, uid: str, pwd: str) -> Optional[Dict]:
         users = self.load_all_users()
@@ -87,7 +105,7 @@ class TaskDatabaseManager:
     def __init__(self, file_path: str = TASKS_DB_FILE):
         self.file_path = file_path
         if not os.path.exists(self.file_path):
-            self.save([])
+            self._atomic_save([])
 
     def load_all_tasks(self) -> List[Dict]:
         try:
@@ -97,8 +115,21 @@ class TaskDatabaseManager:
             return []
 
     def save(self, tasks: List[Dict]):
-        with open(self.file_path, 'w', encoding='utf-8') as f:
-            json.dump(tasks, f, ensure_ascii=False, indent=2)
+        self._atomic_save(tasks)
+
+    def _atomic_save(self, tasks: List[Dict]):
+        """原子写入：先写临时文件再原子替换"""
+        dirname = os.path.dirname(self.file_path) or "."
+        os.makedirs(dirname, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=dirname, suffix=".json")
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(tasks, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.file_path)
+        except Exception:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
 
     def add_task(self, new_task: Dict):
         tasks = self.load_all_tasks()
