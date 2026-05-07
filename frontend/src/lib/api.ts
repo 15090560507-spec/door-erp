@@ -12,10 +12,10 @@ const api = axios.create({
   timeout: 60000,
 });
 
-// ===================== Token 管理 =====================
+// ===================== Token 管理（sessionStorage: 关浏览器即清除） =====================
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("door_token");
+  return sessionStorage.getItem("door_token");
 }
 
 // 请求拦截器：自动附加 Authorization header
@@ -33,9 +33,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== "undefined") {
-        localStorage.removeItem("door_token");
-        localStorage.removeItem("door_user");
-        localStorage.removeItem("door_module");
+        sessionStorage.removeItem("door_token");
+        sessionStorage.removeItem("door_user");
+        sessionStorage.removeItem("door_module");
         document.cookie = "auth_token=; path=/; max-age=0";
         window.dispatchEvent(new Event("auth-401"));
       }

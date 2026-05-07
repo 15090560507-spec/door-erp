@@ -13,9 +13,24 @@ interface AuthCtx {
   setModule: (m: ModuleName) => void;
 }
 
-// Cookie 工具：供 middleware 做服务端拦截
+// ===================== 存储层：sessionStorage =====================
+// 关闭浏览器 → 自动清除 → 下次访问必须重新登录
+const S = {
+  getToken: () => sessionStorage.getItem("door_token"),
+  setToken: (v: string) => sessionStorage.setItem("door_token", v),
+  getUser: (): UserInfo | null => {
+    try { const u = sessionStorage.getItem("door_user"); return u ? JSON.parse(u) : null; }
+    catch { return null; }
+  },
+  setUser: (v: UserInfo) => sessionStorage.setItem("door_user", JSON.stringify(v)),
+  getModule: () => sessionStorage.getItem("door_module") as ModuleName | null,
+  setModule: (v: string) => sessionStorage.setItem("door_module", v),
+  clear: () => { sessionStorage.removeItem("door_token"); sessionStorage.removeItem("door_user"); sessionStorage.removeItem("door_module"); },
+};
+
+// Cookie（session 级，不设 max-age → 关浏览器即清除）
 function setAuthCookie(token: string) {
-  document.cookie = `auth_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+  document.cookie = `auth_token=${token}; path=/; SameSite=Lax`;
 }
 function clearAuthCookie() {
   document.cookie = "auth_token=; path=/; max-age=0";
@@ -23,7 +38,7 @@ function clearAuthCookie() {
 
 const AuthContext = createContext<AuthCtx>({
   user: null,
-  module: "图纸信息录入",
+  module: "汇总看板",
   loading: true,
   login: async () => false,
   logout: () => {},
@@ -32,7 +47,7 @@ const AuthContext = createContext<AuthCtx>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [module, setModule] = useState<ModuleName>("图纸信息录入");
+  const [module, setModule] = useState<ModuleName>("汇总看板");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -47,55 +62,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("auth-401", handle401);
   }, [router]);
 
-  // 页面加载：通过 token 验证用户身份（而非直接信任 localStorage）
+  // 页面加载：通过 token 验证用户身份
   useEffect(() => {
     let cancelled = false;
 
     const initAuth = async () => {
-      const token = localStorage.getItem("door_token");
+      const token = S.getToken();
       if (!token) {
-        // 无 token：清除所有残留数据
-        localStorage.removeItem("door_user");
-        localStorage.removeItem("door_module");
+        S.clear();
         clearAuthCookie();
         if (!cancelled) setLoading(false);
         return;
       }
 
-      // 有 token：调后端验证有效性
       try {
         const { verifyAuth: apiVerify } = await import("@/lib/api");
         const verified = await apiVerify();
 
         if (!cancelled && verified) {
-          // token 有效 → 读取缓存的 user 信息（verify 端点不返回完整 UserInfo）
-          const cached = localStorage.getItem("door_user");
+          const cached = S.getUser();
           if (cached) {
-            try {
-              setUser(JSON.parse(cached));
-            } catch {
-              setUser({ uid: verified.uid, password: "", role: verified.role, name: verified.name, default_module: verified.default_module });
-            }
+            setUser(cached);
           } else {
             setUser({ uid: verified.uid, password: "", role: verified.role, name: verified.name, default_module: verified.default_module });
           }
-          const storedModule = localStorage.getItem("door_module");
-          if (storedModule) setModule(storedModule as ModuleName);
+          const m = S.getModule();
+          if (m) setModule(m);
         }
 
         if (!cancelled && !verified) {
-          // token 无效/过期 → 清除并跳转登录
-          localStorage.removeItem("door_token");
-          localStorage.removeItem("door_user");
-          localStorage.removeItem("door_module");
+          S.clear();
           clearAuthCookie();
           router.replace("/");
         }
       } catch {
-        // 验证请求失败（网络异常/服务不可用）：清除过期凭证，要求重新登录
-        localStorage.removeItem("door_token");
-        localStorage.removeItem("door_user");
-        localStorage.removeItem("door_module");
+        S.clear();
         clearAuthCookie();
         if (!cancelled) router.replace("/");
       }
@@ -114,9 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.success && res.user && res.token) {
         setUser(res.user);
         setModule(res.user.default_module as ModuleName);
-        localStorage.setItem("door_token", res.token);
-        localStorage.setItem("door_user", JSON.stringify(res.user));
-        localStorage.setItem("door_module", res.user.default_module);
+        S.setToken(res.token);
+        S.setUser(res.user);
+        S.setModule(res.user.default_module);
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;
@@ -129,16 +130,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("door_token");
-    localStorage.removeItem("door_user");
-    localStorage.removeItem("door_module");
+    S.clear();
     clearAuthCookie();
     router.push("/");
   };
 
   const changeModule = (m: ModuleName) => {
     setModule(m);
-    localStorage.setItem("door_module", m);
+    S.setModule(m);
   };
 
   return (
