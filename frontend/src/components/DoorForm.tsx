@@ -203,8 +203,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           )}
         </Card>
 
-        <Card title="门缝设置">
-          <div className="grid grid-cols-2 gap-3">
+        <details className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 cursor-pointer">
+          <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
+            门缝设置 <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
+              {data.left_gap}/{data.right_gap}/{data.top_gap}/{data.bottom_gap}
+              {["对开门", "子母门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
+            </span>
+          </summary>
+          <div className="grid grid-cols-2 gap-3 mt-4">
             <Input label="左门缝(mm)" value={data.left_gap} type="number" onChange={(v) => set("left_gap", Number(v))} />
             <Input label="右门缝(mm)" value={data.right_gap} type="number" onChange={(v) => set("right_gap", Number(v))} />
             <Input label="上门缝(mm)" value={data.top_gap} type="number" onChange={(v) => set("top_gap", Number(v))} />
@@ -213,7 +219,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Input label="中缝(mm)" value={data.middle_gap} type="number" onChange={(v) => set("middle_gap", Number(v))} />
             )}
           </div>
-        </Card>
+        </details>
 
         <Card title="边框与下槛截面">
           <div className="grid grid-cols-2 gap-3">
