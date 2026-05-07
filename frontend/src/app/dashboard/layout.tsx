@@ -17,11 +17,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: "100vh", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#F2F2F7"
-      }}>
-        <p style={{ color: "#8E8E93" }}>加载中...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7]">
+        <div className="text-center">
+          <div className="w-8 h-8 mx-auto mb-3 border-2 border-[#007AFF] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#8E8E93] text-sm">加载中...</p>
+        </div>
       </div>
     );
   }
@@ -29,9 +29,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <div className="min-h-screen" style={{ background: "#F2F2F7" }}>
-      <div className="max-w-[1440px] mx-auto px-6">
-        <TopNav />
+    <div className="min-h-screen bg-[#F2F2F7]">
+      <TopNav />
+      <div className="max-w-7xl mx-auto px-6 py-6">
         {children}
       </div>
     </div>

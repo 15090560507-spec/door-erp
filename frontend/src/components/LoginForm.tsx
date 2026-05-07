@@ -15,151 +15,67 @@ export default function LoginForm() {
     setError("");
     setLoading(true);
     const ok = await login(uid, pwd);
-    if (!ok) {
-      setError("账号或密码错误！");
-    }
+    if (!ok) setError("账号或密码错误！");
     setLoading(false);
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#F2F2F7",
-      }}
-    >
-      <div style={{ height: "10vh" }} />
-      <h2
-        style={{
-          textAlign: "center",
-          color: "#1C1C1E",
-          fontWeight: 700,
-          fontSize: 24,
-          marginBottom: 8,
-        }}
-      >
-        西州将军 - 智能协同平台
-      </h2>
-      <p style={{ textAlign: "center", color: "#8E8E93", marginBottom: 32 }}>
-        Sign in to continue
-      </p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F2F2F7] to-[#E5E5EA] p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#007AFF] to-[#5856D6] flex items-center justify-center shadow-lg shadow-[#007AFF]/25">
+            <span className="text-2xl font-bold text-white">西</span>
+          </div>
+          <h1 className="text-[22px] font-bold text-[#1C1C1E] tracking-tight">西州将军铜门</h1>
+          <p className="text-[13px] text-[#8E8E93] mt-1">生产图纸协同系统</p>
+        </div>
 
-      <div
-        style={{
-          width: 380,
-          maxWidth: "90vw",
-          background: "white",
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.05)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
-          padding: "32px 28px",
-        }}
-      >
-        <form onSubmit={handleSubmit}>
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#8E8E93",
-              display: "block",
-              marginBottom: 4,
-            }}
-          >
-            账号
-          </label>
-          <input
-            type="text"
-            value={uid}
-            onChange={(e) => setUid(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              fontSize: 14,
-              borderRadius: 6,
-              background: "#FAFAFC",
-              border: "1px solid #C7C7CC",
-              outline: "none",
-              marginBottom: 16,
-              boxSizing: "border-box",
-              transition: "all 0.2s",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "#007AFF";
-              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,122,255,0.15)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "#C7C7CC";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          />
-
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#8E8E93",
-              display: "block",
-              marginBottom: 4,
-            }}
-          >
-            密码
-          </label>
-          <input
-            type="password"
-            value={pwd}
-            onChange={(e) => setPwd(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              fontSize: 14,
-              borderRadius: 6,
-              background: "#FAFAFC",
-              border: "1px solid #C7C7CC",
-              outline: "none",
-              marginBottom: 8,
-              boxSizing: "border-box",
-              transition: "all 0.2s",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "#007AFF";
-              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,122,255,0.15)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "#C7C7CC";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          />
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5E5EA]">
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium text-[#8E8E93] mb-1.5">账号</label>
+            <input
+              type="text"
+              value={uid}
+              onChange={(e) => setUid(e.target.value)}
+              placeholder="请输入账号"
+              autoFocus
+              className="w-full px-4 py-2.5 text-sm rounded-xl bg-[#F2F2F7] border border-transparent outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.12)]"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium text-[#8E8E93] mb-1.5">密码</label>
+            <input
+              type="password"
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              placeholder="请输入密码"
+              className="w-full px-4 py-2.5 text-sm rounded-xl bg-[#F2F2F7] border border-transparent outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.12)]"
+            />
+          </div>
 
           {error && (
-            <p style={{ color: "#FF3B30", fontSize: 13, marginBottom: 12, marginTop: 4 }}>
+            <div className="text-[13px] text-[#FF3B30] text-center py-1.5 mb-3 bg-[#FFEBEB] rounded-lg">
               {error}
-            </p>
+            </div>
           )}
 
-          <div style={{ height: 10 }} />
           <button
             type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "10px 0",
-              background: loading ? "#80BDFF" : "#007AFF",
-              color: "white",
-              fontWeight: 700,
-              fontSize: 14,
-              border: "none",
-              borderRadius: 8,
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "all 0.2s ease",
-            }}
+            disabled={loading || !uid || !pwd}
+            className="w-full py-2.5 rounded-xl bg-[#007AFF] text-white font-semibold text-sm
+              hover:bg-[#0062CC] active:scale-[0.98] transition-all duration-200
+              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+              shadow-md shadow-[#007AFF]/20"
           >
-            {loading ? "登录中..." : "登 录"}
+            {loading ? "登录中..." : "登录"}
           </button>
         </form>
+
+        <p className="text-center text-[11px] text-[#8E8E93] mt-4">
+          如需账号请联系系统管理员
+        </p>
       </div>
     </div>
   );

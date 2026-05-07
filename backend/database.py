@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 from typing import Dict, List, Optional
 
 from config import USERS_DB_FILE, TASKS_DB_FILE
@@ -161,21 +162,24 @@ class UserDatabaseManager:
 class TaskDatabaseManager:
     def __init__(self, file_path: str = TASKS_DB_FILE):
         self.file_path = file_path
+        self._lock = threading.Lock()
         if not os.path.exists(self.file_path):
             self._atomic_save([])
 
     def load_all_tasks(self) -> List[Dict]:
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
+        """线程安全读取：持锁防止读到写中间态"""
+        with self._lock:
+            try:
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return []
 
     def save(self, tasks: List[Dict]):
         self._atomic_save(tasks)
 
     def _atomic_save(self, tasks: List[Dict]):
-        """原子写入：先写临时文件再原子替换"""
+        """原子写入：先写临时文件再原子替换（需在锁内调用）"""
         dirname = os.path.dirname(self.file_path) or "."
         os.makedirs(dirname, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=dirname, suffix=".json")
@@ -189,29 +193,45 @@ class TaskDatabaseManager:
             raise
 
     def add_task(self, new_task: Dict):
-        tasks = self.load_all_tasks()
-        tasks.insert(0, new_task)
-        self.save(tasks)
+        """原子操作：持锁完成读-改-写全流程"""
+        with self._lock:
+            tasks = self._load_unlocked()
+            tasks.insert(0, new_task)
+            self._atomic_save(tasks)
 
     def update_task(self, task_id: str, updated_data: Dict):
-        tasks = self.load_all_tasks()
-        for i, task in enumerate(tasks):
-            if task["id"] == task_id:
-                tasks[i].update(updated_data)
-                break
-        self.save(tasks)
+        """原子操作：持锁完成读-改-写全流程"""
+        with self._lock:
+            tasks = self._load_unlocked()
+            for i, task in enumerate(tasks):
+                if task["id"] == task_id:
+                    tasks[i].update(updated_data)
+                    break
+            self._atomic_save(tasks)
 
     def get_task(self, task_id: str) -> Optional[Dict]:
-        tasks = self.load_all_tasks()
-        for task in tasks:
-            if task["id"] == task_id:
-                return task
-        return None
+        """只读操作：持锁确保读到一致数据"""
+        with self._lock:
+            tasks = self._load_unlocked()
+            for task in tasks:
+                if task["id"] == task_id:
+                    return task
+            return None
 
     def delete_task(self, task_id: str):
-        tasks = self.load_all_tasks()
-        filtered_tasks = []
-        for t in tasks:
-            if t["id"] != task_id:
-                filtered_tasks.append(t)
-        self.save(filtered_tasks)
+        """原子操作：持锁完成读-改-写全流程"""
+        with self._lock:
+            tasks = self._load_unlocked()
+            filtered_tasks = []
+            for t in tasks:
+                if t["id"] != task_id:
+                    filtered_tasks.append(t)
+            self._atomic_save(filtered_tasks)
+
+    def _load_unlocked(self) -> List[Dict]:
+        """内部读取（调用方必须持锁）"""
+        try:
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []

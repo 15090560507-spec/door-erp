@@ -320,8 +320,10 @@ def reset_password(uid: str, req: ResetPasswordRequest):
 # ===================== API: 任务管理 =====================
 @app.get("/api/tasks", response_model=TaskListResponse)
 def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YYYY.MM.DD"),
-               status: Optional[str] = Query(None, description="按状态筛选")):
-    """获取任务列表，支持按日期和状态筛选（不返回 Base64 图片数据以优化性能）"""
+               status: Optional[str] = Query(None, description="按状态筛选"),
+               limit: int = Query(50, ge=1, le=200, description="每页条数"),
+               offset: int = Query(0, ge=0, description="偏移量")):
+    """获取任务列表，支持按日期/状态筛选 + 分页（不返回 Base64 图片数据以优化性能）"""
     all_tasks = task_db.load_all_tasks()
     filtered = []
     for t in all_tasks:
@@ -329,12 +331,13 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
             continue
         if status and t.get("status") != status:
             continue
-        # 列表接口不返回 Base64 图片数据，减少传输量
         t = dict(t)
         t.pop("ref_img_b64", None)
         t.pop("drawing_img_b64", None)
         filtered.append(t)
-    return TaskListResponse(tasks=filtered, total=len(filtered))
+    total = len(filtered)
+    page = filtered[offset:offset + limit]
+    return TaskListResponse(tasks=page, total=total)
 
 
 @app.get("/api/tasks/{task_id}", response_model=TaskResponse)

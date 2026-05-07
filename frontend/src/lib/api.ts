@@ -46,6 +46,8 @@ export async function getAllTasks(): Promise<TaskListResponse> {
 export async function getTasks(params?: {
   date?: string;
   status?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<TaskListResponse> {
   const { data } = await api.get<TaskListResponse>("/tasks", { params });
   return data;

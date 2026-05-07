@@ -13,6 +13,7 @@ import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
 import ClipboardUpload from "@/components/ClipboardUpload";
 import { Thumbnail } from "@/components/ImageModal";
+import { TaskListSkeleton } from "@/components/Skeleton";
 
 export default function DashboardPage() {
   const { module, user } = useAuth();
@@ -32,12 +33,17 @@ export default function DashboardPage() {
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 20;
 
-  const fetchTasks = useCallback(async (date?: string, status?: string) => {
+  const fetchTasks = useCallback(async (date?: string, status?: string, p: number = 0) => {
     setLoading(true);
     try {
-      let params: { status?: string; date?: string } = {};
-      // 手动筛选优先，否则按模块默认筛选
+      let params: { status?: string; date?: string; limit: number; offset: number } = {
+        limit: PAGE_SIZE,
+        offset: p * PAGE_SIZE,
+      };
       if (status) {
         params.status = status;
       } else if (module === "图纸绘制") {
@@ -48,9 +54,12 @@ export default function DashboardPage() {
       if (date) params.date = date;
       const res = await getTasks(params);
       if (!status && module === "图纸终审") {
-        setTasks(res.tasks.filter((t) => t.status === "待终审" || t.status === "已通过"));
+        const filtered = res.tasks.filter((t) => t.status === "待终审" || t.status === "已通过");
+        setTasks(filtered);
+        setTotal(filtered.length);
       } else {
         setTasks(res.tasks);
+        setTotal(res.total);
       }
     } catch (e) {
       console.error(e);
@@ -59,8 +68,22 @@ export default function DashboardPage() {
   }, [module]);
 
   useEffect(() => {
-    fetchTasks(filterDate, filterStatus);
+    setPage(0);
+    fetchTasks(filterDate, filterStatus, 0);
   }, [fetchTasks, filterDate, filterStatus]);
+
+  // 切换模块时自动返回任务列表
+  useEffect(() => {
+    setActiveTaskId(null);
+    setActiveTask(null);
+    setFormData(DEFAULT_FORM_DATA);
+    setRefText("");
+    setRefImgB64(null);
+    setUploadImgB64(null);
+    setReviewFeedback("");
+    setCadBlob(null);
+    setMessage(null);
+  }, [module]);
 
   useEffect(() => {
     if (activeTaskId) {
@@ -429,6 +452,31 @@ export default function DashboardPage() {
           {/* 其他模块任务列表 */}
           {module !== "图纸信息录入" && (
             <div>
+              {/* 统计概览卡片 */}
+              {!filterDate && !filterStatus && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {module === "图纸绘制" && (
+                    <>
+                      <StatCard label="待绘制" count={total} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="待修改" count={tasks.filter(t => t.status === "待修改").length} color="bg-[#FFEBEB] text-[#CC2F2A]" />
+                      <StatCard label="今日新增" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E5F9E5] text-[#248A3D]" />
+                    </>
+                  )}
+                  {module === "图纸初审" && (
+                    <>
+                      <StatCard label="待初审" count={total} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="今日提交" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E8E8ED] text-[#48484A]" />
+                    </>
+                  )}
+                  {module === "图纸终审" && (
+                    <>
+                      <StatCard label="待终审" count={tasks.filter(t => t.status === "待终审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="已通过" count={tasks.filter(t => t.status === "已通过").length} color="bg-[#E5F9E5] text-[#248A3D]" />
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* 筛选栏 */}
               <div className="flex flex-wrap items-center gap-3 mb-4 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-3">
                 <label className="text-[13px] font-medium text-[#8E8E93]">筛选:</label>
@@ -463,35 +511,91 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <h4 className="text-lg font-semibold text-[#1C1C1E] mb-4">
-                {module === "图纸绘制" && "待绘制任务"}
-                {module === "图纸初审" && "待初审任务"}
-                {module === "图纸终审" && "待终审 / 已通过任务"}
-                {(filterDate || filterStatus) && " (已筛选)"}
-              </h4>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-semibold text-[#1C1C1E]">
+                  {module === "图纸绘制" && "待绘制任务"}
+                  {module === "图纸初审" && "待初审任务"}
+                  {module === "图纸终审" && "待终审 / 已通过任务"}
+                  {(filterDate || filterStatus) && " (已筛选)"}
+                  {total > 0 && <span className="ml-2 text-sm font-normal text-[#8E8E93]">共 {total} 条</span>}
+                </h4>
+                {total > PAGE_SIZE && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <button
+                      disabled={page === 0}
+                      onClick={() => { setPage(page - 1); fetchTasks(filterDate, filterStatus, page - 1); }}
+                      className="px-3 py-1 rounded-md border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                    >
+                      ← 上一页
+                    </button>
+                    <span className="text-[#8E8E93]">{page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
+                    <button
+                      disabled={(page + 1) * PAGE_SIZE >= total}
+                      onClick={() => { setPage(page + 1); fetchTasks(filterDate, filterStatus, page + 1); }}
+                      className="px-3 py-1 rounded-md border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                    >
+                      下一页 →
+                    </button>
+                  </div>
+                )}
+              </div>
               {loading ? (
-                <p className="text-[#8E8E93] text-sm">加载中...</p>
+                <TaskListSkeleton count={5} />
               ) : tasks.length === 0 ? (
-                <p className="text-[#8E8E93] text-sm">暂无待处理任务</p>
+                <div className="text-center py-10 text-[#8E8E93]">
+                  <div className="text-4xl mb-3">📭</div>
+                  <p className="text-sm">暂无待处理任务</p>
+                </div>
               ) : (
-                tasks.map((t) => (
-                  <TaskCard
-                    key={t.id}
-                    task={t}
-                    onClick={(task) => {
-                      setActiveTaskId(task.id);
-                    }}
-                    onDelete={module === "图纸绘制" ? async (task) => {
-                      await deleteTask(task.id);
-                      fetchTasks(filterDate, filterStatus);
-                    } : undefined}
-                  />
-                ))
+                <div>
+                  {tasks.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      onClick={(task) => {
+                        setActiveTaskId(task.id);
+                      }}
+                      onDelete={module === "图纸绘制" ? async (task) => {
+                        await deleteTask(task.id);
+                        fetchTasks(filterDate, filterStatus, page);
+                      } : undefined}
+                    />
+                  ))}
+                  {total > PAGE_SIZE && (
+                    <div className="flex items-center justify-center gap-2 mt-4 text-sm">
+                      <button
+                        disabled={page === 0}
+                        onClick={() => { setPage(page - 1); fetchTasks(filterDate, filterStatus, page - 1); }}
+                        className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                      >
+                        ← 上一页
+                      </button>
+                      <span className="text-[#8E8E93] px-2">{page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
+                      <button
+                        disabled={(page + 1) * PAGE_SIZE >= total}
+                        onClick={() => { setPage(page + 1); fetchTasks(filterDate, filterStatus, page + 1); }}
+                        className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                      >
+                        下一页 →
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 统计概览卡片 */
+function StatCard({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <div className={`rounded-xl p-4 ${color} bg-opacity-15`}>
+      <div className="text-[11px] font-medium opacity-70">{label}</div>
+      <div className="text-2xl font-bold mt-0.5">{count}</div>
     </div>
   );
 }
