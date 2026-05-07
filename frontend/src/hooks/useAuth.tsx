@@ -13,6 +13,14 @@ interface AuthCtx {
   setModule: (m: ModuleName) => void;
 }
 
+// Cookie 工具：供 middleware 做服务端拦截
+function setAuthCookie(token: string) {
+  document.cookie = `auth_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+}
+function clearAuthCookie() {
+  document.cookie = "auth_token=; path=/; max-age=0";
+}
+
 const AuthContext = createContext<AuthCtx>({
   user: null,
   module: "图纸信息录入",
@@ -32,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handle401 = () => {
       setUser(null);
+      clearAuthCookie();
       router.replace("/");
     };
     window.addEventListener("auth-401", handle401);
@@ -48,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 无 token：清除所有残留数据
         localStorage.removeItem("door_user");
         localStorage.removeItem("door_module");
+        clearAuthCookie();
         if (!cancelled) setLoading(false);
         return;
       }
@@ -78,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem("door_token");
           localStorage.removeItem("door_user");
           localStorage.removeItem("door_module");
+          clearAuthCookie();
           router.replace("/");
         }
       } catch {
@@ -85,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("door_token");
         localStorage.removeItem("door_user");
         localStorage.removeItem("door_module");
+        clearAuthCookie();
         if (!cancelled) router.replace("/");
       }
 
@@ -105,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("door_token", res.token);
         localStorage.setItem("door_user", JSON.stringify(res.user));
         localStorage.setItem("door_module", res.user.default_module);
+        setAuthCookie(res.token);
         router.push("/dashboard");
         return true;
       }
@@ -119,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("door_token");
     localStorage.removeItem("door_user");
     localStorage.removeItem("door_module");
+    clearAuthCookie();
     router.push("/");
   };
 
