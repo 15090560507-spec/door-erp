@@ -122,13 +122,19 @@ def draw_door_in_frame(
     top_gap, bottom_gap = p.get('top_bottom_gap', (0, 0))
     middle_gap = p.get('middle_gap', 0)
 
-    # 缝隙逻辑：门扇开启面有可见缝隙，闭合面门板与门框重叠（无缝隙）
-    # 外开→正面有缝, 内开→背面有缝
-    is_gapped = (nk_choice == "外开" and not is_back) or (nk_choice == "内开" and is_back)
-    if is_gapped:
-        gap_L, gap_R, gap_T, gap_B = left_gap, right_gap, top_gap, bottom_gap
+    # 面板基准：以开启侧门框为参照计算尺寸和位置，正反面绘制完全一致
+    # 外开→正面框为基准, 内开→背面框为基准
+    # 无缝侧门框更宽→面板与框自然重叠（物理正确）
+    if nk_choice == "外开":
+        ref_left = p['left_width_front']
+        ref_right = p['right_width_front']
+        ref_fw_top = p['fw_top_front']
+        ref_th = p['th_front']
     else:
-        gap_L, gap_R, gap_T, gap_B = 0, 0, 0, 0
+        ref_left = p['left_width_back']
+        ref_right = p['right_width_back']
+        ref_fw_top = p['fw_top_back']
+        ref_th = p['th_back']
 
     qc_choice = p.get('qc', '无')
     qc_height = p.get('qc_height', 400)
@@ -207,10 +213,10 @@ def draw_door_in_frame(
         drawer.draw_poly([off((left_width, qc_bottom)), off((dw - right_width, qc_bottom)), off((dw - right_width, qc_top)), off((left_width, qc_top))], 'A-DOOR-FRAME')
 
     if qc_h > 0:
-        panel_y_top = top_frame_bottom - qc_h - fw_top - gap_T
+        panel_y_top = top_frame_bottom - qc_h - ref_fw_top - top_gap
     else:
-        panel_y_top = dh - fw_top - gap_T
-    panel_y_bot = th + gap_B
+        panel_y_top = dh - ref_fw_top - top_gap
+    panel_y_bot = ref_th + bottom_gap
 
     pillar_width_front = 0
     pillar_width_back = 0
@@ -228,15 +234,15 @@ def draw_door_in_frame(
     panel_positions = []
 
     if door_type == "单门":
-        panel_x1 = left_width + gap_L
-        panel_x2 = dw - right_width - gap_R
+        panel_x1 = ref_left + left_gap
+        panel_x2 = dw - ref_right - right_gap
         drawer.draw_poly([off((panel_x1, panel_y_bot)), off((panel_x2, panel_y_bot)), off((panel_x2, panel_y_top)), off((panel_x1, panel_y_top))], 'A-DOOR-PANEL')
         panel_positions.append((panel_x1, panel_x2))
 
     elif door_type == "对开门":
-        total_door_width = dw - left_width - right_width - gap_L - gap_R
+        total_door_width = dw - ref_left - ref_right - left_gap - right_gap
         single_panel_width = (total_door_width - middle_gap) / 2
-        left_panel_x1 = left_width + gap_L
+        left_panel_x1 = ref_left + left_gap
         left_panel_x2 = left_panel_x1 + single_panel_width
         right_panel_x1 = left_panel_x2 + middle_gap
         right_panel_x2 = right_panel_x1 + single_panel_width
@@ -246,18 +252,18 @@ def draw_door_in_frame(
         panel_positions.extend([(left_panel_x1, left_panel_x2), (right_panel_x1, right_panel_x2)])
 
     elif door_type == "子母门":
-        total_door_width = dw - left_width - right_width - gap_L - gap_R
+        total_door_width = dw - ref_left - ref_right - left_gap - right_gap
         mother_width = max(500, min(mother_door_width, total_door_width - middle_gap - 100))
         son_width = total_door_width - mother_width - middle_gap
 
         is_mother_right = (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开")
         if is_mother_right:
-            son_panel_x1 = left_width + gap_L
+            son_panel_x1 = ref_left + left_gap
             son_panel_x2 = son_panel_x1 + son_width
             mother_panel_x1 = son_panel_x2 + middle_gap
             mother_panel_x2 = mother_panel_x1 + mother_width
         else:
-            mother_panel_x1 = left_width + gap_L
+            mother_panel_x1 = ref_left + left_gap
             mother_panel_x2 = mother_panel_x1 + mother_width
             son_panel_x1 = mother_panel_x2 + middle_gap
             son_panel_x2 = son_panel_x1 + son_width
@@ -270,10 +276,10 @@ def draw_door_in_frame(
             drawer.draw_dim(off((mother_panel_x1, panel_y_bot - 100)), off((mother_panel_x2, panel_y_bot - 100)), off((mother_panel_x1 - 100, panel_y_bot - 150)), 0, 'YQ_DIM', f"母门宽 {mother_width}")
 
     elif door_type == "折叠四开门":
-        total_door_width = dw - left_width - right_width - gap_L - gap_R
+        total_door_width = dw - ref_left - ref_right - left_gap - right_gap
         mid_total_width = 2 * mid_door_width + middle_gap
         side_width = (total_door_width - mid_total_width) / 2
-        lx1 = left_width + gap_L
+        lx1 = ref_left + left_gap
         lx2 = lx1 + side_width
         lmx1 = lx2
         lmx2 = lmx1 + mid_door_width
@@ -293,12 +299,12 @@ def draw_door_in_frame(
             drawer.draw_dim(off((lmx1, panel_y_bot - 150)), off((rmx2, panel_y_bot - 150)), off((lmx1 + mid_total_width / 2, panel_y_bot - 200)), 0, 'YQ_DIM', f"中门宽度 {mid_total_width}mm")
 
     elif door_type == "两定两开":
-        total_door_width = dw - left_width - right_width - gap_L - gap_R
+        total_door_width = dw - ref_left - ref_right - left_gap - right_gap
         pillar_total = 2 * pillar_width_front if has_pillar else 0
         mid_total_width = 2 * mid_door_width + middle_gap
         side_width = (total_door_width - mid_total_width - pillar_total) / 2
 
-        lx1 = left_width + gap_L
+        lx1 = ref_left + left_gap
         lx2 = lx1 + side_width
         lpx1 = lx2
         lpx2 = lpx1 + pillar_width_front if has_pillar else lpx1
@@ -336,7 +342,7 @@ def draw_door_in_frame(
         dims_h.append(("门套宽", ox1, ix1, -200, True, f" {trim_w}"))
 
     if use_light_size and light_w > 0 and ((nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)):
-        dims_h.append(("见光宽", left_width + gap_L, dw - right_width - gap_R, -200, True, f"见光宽 {light_w}"))
+        dims_h.append(("见光宽", ref_left + left_gap, dw - ref_right - right_gap, -200, True, f"见光宽 {light_w}"))
 
     dims_h.append(("洞口宽", 0, dw, -300, True, None))
 
