@@ -547,7 +547,7 @@ def run_integrated_system(
                         'char_height': attrib.dxf.height,
                         'layer': attrib.dxf.layer,
                         'style': attrib.dxf.style
-                    }).dxf.width = 1200
+                    }).dxf.width = 6000
                     to_replace.append(attrib)
                 elif tag in all_attrs:
                     attrib.dxf.text = str(all_attrs[tag])
