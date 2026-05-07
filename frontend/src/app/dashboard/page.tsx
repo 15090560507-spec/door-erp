@@ -65,12 +65,15 @@ export default function DashboardPage() {
       };
       if (status) {
         params.status = status;
+      } else if (m === "汇总看板") {
+        // 汇总看板：所有进行中的任务（不含已通过）
+        params.status = "待绘制,待初审,待终审,待修改";
       } else if (m === "图纸绘制") {
-        params.status = "待绘制";
+        // 绘图员需要看到新任务 + 被打回待修改的任务
+        params.status = "待绘制,待修改";
       } else if (m === "图纸初审") {
         params.status = "待初审";
       } else if (m === "图纸终审") {
-        // 终审模块：后端按多状态过滤，避免客户端全量拉取后再过滤
         params.status = "待终审,已通过";
       }
       if (date) params.date = date;
@@ -525,6 +528,14 @@ export default function DashboardPage() {
                       <StatCard label="已通过" count={tasks.filter(t => t.status === "已通过").length} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
+                  {module === "汇总看板" && (
+                    <>
+                      <StatCard label="待绘制" count={tasks.filter(t => t.status === "待绘制").length} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="待初审" count={tasks.filter(t => t.status === "待初审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="待终审" count={tasks.filter(t => t.status === "待终审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="待修改" count={tasks.filter(t => t.status === "待修改").length} color="bg-[#FFEBEB] text-[#CC2F2A]" />
+                    </>
+                  )}
                 </div>
               )}
 
@@ -564,7 +575,8 @@ export default function DashboardPage() {
 
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-lg font-semibold text-[#1C1C1E]">
-                  {module === "图纸绘制" && "待绘制任务"}
+                  {module === "汇总看板" && "全部进行中任务"}
+                  {module === "图纸绘制" && "待绘制 / 待修改任务"}
                   {module === "图纸初审" && "待初审任务"}
                   {module === "图纸终审" && "待终审 / 已通过任务"}
                   {(filterDate || filterStatus) && " (已筛选)"}
