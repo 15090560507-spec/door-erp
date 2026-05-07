@@ -1,11 +1,11 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
-  MATERIALS, HANDLES, LOCKS, HINGES,
+  MATERIALS, HANDLES, LOCKS, HINGES, COLOR_PRESETS,
 } from "@/lib/types";
 
 interface Props {
@@ -70,6 +70,52 @@ const Card = memo(function Card({ title, children }: { title: string; children: 
   );
 });
 
+const Combobox = memo(function Combobox({ label, value, options, onChange }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setInputValue(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = options.filter((o) => o.toLowerCase().includes(inputValue.toLowerCase()));
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputValue}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { setInputValue(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => { if (e.key === "Escape" || e.key === "Enter") { setOpen(false); inputRef.current?.blur(); } }}
+        className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-[#C7C7CC] rounded-md shadow-lg">
+          {filtered.map((o) => (
+            <li key={o} onMouseDown={(e) => { e.preventDefault(); setInputValue(o); onChange(o); setOpen(false); }}
+              className="px-3 py-2 text-sm cursor-pointer hover:bg-[#F2F2F7] transition-colors">
+              {o}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
+
 const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: Props) {
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
@@ -92,8 +138,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="材质与外观">
           <div className="grid grid-cols-2 gap-3">
-            <Select label="制作材料" value={data.zzcl} options={MATERIALS} onChange={(v) => set("zzcl", v)} />
-            <Input label="表面颜色" value={data.ys} onChange={(v) => set("ys", v)} />
+            <Combobox label="制作材料" value={data.zzcl} options={MATERIALS} onChange={(v) => set("zzcl", v)} />
+            <Combobox label="颜色" value={data.ys} options={COLOR_PRESETS} onChange={(v) => set("ys", v)} />
             <Input label="正面款式" value={data.zmks} onChange={(v) => set("zmks", v)} />
             <Input label="反面款式" value={data.fmks} onChange={(v) => set("fmks", v)} />
             <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
@@ -157,6 +203,18 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           )}
         </Card>
 
+        <Card title="门缝设置">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="左门缝(mm)" value={data.left_gap} type="number" onChange={(v) => set("left_gap", Number(v))} />
+            <Input label="右门缝(mm)" value={data.right_gap} type="number" onChange={(v) => set("right_gap", Number(v))} />
+            <Input label="上门缝(mm)" value={data.top_gap} type="number" onChange={(v) => set("top_gap", Number(v))} />
+            <Input label="下门缝(mm)" value={data.bottom_gap} type="number" onChange={(v) => set("bottom_gap", Number(v))} />
+            {["对开门", "子母门", "折叠四开门", "两定两开"].includes(data.door_type) && (
+              <Input label="中缝(mm)" value={data.middle_gap} type="number" onChange={(v) => set("middle_gap", Number(v))} />
+            )}
+          </div>
+        </Card>
+
         <Card title="边框与下槛截面">
           <div className="grid grid-cols-2 gap-3">
             <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
@@ -176,10 +234,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       <div className="space-y-4">
         <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
-            <Select label="正面拉手" value={data.zmls} options={HANDLES} onChange={(v) => set("zmls", v)} />
-            <Select label="反面拉手" value={data.fmls} options={HANDLES} onChange={(v) => set("fmls", v)} />
-            <Select label="锁体类型" value={data.st_val} options={LOCKS} onChange={(v) => set("st_val", v)} />
-            <Select label="合页样式" value={data.sel_hys} options={HINGES} onChange={(v) => set("sel_hys", v)} />
+            <Combobox label="正面拉手" value={data.zmls} options={HANDLES} onChange={(v) => set("zmls", v)} />
+            <Combobox label="反面拉手" value={data.fmls} options={HANDLES} onChange={(v) => set("fmls", v)} />
+            <Combobox label="锁体类型" value={data.st_val} options={LOCKS} onChange={(v) => set("st_val", v)} />
+            <Combobox label="合页样式" value={data.sel_hys} options={HINGES} onChange={(v) => set("sel_hys", v)} />
           </div>
           <div className="mt-3">
             <Select label="单扇合页数量" value={data.hysl} options={HYSL_OPTIONS} onChange={(v) => set("hysl", v)} />

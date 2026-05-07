@@ -225,8 +225,9 @@ def build_cad_params(req: CADRequest):
         "qc": req.sel_qc, "qc_height": qc_height_val,
         "has_mm": req.has_mm, "mm_height": mm_height_val,
         "hys": req.sel_hys, "hysl": req.hysl,
-        "left_right_gap": parse_gap_str(req.left_right_gap_str, 0),
-        "top_bottom_gap": parse_gap_str(req.top_bottom_gap_str, 0),
+        # 间隙：优先使用新独立字段，回退到旧字符串格式
+        "left_right_gap": (req.left_gap, req.right_gap) if (req.left_gap or req.right_gap) else parse_gap_str(req.left_right_gap_str, 0),
+        "top_bottom_gap": (req.top_gap, req.bottom_gap) if (req.top_gap or req.bottom_gap) else parse_gap_str(req.top_bottom_gap_str, 0),
         "middle_gap": req.middle_gap,
         "use_light_size": req.use_light_size,
         "light_w": req.light_w, "light_h": req.light_h,

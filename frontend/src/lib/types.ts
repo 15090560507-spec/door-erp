@@ -69,8 +69,10 @@ export interface DoorFormData {
   mm_height: number;
   pillar_width_str: string;
   sm: string;
-  left_right_gap_str: string;
-  top_bottom_gap_str: string;
+  left_gap: number;
+  right_gap: number;
+  top_gap: number;
+  bottom_gap: number;
   middle_gap: number;
 }
 
@@ -118,9 +120,10 @@ export const MATERIALS = ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2
 export const HANDLES = ["标配拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
 export const LOCKS = ["标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
 export const HINGES = ["葫芦头合页", "可拆卸合页", "暗合页", "明合页暗装", "明合页"];
+export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
-  dhdw: "", gdmc: "", ys: "", zzcl: "0.8的不锈钢镀铜",
+  dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
   zmks: "按图", fmks: "按图",
   zmls: "标配拉手", fmls: "背包拉手", st_val: "标准锁体",
   hysl: "3个/扇", sel_hys: "暗合页", qh: "", mshd: 80,
@@ -136,7 +139,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   dw: 900, dh: 2100, overlap: 20,
   fw_left_str: "60/60", fw_right_str: "60/60", fw_top_str: "60/60",
   th_str: "55/70", threshold_type: "高低槛",
-  left_right_gap_str: "0/0", top_bottom_gap_str: "0/0", middle_gap: 0,
+  left_gap: 2, right_gap: 2, top_gap: 5, bottom_gap: 7, middle_gap: 4,
   use_light_size: false, light_w: 0, light_h: 0,
   pdk: "60", sel_bz: "全包",
 };

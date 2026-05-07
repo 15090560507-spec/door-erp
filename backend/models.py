@@ -15,7 +15,7 @@ class CADRequest(BaseModel):
     hhxd: str = "D"                     # 制单人
     dhrq: str = ""                      # 交期日期 "YYYY.MM.DD"
     zzcl: str = "0.8的不锈钢镀铜"        # 制作材料
-    ys: str = ""                        # 表面颜色
+    ys: str = "2号色"                   # 颜色
     zmks: str = "按图"                  # 正面款式
     fmks: str = "按图"                  # 反面款式
     mshd: int = 80                      # 门扇厚度
@@ -54,9 +54,13 @@ class CADRequest(BaseModel):
     mm_height: int = 200                # 门楣高
     pillar_width_str: str = "55/70"     # 立柱宽(外/内)
     sm: str = ""                        # 批注
-    left_right_gap_str: str = "0/0"     # 左右间隙
-    top_bottom_gap_str: str = "0/0"     # 上下间隙
-    middle_gap: int = 0                 # 中间隙
+    left_gap: int = 2                   # 左门缝
+    right_gap: int = 2                  # 右门缝
+    top_gap: int = 5                    # 上门缝
+    bottom_gap: int = 7                 # 下门缝
+    middle_gap: int = 4                 # 中缝
+    left_right_gap_str: str = "0/0"     # [兼容旧数据] 左右间隙
+    top_bottom_gap_str: str = "0/0"     # [兼容旧数据] 上下间隙
 
 
 # ===================== 用户相关模型 =====================
