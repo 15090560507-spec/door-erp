@@ -36,7 +36,8 @@ api.interceptors.response.use(
         localStorage.removeItem("door_token");
         localStorage.removeItem("door_user");
         localStorage.removeItem("door_module");
-        window.location.href = "/";
+        // 触发页面重新渲染，由 AuthProvider 的 loading + user 状态驱动跳转
+        window.dispatchEvent(new Event("auth-401"));
       }
     }
     // 超时或网络错误：注入友好消息供上层显示

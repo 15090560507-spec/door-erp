@@ -28,6 +28,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // 监听 401 事件：API 拦截器检测到 token 过期时触发
+  useEffect(() => {
+    const handle401 = () => {
+      setUser(null);
+      router.replace("/");
+    };
+    window.addEventListener("auth-401", handle401);
+    return () => window.removeEventListener("auth-401", handle401);
+  }, [router]);
+
   // 页面加载：通过 token 验证用户身份（而非直接信任 localStorage）
   useEffect(() => {
     let cancelled = false;
@@ -71,13 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           router.replace("/");
         }
       } catch {
-        // 网络异常：保留 token 和缓存数据，允许继续使用
-        const cached = localStorage.getItem("door_user");
-        if (cached) {
-          try { setUser(JSON.parse(cached)); } catch {}
-        }
-        const storedModule = localStorage.getItem("door_module");
-        if (storedModule) setModule(storedModule as ModuleName);
+        // 验证请求失败（网络异常/服务不可用）：清除过期凭证，要求重新登录
+        localStorage.removeItem("door_token");
+        localStorage.removeItem("door_user");
+        localStorage.removeItem("door_module");
+        if (!cancelled) router.replace("/");
       }
 
       if (!cancelled) setLoading(false);
@@ -88,19 +96,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loginFn = async (uid: string, pwd: string): Promise<boolean> => {
-    const { login: apiLogin } = await import("@/lib/api");
-    const res = await apiLogin(uid, pwd);
-    if (res.success && res.user && res.token) {
-      setUser(res.user);
-      setModule(res.user.default_module as ModuleName);
-      // 存储 token + user 信息
-      localStorage.setItem("door_token", res.token);
-      localStorage.setItem("door_user", JSON.stringify(res.user));
-      localStorage.setItem("door_module", res.user.default_module);
-      router.push("/dashboard");
-      return true;
+    try {
+      const { login: apiLogin } = await import("@/lib/api");
+      const res = await apiLogin(uid, pwd);
+      if (res.success && res.user && res.token) {
+        setUser(res.user);
+        setModule(res.user.default_module as ModuleName);
+        localStorage.setItem("door_token", res.token);
+        localStorage.setItem("door_user", JSON.stringify(res.user));
+        localStorage.setItem("door_module", res.user.default_module);
+        router.push("/dashboard");
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   const logout = () => {

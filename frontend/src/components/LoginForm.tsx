@@ -14,8 +14,12 @@ export default function LoginForm() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const ok = await login(uid, pwd);
-    if (!ok) setError("账号或密码错误！");
+    try {
+      const ok = await login(uid, pwd);
+      if (!ok) setError("账号或密码错误！");
+    } catch {
+      setError("网络连接失败，请检查服务器状态");
+    }
     setLoading(false);
   };
 
