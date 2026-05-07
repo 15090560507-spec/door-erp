@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 
-interface Props {
+interface ImageModalProps {
   src: string;
   onClose: () => void;
   alt?: string;
 }
 
-export default function ImageModal({ src, onClose, alt = "" }: Props) {
+export default function ImageModal({ src, onClose, alt = "" }: ImageModalProps) {
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -44,14 +44,14 @@ export default function ImageModal({ src, onClose, alt = "" }: Props) {
           onClick={onClose}
           className="absolute -top-3 -right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 text-[#8E8E93] hover:text-[#1C1C1E] shadow-lg transition-colors text-lg leading-none"
         >
-          ×
+          x
         </button>
       </div>
     </div>
   );
 }
 
-/** 缩略图组件：点击任意区域触发放大 */
+/** 缩略图组件：使用 React state 管理全屏预览，避免 DOM 泄漏 */
 export function Thumbnail({
   b64,
   alt = "",
@@ -61,32 +61,23 @@ export function Thumbnail({
   alt?: string;
   width?: number;
 }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const src = `data:image/png;base64,${b64}`;
-  const handleClick = () => {
-    const modal = document.createElement("div");
-    modal.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm cursor-pointer";
-    modal.onclick = () => modal.remove();
-    const img = document.createElement("img");
-    img.src = src;
-    img.alt = alt;
-    img.className = "max-w-[95vw] max-h-[95vh] object-contain rounded-lg shadow-2xl";
-    modal.appendChild(img);
-    document.body.appendChild(modal);
-    document.body.style.overflow = "hidden";
-    modal.addEventListener("click", () => {
-      modal.remove();
-      document.body.style.overflow = "";
-    });
-  };
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={alt}
-      width={width}
-      onClick={handleClick}
-      className="rounded-lg border border-[#E5E5EA] cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
-    />
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        onClick={() => setModalOpen(true)}
+        className="rounded-lg border border-[#E5E5EA] cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+      />
+
+      {modalOpen && (
+        <ImageModal src={src} alt={alt} onClose={() => setModalOpen(false)} />
+      )}
+    </>
   );
 }

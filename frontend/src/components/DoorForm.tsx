@@ -1,23 +1,21 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { memo } from "react";
 import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, HINGES,
 } from "@/lib/types";
-import ClipboardUpload from "./ClipboardUpload";
 
 interface Props {
   data: DoorFormData;
   onChange: (data: DoorFormData) => void;
   readOnly?: boolean;
-  /** 额外插槽：底部操作按钮区 */
   children?: React.ReactNode;
 }
 
-function Input({ label, value, onChange, placeholder, type = "text" }: {
+const Input = memo(function Input({ label, value, onChange, placeholder, type = "text" }: {
   label: string; value: string | number; onChange: (v: string) => void;
   placeholder?: string; type?: string;
 }) {
@@ -33,9 +31,9 @@ function Input({ label, value, onChange, placeholder, type = "text" }: {
       />
     </div>
   );
-}
+});
 
-function Select({ label, value, options, onChange }: {
+const Select = memo(function Select({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
 }) {
   return (
@@ -50,9 +48,9 @@ function Select({ label, value, options, onChange }: {
       </select>
     </div>
   );
-}
+});
 
-function Checkbox({ label, checked, onChange }: {
+const Checkbox = memo(function Checkbox({ label, checked, onChange }: {
   label: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
@@ -61,14 +59,21 @@ function Checkbox({ label, checked, onChange }: {
       {label}
     </label>
   );
-}
+});
 
-export default function DoorForm({ data, onChange, readOnly, children }: Props) {
+const Card = memo(function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5">
+      <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-4 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
+      {children}
+    </div>
+  );
+});
+
+const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: Props) {
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
   };
-
-  const isTwoFixed = data.door_type === "两定两开";
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -227,14 +232,6 @@ export default function DoorForm({ data, onChange, readOnly, children }: Props) 
       </div>
     </div>
   );
-}
+});
 
-/** 白色悬浮卡片容器 */
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5">
-      <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-4 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
-      {children}
-    </div>
-  );
-}
+export default DoorForm;

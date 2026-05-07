@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask,
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [taskLoading, setTaskLoading] = useState(false);
   const [formData, setFormData] = useState<DoorFormData>(DEFAULT_FORM_DATA);
   const [refText, setRefText] = useState("");
   const [refImgB64, setRefImgB64] = useState<string | null>(null);
@@ -37,8 +38,13 @@ export default function DashboardPage() {
   const [total, setTotal] = useState(0);
   const PAGE_SIZE = 20;
 
+  // 用 ref 保存 module，避免 fetchTasks 因 module 变化而重建导致双重请求
+  const moduleRef = useRef(module);
+  moduleRef.current = module;
+
   const fetchTasks = useCallback(async (date?: string, status?: string, p: number = 0) => {
     setLoading(true);
+    const m = moduleRef.current;
     try {
       let params: { status?: string; date?: string; limit: number; offset: number } = {
         limit: PAGE_SIZE,
@@ -46,36 +52,34 @@ export default function DashboardPage() {
       };
       if (status) {
         params.status = status;
-      } else if (module === "图纸绘制") {
+      } else if (m === "图纸绘制") {
         params.status = "待绘制";
-      } else if (module === "图纸初审") {
+      } else if (m === "图纸初审") {
         params.status = "待初审";
+      } else if (m === "图纸终审") {
+        // 终审模块：后端按多状态过滤，避免客户端全量拉取后再过滤
+        params.status = "待终审,已通过";
       }
       if (date) params.date = date;
       const res = await getTasks(params);
-      if (!status && module === "图纸终审") {
-        const filtered = res.tasks.filter((t) => t.status === "待终审" || t.status === "已通过");
-        setTasks(filtered);
-        setTotal(filtered.length);
-      } else {
-        setTasks(res.tasks);
-        setTotal(res.total);
-      }
+      setTasks(res.tasks);
+      setTotal(res.total);
     } catch (e) {
       console.error(e);
     }
     setLoading(false);
-  }, [module]);
+  }, []); // 空依赖：fetchTasks 引用稳定
 
   useEffect(() => {
     setPage(0);
     fetchTasks(filterDate, filterStatus, 0);
-  }, [fetchTasks, filterDate, filterStatus]);
+  }, [fetchTasks, filterDate, filterStatus, module]); // module 变化时重新触发
 
   // 切换模块时自动返回任务列表
   useEffect(() => {
     setActiveTaskId(null);
     setActiveTask(null);
+    setTaskLoading(false);
     setFormData(DEFAULT_FORM_DATA);
     setRefText("");
     setRefImgB64(null);
@@ -87,6 +91,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeTaskId) {
+      setActiveTask(null);
+      setTaskLoading(true);
       getTask(activeTaskId).then((t) => {
         setActiveTask(t);
         if (t.params) setFormData({ ...DEFAULT_FORM_DATA, ...t.params });
@@ -95,6 +101,8 @@ export default function DashboardPage() {
         setUploadImgB64(t.drawing_img_b64 || null);
         setReviewFeedback(t.review_feedback || "");
         setCadBlob(null);
+      }).finally(() => {
+        setTaskLoading(false);
       });
     }
   }, [activeTaskId]);
@@ -225,8 +233,33 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ---------- 任务详情加载中 ---------- */}
+      {activeTaskId && taskLoading && (
+        <div className="space-y-4 animate-pulse">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="h-9 w-28 bg-[#E5E5EA] rounded-lg" />
+            <div className="h-6 w-80 bg-[#E5E5EA] rounded" />
+          </div>
+          <div className="bg-white rounded-xl p-6 border border-black/5">
+            <div className="h-5 w-48 bg-[#E5E5EA] rounded mb-4" />
+            <div className="grid grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, j) => (
+                    <div key={j}>
+                      <div className="h-3 w-16 bg-[#E5E5EA] rounded mb-1" />
+                      <div className="h-9 w-full bg-[#E5E5EA] rounded-md" />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------- 任务详情模式 ---------- */}
-      {activeTaskId && activeTask ? (
+      {activeTaskId && activeTask && (
         <div>
           {/* 返回 + 标题 */}
           <div className="flex items-center gap-4 mb-4">
@@ -400,8 +433,10 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-      ) : (
-        /* ---------- 任务列表模式 ---------- */
+      )}
+
+      {/* ---------- 任务列表模式 ---------- */}
+      {!activeTaskId && (
         <div>
           {/* 录入模块 */}
           {module === "图纸信息录入" && (

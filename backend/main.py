@@ -334,10 +334,11 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
     """获取任务列表，支持按日期/状态筛选 + 分页（不返回 Base64 图片数据以优化性能）"""
     all_tasks = task_db.load_all_tasks()
     filtered = []
+    status_set = set(s.strip() for s in status.split(",")) if status else None
     for t in all_tasks:
         if date and t.get("date") != date:
             continue
-        if status and t.get("status") != status:
+        if status_set and t.get("status") not in status_set:
             continue
         t = dict(t)
         t.pop("ref_img_b64", None)
