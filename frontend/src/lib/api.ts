@@ -27,7 +27,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截器：401 时清除 token 并跳转登录页
+// 响应拦截器：401 跳转登录页，超时/网络错误统一处理
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -38,6 +38,12 @@ api.interceptors.response.use(
         localStorage.removeItem("door_module");
         window.location.href = "/";
       }
+    }
+    // 超时或网络错误：注入友好消息供上层显示
+    if (error.code === "ECONNABORTED") {
+      error.userMessage = "请求超时，请检查网络后重试";
+    } else if (!error.response) {
+      error.userMessage = "网络连接失败，请检查服务器状态";
     }
     return Promise.reject(error);
   }

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask,
   generateCad, downloadCadBlob,
+  getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
+  resetPassword as apiResetPassword,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData } from "@/lib/types";
@@ -42,6 +44,17 @@ export default function DashboardPage() {
   const moduleRef = useRef(module);
   moduleRef.current = module;
 
+  // setTimeout 清理：防止组件卸载后更新状态
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
   const fetchTasks = useCallback(async (date?: string, status?: string, p: number = 0) => {
     setLoading(true);
     const m = moduleRef.current;
@@ -65,7 +78,8 @@ export default function DashboardPage() {
       setTasks(res.tasks);
       setTotal(res.total);
     } catch (e) {
-      console.error(e);
+      setMessage({ text: "任务列表加载失败，请检查网络连接", type: "error" });
+      setTimeout(() => setMessage(null), 4000);
     }
     setLoading(false);
   }, []); // 空依赖：fetchTasks 引用稳定
@@ -121,7 +135,8 @@ export default function DashboardPage() {
 
   const flash = (text: string, type: "success" | "error" | "info") => {
     setMessage({ text, type });
-    setTimeout(() => setMessage(null), 4000);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
   };
 
   // ===================== 录入模块 =====================
@@ -130,7 +145,8 @@ export default function DashboardPage() {
     try {
       await createTask({ params: formData, ref_text: refText, ref_img_b64: refImgB64 });
       setToast({ text: "订单提交成功，已流转至绘图部！", type: "success" });
-      setTimeout(() => setToast(null), 3000);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
       setFormData(DEFAULT_FORM_DATA);
       setRefText("");
       setRefImgB64(null);
@@ -656,17 +672,20 @@ function AdminPanel() {
   const [resetPwd, setResetPwd] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
+  const msgTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => { return () => { if (msgTimerRef.current) clearTimeout(msgTimerRef.current); }; }, []);
+
   const flash = (text: string, type: "success" | "error") => {
     setMsg({ text, type });
-    setTimeout(() => setMsg(null), 3000);
+    if (msgTimerRef.current) clearTimeout(msgTimerRef.current);
+    msgTimerRef.current = setTimeout(() => setMsg(null), 3000);
   };
 
   const fetchUsers = async () => {
     try {
-      const { getUsers: apiGetUsers } = await import("@/lib/api");
-      const res = await apiGetUsers();
+      const res = await getUsers();
       setUsers(res.users);
-    } catch {}
+    } catch { flash("用户列表加载失败", "error"); }
   };
 
   useEffect(() => { fetchUsers(); }, []);
@@ -674,7 +693,6 @@ function AdminPanel() {
   const handleSave = async () => {
     if (!uid || !name || !pwd) return;
     try {
-      const { createUser: apiCreateUser } = await import("@/lib/api");
       await apiCreateUser({ uid, pwd, role, name });
       flash(`成功保存账号: ${uid}`, "success");
       fetchUsers();
@@ -684,7 +702,6 @@ function AdminPanel() {
 
   const handleDelete = async (u: string) => {
     try {
-      const { deleteUser: apiDeleteUser } = await import("@/lib/api");
       await apiDeleteUser(u);
       flash(`已删除账号: ${u}`, "success");
       fetchUsers();
@@ -694,7 +711,6 @@ function AdminPanel() {
   const handleResetPassword = async () => {
     if (!resetUid || !resetPwd) return;
     try {
-      const { resetPassword: apiResetPassword } = await import("@/lib/api");
       await apiResetPassword(resetUid, resetPwd);
       flash(`已重置 ${resetUid} 的密码`, "success");
       setResetUid(null);

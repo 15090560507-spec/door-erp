@@ -3,6 +3,7 @@
 从 door_26.py (Streamlit 单体应用) 提取核心逻辑重构为前后端分离架构
 """
 import io
+import os
 import uuid
 import datetime
 from typing import List, Optional
@@ -32,9 +33,12 @@ app = FastAPI(
     description="铜门生产图纸协同系统后端服务，提供 CAD 图纸生成和任务流转管理",
 )
 
+_cors_origins_str = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://124.223.87.161:3000")
+_cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://124.223.87.161:3000", "http://localhost:3000", "*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,7 +50,6 @@ user_db = UserDatabaseManager()
 task_db = TaskDatabaseManager()
 
 # 确保 data 目录存在
-import os
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
