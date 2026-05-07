@@ -28,26 +28,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // 页面加载：通过 token 验证用户身份（而非直接信任 localStorage）
   useEffect(() => {
-    const stored = localStorage.getItem("door_user");
-    const storedModule = localStorage.getItem("door_module");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-        if (storedModule) setModule(storedModule as ModuleName);
-      } catch {
+    let cancelled = false;
+
+    const initAuth = async () => {
+      const token = localStorage.getItem("door_token");
+      if (!token) {
+        // 无 token：清除所有残留数据
         localStorage.removeItem("door_user");
+        localStorage.removeItem("door_module");
+        if (!cancelled) setLoading(false);
+        return;
       }
-    }
-    setLoading(false);
-  }, []);
+
+      // 有 token：调后端验证有效性
+      try {
+        const { verifyAuth: apiVerify } = await import("@/lib/api");
+        const verified = await apiVerify();
+
+        if (!cancelled && verified) {
+          // token 有效 → 读取缓存的 user 信息（verify 端点不返回完整 UserInfo）
+          const cached = localStorage.getItem("door_user");
+          if (cached) {
+            try {
+              setUser(JSON.parse(cached));
+            } catch {
+              setUser({ uid: verified.uid, password: "", role: verified.role, name: verified.name, default_module: verified.default_module });
+            }
+          } else {
+            setUser({ uid: verified.uid, password: "", role: verified.role, name: verified.name, default_module: verified.default_module });
+          }
+          const storedModule = localStorage.getItem("door_module");
+          if (storedModule) setModule(storedModule as ModuleName);
+        }
+
+        if (!cancelled && !verified) {
+          // token 无效/过期 → 清除并跳转登录
+          localStorage.removeItem("door_token");
+          localStorage.removeItem("door_user");
+          localStorage.removeItem("door_module");
+          router.replace("/");
+        }
+      } catch {
+        // 网络异常：保留 token 和缓存数据，允许继续使用
+        const cached = localStorage.getItem("door_user");
+        if (cached) {
+          try { setUser(JSON.parse(cached)); } catch {}
+        }
+        const storedModule = localStorage.getItem("door_module");
+        if (storedModule) setModule(storedModule as ModuleName);
+      }
+
+      if (!cancelled) setLoading(false);
+    };
+
+    initAuth();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loginFn = async (uid: string, pwd: string): Promise<boolean> => {
     const { login: apiLogin } = await import("@/lib/api");
     const res = await apiLogin(uid, pwd);
-    if (res.success && res.user) {
+    if (res.success && res.user && res.token) {
       setUser(res.user);
       setModule(res.user.default_module as ModuleName);
+      // 存储 token + user 信息
+      localStorage.setItem("door_token", res.token);
       localStorage.setItem("door_user", JSON.stringify(res.user));
       localStorage.setItem("door_module", res.user.default_module);
       router.push("/dashboard");
@@ -58,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem("door_token");
     localStorage.removeItem("door_user");
     localStorage.removeItem("door_module");
     router.push("/");

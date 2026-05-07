@@ -617,6 +617,14 @@ function AdminPanel() {
   const [name, setName] = useState("");
   const [pwd, setPwd] = useState("");
   const [role, setRole] = useState("录入员");
+  const [resetUid, setResetUid] = useState<string | null>(null);
+  const [resetPwd, setResetPwd] = useState("");
+  const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const flash = (text: string, type: "success" | "error") => {
+    setMsg({ text, type });
+    setTimeout(() => setMsg(null), 3000);
+  };
 
   const fetchUsers = async () => {
     try {
@@ -633,22 +641,44 @@ function AdminPanel() {
     try {
       const { createUser: apiCreateUser } = await import("@/lib/api");
       await apiCreateUser({ uid, pwd, role, name });
+      flash(`成功保存账号: ${uid}`, "success");
       fetchUsers();
       setUid(""); setName(""); setPwd("");
-    } catch {}
+    } catch { flash("保存失败", "error"); }
   };
 
   const handleDelete = async (u: string) => {
     try {
       const { deleteUser: apiDeleteUser } = await import("@/lib/api");
       await apiDeleteUser(u);
+      flash(`已删除账号: ${u}`, "success");
       fetchUsers();
-    } catch {}
+    } catch { flash("删除失败", "error"); }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetUid || !resetPwd) return;
+    try {
+      const { resetPassword: apiResetPassword } = await import("@/lib/api");
+      await apiResetPassword(resetUid, resetPwd);
+      flash(`已重置 ${resetUid} 的密码`, "success");
+      setResetUid(null);
+      setResetPwd("");
+    } catch { flash("重置失败", "error"); }
   };
 
   return (
     <div>
       <h3 className="text-xl font-semibold text-[#1C1C1E] mb-4">系统后台管理</h3>
+
+      {msg && (
+        <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${
+          msg.type === "success" ? "bg-[#E5FBE5] text-[#34C759]" : "bg-[#FFE5E5] text-[#FF3B30]"
+        }`}>
+          {msg.text}
+        </div>
+      )}
+
       <Card title="添加/更新账号">
         <div className="grid grid-cols-4 gap-3">
           <input
@@ -662,7 +692,7 @@ function AdminPanel() {
             className="px-3 py-2 rounded-md bg-[#FAFAFC] border border-[#C7C7CC] text-sm outline-none focus:border-[#007AFF]"
           />
           <input
-            placeholder="密码" value={pwd}
+            placeholder="密码" value={pwd} type="password"
             onChange={(e) => setPwd(e.target.value)}
             className="px-3 py-2 rounded-md bg-[#FAFAFC] border border-[#C7C7CC] text-sm outline-none focus:border-[#007AFF]"
           />
@@ -688,20 +718,60 @@ function AdminPanel() {
       {Object.entries(users).map(([uId, info]) => (
         <div key={uId} className="flex items-center justify-between bg-white rounded-lg px-5 py-3 mb-2 border border-black/5 shadow-sm">
           <span className="text-sm">
-            <strong>{info.name}</strong> (账号: {uId}) | 角色: {info.role} | 密码: {info.password}
+            <strong>{info.name}</strong> (账号: {uId}) | 角色: {info.role}
           </span>
-          {uId !== "admin" ? (
+          <div className="flex gap-2">
             <button
-              onClick={() => handleDelete(uId)}
-              className="px-3 py-1 rounded-md bg-[#FFF0F0] text-[#FF3B30] border border-[#FFD1D1] text-xs font-medium hover:bg-[#FF3B30] hover:text-white transition-all"
+              onClick={() => { setResetUid(uId); setResetPwd(""); }}
+              className="px-3 py-1 rounded-md bg-[#F2F2F7] text-[#007AFF] border border-[#E5E5EA] text-xs font-medium hover:bg-[#007AFF] hover:text-white transition-all"
             >
-              删除
+              重置密码
             </button>
-          ) : (
-            <span className="text-xs text-[#8E8E93]">系统内置不可删</span>
-          )}
+            {uId !== "admin" ? (
+              <button
+                onClick={() => handleDelete(uId)}
+                className="px-3 py-1 rounded-md bg-[#FFF0F0] text-[#FF3B30] border border-[#FFD1D1] text-xs font-medium hover:bg-[#FF3B30] hover:text-white transition-all"
+              >
+                删除
+              </button>
+            ) : (
+              <span className="text-xs text-[#8E8E93] self-center">系统内置不可删</span>
+            )}
+          </div>
         </div>
       ))}
+
+      {/* 重置密码弹窗 */}
+      {resetUid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4">
+            <h4 className="text-lg font-semibold text-[#1C1C1E] mb-4">重置密码: {resetUid}</h4>
+            <input
+              type="password"
+              placeholder="新密码"
+              value={resetPwd}
+              onChange={(e) => setResetPwd(e.target.value)}
+              className="w-full px-3 py-2 mb-4 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setResetUid(null); setResetPwd(""); }}
+                className="px-4 py-2 rounded-lg bg-[#F2F2F7] text-[#1C1C1E] text-sm font-medium hover:bg-[#E5E5EA] transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={!resetPwd}
+                className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40"
+              >
+                确认重置
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

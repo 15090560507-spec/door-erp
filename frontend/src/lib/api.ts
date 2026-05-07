@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  LoginResponse,
+  LoginResponse, VerifyResponse,
   UserInfo,
   DoorFormData,
   TaskItem,
@@ -12,10 +12,50 @@ const api = axios.create({
   timeout: 60000,
 });
 
-// ===================== 用户 =====================
+// ===================== Token 管理 =====================
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("door_token");
+}
+
+// 请求拦截器：自动附加 Authorization header
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 响应拦截器：401 时清除 token 并跳转登录页
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("door_token");
+        localStorage.removeItem("door_user");
+        localStorage.removeItem("door_module");
+        window.location.href = "/";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ===================== 用户 / 认证 =====================
 export async function login(uid: string, pwd: string): Promise<LoginResponse> {
   const { data } = await api.post<LoginResponse>("/login", { uid, pwd });
   return data;
+}
+
+export async function verifyAuth(): Promise<VerifyResponse | null> {
+  try {
+    const { data } = await api.get<VerifyResponse>("/auth/verify");
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export async function getUsers(): Promise<{ users: Record<string, UserInfo>; total: number }> {

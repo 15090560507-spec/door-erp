@@ -62,4 +62,10 @@ class Config:
     ])
 
 
+# ===================== JWT 认证配置 =====================
+import secrets
+JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 24
+
 CONFIG = Config()

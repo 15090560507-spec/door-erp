@@ -11,6 +11,14 @@ export interface LoginResponse {
   success: boolean;
   message: string;
   user?: UserInfo;
+  token?: string;
+}
+
+export interface VerifyResponse {
+  uid: string;
+  role: string;
+  name: string;
+  default_module: string;
 }
 
 // ===================== 表单数据 =====================

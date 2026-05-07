@@ -8,13 +8,14 @@ import datetime
 from typing import List, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from config import DATA_DIR
+from config import DATA_DIR, JWT_SECRET
 from database import UserDatabaseManager, TaskDatabaseManager, hash_password
+from auth import create_token, verify_token, get_current_user
 from models import (
     CADRequest,
     LoginRequest, LoginResponse,
@@ -33,10 +34,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://124.223.87.161:3000", "*"],
+    allow_origins=["http://124.223.87.161:3000", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ===================== 数据库实例 =====================
@@ -275,7 +277,13 @@ def generate_cad(req: CADRequest):
 def login(req: LoginRequest):
     user_info = user_db.authenticate(req.uid, req.pwd)
     if user_info:
-        return LoginResponse(success=True, message="登录成功", user=user_info)
+        token = create_token(user_info["uid"])
+        return LoginResponse(
+            success=True,
+            message="登录成功",
+            user=user_info,
+            token=token,
+        )
     else:
         return LoginResponse(success=False, message="账号或密码错误！")
 
@@ -424,6 +432,19 @@ def admin_list_all_tasks():
         t.pop("drawing_img_b64", None)
         stripped.append(t)
     return {"tasks": stripped, "total": len(stripped)}
+
+
+# ===================== 认证相关 =====================
+@app.get("/api/auth/verify")
+def auth_verify(current_user: dict = Depends(get_current_user)):
+    """验证 token 有效性，返回当前用户信息"""
+    # 不返回密码哈希
+    return {
+        "uid": current_user["uid"],
+        "role": current_user["role"],
+        "name": current_user["name"],
+        "default_module": current_user["default_module"],
+    }
 
 
 # ===================== 健康检查 =====================

@@ -1,0 +1,73 @@
+"""
+JWT 认证模块
+提供 token 创建、验证、以及 FastAPI 依赖注入
+"""
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional
+
+import jwt
+from fastapi import Header, HTTPException
+
+from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_HOURS
+from database import UserDatabaseManager
+
+
+user_db = UserDatabaseManager()
+
+
+def create_token(uid: str) -> str:
+    """为用户创建 JWT token，默认 24 小时过期"""
+    payload = {
+        "sub": uid,
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_token(token: str) -> Optional[Dict]:
+    """
+    验证 JWT token，成功返回 payload，失败返回 None。
+    同时检查用户是否仍然存在于数据库中。
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        uid = payload.get("sub")
+        if not uid:
+            return None
+        # 确保用户仍存在
+        users = user_db.load_all_users()
+        if uid not in users:
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+def get_current_user(authorization: str = Header(None)) -> Dict:
+    """
+    FastAPI 依赖：从 Authorization header 提取并验证 token，
+    返回用户信息字典 {uid, role, name, default_module}。
+    未认证或 token 无效时抛出 401。
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="未提供认证令牌")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="认证格式错误，应为 Bearer <token>")
+
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="令牌无效或已过期，请重新登录")
+
+    uid = payload["sub"]
+    users = user_db.load_all_users()
+    if uid not in users:
+        raise HTTPException(status_code=401, detail="用户不存在")
+
+    user_info = users[uid].copy()
+    user_info["uid"] = uid
+    return user_info

@@ -69,6 +69,7 @@ class LoginResponse(BaseModel):
     success: bool
     message: str = ""
     user: Optional[Dict[str, Any]] = None
+    token: Optional[str] = None
 
 
 class UserCreateRequest(BaseModel):
