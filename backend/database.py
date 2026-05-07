@@ -29,7 +29,7 @@ def verify_password(password: str, stored: str) -> bool:
     if not stored.startswith(_HASH_PREFIX):
         return False
     try:
-        _, iterations_str, salt_hex, dk_hex = stored.split(":")
+        _, hash_method, iterations_str, salt_hex, dk_hex = stored.split(":")
         salt = bytes.fromhex(salt_hex)
         dk_stored = bytes.fromhex(dk_hex)
         dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, int(iterations_str))
