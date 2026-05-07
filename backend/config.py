@@ -23,6 +23,15 @@ USERS_DB_FILE = os.path.join(DATA_DIR, 'users_database.json')
 
 TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(_base, 'template.dxf'))
 
+# ===================== 数据安全：备份与图片路径 =====================
+BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
+IMAGES_DIR = os.path.join(DATA_DIR, 'images')
+USERS_BACKUP_DIR = os.path.join(BACKUP_DIR, 'users')
+TASKS_BACKUP_DIR = os.path.join(BACKUP_DIR, 'tasks')
+
+for _d in (BACKUP_DIR, IMAGES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR):
+    os.makedirs(_d, exist_ok=True)
+
 
 # ===================== 核心配置 =====================
 @dataclass

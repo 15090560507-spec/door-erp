@@ -367,8 +367,12 @@ def create_task(req: TaskCreateRequest):
         "drawing_img_b64": None,
         "review_feedback": ""
     }
-    task_db.add_task(new_task)
-    return new_task
+    try:
+        task_db.add_task(new_task)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # 返回完整任务（包含已还原的图片）
+    return task_db.get_task(task_id)
 
 
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse)
@@ -388,7 +392,10 @@ def update_task(task_id: str, req: TaskUpdateRequest):
     if req.review_feedback is not None:
         update_data["review_feedback"] = req.review_feedback
 
-    task_db.update_task(task_id, update_data)
+    try:
+        task_db.update_task(task_id, update_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return task_db.get_task(task_id)
 
 
@@ -398,7 +405,10 @@ def delete_task(task_id: str):
     existing = task_db.get_task(task_id)
     if not existing:
         raise HTTPException(status_code=404, detail="任务不存在")
-    task_db.delete_task(task_id)
+    try:
+        task_db.delete_task(task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"success": True, "message": f"已删除任务: {task_id}"}
 
 
