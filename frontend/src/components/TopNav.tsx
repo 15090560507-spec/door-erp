@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { MODULE_OPTIONS } from "@/lib/types";
 import type { ModuleName } from "@/lib/types";
@@ -8,6 +8,7 @@ import type { ModuleName } from "@/lib/types";
 export default function TopNav() {
   const { user, module, setModule, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   const adminItems = [...MODULE_OPTIONS, { title: "后台管理", module: "后台管理" as ModuleName }];
   const items = user?.role === "超级管理员" ? adminItems : MODULE_OPTIONS;
@@ -28,12 +29,13 @@ export default function TopNav() {
               <button
                 key={item.module}
                 onClick={() => {
+                  setModule(item.module);
                   if (item.module === "后台管理") {
                     router.push("/admin");
                   } else if (item.module === "报价系统") {
                     router.push("/quote");
-                  } else {
-                    setModule(item.module);
+                  } else if (pathname !== "/dashboard") {
+                    router.push("/dashboard");
                   }
                 }}
                 className={`
