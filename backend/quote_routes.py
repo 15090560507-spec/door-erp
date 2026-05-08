@@ -9,7 +9,7 @@ from quote_models import (
 )
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
 
-quote_router = APIRouter(prefix="/api")
+quote_router = APIRouter()
 
 # 实例化管理器
 accessory_db = AccessoryDatabaseManager()
