@@ -88,44 +88,44 @@ export default function QuotePage() {
     }
   }
 
-  // Export JPG: fetch clean HTML, load in srcdoc iframe (same-origin), html2canvas
+  // Export JPG: fetch clean HTML from backend, render in hidden div, html2canvas
   async function handleExportJpg() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
-      // Fetch clean HTML from backend (hex colors only, no oklch)
+      // Fetch clean HTML from backend (hex/rgb colors only, no oklch)
       const htmlRes = await fetch(`${API_BASE}/quotes/${lastQuoteId}/preview.html`);
       if (!htmlRes.ok) throw new Error("获取预览失败");
-      const html = await htmlRes.text();
+      const htmlText = await htmlRes.text();
 
-      // Load in iframe via srcdoc (same-origin, no cross-origin issues)
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;height:1100px;border:0;";
-      iframe.srcdoc = html;
-      document.body.appendChild(iframe);
+      // Extract body content (everything between <body> and </body>)
+      const bodyMatch = htmlText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const bodyHtml = bodyMatch ? bodyMatch[1] : htmlText;
 
-      await new Promise<void>((resolve, reject) => {
-        iframe.onload = () => resolve();
-        setTimeout(() => reject(new Error("iframe 加载超时")), 10000);
-      });
+      // Extract style (everything between <style> and </style>)
+      const styleMatch = htmlText.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+      const styleCss = styleMatch ? styleMatch[1] : "";
 
-      // Small delay for layout
-      await new Promise((r) => setTimeout(r, 300));
+      // Create hidden container — backend HTML uses only hex/rgb, html2canvas safe
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;background:#FFFFFF;padding:20px;font-family:'PingFang SC','Microsoft YaHei',sans-serif;";
+      container.innerHTML = `<style>${styleCss}</style>${bodyHtml}`;
+      document.body.appendChild(container);
 
-      const body = iframe.contentDocument?.body;
-      if (!body) throw new Error("无法访问预览内容");
+      // Wait for layout
+      await new Promise((r) => setTimeout(r, 200));
 
       const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(body, {
+      const canvas = await html2canvas(container, {
         scale: 2,
         backgroundColor: "#FFFFFF",
         logging: false,
-        windowWidth: 800,
+        width: 800,
       });
 
-      document.body.removeChild(iframe);
+      document.body.removeChild(container);
 
       canvas.toBlob((blob) => {
         if (!blob) { setStatus("JPG 生成失败"); setExporting(false); setExportingType(""); return; }
@@ -143,7 +143,7 @@ export default function QuotePage() {
       setStatus(`JPG 导出失败: ${e?.message || "未知错误"}`);
       setExporting(false);
       setExportingType("");
-      document.querySelectorAll("iframe[style*='left:-9999px']").forEach((el) => el.remove());
+      document.querySelectorAll("div[style*='left:-9999px']").forEach((el) => el.remove());
     }
   }
 
