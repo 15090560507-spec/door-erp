@@ -30,6 +30,7 @@ export default function QuotePage() {
   const [lastQuoteId, setLastQuoteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingType, setExportingType] = useState("");
 
   // Collect form data
   const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; items: QuoteItem[] } => {
@@ -67,6 +68,7 @@ export default function QuotePage() {
   async function handleExportExcel() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
+    setExportingType("xlsx");
     try {
       const res = await fetch(`${API_BASE}/quotes/${lastQuoteId}/export.xlsx`);
       if (!res.ok) throw new Error("导出失败");
@@ -82,6 +84,7 @@ export default function QuotePage() {
       setStatus("Excel 导出失败");
     } finally {
       setExporting(false);
+    setExportingType("");
     }
   }
 
@@ -89,29 +92,34 @@ export default function QuotePage() {
   async function handleExportJpg() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
+    setExportingType("jpg");
+    setStatus("正在生成 JPG...");
     try {
       const previewEl = document.querySelector("#quote-preview-area");
       if (!previewEl) throw new Error("找不到预览区域");
-      // Dynamic import html2canvas
-      const html2canvas = (await import("html2canvas")).default;
+      const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(previewEl as HTMLElement, {
         scale: 2,
         backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
       });
       canvas.toBlob((blob) => {
-        if (!blob) { setStatus("JPG 生成失败"); setExporting(false); return; }
+        if (!blob) { setStatus("JPG 生成失败"); setExporting(false); setExportingType(""); return; }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = `报价单_${lastQuoteId}.jpg`;
         a.click();
         URL.revokeObjectURL(url);
-        setStatus("JPG 下载中...");
+        setStatus("JPG 已下载");
         setExporting(false);
+        setExportingType("");
       }, "image/jpeg", 0.92);
-    } catch {
-      setStatus("JPG 导出失败（需安装 html2canvas）");
+    } catch (e: any) {
+      setStatus(`JPG 导出失败: ${e?.message || "未知错误"}`);
       setExporting(false);
+      setExportingType("");
     }
   }
 
@@ -288,27 +296,28 @@ export default function QuotePage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 disabled:opacity-50 transition-colors"
+                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
                 {saving ? "保存中..." : "保存"}
               </button>
               <button
                 onClick={handleExportExcel}
                 disabled={exporting}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors"
+                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 active:scale-[0.97] disabled:opacity-60 transition-all"
               >
-                导出 Excel
+                {exportingType === "xlsx" ? "导出中..." : "导出 Excel"}
               </button>
               <button
                 onClick={handleExportJpg}
                 disabled={exporting}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 disabled:opacity-50 transition-colors"
+                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
-                导出 JPG
+                {exportingType === "jpg" ? "生成中..." : "导出 JPG"}
               </button>
               <button
                 onClick={handlePrint}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 transition-colors"
+                disabled={exporting}
+                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
                 打印
               </button>
