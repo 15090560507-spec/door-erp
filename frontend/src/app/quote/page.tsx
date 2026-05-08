@@ -88,32 +88,36 @@ export default function QuotePage() {
     }
   }
 
-  // Export JPG: load clean HTML in hidden iframe, then html2canvas (no oklch colors)
+  // Export JPG: fetch clean HTML, load in srcdoc iframe (same-origin), html2canvas
   async function handleExportJpg() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
-      const { default: html2canvas } = await import("html2canvas");
-      // Load clean server-rendered HTML in a hidden iframe
+      // Fetch clean HTML from backend (hex colors only, no oklch)
+      const htmlRes = await fetch(`${API_BASE}/quotes/${lastQuoteId}/preview.html`);
+      if (!htmlRes.ok) throw new Error("获取预览失败");
+      const html = await htmlRes.text();
+
+      // Load in iframe via srcdoc (same-origin, no cross-origin issues)
       const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px;";
-      iframe.src = `${API_BASE}/quotes/${lastQuoteId}/preview.html`;
+      iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;height:1100px;border:0;";
+      iframe.srcdoc = html;
       document.body.appendChild(iframe);
 
       await new Promise<void>((resolve, reject) => {
         iframe.onload = () => resolve();
-        iframe.onerror = () => reject(new Error("iframe 加载失败"));
-        setTimeout(() => reject(new Error("预览加载超时")), 15000);
+        setTimeout(() => reject(new Error("iframe 加载超时")), 10000);
       });
 
-      // Wait a tick for rendering
-      await new Promise((r) => setTimeout(r, 500));
+      // Small delay for layout
+      await new Promise((r) => setTimeout(r, 300));
 
       const body = iframe.contentDocument?.body;
       if (!body) throw new Error("无法访问预览内容");
 
+      const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(body, {
         scale: 2,
         backgroundColor: "#FFFFFF",
@@ -139,7 +143,6 @@ export default function QuotePage() {
       setStatus(`JPG 导出失败: ${e?.message || "未知错误"}`);
       setExporting(false);
       setExportingType("");
-      // Cleanup stray iframe
       document.querySelectorAll("iframe[style*='left:-9999px']").forEach((el) => el.remove());
     }
   }
