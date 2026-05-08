@@ -22,6 +22,15 @@ body {
 
 header, footer { display: none !important; }
 
+/* 全局按钮按下反馈 */
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
 /* 自定义滚动条 */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

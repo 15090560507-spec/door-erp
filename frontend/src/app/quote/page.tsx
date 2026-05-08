@@ -103,6 +103,16 @@ export default function QuotePage() {
         backgroundColor: "#ffffff",
         useCORS: true,
         logging: false,
+        onclone(clonedDoc) {
+          // Strip modern CSS color functions (oklch, lch, lab) that html2canvas can't parse
+          clonedDoc.querySelectorAll("*").forEach((el) => {
+            const style = (el as HTMLElement).style;
+            // Override Tailwind v4 oklch colors with standard hex fallbacks
+            style.color = "";
+            style.backgroundColor = "";
+            style.borderColor = "";
+          });
+        },
       });
       canvas.toBlob((blob) => {
         if (!blob) { setStatus("JPG 生成失败"); setExporting(false); setExportingType(""); return; }
