@@ -135,22 +135,8 @@ def export_quote_xlsx(quote_id: int):
         raise HTTPException(status_code=500, detail="Excel 生成失败")
 
 
-@quote_router.get("/api/quotes/{quote_id}/export.jpg")
-def export_quote_jpg(quote_id: int):
-    """导出报价单为 JPG — 返回提示，由前端捕获预览区域生成"""
-    quote = quote_db.get_by_id(quote_id)
-    if not quote:
-        raise HTTPException(status_code=404, detail="报价单不存在")
-    return {"quote": quote}
-
-
-@quote_router.get("/api/quotes/{quote_id}/export.pdf")
-def export_quote_pdf(quote_id: int):
-    """导出报价单为 PDF — 返回 HTML，由前端打开并触发打印"""
-    quote = quote_db.get_by_id(quote_id)
-    if not quote:
-        raise HTTPException(status_code=404, detail="报价单不存在")
-
+def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
+    """构建报价单打印 HTML，仅使用标准 hex/rgb 颜色（兼容 html2canvas）"""
     items_html = ""
     items = quote.get("items", [])[:8]
     for i, item in enumerate(items):
@@ -173,20 +159,23 @@ def export_quote_pdf(quote_id: int):
             <td>{qty}</td><td>{unit_price}</td><td>{amount}</td>
         </tr>"""
 
-    html = f"""<!DOCTYPE html>
+    auto_print_script = "<script>window.onload=function(){window.print()}</script>" if auto_print else ""
+
+    return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><title>报价单</title>
 <style>
   @page {{ size: A4; margin: 12mm; }}
-  body {{ font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; color: #1C1C1E; }}
-  h2 {{ text-align: center; font-size: 18px; margin-bottom: 12px; }}
+  body {{ font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; color: #1C1C1E; background: #FFFFFF; margin: 20px; }}
+  h2 {{ text-align: center; font-size: 18px; margin-bottom: 12px; color: #1C1C1E; }}
   .meta {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-bottom: 10px; }}
-  .meta span {{ font-size: 13px; }}
+  .meta div {{ font-size: 13px; color: #1C1C1E; }}
+  .meta strong {{ color: #8E8E93; }}
   table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px; }}
-  th, td {{ border: 1px solid #333; padding: 4px 3px; text-align: center; }}
-  th {{ background: #f5f5f5; }}
-  .total {{ font-weight: bold; }}
-  .terms {{ font-size: 11px; color: #555; margin-top: 10px; }}
+  th, td {{ border: 1px solid #333; padding: 4px 3px; text-align: center; color: #1C1C1E; }}
+  th {{ background: #F5F5F5; font-weight: bold; }}
+  .terms {{ font-size: 11px; color: #555555; margin-top: 10px; }}
+  .terms p {{ color: #555555; margin: 2px 0; }}
 </style></head>
 <body>
 <h2>浙江西州将军门业有限公司</h2>
@@ -203,15 +192,43 @@ def export_quote_pdf(quote_id: int):
 </thead>
 <tbody>{items_html}</tbody>
 </table>
-<p class="terms">本报价不含税工厂结算价，不含木箱。<br>
-1. 付款方式：确定制作，先安排货款 50% 的定金，款清发货。<br>
-2. 费用说明：以上价格不包含运输、安装、测量等费用。<br>
-3. 确认流程：请及时确认签字回传，以便安排生产。</p>
-<script>window.onload=function(){{window.print()}}</script>
+<div class="terms">
+  <p>本报价不含税工厂结算价，不含木箱。</p>
+  <p>1. 付款方式：确定制作，先安排货款 50% 的定金，款清发货。</p>
+  <p>2. 费用说明：以上价格不包含运输、安装、测量等费用。</p>
+  <p>3. 确认流程：请及时确认签字回传，以便安排生产。</p>
+</div>
+{auto_print_script}
 </body></html>"""
 
+
+@quote_router.get("/api/quotes/{quote_id}/preview.html")
+def quote_preview_html(quote_id: int):
+    """返回干净 HTML（无 oklch 颜色），供前端 iframe 加载后 html2canvas 截图"""
+    quote = quote_db.get_by_id(quote_id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="报价单不存在")
     from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=_build_quote_html(quote, auto_print=False))
+
+
+@quote_router.get("/api/quotes/{quote_id}/export.jpg")
+def export_quote_jpg(quote_id: int):
+    """JPG 由前端通过 iframe + html2canvas 生成，此端点仅返回数据供验证"""
+    quote = quote_db.get_by_id(quote_id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="报价单不存在")
+    return {"quote": quote}
+
+
+@quote_router.get("/api/quotes/{quote_id}/export.pdf")
+def export_quote_pdf(quote_id: int):
+    """打印：返回干净 HTML，浏览器自动触发打印"""
+    quote = quote_db.get_by_id(quote_id)
+    if not quote:
+        raise HTTPException(status_code=404, detail="报价单不存在")
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=_build_quote_html(quote, auto_print=True))
 
 
 # ===================== AI 配置管理 =====================

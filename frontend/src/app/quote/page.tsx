@@ -88,57 +88,41 @@ export default function QuotePage() {
     }
   }
 
-  // Export JPG: capture the preview DOM element
+  // Export JPG: load clean HTML in hidden iframe, then html2canvas (no oklch colors)
   async function handleExportJpg() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
-      const previewEl = document.querySelector("#quote-preview-area");
-      if (!previewEl) throw new Error("找不到预览区域");
       const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(previewEl as HTMLElement, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        logging: false,
-        onclone(clonedDoc) {
-          // html2canvas can't parse oklch/lch/lab colors from Tailwind v4.
-          // Nuclear option: remove all stylesheets, set everything to hex inline.
-          clonedDoc.querySelectorAll("style, link[rel=stylesheet]").forEach((el) => el.remove());
-          clonedDoc.body.style.background = "#FFFFFF";
-          clonedDoc.querySelectorAll("*").forEach((el) => {
-            const e = el as HTMLElement;
-            e.style.color = "#1C1C1E";
-            e.style.backgroundColor = "transparent";
-            e.style.borderColor = "#E5E5EA";
-          });
-          // Restore table structure styling
-          clonedDoc.querySelectorAll("h2").forEach((el) => {
-            const e = el as HTMLElement;
-            e.style.fontSize = "18px"; e.style.fontWeight = "bold";
-            e.style.textAlign = "center"; e.style.marginBottom = "12px";
-          });
-          clonedDoc.querySelectorAll("th").forEach((el) => {
-            (el as HTMLElement).style.backgroundColor = "#F2F2F7";
-          });
-          clonedDoc.querySelectorAll("td, th").forEach((el) => {
-            const e = el as HTMLElement;
-            e.style.border = "1px solid #E5E5EA";
-            e.style.padding = "2px 4px"; e.style.fontSize = "11px";
-          });
-          clonedDoc.querySelectorAll("table").forEach((el) => {
-            const e = el as HTMLElement;
-            e.style.borderCollapse = "collapse"; e.style.width = "100%";
-          });
-          const preview = clonedDoc.querySelector("#quote-preview-area");
-          if (preview) {
-            (preview as HTMLElement).style.background = "#FFFFFF";
-            (preview as HTMLElement).style.padding = "16px";
-          }
-        },
+      // Load clean server-rendered HTML in a hidden iframe
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px;";
+      iframe.src = `${API_BASE}/quotes/${lastQuoteId}/preview.html`;
+      document.body.appendChild(iframe);
+
+      await new Promise<void>((resolve, reject) => {
+        iframe.onload = () => resolve();
+        iframe.onerror = () => reject(new Error("iframe 加载失败"));
+        setTimeout(() => reject(new Error("预览加载超时")), 15000);
       });
+
+      // Wait a tick for rendering
+      await new Promise((r) => setTimeout(r, 500));
+
+      const body = iframe.contentDocument?.body;
+      if (!body) throw new Error("无法访问预览内容");
+
+      const canvas = await html2canvas(body, {
+        scale: 2,
+        backgroundColor: "#FFFFFF",
+        logging: false,
+        windowWidth: 800,
+      });
+
+      document.body.removeChild(iframe);
+
       canvas.toBlob((blob) => {
         if (!blob) { setStatus("JPG 生成失败"); setExporting(false); setExportingType(""); return; }
         const url = URL.createObjectURL(blob);
@@ -155,6 +139,8 @@ export default function QuotePage() {
       setStatus(`JPG 导出失败: ${e?.message || "未知错误"}`);
       setExporting(false);
       setExportingType("");
+      // Cleanup stray iframe
+      document.querySelectorAll("iframe[style*='left:-9999px']").forEach((el) => el.remove());
     }
   }
 
