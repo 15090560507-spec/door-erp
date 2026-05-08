@@ -105,23 +105,38 @@ export default function QuotePage() {
         logging: false,
         onclone(clonedDoc) {
           // html2canvas can't parse oklch/lch/lab colors from Tailwind v4.
-          // Strategy: snapshot computed RGB colors, then strip all stylesheets.
-          const allEls = Array.from(clonedDoc.querySelectorAll("*"));
-          // Save computed colors as inline styles before removing stylesheets
-          allEls.forEach((el) => {
-            const htmlEl = el as HTMLElement;
-            const cs = clonedDoc.defaultView?.getComputedStyle(el);
-            if (cs) {
-              htmlEl.style.color = cs.color;
-              htmlEl.style.backgroundColor = cs.backgroundColor;
-              htmlEl.style.borderColor = cs.borderColor;
-              htmlEl.style.fontSize = cs.fontSize;
-              htmlEl.style.fontWeight = cs.fontWeight;
-            }
-          });
-          // Now safe to remove all stylesheets
+          // Nuclear option: remove all stylesheets, set everything to hex inline.
           clonedDoc.querySelectorAll("style, link[rel=stylesheet]").forEach((el) => el.remove());
           clonedDoc.body.style.background = "#FFFFFF";
+          clonedDoc.querySelectorAll("*").forEach((el) => {
+            const e = el as HTMLElement;
+            e.style.color = "#1C1C1E";
+            e.style.backgroundColor = "transparent";
+            e.style.borderColor = "#E5E5EA";
+          });
+          // Restore table structure styling
+          clonedDoc.querySelectorAll("h2").forEach((el) => {
+            const e = el as HTMLElement;
+            e.style.fontSize = "18px"; e.style.fontWeight = "bold";
+            e.style.textAlign = "center"; e.style.marginBottom = "12px";
+          });
+          clonedDoc.querySelectorAll("th").forEach((el) => {
+            (el as HTMLElement).style.backgroundColor = "#F2F2F7";
+          });
+          clonedDoc.querySelectorAll("td, th").forEach((el) => {
+            const e = el as HTMLElement;
+            e.style.border = "1px solid #E5E5EA";
+            e.style.padding = "2px 4px"; e.style.fontSize = "11px";
+          });
+          clonedDoc.querySelectorAll("table").forEach((el) => {
+            const e = el as HTMLElement;
+            e.style.borderCollapse = "collapse"; e.style.width = "100%";
+          });
+          const preview = clonedDoc.querySelector("#quote-preview-area");
+          if (preview) {
+            (preview as HTMLElement).style.background = "#FFFFFF";
+            (preview as HTMLElement).style.padding = "16px";
+          }
         },
       });
       canvas.toBlob((blob) => {
