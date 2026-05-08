@@ -45,8 +45,8 @@ export default function DashboardPage() {
   moduleRef.current = module;
 
   // setTimeout 清理：防止组件卸载后更新状态
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -684,7 +684,7 @@ function AdminPanel() {
   const [resetPwd, setResetPwd] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
-  const msgTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const msgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { return () => { if (msgTimerRef.current) clearTimeout(msgTimerRef.current); }; }, []);
 
   const flash = (text: string, type: "success" | "error") => {
