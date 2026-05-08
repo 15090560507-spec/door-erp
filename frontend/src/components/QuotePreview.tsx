@@ -29,7 +29,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, ite
   const displayDate = quoteDate || new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-6 min-h-[600px]">
+    <div id="quote-preview-area" className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-6 min-h-[600px]">
       {/* Company Header */}
       <h2 className="text-[18px] font-bold text-[#1C1C1E] text-center mb-4">
         浙江西州将军门业有限公司

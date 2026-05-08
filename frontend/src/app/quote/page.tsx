@@ -63,23 +63,61 @@ export default function QuotePage() {
     }
   }
 
-  // Export functions (placeholder - download via API)
-  function handleExport(type: "xlsx" | "jpg" | "pdf") {
-    if (!lastQuoteId) {
-      setStatus("请先保存报价单");
-      return;
-    }
+  // Export Excel: fetch blob then trigger download
+  async function handleExportExcel() {
+    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
-    // Open download in new tab
-    window.open(`${API_BASE}/quotes/${lastQuoteId}/export.${type}`, "_blank");
-    setExporting(false);
+    try {
+      const res = await fetch(`${API_BASE}/quotes/${lastQuoteId}/export.xlsx`);
+      if (!res.ok) throw new Error("导出失败");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `报价单_${lastQuoteId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("Excel 下载中...");
+    } catch {
+      setStatus("Excel 导出失败");
+    } finally {
+      setExporting(false);
+    }
   }
 
-  function handlePrint() {
-    if (!lastQuoteId) {
-      setStatus("请先保存报价单");
-      return;
+  // Export JPG: capture the preview DOM element
+  async function handleExportJpg() {
+    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
+    setExporting(true);
+    try {
+      const previewEl = document.querySelector("#quote-preview-area");
+      if (!previewEl) throw new Error("找不到预览区域");
+      // Dynamic import html2canvas
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(previewEl as HTMLElement, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+      });
+      canvas.toBlob((blob) => {
+        if (!blob) { setStatus("JPG 生成失败"); setExporting(false); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `报价单_${lastQuoteId}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus("JPG 下载中...");
+        setExporting(false);
+      }, "image/jpeg", 0.92);
+    } catch {
+      setStatus("JPG 导出失败（需安装 html2canvas）");
+      setExporting(false);
     }
+  }
+
+  // Print: open PDF endpoint in new window (backend returns HTML with auto-print)
+  function handlePrint() {
+    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     window.open(`${API_BASE}/quotes/${lastQuoteId}/export.pdf`, "_blank");
   }
 
@@ -255,14 +293,14 @@ export default function QuotePage() {
                 {saving ? "保存中..." : "保存"}
               </button>
               <button
-                onClick={() => handleExport("xlsx")}
+                onClick={handleExportExcel}
                 disabled={exporting}
                 className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors"
               >
                 导出 Excel
               </button>
               <button
-                onClick={() => handleExport("jpg")}
+                onClick={handleExportJpg}
                 disabled={exporting}
                 className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 disabled:opacity-50 transition-colors"
               >
