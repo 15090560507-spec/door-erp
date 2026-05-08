@@ -104,14 +104,24 @@ export default function QuotePage() {
         useCORS: true,
         logging: false,
         onclone(clonedDoc) {
-          // Strip modern CSS color functions (oklch, lch, lab) that html2canvas can't parse
-          clonedDoc.querySelectorAll("*").forEach((el) => {
-            const style = (el as HTMLElement).style;
-            // Override Tailwind v4 oklch colors with standard hex fallbacks
-            style.color = "";
-            style.backgroundColor = "";
-            style.borderColor = "";
+          // html2canvas can't parse oklch/lch/lab colors from Tailwind v4.
+          // Strategy: snapshot computed RGB colors, then strip all stylesheets.
+          const allEls = Array.from(clonedDoc.querySelectorAll("*"));
+          // Save computed colors as inline styles before removing stylesheets
+          allEls.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            const cs = clonedDoc.defaultView?.getComputedStyle(el);
+            if (cs) {
+              htmlEl.style.color = cs.color;
+              htmlEl.style.backgroundColor = cs.backgroundColor;
+              htmlEl.style.borderColor = cs.borderColor;
+              htmlEl.style.fontSize = cs.fontSize;
+              htmlEl.style.fontWeight = cs.fontWeight;
+            }
           });
+          // Now safe to remove all stylesheets
+          clonedDoc.querySelectorAll("style, link[rel=stylesheet]").forEach((el) => el.remove());
+          clonedDoc.body.style.background = "#FFFFFF";
         },
       });
       canvas.toBlob((blob) => {
