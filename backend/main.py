@@ -25,6 +25,7 @@ from models import (
 )
 from drawing import run_integrated_system
 from utils import parse_dim_str, parse_gap_str
+from quote_routes import quote_router
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -44,6 +45,8 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+app.include_router(quote_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
