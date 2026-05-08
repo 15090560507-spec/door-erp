@@ -11,6 +11,8 @@ import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
 export default function QuotePage() {
   // Form state
   const [customerName, setCustomerName] = useState("");
@@ -69,7 +71,7 @@ export default function QuotePage() {
     }
     setExporting(true);
     // Open download in new tab
-    window.open(`/api/quotes/${lastQuoteId}/export.${type}`, "_blank");
+    window.open(`${API_BASE}/quotes/${lastQuoteId}/export.${type}`, "_blank");
     setExporting(false);
   }
 
@@ -78,7 +80,7 @@ export default function QuotePage() {
       setStatus("请先保存报价单");
       return;
     }
-    window.open(`/api/quotes/${lastQuoteId}/export.pdf`, "_blank");
+    window.open(`${API_BASE}/quotes/${lastQuoteId}/export.pdf`, "_blank");
   }
 
   // Apply AI analysis results
