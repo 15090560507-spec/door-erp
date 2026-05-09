@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { getUsers, createUser, deleteUser, resetPassword, getAllTasks } from "@/lib/api";
 import type { UserInfo, TaskItem } from "@/lib/types";
+import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -281,6 +282,9 @@ export default function AdminPage() {
           )}
         </section>
 
+        {/* ========== 下拉选项管理 ========== */}
+        <DropdownOptionsManager />
+
         {/* ========== 数据总览 ========== */}
         <section>
           <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
@@ -324,9 +328,8 @@ export default function AdminPage() {
                     </tr>
                   ) : (
                     tasks.map((t) => (
-                      <>
+                      <React.Fragment key={t.id}>
                         <tr
-                          key={t.id}
                           className="border-b border-[#F2F2F7] hover:bg-[#FAFAFC] transition-colors cursor-pointer"
                           onClick={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
                         >
@@ -377,7 +380,7 @@ export default function AdminPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     ))
                   )}
                 </tbody>

@@ -30,9 +30,7 @@ export default function TopNav() {
                 key={item.module}
                 onClick={() => {
                   setModule(item.module);
-                  if (item.module === "后台管理") {
-                    router.push("/admin");
-                  } else if (item.module === "报价系统") {
+                  if (item.module === "报价系统") {
                     router.push("/quote");
                   } else if (pathname !== "/dashboard") {
                     router.push("/dashboard");

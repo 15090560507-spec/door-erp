@@ -3,6 +3,7 @@
 从 door_26.py (Streamlit 单体应用) 提取核心逻辑重构为前后端分离架构
 """
 import io
+import json
 import os
 import uuid
 import datetime
@@ -63,15 +64,27 @@ def build_cad_params(req: CADRequest):
     原封不动地从 door_26.py 的 generate_cad_trigger 逻辑提取
     """
     # --- 包套批注 ---
-    outer_width = req.trim_front_in if req.has_outer else 0
     overlap = req.overlap
-    note_line = f"门套宽/压墙/压框={outer_width}/{outer_width - overlap}/{overlap}mm"
     current_note = req.sm
-    if note_line not in current_note:
-        if current_note.strip():
-            final_note = current_note + "\n" + note_line
+    frame_notes = []
+
+    if req.has_outer:
+        outer_w = req.trim_front_in
+        frame_notes.append(f"外门套宽/压墙/压框={outer_w}/{outer_w - overlap}/{overlap}mm")
+
+    if req.has_inner:
+        inner_w = req.trim_back_in
+        frame_notes.append(f"内门套宽/压墙/压框={inner_w}/{inner_w - overlap}/{overlap}mm")
+
+    if frame_notes:
+        note_line = "\n".join(frame_notes)
+        if note_line not in current_note:
+            if current_note.strip():
+                final_note = current_note + "\n" + note_line
+            else:
+                final_note = note_line
         else:
-            final_note = note_line
+            final_note = current_note
     else:
         final_note = current_note
 
@@ -455,6 +468,45 @@ def auth_verify(current_user: dict = Depends(get_current_user)):
     }
 
 
+# ===================== 下拉选项管理 =====================
+import threading as _threading
+
+_DROPDOWN_OPTIONS_PATH = os.path.join(DATA_DIR, "dropdown_options.json")
+_dropdown_lock = _threading.Lock()
+
+def _load_dropdown_options() -> dict:
+    try:
+        with open(_DROPDOWN_OPTIONS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_dropdown_options(data: dict):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with _dropdown_lock:
+        with open(_DROPDOWN_OPTIONS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+@app.get("/api/admin/dropdown-options")
+def get_dropdown_options(current_user: dict = Depends(get_current_user)):
+    """获取所有下拉选项配置"""
+    return {"options": _load_dropdown_options()}
+
+
+@app.put("/api/admin/dropdown-options")
+def update_dropdown_options(data: dict, current_user: dict = Depends(get_current_user)):
+    """更新某个下拉选项列表（data: {KEY: [...]}）"""
+    if current_user.get("role") != "超级管理员":
+        raise HTTPException(status_code=403, detail="仅超级管理员可操作")
+    current = _load_dropdown_options()
+    for key, values in data.items():
+        if isinstance(values, list):
+            current[key] = [str(v) for v in values]
+    _save_dropdown_options(current)
+    return {"options": current}
+
+
 # ===================== 健康检查 =====================
 @app.get("/api/health")
 def health_check():
@@ -463,4 +515,4 @@ def health_check():
 
 # ===================== 启动入口 =====================
 if __name__ == "__main__":
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

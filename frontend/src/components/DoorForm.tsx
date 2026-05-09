@@ -6,6 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, HINGES, COLOR_PRESETS,
+  loadDropdownOptions, getDropdownOption,
 } from "@/lib/types";
 
 interface Props {
@@ -15,13 +16,15 @@ interface Props {
   children?: React.ReactNode;
 }
 
-const Input = memo(function Input({ label, value, onChange, placeholder, type = "text" }: {
+const Input = memo(function Input({ label, value, onChange, placeholder, type = "text", required }: {
   label: string; value: string | number; onChange: (v: string) => void;
-  placeholder?: string; type?: string;
+  placeholder?: string; type?: string; required?: boolean;
 }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">
+        {required && <span className="text-[#FF3B30] mr-0.5">*</span>}{label}
+      </label>
       <input
         type={type}
         value={value}
@@ -70,8 +73,8 @@ const Card = memo(function Card({ title, children }: { title: string; children: 
   );
 });
 
-const Combobox = memo(function Combobox({ label, value, options, onChange }: {
-  label: string; value: string; options: string[]; onChange: (v: string) => void;
+const Combobox = memo(function Combobox({ label, value, options, onChange, required }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void; required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -92,7 +95,9 @@ const Combobox = memo(function Combobox({ label, value, options, onChange }: {
 
   return (
     <div ref={wrapperRef} className="relative">
-      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">
+        {required && <span className="text-[#FF3B30] mr-0.5">*</span>}{label}
+      </label>
       <input
         ref={inputRef}
         type="text"
@@ -117,6 +122,15 @@ const Combobox = memo(function Combobox({ label, value, options, onChange }: {
 });
 
 const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: Props) {
+  const [opts, setOpts] = useState<Record<string, string[]> | null>(null);
+
+  useEffect(() => {
+    loadDropdownOptions().then(setOpts);
+  }, []);
+
+  const o = (key: string, fallback: string[]) =>
+    (opts && opts[key] && opts[key].length > 0) ? opts[key] : fallback;
+
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
   };
@@ -127,29 +141,29 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       <div className="space-y-4">
         <Card title="订单基础信息">
           <div className="grid grid-cols-2 gap-3">
-            <Input label="订货单位" value={data.dhdw} onChange={(v) => set("dhdw", v)} />
+            <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
             <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
             <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
             <Input label="交期" value={data.dhrq} onChange={(v) => set("dhrq", v)} />
-            <Input label="数量(樘)" value={data.sl} onChange={(v) => set("sl", v)} />
+            <Input label="数量(樘)" required value={data.sl} onChange={(v) => set("sl", v)} />
             <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
           </div>
         </Card>
 
         <Card title="材质与外观">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="制作材料" value={data.zzcl} options={MATERIALS} onChange={(v) => set("zzcl", v)} />
-            <Combobox label="颜色" value={data.ys} options={COLOR_PRESETS} onChange={(v) => set("ys", v)} />
+            <Combobox label="制作材料" required value={data.zzcl} options={o("MATERIALS", MATERIALS)} onChange={(v) => set("zzcl", v)} />
+            <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
             <Input label="正面款式" value={data.zmks} onChange={(v) => set("zmks", v)} />
             <Input label="反面款式" value={data.fmks} onChange={(v) => set("fmks", v)} />
             <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
             <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
           </div>
           <div className="mt-3 flex gap-6">
-            {BZ_OPTIONS.map((o) => (
-              <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                <input type="radio" name="bz" checked={data.sel_bz === o} onChange={() => set("sel_bz", o)} />
-                {o}
+            {o("BZ_OPTIONS", BZ_OPTIONS).map((opt) => (
+              <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                <input type="radio" name="bz" checked={data.sel_bz === opt} onChange={() => set("sel_bz", opt)} />
+                {opt}
               </label>
             ))}
           </div>
@@ -159,21 +173,21 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       {/* 中列：结构 + 尺寸 */}
       <div className="space-y-4">
         <Card title="结构与开向">
-          <Select label="门型" value={data.door_type} options={DOOR_TYPES} onChange={(v) => set("door_type", v)} />
+          <Select label="门型" value={data.door_type} options={o("DOOR_TYPES", DOOR_TYPES)} onChange={(v) => set("door_type", v)} />
           <div className="flex gap-6 mt-3">
             <div className="flex gap-4">
-              {KX_OPTIONS.map((o) => (
-                <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input type="radio" name="kx" checked={data.sel_kx === o} onChange={() => set("sel_kx", o)} />
-                  {o}
+              {o("KX_OPTIONS", KX_OPTIONS).map((opt) => (
+                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input type="radio" name="kx" checked={data.sel_kx === opt} onChange={() => set("sel_kx", opt)} />
+                  {opt}
                 </label>
               ))}
             </div>
             <div className="flex gap-4">
-              {NK_OPTIONS.map((o) => (
-                <label key={o} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input type="radio" name="nk" checked={data.sel_nk === o} onChange={() => set("sel_nk", o)} />
-                  {o}
+              {o("NK_OPTIONS", NK_OPTIONS).map((opt) => (
+                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input type="radio" name="nk" checked={data.sel_nk === opt} onChange={() => set("sel_nk", opt)} />
+                  {opt}
                 </label>
               ))}
             </div>
@@ -190,8 +204,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               </>
             ) : (
               <>
-                <Input label="洞口总宽(W)" value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-                <Input label="洞口总高(H)" value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+                <Input label="洞口总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+                <Input label="洞口总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
               </>
             )}
           </div>
@@ -226,7 +240,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
             <Input label="右框宽 (外/内)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
             <Input label="上框宽 (外/内)" value={data.fw_top_str} onChange={(v) => set("fw_top_str", v)} />
-            <Select label="下槛方案" value={data.threshold_type} options={THRESHOLD_OPTIONS} onChange={(v) => set("threshold_type", v)} />
+            <Select label="下槛方案" value={data.threshold_type} options={o("THRESHOLD_OPTIONS", THRESHOLD_OPTIONS)} onChange={(v) => set("threshold_type", v)} />
           </div>
           {data.threshold_type === "高低槛" ? (
             <Input label="下槛高度 (低/高)" value={data.th_str} onChange={(v) => set("th_str", v)} />
@@ -240,13 +254,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       <div className="space-y-4">
         <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="正面拉手" value={data.zmls} options={HANDLES} onChange={(v) => set("zmls", v)} />
-            <Combobox label="反面拉手" value={data.fmls} options={HANDLES} onChange={(v) => set("fmls", v)} />
-            <Combobox label="锁体类型" value={data.st_val} options={LOCKS} onChange={(v) => set("st_val", v)} />
-            <Combobox label="合页样式" value={data.sel_hys} options={HINGES} onChange={(v) => set("sel_hys", v)} />
+            <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
+            <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("fmls", v)} />
+            <Combobox label="锁体类型" value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
+            <Combobox label="合页样式" value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
           </div>
           <div className="mt-3">
-            <Select label="单扇合页数量" value={data.hysl} options={HYSL_OPTIONS} onChange={(v) => set("hysl", v)} />
+            <Select label="单扇合页数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
           </div>
         </Card>
 
@@ -265,7 +279,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="内包套宽" value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
           )}
           <div className="flex gap-3 mt-3">
-            <Select label="气窗" value={data.sel_qc} options={QC_OPTIONS} onChange={(v) => set("sel_qc", v)} />
+            <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />
             <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
             <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => set("has_pillar", v)} />
           </div>
