@@ -11,7 +11,7 @@ from quote_models import (
     AiConfigUpdate,
 )
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
-from quote_excel import generate_excel
+from quote_excel import generate_excel, render_quote_jpg
 
 quote_router = APIRouter()
 
@@ -214,11 +214,26 @@ def quote_preview_html(quote_id: int):
 
 @quote_router.get("/api/quotes/{quote_id}/export.jpg")
 def export_quote_jpg(quote_id: int):
-    """JPG 由前端通过 iframe + html2canvas 生成，此端点仅返回数据供验证"""
+    """导出报价单 JPG：服务端渲染 Excel A1:J24 布局 + 40px 白边"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="报价单不存在")
-    return {"quote": quote}
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+    os.close(fd)
+    try:
+        render_quote_jpg(quote, tmp_path)
+        filename = f"报价单_{quote.get('customerName', 'export')}_{quote_id}.jpg"
+        return FileResponse(
+            tmp_path,
+            media_type="image/jpeg",
+            filename=filename,
+            background=None,
+        )
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail="JPG 生成失败")
 
 
 @quote_router.get("/api/quotes/{quote_id}/export.pdf")

@@ -233,7 +233,7 @@ class UserDatabaseManager:
             raise
 
     def _startup_ensure_and_migrate(self):
-        """启动时：确保 admin 存在 + 迁移所有明文密码（不会强制重置 admin 密码）"""
+        """启动时：确保 admin 存在 + 迁移所有明文密码 + 环境变量密码覆盖"""
         try:
             users = self.load_all_users()
             changed = False
@@ -248,7 +248,15 @@ class UserDatabaseManager:
                 }
                 changed = True
 
-            # 2. 迁移所有明文密码
+            # 2. 环境变量 ADMIN_PASSWORD 覆盖：云端部署时强制同步 admin 密码
+            env_pwd = os.environ.get("ADMIN_PASSWORD", "").strip()
+            if env_pwd and "admin" in users:
+                stored = users["admin"].get("password", "")
+                if not is_hashed(stored) or not verify_password(env_pwd, stored):
+                    users["admin"]["password"] = hash_password(env_pwd)
+                    changed = True
+
+            # 3. 迁移所有明文密码
             for uid, info in users.items():
                 pwd = info.get("password", "")
                 if pwd and not is_hashed(pwd):

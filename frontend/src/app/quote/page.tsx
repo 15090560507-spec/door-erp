@@ -88,62 +88,28 @@ export default function QuotePage() {
     }
   }
 
-  // Export JPG: fetch clean HTML from backend, render in hidden div, html2canvas
+  // Export JPG: 服务端渲染 Excel A1:J24 → JPG + 40px 白边
   async function handleExportJpg() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
-      // Fetch clean HTML from backend (hex/rgb colors only, no oklch)
-      const htmlRes = await fetch(`${API_BASE}/quotes/${lastQuoteId}/preview.html`);
-      if (!htmlRes.ok) throw new Error("获取预览失败");
-      const htmlText = await htmlRes.text();
-
-      // Extract body content (everything between <body> and </body>)
-      const bodyMatch = htmlText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      const bodyHtml = bodyMatch ? bodyMatch[1] : htmlText;
-
-      // Extract style (everything between <style> and </style>)
-      const styleMatch = htmlText.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-      const styleCss = styleMatch ? styleMatch[1] : "";
-
-      // Create hidden container — backend HTML uses only hex/rgb, html2canvas safe
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;background:#FFFFFF;padding:20px;font-family:'PingFang SC','Microsoft YaHei',sans-serif;";
-      container.innerHTML = `<style>${styleCss}</style>${bodyHtml}`;
-      document.body.appendChild(container);
-
-      // Wait for layout
-      await new Promise((r) => setTimeout(r, 200));
-
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        backgroundColor: "#FFFFFF",
-        logging: false,
-        width: 800,
-      });
-
-      document.body.removeChild(container);
-
-      canvas.toBlob((blob) => {
-        if (!blob) { setStatus("JPG 生成失败"); setExporting(false); setExportingType(""); return; }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `报价单_${lastQuoteId}.jpg`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setStatus("JPG 已下载");
-        setExporting(false);
-        setExportingType("");
-      }, "image/jpeg", 0.92);
-    } catch (e: any) {
-      setStatus(`JPG 导出失败: ${e?.message || "未知错误"}`);
+      const res = await fetch(`${API_BASE}/quotes/${lastQuoteId}/export.jpg`);
+      if (!res.ok) throw new Error("导出失败");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `报价单_${lastQuoteId}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("JPG 已下载");
+    } catch {
+      setStatus("JPG 导出失败");
+    } finally {
       setExporting(false);
       setExportingType("");
-      document.querySelectorAll("div[style*='left:-9999px']").forEach((el) => el.remove());
     }
   }
 
