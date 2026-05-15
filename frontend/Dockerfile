@@ -4,12 +4,22 @@ FROM node:22-alpine AS base
 # ========================= 依赖安装 =========================
 FROM base AS deps
 WORKDIR /app
+
+# 替换 Alpine 源为阿里云镜像 + 配置 NPM 淘宝镜像（国内服务器加速）
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories && \
+    npm config set registry https://registry.npmmirror.com/
+
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
 # ========================= 构建阶段 =========================
 FROM base AS builder
 WORKDIR /app
+
+# Alpine 源 + NPM 淘宝镜像（国内服务器加速）
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories && \
+    npm config set registry https://registry.npmmirror.com/
+
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
