@@ -132,6 +132,33 @@ export async function deleteTask(taskId: string) {
   return data;
 }
 
+// ===================== 下拉选项 =====================
+
+const DROPDOWN_CACHE_KEY = "door_dropdown_options_cache";
+
+export async function loadDropdownOptions(): Promise<Record<string, string[]>> {
+  // 优先从 localStorage 缓存读取，避免冗余请求
+  if (typeof window !== "undefined") {
+    const cached = sessionStorage.getItem(DROPDOWN_CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && Object.keys(parsed).length > 0) return parsed;
+      } catch { /* ignore */ }
+    }
+  }
+  try {
+    const { data } = await api.get("/admin/dropdown-options");
+    const options = data.options || {};
+    if (typeof window !== "undefined" && Object.keys(options).length > 0) {
+      sessionStorage.setItem(DROPDOWN_CACHE_KEY, JSON.stringify(options));
+    }
+    return options;
+  } catch {
+    return {};
+  }
+}
+
 // ===================== CAD 生成 =====================
 export async function generateCad(formData: DoorFormData): Promise<Blob> {
   const { data } = await api.post("/generate_cad", formData, {

@@ -9,7 +9,7 @@ import {
   resetPassword as apiResetPassword, getAllTasks,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
-import type { TaskItem, DoorFormData } from "@/lib/types";
+import type { TaskItem, DoorFormData, UserInfo } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -738,7 +738,7 @@ function MiniInput({ label, value, onChange, placeholder }: {
 
 /** 后台管理面板 */
 function AdminPanel() {
-  const [users, setUsers] = useState<Record<string, { password: string; role: string; name: string }>>({});
+  const [users, setUsers] = useState<Record<string, UserInfo>>({});
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [pwd, setPwd] = useState("");

@@ -6,8 +6,8 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, HINGES, COLOR_PRESETS,
-  loadDropdownOptions, getDropdownOption,
 } from "@/lib/types";
+import { loadDropdownOptions } from "@/lib/api";
 
 interface Props {
   data: DoorFormData;
