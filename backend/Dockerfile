@@ -8,9 +8,12 @@ WORKDIR /app
 RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources && \
     sed -i 's|http://security.debian.org/debian-security|https://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources
 
-# 安装系统依赖（ezdxf 需要的基础库 + CJK 字体用于 JPG 报价单渲染）
+# 安装系统依赖（ezdxf 需要的基础库 + LibreOffice 用于 Excel→JPG 渲染 + poppler-utils 用于 PDF→JPG）
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libc6-dev fonts-wqy-microhei && \
+    apt-get install -y --no-install-recommends \
+        gcc libc6-dev \
+        libreoffice-calc \
+        poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
