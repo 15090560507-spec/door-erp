@@ -8,12 +8,17 @@ WORKDIR /app
 RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources && \
     sed -i 's|http://security.debian.org/debian-security|https://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources
 
-# 安装系统依赖（ezdxf 需要的基础库 + LibreOffice 用于 Excel→JPG 渲染 + poppler-utils 用于 PDF→JPG）
+# 安装系统依赖
+# - gcc libc6-dev: ezdxf 编译需要
+# - libreoffice-calc: Excel → PDF 渲染（与 Office 相同布局引擎）
+# - poppler-utils: PDF → JPG 转换
+# - fonts-noto-cjk: Google Noto CJK 全字重（Serif + Sans），兼容中日韩
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         gcc libc6-dev \
         libreoffice-calc \
-        poppler-utils && \
+        poppler-utils \
+        fonts-noto-cjk && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
