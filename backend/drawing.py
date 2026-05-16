@@ -226,25 +226,30 @@ def draw_door_in_frame(
         # ===================== 包边款式偏移线 =====================
         trim_style = p.get('trim_style', '')
         if trim_style:
-            # outer rect offset inward by D
-            def draw_outer_offset(D):
-                d1 = (O - W + D, D)
-                d2 = (O - W + D, dh - O + W + mm_offset - D)
-                d3 = (dw - O + W - D, dh - O + W + mm_offset - D)
-                d4 = (dw - O + W - D, D)
-                drawer.draw_poly([off(d1), off(d2), off(d3), off(d4), off(d1)], 'A-DOOR-TRIM')
+            # 包套上边高度 = dh - O + W + mm_offset
+            outer_top_y = dh - O + W + mm_offset
+            inner_top_y = dh - O + mm_offset
 
-            # inner rect offset outward by D
+            # 三边偏移线（左、上、右，下方对齐 y=0）
+            def draw_outer_offset(D):
+                left_x = O - W + D
+                right_x = dw - O + W - D
+                top_y = outer_top_y - D
+                drawer.draw_line(off((left_x, 0)), off((left_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_line(off((left_x, top_y)), off((right_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_line(off((right_x, 0)), off((right_x, top_y)), 'A-DOOR-TRIM')
+
             def draw_inner_offset(D):
-                d1 = (O - D, -D)
-                d2 = (O - D, dh - O + mm_offset + D)
-                d3 = (dw - O + D, dh - O + mm_offset + D)
-                d4 = (dw - O + D, -D)
-                drawer.draw_poly([off(d1), off(d2), off(d3), off(d4), off(d1)], 'A-DOOR-TRIM')
+                left_x = O - D
+                right_x = dw - O + D
+                top_y = inner_top_y + D
+                drawer.draw_line(off((left_x, 0)), off((left_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_line(off((left_x, top_y)), off((right_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_line(off((right_x, 0)), off((right_x, top_y)), 'A-DOOR-TRIM')
 
             style = trim_style
             if style in ('斜包套', '阶梯包套'):
-                draw_outer_offset(50)
+                draw_outer_offset(W / 2)
             elif style in ('工字形包套', '02款包套'):
                 draw_outer_offset(30)
                 draw_inner_offset(30)
@@ -255,12 +260,17 @@ def draw_door_in_frame(
                 draw_inner_offset(30)
                 draw_inner_offset(half_w_plus_15)
 
-            # label on left side with leader line
-            label_x = O - W - 250
-            label_y = dh / 2
+            # CAD块标注（块名称放在标志线上方）
+            block_name_map = {
+                '斜包套': 'XBT', '阶梯包套': 'JTBT',
+                '工字形包套': 'GZXBT', '01款包套': '01BT', '02款包套': '02BT',
+            }
+            block_name = block_name_map.get(trim_style, 'XBT')
+            block_x = O - W - 150
+            block_y = dh / 2 + 80
             leader_end_x = O - W + 20
-            drawer.draw_text(trim_style, off((label_x, label_y)), 60, 'A-DOOR-TRIM')
-            drawer.draw_line(off((label_x + 100, label_y)), off((leader_end_x, label_y)), 'A-DOOR-TRIM')
+            drawer.insert_custom_block(block_name, off((block_x, block_y)), layer='A-DOOR-TRIM')
+            drawer.draw_line(off((block_x, block_y - 40)), off((leader_end_x, block_y - 40)), 'A-DOOR-TRIM')
     else:
         ox1, oy1, ox4, oy4, ox3, oy3 = 0, 0, dw, 0, dw, dh
         ix1, iy1, ix4, iy4, ix3, iy3 = 0, 0, dw, 0, dw, dh
