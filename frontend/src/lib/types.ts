@@ -130,7 +130,7 @@ export const TRIM_STYLES = ["斜包套", "阶梯包套", "工字形包套", "01�
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
   zmks: "按图", fmks: "按图",
-  zmls: "标配拉手", fmls: "背包拉手", st_val: "标准锁体",
+  zmls: "标配拉手", fmls: "标配拉手", st_val: "标准锁体",
   hysl: "3个/扇", sel_hys: "暗合页", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 150, ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10).replace(/-/g, "."),

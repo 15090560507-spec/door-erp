@@ -38,7 +38,7 @@ class CADRequest(BaseModel):
     th_str: str = "55/70"               # 下槛高度 (低/高)
     pdk: str = "60"                     # 平底槛厚度
     zmls: str = "标配拉手"              # 正面拉手
-    fmls: str = "背包拉手"              # 反面拉手
+    fmls: str = "标配拉手"              # 反面拉手
     st_val: str = "标准锁体"            # 锁体类型
     sel_hys: str = "暗合页"             # 合页样式
     hysl: str = "3个/扇"                # 合页数量
