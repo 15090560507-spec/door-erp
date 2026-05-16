@@ -13,6 +13,26 @@ import ezdxf
 from config import CONFIG, TEMPLATE_PATH
 from utils import parse_dim_str, parse_gap_str
 
+# ===================== 模板缓存 =====================
+# 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
+_template_bytes: Optional[bytes] = None
+
+
+def _load_template() -> bytes:
+    """加载模板 DXF 到内存缓存（仅首次调用时读磁盘）"""
+    global _template_bytes
+    if _template_bytes is None and os.path.exists(TEMPLATE_PATH):
+        with open(TEMPLATE_PATH, 'rb') as f:
+            _template_bytes = f.read()
+    return _template_bytes or b''
+
+
+def _get_cached_template() -> bytes:
+    """获取缓存的模板内容"""
+    if _template_bytes is None:
+        return _load_template()
+    return _template_bytes
+
 
 # ===================== 数据扣减计算 =====================
 class DimensionCalculator:
@@ -459,15 +479,16 @@ def draw_door_in_frame(
 def run_integrated_system(
     info: Dict, checks: Dict, draw_p: Dict,
     progress_callback: Optional[Callable[[str], None]] = None
-) -> Tuple[str, Optional[io.StringIO]]:
+) -> Tuple[str, Optional[io.BytesIO]]:
     if progress_callback is None:
         progress_callback = lambda x: None
 
     try:
         progress_callback("正在启动云端图纸引擎...")
 
-        if os.path.exists(TEMPLATE_PATH):
-            doc = ezdxf.readfile(TEMPLATE_PATH)
+        cached = _get_cached_template()
+        if cached:
+            doc = ezdxf.read(io.BytesIO(cached))
         else:
             doc = ezdxf.new('R2010')
 
@@ -596,8 +617,9 @@ def run_integrated_system(
         draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
         draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
 
-        buffer = io.StringIO()
+        buffer = io.BytesIO()
         doc.write(buffer)
+        buffer.seek(0)
         return "图纸生成成功！", buffer
 
     except Exception as e:

@@ -114,10 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiLogin(uid, pwd);
       if (res.success && res.user && res.token) {
         setUser(res.user);
-        setModule(res.user.default_module as ModuleName);
+        setModule("汇总看板");
         S.setToken(res.token);
         S.setUser(res.user);
-        S.setModule(res.user.default_module);
+        S.setModule("汇总看板");
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;

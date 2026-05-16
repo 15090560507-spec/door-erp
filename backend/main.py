@@ -25,6 +25,7 @@ from models import (
     TaskCreateRequest, TaskUpdateRequest, TaskResponse, TaskListResponse,
 )
 from drawing import run_integrated_system
+from drawing import _load_template
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router
 
@@ -55,6 +56,14 @@ task_db = TaskDatabaseManager()
 
 # 确保 data 目录存在
 os.makedirs(DATA_DIR, exist_ok=True)
+
+
+# ===================== 启动事件：预加载模板 =====================
+@app.on_event("startup")
+async def startup_preload_template():
+    """应用启动时预加载 DXF 模板到内存缓存"""
+    _load_template()
+    print(f"[startup] DXF 模板已加载到内存缓存")
 
 
 # ===================== 辅助函数：表单参数组装 =====================
@@ -271,17 +280,13 @@ def generate_cad(req: CADRequest):
     if buffer is None:
         raise HTTPException(status_code=500, detail=result_msg)
 
-    # ezdxf 写入 StringIO，转换为 bytes 用于 HTTP 响应
-    dxf_bytes = buffer.getvalue().encode('utf-8')
-    bytes_io = io.BytesIO(dxf_bytes)
-
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
     raw_filename = f"排版图纸_{req.dhdw or 'weimingming'}.dxf"
     encoded_filename = quote(raw_filename)
     ascii_filename = "drawing.dxf"
 
     return StreamingResponse(
-        bytes_io,
+        buffer,
         media_type="application/dxf",
         headers={
             "Content-Disposition": (

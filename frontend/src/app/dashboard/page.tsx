@@ -504,24 +504,24 @@ export default function DashboardPage() {
               </div>
 
               <DoorForm data={formData} onChange={setFormData}>
-                <div className="flex gap-3 mt-4">
+                <div className="grid grid-cols-8 gap-3 mt-4">
                   <button
                     onClick={handleSubmitOrder}
                     disabled={submitting}
-                    className="flex-1 py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="col-span-3 py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-base hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? "提交中..." : "提交订单 (流转至绘图部)"}
                   </button>
                   <button
                     onClick={handleQuickCad}
                     disabled={cadLoading}
-                    className="flex-1 py-3 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-sm hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
+                    className="col-span-3 py-3 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-base hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
                   >
                     {cadLoading ? "生成中..." : "快速生成 CAD (仅下载不流转)"}
                   </button>
                   <button
                     onClick={() => { setFormData(DEFAULT_FORM_DATA); setRefText(""); setRefImgB64(null); }}
-                    className="px-5 py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
+                    className="col-span-2 py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
                   >
                     清空表单
                   </button>
