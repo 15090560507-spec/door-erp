@@ -230,22 +230,24 @@ def draw_door_in_frame(
             outer_top_y = dh - O + W + mm_offset
             inner_top_y = dh - O + mm_offset
 
-            # 三边偏移线（左、上、右，下方对齐 y=0）
+            # 三边偏移多段线（左→上→右，底部对齐 y=0，不闭合）
             def draw_outer_offset(D):
                 left_x = O - W + D
                 right_x = dw - O + W - D
                 top_y = outer_top_y - D
-                drawer.draw_line(off((left_x, 0)), off((left_x, top_y)), 'A-DOOR-TRIM')
-                drawer.draw_line(off((left_x, top_y)), off((right_x, top_y)), 'A-DOOR-TRIM')
-                drawer.draw_line(off((right_x, 0)), off((right_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_poly(
+                    [off((left_x, 0)), off((left_x, top_y)), off((right_x, top_y)), off((right_x, 0))],
+                    'A-DOOR-TRIM', closed=False
+                )
 
             def draw_inner_offset(D):
                 left_x = O - D
                 right_x = dw - O + D
                 top_y = inner_top_y + D
-                drawer.draw_line(off((left_x, 0)), off((left_x, top_y)), 'A-DOOR-TRIM')
-                drawer.draw_line(off((left_x, top_y)), off((right_x, top_y)), 'A-DOOR-TRIM')
-                drawer.draw_line(off((right_x, 0)), off((right_x, top_y)), 'A-DOOR-TRIM')
+                drawer.draw_poly(
+                    [off((left_x, 0)), off((left_x, top_y)), off((right_x, top_y)), off((right_x, 0))],
+                    'A-DOOR-TRIM', closed=False
+                )
 
             style = trim_style
             if style in ('斜包套', '阶梯包套'):
