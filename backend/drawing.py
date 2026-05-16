@@ -15,23 +15,22 @@ from utils import parse_dim_str, parse_gap_str
 
 # ===================== 模板缓存 =====================
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
-_template_bytes: Optional[bytes] = None
+_template_text: Optional[str] = None
 
 
-def _load_template() -> bytes:
+def _load_template() -> None:
     """加载模板 DXF 到内存缓存（仅首次调用时读磁盘）"""
-    global _template_bytes
-    if _template_bytes is None and os.path.exists(TEMPLATE_PATH):
-        with open(TEMPLATE_PATH, 'rb') as f:
-            _template_bytes = f.read()
-    return _template_bytes or b''
+    global _template_text
+    if _template_text is None and os.path.exists(TEMPLATE_PATH):
+        with open(TEMPLATE_PATH, 'r', encoding='utf-8') as f:
+            _template_text = f.read()
 
 
-def _get_cached_template() -> bytes:
+def _get_cached_template() -> Optional[str]:
     """获取缓存的模板内容"""
-    if _template_bytes is None:
-        return _load_template()
-    return _template_bytes
+    if _template_text is None:
+        _load_template()
+    return _template_text
 
 
 # ===================== 数据扣减计算 =====================
@@ -553,7 +552,7 @@ def draw_door_in_frame(
 def run_integrated_system(
     info: Dict, checks: Dict, draw_p: Dict,
     progress_callback: Optional[Callable[[str], None]] = None
-) -> Tuple[str, Optional[io.BytesIO]]:
+) -> Tuple[str, Optional[io.StringIO]]:
     if progress_callback is None:
         progress_callback = lambda x: None
 
@@ -562,7 +561,7 @@ def run_integrated_system(
 
         cached = _get_cached_template()
         if cached:
-            doc = ezdxf.read(io.BytesIO(cached))
+            doc = ezdxf.read(io.StringIO(cached))
         else:
             doc = ezdxf.new('R2010')
 
@@ -691,7 +690,7 @@ def run_integrated_system(
         draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
         draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
 
-        buffer = io.BytesIO()
+        buffer = io.StringIO()
         doc.write(buffer)
         buffer.seek(0)
         return "图纸生成成功！", buffer

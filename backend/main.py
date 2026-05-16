@@ -284,13 +284,17 @@ def generate_cad(req: CADRequest):
     if buffer is None:
         raise HTTPException(status_code=500, detail=result_msg)
 
+    # ezdxf 写入 StringIO，转换为 bytes 用于 HTTP 响应
+    dxf_bytes = buffer.getvalue().encode('utf-8')
+    bytes_io = io.BytesIO(dxf_bytes)
+
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
     raw_filename = f"排版图纸_{req.dhdw or 'weimingming'}.dxf"
     encoded_filename = quote(raw_filename)
     ascii_filename = "drawing.dxf"
 
     return StreamingResponse(
-        buffer,
+        bytes_io,
         media_type="application/dxf",
         headers={
             "Content-Disposition": (
