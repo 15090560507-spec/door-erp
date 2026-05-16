@@ -211,7 +211,17 @@ class UserDatabaseManager:
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception:
+        except FileNotFoundError:
+            print(f"[UserDB] 用户数据库文件不存在: {self.file_path}，将返回空字典")
+            return {}
+        except json.JSONDecodeError as e:
+            print(f"[UserDB] 用户数据库 JSON 格式错误: {e}")
+            return {}
+        except PermissionError as e:
+            print(f"[UserDB] 无权限读取用户数据库: {e}")
+            return {}
+        except Exception as e:
+            print(f"[UserDB] 读取用户数据库失败 ({type(e).__name__}): {e}")
             return {}
 
     def save(self, users: Dict):
@@ -265,8 +275,8 @@ class UserDatabaseManager:
 
             if changed:
                 self._atomic_save(users)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[UserDB] 启动迁移/初始化失败 ({type(e).__name__}): {e}")
 
     def authenticate(self, uid: str, pwd: str) -> Optional[Dict]:
         """验证用户登录。支持哈希密码，并自动升级遗留的明文记录"""

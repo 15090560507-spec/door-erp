@@ -12,6 +12,9 @@ services:
     environment:
       - DATA_DIR=/app/data
       - TEMPLATE_PATH=/app/template.dxf
+      - JWT_SECRET=door-erp-jwt-secret-2026-xizhou
+      - ADMIN_PASSWORD=admin888
+      - CORS_ORIGINS=http://localhost:3000,http://124.223.87.161:3000,http://124.223.87.161:8000
     volumes:
       # 数据持久化：JSON 数据库文件映射到宿主机 ./data 目录，防止重启丢失
       - ./data:/app/data
