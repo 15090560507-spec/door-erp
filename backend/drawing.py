@@ -260,18 +260,18 @@ def draw_door_in_frame(
                 draw_inner_offset(30)
                 draw_inner_offset(half_w_plus_15)
 
-            # CAD块标注（块参考点在门套最左侧向左150mm，指引线从最左侧中心往右450mm）
+            # CAD块标注（块参考点在门套最右侧向右150mm，指引线从最右侧中心往右450mm）
             block_name_map = {
                 '斜包套': 'XBT', '阶梯包套': 'JTBT',
                 '工字形包套': 'GZXBT', '01款包套': '01BT', '02款包套': '02BT',
             }
             block_name = block_name_map.get(trim_style, 'XBT')
-            trim_left_x = O - W  # 包套最左侧
-            block_x = trim_left_x - 150  # 块在包套最左侧向左150mm
+            trim_right_x = dw - O + W  # 包套最右侧
+            block_x = trim_right_x + 150  # 块在包套最右侧向右150mm
             block_y = dh / 2 + 80
-            leader_y = dh / 2  # 包套最左侧中心点高度
+            leader_y = dh / 2  # 包套最右侧中心点高度
             drawer.insert_custom_block(block_name, off((block_x, block_y)), layer='A-DOOR-TRIM')
-            drawer.draw_line(off((trim_left_x, leader_y)), off((trim_left_x + 450, leader_y)), 'A-DOOR-TRIM')
+            drawer.draw_line(off((trim_right_x, leader_y)), off((trim_right_x + 450, leader_y)), 'A-DOOR-TRIM')
     else:
         ox1, oy1, ox4, oy4, ox3, oy3 = 0, 0, dw, 0, dw, dh
         ix1, iy1, ix4, iy4, ix3, iy3 = 0, 0, dw, 0, dw, dh
