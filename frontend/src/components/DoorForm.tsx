@@ -279,19 +279,20 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => set("has_outer", v)} />
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
             {(data.has_outer || data.has_inner) && (
-            <>
               <Input label="压框" value={data.overlap} type="number" onChange={(v) => set("overlap", Number(v))} />
-              <div className="mt-3">
-                <Select label="包边款式" value={data.trim_style} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style", v)} />
-              </div>
-            </>
-          )}
+            )}
           </div>
           {data.has_outer && (
-            <Input label="外包套宽" value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="外包套宽" value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
+              <Select label="外包套款式" value={data.trim_style_outer} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_outer", v)} />
+            </div>
           )}
           {data.has_inner && (
-            <Input label="内包套宽" value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="内包套宽" value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
+              <Select label="内包套款式" value={data.trim_style_inner} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_inner", v)} />
+            </div>
           )}
           <div className="flex gap-3 mt-3">
             <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />

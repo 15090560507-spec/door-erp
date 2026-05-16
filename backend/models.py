@@ -54,7 +54,8 @@ class CADRequest(BaseModel):
     mm_height: int = 200                # 门楣高
     pillar_width_str: str = "55/70"     # 立柱宽(外/内)
     sm: str = ""                        # 批注
-    trim_style: str = ""                # 包边款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
+    trim_style_outer: str = ""          # 外包套款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
+    trim_style_inner: str = ""          # 内包套款式
     lock_side_offset: int = 150         # 锁边偏移量 (mm)
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝

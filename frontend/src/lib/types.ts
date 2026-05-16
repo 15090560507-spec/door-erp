@@ -69,7 +69,8 @@ export interface DoorFormData {
   mm_height: number;
   pillar_width_str: string;
   sm: string;
-  trim_style: string;
+  trim_style_outer: string;
+  trim_style_inner: string;
   lock_side_offset: number;
   left_gap: number;
   right_gap: number;
@@ -131,7 +132,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   zmks: "按图", fmks: "按图",
   zmls: "标配拉手", fmls: "背包拉手", st_val: "标准锁体",
   hysl: "3个/扇", sel_hys: "暗合页", qh: "", mshd: 80,
-  sm: "", trim_style: "", lock_side_offset: 150, ddh: "", sl: "1 樘", hhxd: "D",
+  sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 150, ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/70",

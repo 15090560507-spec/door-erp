@@ -224,7 +224,7 @@ def draw_door_in_frame(
             drawer.draw_poly([off((mm_left, mm_top)), off((mm_right, mm_top)), off((mm_right, mm_bottom)), off((mm_left, mm_bottom))], 'A-DOOR-TRIM')
 
         # ===================== 包边款式偏移线 =====================
-        trim_style = p.get('trim_style', '')
+        trim_style = p.get('trim_style_outer', '') if not is_back else p.get('trim_style_inner', '')
         if trim_style:
             # 包套上边高度 = dh - O + W + mm_offset
             outer_top_y = dh - O + W + mm_offset
@@ -260,17 +260,18 @@ def draw_door_in_frame(
                 draw_inner_offset(30)
                 draw_inner_offset(half_w_plus_15)
 
-            # CAD块标注（块名称放在标志线上方）
+            # CAD块标注（参考点在门套右侧150mm，指引线450mm长）
             block_name_map = {
                 '斜包套': 'XBT', '阶梯包套': 'JTBT',
                 '工字形包套': 'GZXBT', '01款包套': '01BT', '02款包套': '02BT',
             }
             block_name = block_name_map.get(trim_style, 'XBT')
-            block_x = O - W - 150
+            block_x = dw - O + W + 150  # 门套右侧150mm
             block_y = dh / 2 + 80
-            leader_end_x = O - W + 20
+            leader_start_x = block_x
+            leader_end_x = block_x - 450  # 450mm指引线向左指向门套
             drawer.insert_custom_block(block_name, off((block_x, block_y)), layer='A-DOOR-TRIM')
-            drawer.draw_line(off((block_x, block_y - 40)), off((leader_end_x, block_y - 40)), 'A-DOOR-TRIM')
+            drawer.draw_line(off((leader_start_x, block_y - 40)), off((leader_end_x, block_y - 40)), 'A-DOOR-TRIM')
     else:
         ox1, oy1, ox4, oy4, ox3, oy3 = 0, 0, dw, 0, dw, dh
         ix1, iy1, ix4, iy4, ix3, iy3 = 0, 0, dw, 0, dw, dh

@@ -191,7 +191,8 @@ def build_cad_params(req: CADRequest):
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
         "ZMKS": req.zmks, "FMKS": req.fmks,
-        "TRIM_STYLE": req.trim_style,
+        "TRIM_STYLE_OUTER": req.trim_style_outer,
+        "TRIM_STYLE_INNER": req.trim_style_inner,
         "LOCK_SIDE_OFFSET": req.lock_side_offset,
     }
 
@@ -259,7 +260,8 @@ def build_cad_params(req: CADRequest):
         "use_light_size": req.use_light_size,
         "light_w": req.light_w, "light_h": req.light_h,
         "zmls": req.zmls, "fmls": req.fmls,
-        "trim_style": req.trim_style,
+        "trim_style_outer": req.trim_style_outer,
+        "trim_style_inner": req.trim_style_inner,
         "lock_side_offset": req.lock_side_offset,
     }
 
