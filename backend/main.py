@@ -190,7 +190,9 @@ def build_cad_params(req: CADRequest):
         "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
-        "ZMKS": req.zmks, "FMKS": req.fmks
+        "ZMKS": req.zmks, "FMKS": req.fmks,
+        "TRIM_STYLE": req.trim_style,
+        "LOCK_SIDE_OFFSET": req.lock_side_offset,
     }
 
     # --- check_map ---
@@ -257,6 +259,8 @@ def build_cad_params(req: CADRequest):
         "use_light_size": req.use_light_size,
         "light_w": req.light_w, "light_h": req.light_h,
         "zmls": req.zmls, "fmls": req.fmls,
+        "trim_style": req.trim_style,
+        "lock_side_offset": req.lock_side_offset,
     }
 
     return info_map, check_map, draw_params

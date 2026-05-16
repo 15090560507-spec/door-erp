@@ -6,6 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, HINGES, COLOR_PRESETS,
+  TRIM_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -235,6 +236,15 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           </div>
         </details>
 
+        <details className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 cursor-pointer">
+          <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
+            门板设置
+          </summary>
+          <div className="grid grid-cols-1 gap-3 mt-4">
+            <Input label="锁边偏移量(mm)" value={data.lock_side_offset} type="number" onChange={(v) => set("lock_side_offset", Number(v))} />
+          </div>
+        </details>
+
         <Card title="边框与下槛截面">
           <div className="grid grid-cols-2 gap-3">
             <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
@@ -269,8 +279,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => set("has_outer", v)} />
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
             {(data.has_outer || data.has_inner) && (
+            <>
               <Input label="压框" value={data.overlap} type="number" onChange={(v) => set("overlap", Number(v))} />
-            )}
+              <div className="mt-3">
+                <Select label="包边款式" value={data.trim_style} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style", v)} />
+              </div>
+            </>
+          )}
           </div>
           {data.has_outer && (
             <Input label="外包套宽" value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />

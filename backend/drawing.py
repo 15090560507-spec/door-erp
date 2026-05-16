@@ -223,6 +223,45 @@ def draw_door_in_frame(
             mm_left = ix1
             mm_right = ix4
             drawer.draw_poly([off((mm_left, mm_top)), off((mm_right, mm_top)), off((mm_right, mm_bottom)), off((mm_left, mm_bottom))], 'A-DOOR-TRIM')
+
+        # ===================== 包边款式偏移线 =====================
+        trim_style = p.get('trim_style', '')
+        if trim_style:
+            # outer rect offset inward by D
+            def draw_outer_offset(D):
+                d1 = (O - W + D, D)
+                d2 = (O - W + D, dh - O + W + mm_offset - D)
+                d3 = (dw - O + W - D, dh - O + W + mm_offset - D)
+                d4 = (dw - O + W - D, D)
+                drawer.draw_poly([off(d1), off(d2), off(d3), off(d4), off(d1)], 'A-DOOR-TRIM')
+
+            # inner rect offset outward by D
+            def draw_inner_offset(D):
+                d1 = (O - D, -D)
+                d2 = (O - D, dh - O + mm_offset + D)
+                d3 = (dw - O + D, dh - O + mm_offset + D)
+                d4 = (dw - O + D, -D)
+                drawer.draw_poly([off(d1), off(d2), off(d3), off(d4), off(d1)], 'A-DOOR-TRIM')
+
+            style = trim_style
+            if style in ('斜包套', '阶梯包套'):
+                draw_outer_offset(50)
+            elif style in ('工字形包套', '02款包套'):
+                draw_outer_offset(30)
+                draw_inner_offset(30)
+            elif style == '01款包套':
+                half_w_plus_15 = W / 2 + 15
+                draw_outer_offset(30)
+                draw_outer_offset(half_w_plus_15)
+                draw_inner_offset(30)
+                draw_inner_offset(half_w_plus_15)
+
+            # label on left side with leader line
+            label_x = O - W - 250
+            label_y = dh / 2
+            leader_end_x = O - W + 20
+            drawer.draw_text(trim_style, off((label_x, label_y)), 60, 'A-DOOR-TRIM')
+            drawer.draw_line(off((label_x + 100, label_y)), off((leader_end_x, label_y)), 'A-DOOR-TRIM')
     else:
         ox1, oy1, ox4, oy4, ox3, oy3 = 0, 0, dw, 0, dw, dh
         ix1, iy1, ix4, iy4, ix3, iy3 = 0, 0, dw, 0, dw, dh
@@ -432,6 +471,41 @@ def draw_door_in_frame(
     for hinge_x in hinge_x_list:
         for hinge_y in hinge_ys:
             drawer.insert_hinge_block(off((hinge_x, hinge_y)))
+
+    # ===================== 锁边偏移线绘制 =====================
+    lock_side_offset = p.get('lock_side_offset', 150)
+
+    if lock_side_offset > 0 and panel_positions:
+        for idx, (px1, px2) in enumerate(panel_positions):
+            lock_x = None
+
+            if door_type == "单门":
+                if (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开"):
+                    lock_x = px1 + lock_side_offset
+                else:
+                    lock_x = px2 - lock_side_offset
+            elif door_type == "对开门":
+                if idx == 0:
+                    lock_x = px2 - lock_side_offset
+                else:
+                    lock_x = px1 + lock_side_offset
+            elif door_type == "子母门":
+                if idx == 0:
+                    lock_x = px2 - lock_side_offset
+                else:
+                    lock_x = px1 + lock_side_offset
+            elif door_type in ("折叠四开门", "两定两开"):
+                if idx <= 1:
+                    lock_x = px2 - lock_side_offset
+                else:
+                    lock_x = px1 + lock_side_offset
+
+            if lock_x is not None:
+                drawer.draw_line(
+                    off((lock_x, panel_y_bot)),
+                    off((lock_x, panel_y_top)),
+                    'A-DOOR-PANEL'
+                )
 
     # ===================== 标配拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
