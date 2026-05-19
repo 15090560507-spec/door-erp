@@ -80,6 +80,18 @@ export interface DoorFormData {
 }
 
 // ===================== 任务 =====================
+export interface ChangeEntry {
+  field: string;
+  old: string;
+  new: string;
+}
+
+export interface HistoryEntry {
+  modified_by: string;
+  modified_at: string;
+  changes: ChangeEntry[];
+}
+
 export interface TaskItem {
   id: string;
   date: string;
@@ -90,9 +102,10 @@ export interface TaskItem {
   size: string;
   params: DoorFormData;
   ref_text: string;
-  ref_img_b64: string | null;
+  ref_images: string[];
   drawing_img_b64: string | null;
   review_feedback: string;
+  history: HistoryEntry[];
 }
 
 export interface TaskListResponse {

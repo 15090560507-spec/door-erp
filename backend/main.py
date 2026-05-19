@@ -7,7 +7,7 @@ import json
 import os
 import uuid
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query, Depends
@@ -407,9 +407,10 @@ def create_task(req: TaskCreateRequest):
         "size": f"{req.params.get('dw', 0)} x {req.params.get('dh', 0)} (洞口)",
         "params": req.params,
         "ref_text": req.ref_text,
-        "ref_img_b64": req.ref_img_b64,
+        "ref_images": req.ref_images,
         "drawing_img_b64": None,
-        "review_feedback": ""
+        "review_feedback": "",
+        "history": [],
     }
     try:
         task_db.add_task(new_task)
@@ -419,8 +420,23 @@ def create_task(req: TaskCreateRequest):
     return task_db.get_task(task_id)
 
 
+def _build_history(old_params: Dict, new_params: Dict, user_name: str) -> Dict:
+    """对比新旧params，生成单条修改记录"""
+    changes = []
+    for key in set(list(old_params.keys()) + list(new_params.keys())):
+        old_val = old_params.get(key, "")
+        new_val = new_params.get(key, "")
+        if str(old_val) != str(new_val):
+            changes.append({"field": key, "old": str(old_val), "new": str(new_val)})
+    return {
+        "modified_by": user_name,
+        "modified_at": datetime.datetime.now().strftime("%Y.%m.%d %H:%M:%S"),
+        "changes": changes,
+    }
+
+
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse)
-def update_task(task_id: str, req: TaskUpdateRequest):
+def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depends(get_current_user)):
     """更新任务（状态流转、上传图纸、提交审核意见等）"""
     existing = task_db.get_task(task_id)
     if not existing:
@@ -431,10 +447,20 @@ def update_task(task_id: str, req: TaskUpdateRequest):
         update_data["status"] = req.status
     if req.params is not None:
         update_data["params"] = req.params
+        # 生成修改记录
+        old_params = existing.get("params", {})
+        history_entry = _build_history(old_params, req.params, current_user.get("name", current_user.get("uid", "")))
+        if history_entry["changes"]:
+            old_history = existing.get("history", [])
+            update_data["history"] = old_history + [history_entry]
     if req.drawing_img_b64 is not None:
         update_data["drawing_img_b64"] = req.drawing_img_b64
     if req.review_feedback is not None:
         update_data["review_feedback"] = req.review_feedback
+    if req.ref_text is not None:
+        update_data["ref_text"] = req.ref_text
+    if req.ref_images is not None:
+        update_data["ref_images"] = req.ref_images
 
     try:
         task_db.update_task(task_id, update_data)

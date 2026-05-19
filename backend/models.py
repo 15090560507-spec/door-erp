@@ -99,7 +99,21 @@ class TaskCreateRequest(BaseModel):
     """创建新任务的请求"""
     params: Dict[str, Any]              # 表单数据（即 get_current_form_data 的结果）
     ref_text: str = ""                  # 沟通要求文字
-    ref_img_b64: Optional[str] = None   # 参考图片 base64
+    ref_images: List[str] = []          # 参考图片 base64 数组
+
+
+class ChangeEntry(BaseModel):
+    """单个字段变更记录"""
+    field: str
+    old: str = ""
+    new: str = ""
+
+
+class HistoryEntry(BaseModel):
+    """单次修改记录"""
+    modified_by: str
+    modified_at: str
+    changes: List[ChangeEntry] = []
 
 
 class TaskUpdateRequest(BaseModel):
@@ -108,6 +122,8 @@ class TaskUpdateRequest(BaseModel):
     params: Optional[Dict[str, Any]] = None
     drawing_img_b64: Optional[str] = None
     review_feedback: Optional[str] = None
+    ref_text: Optional[str] = None
+    ref_images: Optional[List[str]] = None
 
 
 class TaskResponse(BaseModel):
@@ -121,9 +137,10 @@ class TaskResponse(BaseModel):
     size: str
     params: Dict[str, Any]
     ref_text: str = ""
-    ref_img_b64: Optional[str] = None
+    ref_images: List[str] = []
     drawing_img_b64: Optional[str] = None
     review_feedback: str = ""
+    history: List[HistoryEntry] = []
 
 
 class TaskListResponse(BaseModel):

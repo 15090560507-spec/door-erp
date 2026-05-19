@@ -30,7 +30,12 @@ _HASH_PREFIX = "pbkdf2:sha256:"
 BACKUP_MAX_COUNT = 20
 
 # 任务必填字段
-_TASK_REQUIRED_FIELDS = ["id", "date", "status", "customer", "project", "door_type", "size", "params"]
+_TASK_REQUIRED_FIELDS = ["id", "date", "status", "customer", "project", "door_type", "size", "params", "history"]
+
+# 图片字段（多图数组）
+_IMAGE_ARRAY_FIELDS = ["ref_images"]
+# 单图字段（兼容旧数据）
+_IMAGE_SINGLE_FIELDS = ["drawing_img_b64"]
 
 # 有效的任务状态
 _VALID_TASK_STATUSES = ["待绘制", "待初审", "待终审", "待修改", "已通过"]
@@ -93,98 +98,236 @@ class ImageStore:
     将任务中的 Base64 图片从 JSON 字段中分离，存储为独立文件。
 
     存储规则:
-      - 文件路径: IMAGES_DIR / {task_id}_{field}.png
-      - JSON 中仅保留文件名引用 ({task_id}_{field}.png)
-      - 读取时透明还原为 Base64，对外接口不变
+      - 单图字段: IMAGES_DIR / {task_id}_{field}.png
+      - 多图字段: IMAGES_DIR / {task_id}_{field}_{index}.png
+      - JSON 中仅保留文件名引用
+      - 读取时透明还原为 Base64
     """
 
     def __init__(self, base_dir: str = IMAGES_DIR):
         self.base_dir = base_dir
         os.makedirs(base_dir, exist_ok=True)
 
-    def save_from_task(self, task: dict) -> dict:
-        """
-        从 task 字典中提取 Base64 图片 → 写入文件 → 替换为文件名引用。
-        如果某字段为空/None → 同时删除对应的旧图片文件。
-        """
-        for field in ("ref_img_b64", "drawing_img_b64"):
-            val = task.get(field)
-            if val and len(val) > 200:
-                # 看起来是内联 Base64 数据
+    def _save_single(self, task_id: str, field: str, val: str):
+        """保存单张图片，返回文件名引用"""
+        if val and len(val) > 200:
+            try:
+                image_bytes = base64.b64decode(val)
+            except Exception:
+                return val
+            filename = f"{task_id}_{field}.png"
+            filepath = os.path.join(self.base_dir, filename)
+            try:
+                with open(filepath, "wb") as f:
+                    f.write(image_bytes)
+            except OSError:
+                return val
+            return filename
+        elif not val:
+            old_file = os.path.join(self.base_dir, f"{task_id}_{field}.png")
+            if os.path.exists(old_file):
                 try:
-                    image_bytes = base64.b64decode(val)
+                    os.unlink(old_file)
+                except OSError:
+                    pass
+            return val
+        return val
+
+    def _save_array(self, task_id: str, field: str, images: list) -> list:
+        """保存多图数组，返回文件名引用数组。清理旧文件。"""
+        result = []
+        for idx, img in enumerate(images):
+            if img and len(img) > 200:
+                try:
+                    image_bytes = base64.b64decode(img)
                 except Exception:
+                    result.append(img)
                     continue
-                filename = f"{task['id']}_{field}.png"
+                filename = f"{task_id}_{field}_{idx}.png"
                 filepath = os.path.join(self.base_dir, filename)
                 try:
                     with open(filepath, "wb") as f:
                         f.write(image_bytes)
                 except OSError:
+                    result.append(img)
                     continue
-                task[field] = filename  # 替换为文件名引用
-            elif not val:
-                # 清空该字段 → 同时删除旧图片文件
-                old_file = os.path.join(self.base_dir, f"{task['id']}_{field}.png")
-                if os.path.exists(old_file):
-                    try:
-                        os.unlink(old_file)
-                    except OSError:
-                        pass
+                result.append(filename)
+            else:
+                result.append(img)
+        # 清理多余的旧文件
+        idx = len(result)
+        while True:
+            old_file = os.path.join(self.base_dir, f"{task_id}_{field}_{idx}.png")
+            if os.path.exists(old_file):
+                try:
+                    os.unlink(old_file)
+                except OSError:
+                    pass
+                idx += 1
+            else:
+                break
+        return result
+
+    def save_from_task(self, task: dict) -> dict:
+        """从 task 字典中提取 Base64 图片 → 写入文件 → 替换为文件名引用"""
+        task_id = task.get("id", "")
+        # 多图字段
+        for field in _IMAGE_ARRAY_FIELDS:
+            val = task.get(field)
+            if isinstance(val, list):
+                task[field] = self._save_array(task_id, field, val)
+            elif val is None:
+                task[field] = []
+        # 单图字段
+        for field in _IMAGE_SINGLE_FIELDS:
+            val = task.get(field)
+            if val is not None:
+                task[field] = self._save_single(task_id, field, str(val) if val else "")
+        # 兼容旧 ref_img_b64
+        if "ref_img_b64" in task and "ref_images" not in task:
+            old_val = task.pop("ref_img_b64")
+            if old_val:
+                saved = self._save_single(task_id, "ref_img_b64", old_val)
+                task["ref_images"] = [saved] if saved else []
+            else:
+                task["ref_images"] = []
         return task
 
-    def load_to_task(self, task: dict) -> dict:
-        """
-        读取 task 时，将文件名引用还原为完整的 Base64 字符串。
-        """
-        for field in ("ref_img_b64", "drawing_img_b64"):
-            val = task.get(field)
-            if val and len(val) < 200:
-                # 文件名引用 → 读文件 → Base64
-                filepath = os.path.join(self.base_dir, val)
+    def _load_single(self, task_id: str, field: str, val: str) -> Optional[str]:
+        """加载单张图片，从文件还原为 Base64"""
+        if val and len(val) < 200:
+            filepath = os.path.join(self.base_dir, val)
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, "rb") as f:
+                        return base64.b64encode(f.read()).decode("utf-8")
+                except OSError:
+                    return None
+            return None
+        return val or None
+
+    def _load_array(self, task_id: str, field: str, images: list) -> list:
+        """加载多图数组，从文件还原为 Base64"""
+        result = []
+        for img in images:
+            if isinstance(img, str) and len(img) < 200:
+                filepath = os.path.join(self.base_dir, img)
                 if os.path.exists(filepath):
                     try:
                         with open(filepath, "rb") as f:
-                            task[field] = base64.b64encode(f.read()).decode("utf-8")
+                            result.append(base64.b64encode(f.read()).decode("utf-8"))
                     except OSError:
-                        task[field] = None
+                        pass
+            elif isinstance(img, str) and len(img) > 200:
+                result.append(img)
+        return result
+
+    def load_to_task(self, task: dict) -> dict:
+        """读取 task 时，将文件名引用还原为完整的 Base64"""
+        task_id = task.get("id", "")
+        # 多图字段
+        for field in _IMAGE_ARRAY_FIELDS:
+            val = task.get(field)
+            if isinstance(val, list):
+                task[field] = self._load_array(task_id, field, val)
+            elif not val:
+                task[field] = []
+        # 单图字段
+        for field in _IMAGE_SINGLE_FIELDS:
+            val = task.get(field)
+            task[field] = self._load_single(task_id, field, val) if val else None
+        # 兼容旧数据
+        if "ref_img_b64" in task and "ref_images" not in task:
+            old_val = task.pop("ref_img_b64")
+            if old_val and len(str(old_val)) < 200:
+                filepath = os.path.join(self.base_dir, str(old_val))
+                if os.path.exists(filepath):
+                    try:
+                        with open(filepath, "rb") as f:
+                            task["ref_images"] = [base64.b64encode(f.read()).decode("utf-8")]
+                    except OSError:
+                        task["ref_images"] = []
                 else:
-                    task[field] = None
+                    task["ref_images"] = []
+            elif old_val and len(str(old_val)) > 200:
+                task["ref_images"] = [old_val]
+            else:
+                task["ref_images"] = []
         return task
 
     def delete_task_images(self, task_id: str):
         """删除某个任务的所有关联图片文件"""
-        for field in ("ref_img_b64", "drawing_img_b64"):
+        # 单图字段
+        for field in _IMAGE_SINGLE_FIELDS:
             filepath = os.path.join(self.base_dir, f"{task_id}_{field}.png")
             if os.path.exists(filepath):
                 try:
                     os.unlink(filepath)
                 except OSError:
                     pass
+        # 多图字段
+        for field in _IMAGE_ARRAY_FIELDS:
+            idx = 0
+            while True:
+                filepath = os.path.join(self.base_dir, f"{task_id}_{field}_{idx}.png")
+                if os.path.exists(filepath):
+                    try:
+                        os.unlink(filepath)
+                    except OSError:
+                        pass
+                    idx += 1
+                else:
+                    break
+        # 兼容旧 ref_img_b64
+        old_file = os.path.join(self.base_dir, f"{task_id}_ref_img_b64.png")
+        if os.path.exists(old_file):
+            try:
+                os.unlink(old_file)
+            except OSError:
+                pass
 
     def migrate_existing_tasks(self, tasks: list) -> tuple:
         """
         启动迁移：扫描已有任务，将内联 Base64 图片迁移到文件系统。
-        返回 (tasks, modified) — modified=True 表示有改动需要回写。
+        同时将旧 ref_img_b64 字段迁移到 ref_images 数组。
         """
         modified = False
         for task in tasks:
             if "id" not in task:
                 continue
-            for field in ("ref_img_b64", "drawing_img_b64"):
-                val = task.get(field)
-                if val and len(val) > 200:
-                    # 内联 Base64 → 写入文件
-                    filename = f"{task['id']}_{field}.png"
+            task_id = task["id"]
+            # 迁移旧的 ref_img_b64 → ref_images
+            if "ref_img_b64" in task and "ref_images" not in task:
+                modified = True
+                val = task.pop("ref_img_b64")
+                if val and len(str(val)) > 200:
+                    filename = f"{task_id}_ref_images_0.png"
                     filepath = os.path.join(self.base_dir, filename)
                     if not os.path.exists(filepath):
                         try:
                             with open(filepath, "wb") as f:
                                 f.write(base64.b64decode(val))
                         except Exception:
-                            continue
-                    task[field] = filename
-                    modified = True
+                            pass
+                    task["ref_images"] = [filename]
+                elif val and len(str(val)) < 200:
+                    task["ref_images"] = [val]
+                else:
+                    task["ref_images"] = []
+            # 迁移 drawing_img_b64
+            field = "drawing_img_b64"
+            val = task.get(field)
+            if val and len(str(val)) > 200:
+                filename = f"{task_id}_{field}.png"
+                filepath = os.path.join(self.base_dir, filename)
+                if not os.path.exists(filepath):
+                    try:
+                        with open(filepath, "wb") as f:
+                            f.write(base64.b64decode(val))
+                    except Exception:
+                        continue
+                task[field] = filename
+                modified = True
         return tasks, modified
 
 

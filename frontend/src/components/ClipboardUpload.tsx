@@ -3,22 +3,25 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, useRef, type DragEvent } from "react";
 
 interface Props {
-  onImage: (b64: string) => void;
+  onImages: (images: string[]) => void;
+  images: string[];
   className?: string;
 }
 
-export default function ClipboardUpload({ onImage, className = "" }: Props) {
+export default function ClipboardUpload({ onImages, images, className = "" }: Props) {
   const [hover, setHover] = useState(false);
-  const [hasImage, setHasImage] = useState(false);
   const inputRef = useRef<HTMLDivElement>(null);
+
+  const appendImage = (b64: string) => {
+    onImages([...images, b64]);
+  };
 
   const processFile = (file: File) => {
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = () => {
       const b64 = (reader.result as string).split(",")[1];
-      onImage(b64);
-      setHasImage(true);
+      appendImage(b64);
     };
     reader.readAsDataURL(file);
   };
@@ -75,7 +78,9 @@ export default function ClipboardUpload({ onImage, className = "" }: Props) {
         aria-label="上传图片"
       />
       <span className="text-[13px] font-medium text-[#8E8E93] pointer-events-none text-center px-4">
-        {hasImage ? "图片已就绪，点击替换" : "点击框内后 Ctrl+V 粘贴 / 或拖拽图片"}
+        {images.length > 0
+          ? `已上传 ${images.length} 张图片，点击/粘贴/拖拽追加`
+          : "点击框内后 Ctrl+V 粘贴 / 或拖拽图片"}
       </span>
     </div>
   );

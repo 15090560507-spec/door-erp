@@ -108,7 +108,7 @@ export async function getTask(taskId: string): Promise<TaskItem> {
 export async function createTask(req: {
   params: DoorFormData;
   ref_text: string;
-  ref_img_b64: string | null;
+  ref_images: string[];
 }): Promise<TaskItem> {
   const { data } = await api.post<TaskItem>("/tasks", req);
   return data;
@@ -121,6 +121,8 @@ export async function updateTask(
     params?: DoorFormData;
     drawing_img_b64?: string | null;
     review_feedback?: string;
+    ref_text?: string;
+    ref_images?: string[];
   }
 ): Promise<TaskItem> {
   const { data } = await api.put<TaskItem>(`/tasks/${taskId}`, update);
