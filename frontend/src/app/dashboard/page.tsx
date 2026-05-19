@@ -9,7 +9,7 @@ import {
   resetPassword as apiResetPassword, getAllTasks,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
-import type { TaskItem, DoorFormData, UserInfo } from "@/lib/types";
+import type { TaskItem, DoorFormData, UserInfo, HistoryEntry } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -342,7 +342,7 @@ export default function DashboardPage() {
                     保存修改
                   </button>
                   <button
-                    onClick={() => { setIsEditing(false); if (activeTask.params) setFormData({ ...DEFAULT_FORM_DATA, ...activeTask.params }); setRefText(activeTask.ref_text || ""); setRefImages(activeTask.ref_images || []); }}
+                    onClick={() => { setIsEditing(false); if (activeTask?.params) setFormData({ ...DEFAULT_FORM_DATA, ...activeTask.params }); setRefText(activeTask?.ref_text || ""); setRefImages(activeTask?.ref_images || []); }}
                     className="px-4 py-2 rounded-lg bg-[#F2F2F7] text-[#8E8E93] text-sm font-medium hover:bg-[#E5E5EA] transition-colors"
                   >
                     取消
@@ -368,7 +368,7 @@ export default function DashboardPage() {
                 {activeTask.ref_text && <p className="text-[#8E8E93] text-sm mb-3">{activeTask.ref_text}</p>}
                 {activeTask.ref_images?.length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {activeTask.ref_images.map((img, idx) => (
+                    {activeTask.ref_images.map((img: string, idx: number) => (
                       <Thumbnail key={idx} b64={img} width={150} />
                     ))}
                   </div>
@@ -437,7 +437,7 @@ export default function DashboardPage() {
                     <details className="mt-3">
                       <summary className="text-[#007AFF] text-sm cursor-pointer">查看参考图 ({activeTask.ref_images.length}张)</summary>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {activeTask.ref_images.map((img, idx) => (
+                        {activeTask.ref_images.map((img: string, idx: number) => (
                           <Thumbnail key={idx} b64={img} width={150} />
                         ))}
                       </div>
@@ -523,8 +523,8 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-            )}
               </div>
+            )}
             {/* 修改记录 */}
             {activeTask.history && activeTask.history.length > 0 && (
               <details className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
@@ -532,7 +532,7 @@ export default function DashboardPage() {
                   修改记录 ({activeTask.history.length})
                 </summary>
                 <div className="px-5 pb-4 space-y-3">
-                  {[...activeTask.history].reverse().map((h, i) => (
+                  {[...activeTask.history].reverse().map((h: HistoryEntry, i: number) => (
                     <div key={i} className="border-l-2 border-[#007AFF] pl-3">
                       <div className="text-xs text-[#8E8E93] mb-1">
                         {h.modified_by} · {h.modified_at}
