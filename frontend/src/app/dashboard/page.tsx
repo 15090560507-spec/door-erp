@@ -9,7 +9,7 @@ import {
   resetPassword as apiResetPassword, getAllTasks,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
-import type { TaskItem, DoorFormData, UserInfo, HistoryEntry } from "@/lib/types";
+import type { TaskItem, DoorFormData, UserInfo } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -29,7 +29,6 @@ export default function DashboardPage() {
   const [refText, setRefText] = useState("");
   const [refImages, setRefImages] = useState<string[]>([]);
   const [uploadImgB64, setUploadImgB64] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [cadBlob, setCadBlob] = useState<Blob | null>(null);
   const [cadLoading, setCadLoading] = useState(false);
@@ -168,18 +167,6 @@ export default function DashboardPage() {
       fetchTasks(filterDate, filterStatus);
     } catch { flash("提交失败", "error"); }
     setSubmitting(false);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!activeTaskId) return;
-    try {
-      await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
-      const updated = await getTask(activeTaskId);
-      setActiveTask(updated);
-      setIsEditing(false);
-      flash("修改已保存", "success");
-      fetchTasks(filterDate, filterStatus);
-    } catch { flash("保存失败", "error"); }
   };
 
   const handleQuickCad = async () => {
@@ -325,48 +312,17 @@ export default function DashboardPage() {
             <h4 className="text-lg font-semibold text-[#1C1C1E] m-0">
               正在处理：{activeTask.customer} - {activeTask.project} <StatusBadge status={activeTask.status} />
             </h4>
-            <div className="ml-auto flex gap-2">
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 rounded-lg bg-white text-[#007AFF] border border-[#007AFF] text-sm font-medium hover:bg-[#F0F8FF] transition-colors"
-                >
-                  编辑
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={handleSaveEdit}
-                    className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all"
-                  >
-                    保存修改
-                  </button>
-                  <button
-                    onClick={() => { setIsEditing(false); if (activeTask?.params) setFormData({ ...DEFAULT_FORM_DATA, ...activeTask.params }); setRefText(activeTask?.ref_text || ""); setRefImages(activeTask?.ref_images || []); }}
-                    className="px-4 py-2 rounded-lg bg-[#F2F2F7] text-[#8E8E93] text-sm font-medium hover:bg-[#E5E5EA] transition-colors"
-                  >
-                    取消
-                  </button>
-                </>
-              )}
-            </div>
           </div>
 
-          {isEditing && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-[#FFF9E6] border border-[#FFD60A] text-[13px] text-[#8B6914]">
-              编辑模式：修改表单后点击「保存修改」提交，系统将自动记录本次修改内容。
-            </div>
-          )}
-
           {/* 客户沟通记录 */}
-          {(activeTask.ref_text || activeTask.ref_images?.length > 0) && (
+          {(activeTask.ref_text || (activeTask.ref_images && activeTask.ref_images.length > 0)) && (
             <details className="mb-4 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
               <summary className="px-5 py-3 font-medium text-[#007AFF] cursor-pointer select-none">
                 查看前端客户沟通记录与参考图
               </summary>
               <div className="px-5 pb-4">
                 {activeTask.ref_text && <p className="text-[#8E8E93] text-sm mb-3">{activeTask.ref_text}</p>}
-                {activeTask.ref_images?.length > 0 && (
+                {activeTask.ref_images && activeTask.ref_images.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {activeTask.ref_images.map((img: string, idx: number) => (
                       <Thumbnail key={idx} b64={img} width={150} />
@@ -433,7 +389,7 @@ export default function DashboardPage() {
                   ) : (
                     <p className="text-[#FF9500] text-sm">绘图员未上传深化图。</p>
                   )}
-                  {activeTask.ref_images?.length > 0 && (
+                  {activeTask.ref_images && activeTask.ref_images.length > 0 && (
                     <details className="mt-3">
                       <summary className="text-[#007AFF] text-sm cursor-pointer">查看参考图 ({activeTask.ref_images.length}张)</summary>
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -524,28 +480,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
-            )}
-            {/* 修改记录 */}
-            {activeTask.history && activeTask.history.length > 0 && (
-              <details className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
-                <summary className="px-5 py-3 font-medium text-[#8E8E93] cursor-pointer select-none">
-                  修改记录 ({activeTask.history.length})
-                </summary>
-                <div className="px-5 pb-4 space-y-3">
-                  {[...activeTask.history].reverse().map((h: HistoryEntry, i: number) => (
-                    <div key={i} className="border-l-2 border-[#007AFF] pl-3">
-                      <div className="text-xs text-[#8E8E93] mb-1">
-                        {h.modified_by} · {h.modified_at}
-                      </div>
-                      {h.changes.map((c, j) => (
-                        <div key={j} className="text-[13px] text-[#48484A] leading-relaxed">
-                          <span className="font-medium">{c.field}</span>: <span className="text-[#FF3B30] line-through">{c.old}</span> → <span className="text-[#248A3D]">{c.new}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </details>
             )}
           </div>
         </div>
