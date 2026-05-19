@@ -523,38 +523,35 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
+            )}
               </div>
+            {/* 修改记录 */}
+            {activeTask.history && activeTask.history.length > 0 && (
+              <details className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
+                <summary className="px-5 py-3 font-medium text-[#8E8E93] cursor-pointer select-none">
+                  修改记录 ({activeTask.history.length})
+                </summary>
+                <div className="px-5 pb-4 space-y-3">
+                  {[...activeTask.history].reverse().map((h, i) => (
+                    <div key={i} className="border-l-2 border-[#007AFF] pl-3">
+                      <div className="text-xs text-[#8E8E93] mb-1">
+                        {h.modified_by} · {h.modified_at}
+                      </div>
+                      {h.changes.map((c, j) => (
+                        <div key={j} className="text-[13px] text-[#48484A] leading-relaxed">
+                          <span className="font-medium">{c.field}</span>: <span className="text-[#FF3B30] line-through">{c.old}</span> → <span className="text-[#248A3D]">{c.new}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         </div>
       )}
 
       {/* ---------- 任务列表模式 ---------- */}
-          {/* 修改记录 */}
-          {activeTask.history && activeTask.history.length > 0 && (
-            <details className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
-              <summary className="px-5 py-3 font-medium text-[#8E8E93] cursor-pointer select-none">
-                修改记录 ({activeTask.history.length})
-              </summary>
-              <div className="px-5 pb-4 space-y-3">
-                {[...activeTask.history].reverse().map((h, i) => (
-                  <div key={i} className="border-l-2 border-[#007AFF] pl-3">
-                    <div className="text-xs text-[#8E8E93] mb-1">
-                      {h.modified_by} · {h.modified_at}
-                    </div>
-                    {h.changes.map((c, j) => (
-                      <div key={j} className="text-[13px] text-[#48484A] leading-relaxed">
-                        <span className="font-medium">{c.field}</span>: <span className="text-[#FF3B30] line-through">{c.old}</span> → <span className="text-[#248A3D]">{c.new}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-      )}
-
       {!activeTaskId && (
         <div>
           {/* 录入模块 */}
