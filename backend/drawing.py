@@ -502,10 +502,11 @@ def draw_door_in_frame(
                 else:
                     lock_x = px1 + lock_side_offset
             elif door_type == "子母门":
-                if idx == 0:
-                    lock_x = px2 - lock_side_offset
-                else:
+                # 仅母门画锁边偏移线，锁边=中缝侧，向合页边方向偏移
+                if is_mother_right and idx == 1:
                     lock_x = px1 + lock_side_offset
+                elif not is_mother_right and idx == 0:
+                    lock_x = px2 - lock_side_offset
             elif door_type in ("折叠四开门", "两定两开"):
                 if idx <= 1:
                     lock_x = px2 - lock_side_offset
