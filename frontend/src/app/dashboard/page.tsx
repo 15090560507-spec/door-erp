@@ -185,7 +185,8 @@ export default function DashboardPage() {
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
-      downloadCadBlob(blob, `排版图纸_${formData.dhdw || "unnamed"}.dxf`);
+      const ts = new Date().toISOString().slice(0,10).replace(/-/g,"") + "_" + new Date().toTimeString().slice(0,8).replace(/:/g,"");
+      downloadCadBlob(blob, `${formData.dhdw || "unnamed"}_${ts}.dxf`);
       flash("CAD 生成完成！", "success");
     } catch { flash("CAD 生成失败", "error"); }
     setCadLoading(false);
