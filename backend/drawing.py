@@ -502,11 +502,12 @@ def draw_door_in_frame(
                 else:
                     lock_x = px1 + lock_side_offset
             elif door_type == "子母门":
-                # 仅母门画锁边偏移线，锁边=中缝侧，向合页边方向偏移
-                if is_mother_right and idx == 1:
-                    lock_x = px1 + lock_side_offset
-                elif not is_mother_right and idx == 0:
-                    lock_x = px2 - lock_side_offset
+                # 母门始终是 panel_positions[1]，锁边=中缝侧，向合页边偏移
+                if idx == 1:
+                    if is_mother_right:
+                        lock_x = px1 + lock_side_offset  # 母门在右，中缝=母门左边
+                    else:
+                        lock_x = px2 - lock_side_offset  # 母门在左，中缝=母门右边
             elif door_type in ("折叠四开门", "两定两开"):
                 if idx <= 1:
                     lock_x = px2 - lock_side_offset
@@ -544,14 +545,14 @@ def draw_door_in_frame(
         elif door_type == "对开门" and len(panel_positions) >= 2:
             handles_to_draw.extend([(panel_positions[0][1] - 60, "ZBPLS"), (panel_positions[1][0] + 60, "YBPLS")])
         elif door_type == "子母门" and len(panel_positions) >= 2:
-            # 子门不画拉手，母门仅在中间缝侧设拉手（距边缘60mm）
+            # 母门始终是 panel_positions[1]，子门不画拉手
             is_mother_right = (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开")
             if is_mother_right:
                 # 母门在右，拉手在母门左边缘（靠中缝）
                 handles_to_draw.append((panel_positions[1][0] + 60, "YBPLS"))
             else:
                 # 母门在左，拉手在母门右边缘（靠中缝）
-                handles_to_draw.append((panel_positions[0][1] - 60, "ZBPLS"))
+                handles_to_draw.append((panel_positions[1][1] - 60, "ZBPLS"))
 
         elif door_type in ["折叠四开门", "两定两开"] and len(panel_positions) >= 4:
             handles_to_draw.extend([(panel_positions[1][1] - 60, "ZBPLS"), (panel_positions[2][0] + 60, "YBPLS")])
