@@ -1,30 +1,30 @@
 {
   "admin": {
-    "password": "pbkdf2:sha256:100000:65ea2825f79fce261a3616d1d862fd54:15299454090825fee34a7219f2914851accd202174199df54c660dc6a50ca3aa",
+    "password": "pbkdf2:sha256:100000:c765a8b866f29b994d6cfeda883e382c:8a3621a863e8e59c2f247cbe6f2afd3c3412e356343f043f44480f7400393bb7",
     "role": "超级管理员",
     "name": "系统管理员",
     "default_module": "后台管理"
   },
   "A": {
-    "password": "pbkdf2:sha256:100000:8aec54c5fac001d628986357f36c82b0:f4a93313d5521d927d339d0c806b3b1246c864127cf75927710c90f38c8ea096",
+    "password": "pbkdf2:sha256:100000:935741f40eb9595ab5245b038d9d393b:27446cb816276559092b103fdeb15b5b1f100aaa043686ad7724ae205f312e97",
     "role": "录入员",
     "name": "销售小A",
     "default_module": "图纸信息录入"
   },
   "B": {
-    "password": "pbkdf2:sha256:100000:5e9280b1de86401d31ff9af977c30bc8:77c4af55e4179907c5dbc92d39c640fa2da5b19e9f937f930effa38f9bcc6e9d",
+    "password": "pbkdf2:sha256:100000:e1ac3b28e6ed73b625b57071fbfbdb23:7fc19ed2df5160862b3c1ca46a42c781c22ed56f9d9b971dc749575d8d8d76e2",
     "role": "绘图员",
     "name": "技术小B",
     "default_module": "图纸绘制"
   },
   "C": {
-    "password": "pbkdf2:sha256:100000:07f6a4b8df9ff16b4a85895e116b8c72:63bc99b3c00d45180a80c1953562251640441121ee12d1f74e6f15629ec3976d",
+    "password": "pbkdf2:sha256:100000:68bf4efaaedce614cde46266136bb427:9f45aa1b5ea17fff1b9dc07eb28de55e265cb9c18e7e0fd8fcf71aeca7f4da9b",
     "role": "初审员",
     "name": "初审小C",
     "default_module": "图纸初审"
   },
   "D": {
-    "password": "pbkdf2:sha256:100000:7108fdd43e56e48840be220bf7467739:7381a93512b90f4d139ca25918be269b0cd3d6c60e850c5689bdc1f339c77cb4",
+    "password": "pbkdf2:sha256:100000:6f30376cdce5787da605e4715f62fac8:0ee5e8e35f6a90d8525b36ed538dffb3a2b32de9f3fd5fbbe450e2af6d1e0b91",
     "role": "总工",
     "name": "总工小D",
     "default_module": "图纸终审"
