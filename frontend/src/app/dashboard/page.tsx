@@ -9,7 +9,7 @@ import {
   resetPassword as apiResetPassword, getAllTasks,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
-import type { TaskItem, DoorFormData, UserInfo } from "@/lib/types";
+import type { TaskItem, DoorFormData, UserInfo, HistoryEntry } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -169,6 +169,17 @@ export default function DashboardPage() {
     setSubmitting(false);
   };
 
+  const handleSaveEdit = async () => {
+    if (!activeTaskId) return;
+    try {
+      await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
+      const updated = await getTask(activeTaskId);
+      setActiveTask(updated);
+      flash("修改已保存", "success");
+      fetchTasks(filterDate, filterStatus);
+    } catch { flash("保存失败", "error"); }
+  };
+
   const handleQuickCad = async () => {
     setCadLoading(true);
     try {
@@ -312,6 +323,12 @@ export default function DashboardPage() {
             <h4 className="text-lg font-semibold text-[#1C1C1E] m-0">
               正在处理：{activeTask.customer} - {activeTask.project} <StatusBadge status={activeTask.status} />
             </h4>
+            <button
+              onClick={handleSaveEdit}
+              className="ml-auto px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all"
+            >
+              保存修改
+            </button>
           </div>
 
           {/* 客户沟通记录 */}
@@ -480,6 +497,27 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+            )}
+            {activeTask.history && activeTask.history.length > 0 && (
+              <details className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
+                <summary className="px-5 py-3 font-medium text-[#8E8E93] cursor-pointer select-none">
+                  修改记录 ({activeTask.history.length})
+                </summary>
+                <div className="px-5 pb-4 space-y-3">
+                  {[...activeTask.history].reverse().map((h: HistoryEntry, i: number) => (
+                    <div key={i} className="border-l-2 border-[#007AFF] pl-3">
+                      <div className="text-xs text-[#8E8E93] mb-1">
+                        {h.modified_by} · {h.modified_at}
+                      </div>
+                      {h.changes.map((c, j) => (
+                        <div key={j} className="text-[13px] text-[#48484A] leading-relaxed">
+                          <span className="font-medium">{c.field}</span>: <span className="text-[#FF3B30] line-through">{c.old}</span> → <span className="text-[#248A3D]">{c.new}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         </div>
