@@ -110,3 +110,19 @@ def render_quote_jpg(quote: dict, output_path: str):
 
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def render_quote_pdf(quote: dict, output_path: str):
+    """
+    灏嗘姤浠锋暟鎹覆鏌撲负 PDF 鏂囦欢锛屽鐢?JPG 娓叉煋绠＄嚎锛屼究浜庝簯绔ǔ瀹氬鍑恒€?
+    """
+    work_dir = tempfile.mkdtemp()
+
+    try:
+        jpg_path = os.path.join(work_dir, "quote.jpg")
+        render_quote_jpg(quote, jpg_path)
+
+        with Image.open(jpg_path) as img:
+            img.convert("RGB").save(output_path, "PDF", resolution=200.0)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)

@@ -11,7 +11,7 @@ from quote_models import (
     AiConfigUpdate,
 )
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
-from quote_excel import generate_excel, render_quote_jpg
+from quote_excel import generate_excel, render_quote_jpg, render_quote_pdf
 
 quote_router = APIRouter()
 
@@ -242,8 +242,21 @@ def export_quote_pdf(quote_id: int):
     quote = quote_db.get_by_id(quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="报价单不存在")
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=_build_quote_html(quote, auto_print=True))
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    try:
+        render_quote_pdf(quote, tmp_path)
+        filename = f"鎶ヤ环鍗昣{quote.get('customerName', 'export')}_{quote_id}.pdf"
+        return FileResponse(
+            tmp_path,
+            media_type="application/pdf",
+            filename=filename,
+            background=None,
+        )
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail="PDF 鐢熸垚澶辫触")
 
 
 # ===================== AI 配置管理 =====================
