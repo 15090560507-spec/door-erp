@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "export:pdf": "node quote-template-pdf/scripts/export-pdf.mjs"
+  }
+}

@@ -2,16 +2,19 @@
 报价系统 API 路由
 """
 import os
+import shutil
 import tempfile
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from starlette.background import BackgroundTask
 from quote_models import (
     AccessoryCreate, AccessoryImport,
     QuoteCreate,
     AiConfigUpdate,
 )
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
-from quote_excel import generate_excel, render_quote_jpg, render_quote_pdf
+from quote_excel import generate_excel
+from quote_template_renderer import render_quote_template_artifacts
 
 quote_router = APIRouter()
 
@@ -19,6 +22,10 @@ quote_router = APIRouter()
 accessory_db = AccessoryDatabaseManager()
 quote_db = QuoteDatabaseManager()
 ai_config_db = AiConfigManager()
+
+
+def _cleanup_dir(path: str):
+    shutil.rmtree(path, ignore_errors=True)
 
 
 # ===================== 配件管理 =====================
@@ -204,59 +211,63 @@ def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
 
 @quote_router.get("/api/quotes/{quote_id}/preview.html")
 def quote_preview_html(quote_id: int):
-    """返回干净 HTML（无 oklch 颜色），供前端 iframe 加载后 html2canvas 截图"""
+    """返回报价单预览 HTML，由 Playwright 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="报价单不存在")
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=_build_quote_html(quote, auto_print=False))
+
+    tmp_dir = tempfile.mkdtemp(prefix="quote-preview-")
+    try:
+        artifacts = render_quote_template_artifacts(quote, tmp_dir)
+        with open(artifacts["html_path"], "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except Exception:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=500, detail="HTML 预览生成失败")
+    finally:
+        _cleanup_dir(tmp_dir)
 
 
 @quote_router.get("/api/quotes/{quote_id}/export.jpg")
 def export_quote_jpg(quote_id: int):
-    """导出报价单 JPG：服务端渲染 Excel A1:J24 布局 + 40px 白边"""
+    """导出报价单 JPG，使用高还原 HTML/CSS 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="报价单不存在")
 
-    fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
-    os.close(fd)
+    tmp_dir = tempfile.mkdtemp(prefix="quote-jpg-")
     try:
-        render_quote_jpg(quote, tmp_path)
-        filename = f"报价单_{quote.get('customerName', 'export')}_{quote_id}.jpg"
+        artifacts = render_quote_template_artifacts(quote, tmp_dir)
         return FileResponse(
-            tmp_path,
+            artifacts["jpg_path"],
             media_type="image/jpeg",
-            filename=filename,
-            background=None,
+            filename=f"quote_{quote_id}.jpg",
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
         )
     except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        _cleanup_dir(tmp_dir)
         raise HTTPException(status_code=500, detail="JPG 生成失败")
 
 
 @quote_router.get("/api/quotes/{quote_id}/export.pdf")
 def export_quote_pdf(quote_id: int):
-    """打印：返回干净 HTML，浏览器自动触发打印"""
+    """导出报价单 PDF，使用高还原 HTML/CSS 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="报价单不存在")
-    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
-    os.close(fd)
+
+    tmp_dir = tempfile.mkdtemp(prefix="quote-pdf-")
     try:
-        render_quote_pdf(quote, tmp_path)
-        filename = f"鎶ヤ环鍗昣{quote.get('customerName', 'export')}_{quote_id}.pdf"
+        artifacts = render_quote_template_artifacts(quote, tmp_dir)
         return FileResponse(
-            tmp_path,
+            artifacts["pdf_path"],
             media_type="application/pdf",
-            filename=filename,
-            background=None,
+            filename=f"quote_{quote_id}.pdf",
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
         )
     except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise HTTPException(status_code=500, detail="PDF 鐢熸垚澶辫触")
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=500, detail="PDF 生成失败")
 
 
 # ===================== AI 配置管理 =====================
