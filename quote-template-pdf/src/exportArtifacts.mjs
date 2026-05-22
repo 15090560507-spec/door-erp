@@ -25,13 +25,17 @@ async function loadPlaywright() {
 }
 
 async function launchBrowser(chromium) {
+  const launchOptions = {
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  };
   const envPath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
   if (envPath && await exists(envPath)) {
-    return chromium.launch({ headless: true, executablePath: envPath });
+    return chromium.launch({ ...launchOptions, executablePath: envPath });
   }
 
   try {
-    return await chromium.launch({ headless: true });
+    return await chromium.launch(launchOptions);
   } catch (error) {
     const candidates = [
       "/usr/bin/chromium",
@@ -46,7 +50,7 @@ async function launchBrowser(chromium) {
 
     for (const executablePath of candidates) {
       if (await exists(executablePath)) {
-        return chromium.launch({ headless: true, executablePath });
+        return chromium.launch({ ...launchOptions, executablePath });
       }
     }
 
@@ -108,4 +112,3 @@ export async function renderQuoteArtifacts({ quotePath, outputDir }) {
     previewPath,
   };
 }
-

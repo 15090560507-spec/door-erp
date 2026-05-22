@@ -1,10 +1,18 @@
 import json
 import os
 import subprocess
+from pathlib import Path
 from typing import Dict
 
 
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _resolve_project_root(module_file: str = __file__) -> Path:
+    module_dir = Path(module_file).resolve().parent
+    if module_dir.name == "backend":
+        return module_dir.parent
+    return module_dir
+
+
+_BASE_DIR = str(_resolve_project_root())
 _QUOTE_TEMPLATE_DIR = os.path.join(_BASE_DIR, "quote-template-pdf")
 _RENDER_SCRIPT = os.path.join(_QUOTE_TEMPLATE_DIR, "scripts", "render-artifacts.mjs")
 

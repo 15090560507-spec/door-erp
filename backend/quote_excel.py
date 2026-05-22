@@ -7,10 +7,19 @@ import os
 import subprocess
 import shutil
 import tempfile
+from pathlib import Path
 from openpyxl import load_workbook
 from PIL import Image
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "template.xlsx")
+
+def _resolve_project_root(module_file: str = __file__) -> Path:
+    module_dir = Path(module_file).resolve().parent
+    if module_dir.name == "backend":
+        return module_dir.parent
+    return module_dir
+
+
+TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
 
 
 def generate_excel(quote: dict, output_path: str):

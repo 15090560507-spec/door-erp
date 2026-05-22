@@ -37,6 +37,7 @@ RUN cd /app/quote-template-pdf && npm ci --registry=https://registry.npmmirror.c
 # 复制后端源码、报价模板工程和 CAD 模板
 COPY backend/ .
 COPY quote-template-pdf/ /app/quote-template-pdf/
+COPY template.xlsx .
 COPY template.dxf .
 
 EXPOSE 8000

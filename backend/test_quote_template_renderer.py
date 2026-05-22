@@ -63,6 +63,17 @@ def sample_quote():
 def test_renderer_module_contract():
     section("1. Renderer Module Contract")
     import quote_template_renderer as renderer
+    import quote_excel
+
+    local_root = renderer._resolve_project_root(os.path.join(BACKEND_DIR, "quote_template_renderer.py"))
+    container_root = renderer._resolve_project_root("/app/quote_template_renderer.py")
+    excel_container_root = quote_excel._resolve_project_root("/app/quote_excel.py")
+
+    check("renderer resolves local repo root", os.path.basename(local_root) != "backend", str(local_root))
+    check("renderer resolves container app root", str(container_root).replace("\\", "/").endswith("/app"), str(container_root))
+    check("excel resolves container app root", str(excel_container_root).replace("\\", "/").endswith("/app"), str(excel_container_root))
+    check("renderer script exists", os.path.exists(renderer._RENDER_SCRIPT), renderer._RENDER_SCRIPT)
+    check("excel template exists", os.path.exists(quote_excel.TEMPLATE_PATH), quote_excel.TEMPLATE_PATH)
 
     tmpdir = tempfile.mkdtemp(prefix="quote_renderer_contract_")
     original_run = renderer.subprocess.run
@@ -130,6 +141,17 @@ def test_export_routes_use_template_renderer():
     quote_routes.quote_db.get_by_id = fake_get_by_id
     quote_routes.render_quote_template_artifacts = fake_renderer
     try:
+        xlsx_resp = quote_routes.export_quote_xlsx(1)
+        check(
+            "xlsx export response class",
+            xlsx_resp.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            str(xlsx_resp.media_type),
+        )
+        check("xlsx export filename set", xlsx_resp.filename.endswith(".xlsx"), str(xlsx_resp.filename))
+        check("xlsx export path exists", os.path.exists(xlsx_resp.path), str(xlsx_resp.path))
+        check("xlsx export has content", os.path.getsize(xlsx_resp.path) > 1000, str(xlsx_resp.path))
+        os.unlink(xlsx_resp.path)
+
         html_resp = quote_routes.quote_preview_html(1)
         check("preview html response class", html_resp.media_type == "text/html", str(html_resp.media_type))
         check("preview html contains body", b"preview" in html_resp.body, str(html_resp.body[:80]))

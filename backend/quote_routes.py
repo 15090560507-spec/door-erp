@@ -1,6 +1,7 @@
 """
 报价系统 API 路由
 """
+import logging
 import os
 import shutil
 import tempfile
@@ -17,6 +18,7 @@ from quote_excel import generate_excel
 from quote_template_renderer import render_quote_template_artifacts
 
 quote_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # 实例化管理器
 accessory_db = AccessoryDatabaseManager()
@@ -137,6 +139,7 @@ def export_quote_xlsx(quote_id: int):
             background=None,  # delete temp file after response
         )
     except Exception:
+        logger.exception("Excel export failed for quote_id=%s", quote_id)
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise HTTPException(status_code=500, detail="Excel 生成失败")
@@ -222,6 +225,7 @@ def quote_preview_html(quote_id: int):
         with open(artifacts["html_path"], "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except Exception:
+        logger.exception("Quote preview render failed for quote_id=%s", quote_id)
         _cleanup_dir(tmp_dir)
         raise HTTPException(status_code=500, detail="HTML 预览生成失败")
     finally:
@@ -245,6 +249,7 @@ def export_quote_jpg(quote_id: int):
             background=BackgroundTask(_cleanup_dir, tmp_dir),
         )
     except Exception:
+        logger.exception("JPG export failed for quote_id=%s", quote_id)
         _cleanup_dir(tmp_dir)
         raise HTTPException(status_code=500, detail="JPG 生成失败")
 
@@ -266,6 +271,7 @@ def export_quote_pdf(quote_id: int):
             background=BackgroundTask(_cleanup_dir, tmp_dir),
         )
     except Exception:
+        logger.exception("PDF export failed for quote_id=%s", quote_id)
         _cleanup_dir(tmp_dir)
         raise HTTPException(status_code=500, detail="PDF 生成失败")
 
