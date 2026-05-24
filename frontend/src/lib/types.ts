@@ -142,7 +142,7 @@ export const BZ_OPTIONS = ["全包", "木箱"];
 export const HYSL_OPTIONS = ["3个/扇", "2个/扇", "4个/扇", "5个/扇"];
 export const MATERIALS = ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"];
 export const HANDLES = ["标配拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
-export const LOCKS = ["标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
+export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
 export const FINGERPRINT_LOCKS = ["无", "安志杰AF-12", "客备"];
 export const HINGES = ["葫芦头合页", "可拆卸合页", "三位可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
@@ -151,10 +151,10 @@ export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
   zmks: "按图", fmks: "按图",
-  zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "标准锁体", fingerprint_lock: "无",
+  zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "无",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 150, ddh: "", sl: "1 樘", hhxd: "D",
-  dhrq: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+  dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/70",
   sel_kx: "右开", sel_nk: "内开",

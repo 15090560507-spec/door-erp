@@ -147,7 +147,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
             <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
             <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
-            <Input label="交期" value={data.dhrq} onChange={(v) => set("dhrq", v)} />
+            <Input label="交期" type="date" value={(data.dhrq || "").replace(/\./g, "-")} onChange={(v) => set("dhrq", v)} />
             <Input label="数量(樘)" required value={data.sl} onChange={(v) => set("sl", v)} />
             <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
           </div>

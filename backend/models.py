@@ -43,7 +43,7 @@ class CADRequest(BaseModel):
     zmls: str = "标配拉手"              # 正面拉手
     fmls: str = "标配拉手"              # 反面拉手
     handle_size: str = ""               # 拉手尺寸，如 40*800
-    st_val: str = "标准锁体"            # 锁体类型
+    st_val: str = "连体锁"              # 锁体类型
     fingerprint_lock: str = "无"        # 指纹锁
     sel_hys: str = ""                   # 合页样式
     hysl: str = "3个/扇"                # 合页数量

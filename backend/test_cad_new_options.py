@@ -35,7 +35,7 @@ def test_cad_new_options_flow():
         sel_hys="三位可调合页",
         threshold_type="吊脚",
         has_dj=True,
-        dj_height=180,
+        dj_height=20,
         has_outer=True,
         trim_front_in=160,
         trim_style_outer="平包套",
@@ -44,8 +44,8 @@ def test_cad_new_options_flow():
         trim_back_in=140,
         trim_style_inner="平包套",
         overlap_back=35,
-        zmls="背包拉手",
-        fmls="背包拉手",
+        zmls="自制长拉手",
+        fmls="标配拉手",
         handle_size="40*800",
         fingerprint_lock="安志杰AF-12",
         mark_light_size=True,
@@ -53,11 +53,14 @@ def test_cad_new_options_flow():
 
     info, checks, draw_params = build_cad_params(req)
     check("DJ attr is checked", info["DJ"] == "√", str(info.get("DJ")))
-    check("DJG attr uses height", info["DJG"] == "180", str(info.get("DJG")))
+    check("DJG attr uses height", info["DJG"] == "20", str(info.get("DJG")))
     check("fingerprint lock maps to ZWS", info["ZWS"] == "安志杰AF-12", str(info.get("ZWS")))
     check("front overlap is independent", draw_params["overlap_front"] == 25, str(draw_params))
     check("back overlap is independent", draw_params["overlap_back"] == 35, str(draw_params))
-    check("handle size is preserved in notes", "拉手尺寸=40*800" in info["BZ"], info["BZ"])
+    check("self-made long handle note is formatted", "自制长拉手尺寸为：40mm*800mm" in info["BZ"], info["BZ"])
+    check("hanging threshold removes front sill", draw_params["th_front"] == 0, str(draw_params))
+    check("hanging threshold removes back sill", draw_params["th_back"] == 0, str(draw_params))
+    check("hanging threshold carries panel gap", draw_params["dj_height"] == 20, str(draw_params))
     check("mark light size passes to drawing", draw_params["mark_light_size"] is True, str(draw_params))
 
     msg, buffer = run_integrated_system(info, checks, draw_params)
@@ -69,7 +72,29 @@ def test_cad_new_options_flow():
     inserts = [entity.dxf.name for entity in doc.modelspace().query("INSERT")]
     check("PBT block inserted", "PBT" in inserts, str(inserts[:20]))
     check("AZJ block inserted", "AZJ" in inserts, str(inserts[:20]))
-    check("BBLS block inserted", "BBLS" in inserts, str(inserts[:20]))
+
+    baseline_req = req.model_copy(deep=True)
+    baseline_req.zmls = "无"
+    baseline_req.fmls = "无"
+    baseline_req.handle_size = ""
+    baseline_req.fingerprint_lock = "无"
+    base_info, base_checks, base_draw_params = build_cad_params(baseline_req)
+    _base_msg, base_buffer = run_integrated_system(base_info, base_checks, base_draw_params)
+    base_doc = ezdxf.read(io.StringIO(base_buffer.getvalue()))
+    base_inserts = [entity.dxf.name for entity in base_doc.modelspace().query("INSERT")]
+    for block_name in ("BBLS", "ZBPLS", "YBPLS"):
+        check(
+            f"{block_name} count is unchanged when handle size is provided",
+            inserts.count(block_name) == base_inserts.count(block_name),
+            f"{block_name}: {base_inserts.count(block_name)} -> {inserts.count(block_name)}",
+        )
+
+    panel_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    min_panel_y = min(point[1] for entity in panel_polys for point in entity.get_points("xy"))
+    check("hanging door panel starts at 20mm above bottom", abs(min_panel_y - 20) < 0.01, str(min_panel_y))
 
 
 if __name__ == "__main__":

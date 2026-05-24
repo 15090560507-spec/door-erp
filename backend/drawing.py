@@ -294,7 +294,10 @@ def draw_door_in_frame(
         panel_y_top = top_frame_bottom - qc_h - ref_fw_top - top_gap
     else:
         panel_y_top = dh - ref_fw_top - top_gap
-    panel_y_bot = ref_th + bottom_gap
+    if p.get("has_dj"):
+        panel_y_bot = max(0, p.get("dj_height", 0))
+    else:
+        panel_y_bot = ref_th + bottom_gap
 
     pillar_width_front = 0
     pillar_width_back = 0
@@ -422,8 +425,8 @@ def draw_door_in_frame(
     should_mark_light = p.get("mark_light_size", False) or use_light_size
     should_draw_light_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
     if should_mark_light and should_draw_light_view:
-        light_x1 = ref_left
-        light_x2 = dw - ref_right
+        light_x1 = left_width
+        light_x2 = dw - right_width
         if door_type in ("两定两开", "折叠四开门") and len(panel_positions) >= 4:
             light_x1 = panel_positions[0][1]
             light_x2 = panel_positions[-1][0]
@@ -446,7 +449,9 @@ def draw_door_in_frame(
 
     if should_mark_light and should_draw_light_view:
         light_text_h = f"见光高 {light_h}" if use_light_size and light_h > 0 else "见光高 <>"
-        dims_v.append(("见光高", panel_y_bot, panel_y_top, 100, True, light_text_h))
+        light_y1 = th
+        light_y2 = dh - fw_top
+        dims_v.append(("见光高", light_y1, light_y2, 100, True, light_text_h))
 
     dims_v.append(("洞口高", 0, dh, 300, True, None))
 
@@ -586,19 +591,21 @@ def draw_door_in_frame(
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
 
-    if current_handle == "标配拉手":
+    has_sized_handle = bool(parse_handle_size(str(p.get("handle_size", ""))))
+
+    if current_handle == "标配拉手" and not has_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
             drawer.insert_custom_block(hblock, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
-    if current_handle == "背包拉手":
+    if current_handle == "背包拉手" and not has_sized_handle:
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
-    if handle_size:
+    if handle_size and not is_back:
         handle_w, handle_h = handle_size
-        for hx, _toward_hinge, _hblock in handle_targets(80, primary_only=True):
+        for hx, _toward_hinge, _hblock in handle_targets(110, primary_only=True):
             y_center = 1200
             drawer.draw_poly([
                 off((hx - handle_w / 2, y_center - handle_h / 2)),

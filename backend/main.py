@@ -73,6 +73,21 @@ def build_cad_params(req: CADRequest):
     原封不动地从 door_26.py 的 generate_cad_trigger 逻辑提取
     """
     # --- 包套批注 ---
+    def _format_handle_size(value: str):
+        normalized = (value or "").lower().replace("×", "*").replace("x", "*")
+        parts = [part.strip() for part in normalized.split("*") if part.strip()]
+        if len(parts) != 2:
+            return value.strip(), None
+        try:
+            a = float(parts[0])
+            b = float(parts[1])
+        except ValueError:
+            return value.strip(), None
+        width, height = min(a, b), max(a, b)
+        def fmt(num: float):
+            return str(int(num)) if num.is_integer() else str(num)
+        return f"{fmt(width)}mm*{fmt(height)}mm", (width, height)
+
     overlap_front = req.overlap_front if req.overlap_front is not None else req.overlap
     overlap_back = req.overlap_back if req.overlap_back is not None else req.overlap
     current_note = req.sm
@@ -87,7 +102,11 @@ def build_cad_params(req: CADRequest):
         frame_notes.append(f"内门套宽/压墙/压框={inner_w}/{inner_w - overlap_back}/{overlap_back}mm")
 
     if req.handle_size.strip():
-        frame_notes.append(f"拉手尺寸={req.handle_size.strip()}")
+        handle_label, _handle_pair = _format_handle_size(req.handle_size)
+        if req.zmls == "自制长拉手":
+            frame_notes.append(f"自制长拉手尺寸为：{handle_label}")
+        else:
+            frame_notes.append(f"拉手尺寸={handle_label}")
 
     if frame_notes:
         note_line = "\n".join(frame_notes)
@@ -147,10 +166,16 @@ def build_cad_params(req: CADRequest):
             res_light = calc.calculate_from_light_size(lw, lh, req.sel_nk == "外开")
             dw, dh = res_light[0], res_light[1]
 
+    is_hanging_threshold = req.threshold_type == "吊脚" or req.has_dj
+
+    if is_hanging_threshold:
+        thf = 0
+        thb = 0
+
     # --- 下槛处理 ---
     dj_val = ""
     djg_val = ""
-    if req.threshold_type == "吊脚" or req.has_dj:
+    if is_hanging_threshold:
         dxk_val = ""
         gxk_val = ""
         pdk_val = ""
@@ -257,6 +282,8 @@ def build_cad_params(req: CADRequest):
         "left_width_back": lwb, "right_width_back": rwb,
         "fw_top_front": ftf, "fw_top_back": ftb,
         "th_front": thf, "th_back": thb,
+        "has_dj": is_hanging_threshold,
+        "dj_height": req.dj_height,
         "trim_front": trim_f, "trim_back": trim_b,
         "overlap": req.overlap,
         "overlap_front": overlap_front,

@@ -65,7 +65,7 @@ class Config:
         "标配拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"
     ])
     LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
-        "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"
+        "连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"
     ])
     FINGERPRINT_LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
         "无", "安志杰AF-12", "客备"
