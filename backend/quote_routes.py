@@ -11,9 +11,11 @@ import re
 import time
 import urllib.error
 import urllib.request
+from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
+from PIL import Image, ImageOps
 from quote_models import (
     AccessoryCreate, AccessoryImport,
     QuoteCreate,
@@ -25,6 +27,8 @@ from quote_template_renderer import render_quote_template_artifacts
 
 quote_router = APIRouter()
 logger = logging.getLogger(__name__)
+AI_IMAGE_MAX_EDGE = 1600
+AI_IMAGE_JPEG_QUALITY = 82
 
 # 实例化管理器
 accessory_db = AccessoryDatabaseManager()
@@ -101,6 +105,30 @@ def _normalize_analysis(data: dict) -> dict:
         "accessories": [str(item) for item in accessories if item],
         "notes": str(data.get("notes") or ""),
     }
+
+
+def _prepare_ai_image(image_bytes: bytes, content_type: str) -> tuple[bytes, str]:
+    """Downscale uploaded drawings before sending them to the vision model."""
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            img = ImageOps.exif_transpose(img)
+            if img.mode in ("RGBA", "LA", "P"):
+                rgba = img.convert("RGBA")
+                canvas = Image.new("RGB", rgba.size, "#ffffff")
+                canvas.paste(rgba, mask=rgba.getchannel("A"))
+                img = canvas
+            else:
+                img = img.convert("RGB")
+
+            if max(img.size) > AI_IMAGE_MAX_EDGE:
+                img.thumbnail((AI_IMAGE_MAX_EDGE, AI_IMAGE_MAX_EDGE), Image.Resampling.LANCZOS)
+
+            output = BytesIO()
+            img.save(output, "JPEG", quality=AI_IMAGE_JPEG_QUALITY, optimize=True)
+            return output.getvalue(), "image/jpeg"
+    except Exception:
+        logger.warning("AI image optimization failed; using original upload", exc_info=True)
+        return image_bytes, content_type
 
 
 # ===================== 配件管理 =====================
@@ -378,6 +406,7 @@ async def analyze_drawing(file: UploadFile = File(...)):
     if not image_bytes:
         raise HTTPException(status_code=400, detail="上传图纸为空")
 
+    image_bytes, content_type = _prepare_ai_image(image_bytes, content_type)
     data_url = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
     url = f"{base_url}/{endpoint_path.lstrip('/')}"
     payload = {

@@ -1,4 +1,3 @@
-// ===================== 配件 =====================
 export interface Accessory {
   id: number;
   name: string;
@@ -21,7 +20,6 @@ export interface AccessoryCreate {
   remark?: string;
 }
 
-// ===================== 报价单 =====================
 export interface QuoteItem {
   accessoryId: number | null;
   productName: string;
@@ -67,7 +65,6 @@ export interface QuoteListResponse {
   total: number;
 }
 
-// ===================== AI 配置 =====================
 export interface AiConfig {
   baseUrl: string;
   endpointPath: string;
@@ -77,7 +74,6 @@ export interface AiConfig {
   updatedAt: string;
 }
 
-// ===================== AI 图纸识别 =====================
 export interface AnalysisItem {
   productName: string;
   width: number | null;
@@ -105,25 +101,36 @@ export interface DrawingAnalysisResponse {
   rawPreview: string;
 }
 
-// ===================== 常量 =====================
 export const DEFAULT_QUOTE_NOTICE_TEXT = "本报价不含税工厂结算价，含木箱。";
 
 export const OPEN_DIRECTION_MAP: Record<string, string> = {
-  "内开": "内右开",
-  "外开": "外右开",
-  "右开": "内右开",
-  "左开": "内左开",
-  "内右": "内右开",
-  "内左": "内左开",
-  "外右": "外右开",
-  "外左": "外左开",
+  "内开": "右内开",
+  "外开": "右外开",
+  "右开": "右内开",
+  "左开": "左内开",
+  "内右": "右内开",
+  "内左": "左内开",
+  "外右": "右外开",
+  "外左": "左外开",
+  "右内": "右内开",
+  "左内": "左内开",
+  "右外": "右外开",
+  "左外": "左外开",
+  "右开内开": "右内开",
+  "左开内开": "左内开",
+  "右开外开": "右外开",
+  "左开外开": "左外开",
+  "内开右开": "右内开",
+  "内开左开": "左内开",
+  "外开右开": "右外开",
+  "外开左开": "左外开",
 };
 
 export function normalizeOpenDirection(dir: string): string {
   if (!dir) return "";
-  const d = dir.trim();
+  const d = dir.trim().replace(/\s+/g, "");
   if (!d) return "";
-  if (/^(内|外)(左|右)开$/.test(d)) return d;
+  if (/^[左右][内外]开$/.test(d)) return d;
   return OPEN_DIRECTION_MAP[d] || d;
 }
 
@@ -139,4 +146,4 @@ export function createEmptyQuoteItem(): QuoteItem {
   };
 }
 
-export const UNIT_OPTIONS = ["m²", "付", "套", "个", "组", "樘", "把", "支", "块", "条", "根", "台"];
+export const UNIT_OPTIONS = ["m²", "件", "套", "个", "组", "樘", "把", "支", "块", "条", "根", "台"];

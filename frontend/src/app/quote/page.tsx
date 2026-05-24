@@ -127,6 +127,8 @@ export default function QuotePage() {
     if (result.projectName) setProjectName(result.projectName);
 
     const globalDir = normalizeOpenDirection(result.openDirection);
+    const fallbackWidth = result.outerWidth ?? null;
+    const fallbackHeight = result.outerHeight ?? null;
 
     setItems(
       Array.from({ length: 8 }, (_, index) => {
@@ -136,11 +138,19 @@ export default function QuotePage() {
           return {
             accessoryId: null,
             productName: item.productName || "",
-            width: item.width ?? null,
-            height: item.height ?? null,
+            width: item.width ?? fallbackWidth,
+            height: item.height ?? fallbackHeight,
             openDirection: normalizeOpenDirection(rawDir),
             unit: item.unit || "m2",
             unitPrice: item.unitPrice ?? 0,
+          };
+        }
+        if (index === 0 && (fallbackWidth || fallbackHeight || globalDir)) {
+          return {
+            ...createEmptyQuoteItem(),
+            width: fallbackWidth,
+            height: fallbackHeight,
+            openDirection: globalDir,
           };
         }
         return createEmptyQuoteItem();

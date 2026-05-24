@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import sys
 import tempfile
 
 from starlette.datastructures import Headers, UploadFile
+from PIL import Image
 
 
 os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="door_quote_export_test_")
@@ -239,7 +241,10 @@ def test_ai_analysis_parses_openai_compatible_response():
         globals()["check"]("AI request uses configured model", payload["model"] == "vision-test", str(payload))
         globals()["check"]("AI request uses model-compatible temperature", payload["temperature"] == 1, str(payload))
         image_part = payload["messages"][1]["content"][1]["image_url"]["url"]
-        globals()["check"]("AI request includes data URL image", image_part.startswith("data:image/jpeg;base64,"), image_part[:40])
+        globals()["check"]("AI request includes optimized JPEG image", image_part.startswith("data:image/jpeg;base64,"), image_part[:40])
+        image_bytes = base64.b64decode(image_part.split(",", 1)[1])
+        with Image.open(io.BytesIO(image_bytes)) as optimized:
+            globals()["check"]("AI request image is resized for speed", max(optimized.size) <= 1600, str(optimized.size))
 
         class Response:
             def __enter__(self):
@@ -276,15 +281,19 @@ def test_ai_analysis_parses_openai_compatible_response():
 
     quote_routes.urllib.request.urlopen = fake_urlopen
 
+    source_image = Image.new("RGB", (2600, 1800), "#ffffff")
+    source_buffer = io.BytesIO()
+    source_image.save(source_buffer, "PNG")
+    source_buffer.seek(0)
     upload = UploadFile(
-        filename="door.jpg",
-        file=io.BytesIO(b"\xff\xd8\xff"),
-        headers=Headers({"content-type": "image/jpeg"}),
+        filename="door.png",
+        file=source_buffer,
+        headers=Headers({"content-type": "image/png"}),
     )
 
     try:
         result = asyncio.run(quote_routes.analyze_drawing(upload))
-        check("AI response has filename", result["filename"] == "door.jpg", str(result))
+        check("AI response has filename", result["filename"] == "door.png", str(result))
         check("AI response has analysis", result["analysis"]["customerName"] == "\u56fe\u7eb8\u5ba2\u6237", str(result))
         check("AI response normalizes items", result["analysis"]["items"][0]["productName"] == "\u9632\u76d7\u95e8", str(result))
     finally:
