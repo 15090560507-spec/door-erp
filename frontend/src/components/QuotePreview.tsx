@@ -7,6 +7,7 @@ interface Props {
   customerName: string;
   projectName: string;
   quoteDate: string;
+  noticeText: string;
   items: QuoteItem[];
 }
 
@@ -40,7 +41,7 @@ function quoteAmount(item: QuoteItem) {
   return String(Math.round(qty * unitPrice));
 }
 
-export default function QuotePreview({ customerName, projectName, quoteDate, items }: Props) {
+export default function QuotePreview({ customerName, projectName, quoteDate, noticeText, items }: Props) {
   const rows = Array.from({ length: 8 }, (_, index) => items[index]);
   const total = rows.reduce((sum, item) => {
     if (!item) return sum;
@@ -151,7 +152,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, ite
             </tr>
             <tr className="h-[46px]">
               <td className={`${cell} text-center text-[#ff0000] text-[15px] font-bold`} colSpan={10}>
-                本报价不含税工厂结算价，含木箱。
+                {noticeText}
               </td>
             </tr>
             <tr className="h-[86px]">

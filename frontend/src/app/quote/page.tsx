@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
-import { createEmptyQuoteItem, normalizeOpenDirection } from "@/lib/quoteTypes";
+import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
 import { createQuote } from "@/lib/quoteApi";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
 import QuotePreview from "@/components/QuotePreview";
@@ -18,6 +18,7 @@ export default function QuotePage() {
   const [customerName, setCustomerName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
+  const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
   const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: 8 }, () => createEmptyQuoteItem()));
 
   // Modal state
@@ -33,14 +34,15 @@ export default function QuotePage() {
   const [exportingType, setExportingType] = useState("");
 
   // Collect form data
-  const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; items: QuoteItem[] } => {
+  const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; noticeText: string; items: QuoteItem[] } => {
     return {
       customerName: customerName.trim(),
       projectName: projectName.trim(),
       quoteDate,
+      noticeText: noticeText.trim() || DEFAULT_QUOTE_NOTICE_TEXT,
       items: items.filter((item) => item.productName.trim()),
     };
-  }, [customerName, projectName, quoteDate, items]);
+  }, [customerName, projectName, quoteDate, noticeText, items]);
 
   // Save quote
   async function handleSave() {
@@ -152,6 +154,7 @@ export default function QuotePage() {
     setCustomerName(quote.customerName);
     setProjectName(quote.projectName);
     setQuoteDate(quote.quoteDate);
+    setNoticeText(quote.noticeText || DEFAULT_QUOTE_NOTICE_TEXT);
     setItems(
       Array.from({ length: 8 }, (_, index) => {
         const item = quote.items?.[index];
@@ -176,6 +179,7 @@ export default function QuotePage() {
     setCustomerName("");
     setProjectName("");
     setQuoteDate(new Date().toISOString().slice(0, 10));
+    setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
     setItems(Array.from({ length: 8 }, () => createEmptyQuoteItem()));
     setLastQuoteId(null);
     setStatus("表单已清空");
@@ -262,6 +266,15 @@ export default function QuotePage() {
                 />
               </label>
             </div>
+            <label className="block mb-4">
+              <span className="text-[12px] font-medium text-[#8E8E93]">报价说明</span>
+              <input
+                type="text"
+                value={noticeText}
+                onChange={(e) => setNoticeText(e.target.value)}
+                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
+              />
+            </label>
 
             {/* Items Table */}
             <QuoteItemsTable items={items} onChange={setItems} />
@@ -277,6 +290,7 @@ export default function QuotePage() {
             customerName={customerName}
             projectName={projectName}
             quoteDate={quoteDate}
+            noticeText={noticeText}
             items={items}
           />
 

@@ -36,6 +36,7 @@ export interface QuoteFormData {
   customerName: string;
   projectName: string;
   quoteDate: string;
+  noticeText: string;
   items: QuoteItem[];
 }
 
@@ -56,6 +57,7 @@ export interface QuoteResponse {
   customerName: string;
   projectName: string;
   quoteDate: string;
+  noticeText: string;
   createdAt: string;
   items: QuoteItemResponse[];
 }
@@ -104,6 +106,8 @@ export interface DrawingAnalysisResponse {
 }
 
 // ===================== 常量 =====================
+export const DEFAULT_QUOTE_NOTICE_TEXT = "本报价不含税工厂结算价，含木箱。";
+
 export const OPEN_DIRECTION_MAP: Record<string, string> = {
   "内开": "内右开",
   "外开": "外右开",

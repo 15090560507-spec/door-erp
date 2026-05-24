@@ -5,7 +5,13 @@ import logging
 import os
 import shutil
 import tempfile
-from fastapi import APIRouter, HTTPException, Query
+import base64
+import json
+import re
+import time
+import urllib.error
+import urllib.request
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
 from quote_models import (
@@ -28,6 +34,73 @@ ai_config_db = AiConfigManager()
 
 def _cleanup_dir(path: str):
     shutil.rmtree(path, ignore_errors=True)
+
+
+def _extract_json_payload(text: str) -> dict:
+    cleaned = (text or "").strip()
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", cleaned, re.S | re.I)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+    if not cleaned.startswith("{"):
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            cleaned = cleaned[start:end + 1]
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"AI 返回内容不是有效 JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="AI 返回 JSON 顶层必须是对象")
+    return data
+
+
+def _number_or_none(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, str):
+        match = re.search(r"-?\d+(?:\.\d+)?", value)
+        if match:
+            return float(match.group(0))
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_analysis(data: dict) -> dict:
+    items = data.get("items") or []
+    if not isinstance(items, list):
+        items = []
+    normalized_items = []
+    for item in items[:8]:
+        if not isinstance(item, dict):
+            continue
+        normalized_items.append({
+            "productName": str(item.get("productName") or item.get("name") or ""),
+            "width": _number_or_none(item.get("width")),
+            "height": _number_or_none(item.get("height")),
+            "openDirection": str(item.get("openDirection") or ""),
+            "unit": str(item.get("unit") or "m2"),
+            "unitPrice": _number_or_none(item.get("unitPrice")),
+        })
+
+    accessories = data.get("accessories") or []
+    if isinstance(accessories, str):
+        accessories = [accessories]
+    if not isinstance(accessories, list):
+        accessories = []
+
+    return {
+        "customerName": str(data.get("customerName") or ""),
+        "projectName": str(data.get("projectName") or ""),
+        "outerWidth": _number_or_none(data.get("outerWidth")),
+        "outerHeight": _number_or_none(data.get("outerHeight")),
+        "openDirection": str(data.get("openDirection") or ""),
+        "items": normalized_items,
+        "accessories": [str(item) for item in accessories if item],
+        "notes": str(data.get("notes") or ""),
+    }
 
 
 # ===================== 配件管理 =====================
@@ -285,6 +358,84 @@ def get_ai_config():
     return {"config": config}
 
 
+@quote_router.post("/api/drawings/analyze")
+async def analyze_drawing(file: UploadFile = File(...)):
+    """调用兼容 OpenAI chat/completions 的视觉模型识别报价图纸。"""
+    content_type = file.content_type or ""
+    if content_type not in {"image/jpeg", "image/png"}:
+        raise HTTPException(status_code=400, detail="仅支持 JPG、JPEG、PNG 图纸")
+
+    config = ai_config_db.get()
+    base_url = (config.get("baseUrl") or "").strip().rstrip("/")
+    endpoint_path = (config.get("endpointPath") or "/chat/completions").strip()
+    api_key = (config.get("apiKey") or "").strip()
+    model = (config.get("model") or "").strip()
+    prompt = (config.get("prompt") or "").strip()
+    if not base_url or not api_key or not model:
+        raise HTTPException(status_code=400, detail="请先配置 AI Base URL、API Key 和模型名")
+
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="上传图纸为空")
+
+    data_url = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    url = f"{base_url}/{endpoint_path.lstrip('/')}"
+    payload = {
+        "model": model,
+        "temperature": 0.1,
+        "messages": [
+            {"role": "system", "content": "你是门业报价图纸识别助手。只输出 JSON，不要输出 Markdown 或解释。"},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt or (
+                            "请从图纸中提取报价需要的字段，输出 JSON："
+                            "{\"customerName\":\"\",\"projectName\":\"\",\"outerWidth\":null,"
+                            "\"outerHeight\":null,\"openDirection\":\"\",\"items\":[],"
+                            "\"accessories\":[],\"notes\":\"\"}"
+                        ),
+                    },
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ],
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        logger.warning("AI analysis HTTP error: %s %s", exc.code, body[:500])
+        raise HTTPException(status_code=502, detail=f"AI 接口返回错误 {exc.code}: {body[:200]}") from exc
+    except Exception as exc:
+        logger.exception("AI analysis request failed")
+        raise HTTPException(status_code=502, detail=f"AI 识别请求失败: {exc}") from exc
+
+    try:
+        content = response_data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="AI 返回结构缺少 choices[0].message.content") from exc
+    if isinstance(content, list):
+        content = "\n".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content)
+
+    analysis = _normalize_analysis(_extract_json_payload(str(content)))
+    return {
+        "uploadId": int(time.time() * 1000),
+        "filename": file.filename or "drawing",
+        "analysis": analysis,
+        "rawPreview": str(content)[:1000],
+    }
+
+
 @quote_router.post("/api/ai-config")
 def update_ai_config(data: AiConfigUpdate):
     """更新 AI 识别配置"""
@@ -294,7 +445,7 @@ def update_ai_config(data: AiConfigUpdate):
 
 # ===================== 图纸分析（占位） =====================
 
-@quote_router.post("/api/drawings/analyze")
-def analyze_drawing():
+@quote_router.post("/api/drawings/analyze-placeholder-disabled")
+def analyze_drawing_placeholder():
     """AI 分析图纸（功能开发中）"""
     return {"message": "AI analysis coming soon"}

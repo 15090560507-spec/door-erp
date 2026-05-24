@@ -216,6 +216,7 @@ class QuoteDatabaseManager:
                 "customerName": quote_data["customerName"].strip(),
                 "projectName": quote_data["projectName"].strip(),
                 "quoteDate": quote_data["quoteDate"].strip(),
+                "noticeText": quote_data.get("noticeText", "").strip() or "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002",
                 "createdAt": now,
                 "items": [],
             }

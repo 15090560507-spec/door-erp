@@ -20,6 +20,66 @@ def _resolve_project_root(module_file: str = __file__) -> Path:
 
 
 TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
+DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
+
+
+def _quote_quantity(item: dict) -> float:
+    width = float(item.get("width") or 0)
+    height = float(item.get("height") or 0)
+    if not width or not height:
+        return 0
+    return width * height * 0.000001
+
+
+def _quote_amount(item: dict) -> int:
+    qty = _quote_quantity(item)
+    unit_price = float(item.get("unitPrice") or item.get("unit_price") or 0)
+    if not qty:
+        return 0
+    return round(qty * unit_price)
+
+
+def _to_chinese_amount(value: float) -> str:
+    n = int(round(value or 0))
+    if n <= 0:
+        return ""
+    digits = ["\u96f6", "\u58f9", "\u8d30", "\u53c1", "\u8086", "\u4f0d", "\u9646", "\u67d2", "\u634c", "\u7396"]
+    units = ["", "\u62fe", "\u4f70", "\u4edf"]
+    sections = ["", "\u4e07", "\u4ebf", "\u4e07\u4ebf"]
+
+    def section_to_chinese(section: int) -> str:
+        text = ""
+        zero = False
+        for i in range(4):
+            divisor = 10 ** (3 - i)
+            digit = (section // divisor) % 10
+            unit_index = 3 - i
+            if digit == 0:
+                zero = bool(text)
+            else:
+                if zero:
+                    text += digits[0]
+                text += digits[digit] + units[unit_index]
+                zero = False
+        return text
+
+    remaining = n
+    section_index = 0
+    result = ""
+    need_zero = False
+    while remaining > 0:
+        section = remaining % 10000
+        if section == 0:
+            need_zero = bool(result)
+        else:
+            section_text = section_to_chinese(section) + sections[section_index]
+            if need_zero or (section < 1000 and remaining >= 10000):
+                section_text = digits[0] + section_text
+            result = section_text + result
+            need_zero = False
+        remaining //= 10000
+        section_index += 1
+    return f"\u4eba\u6c11\u5e01{result}\u5143\u6574"
 
 
 def generate_excel(quote: dict, output_path: str):
@@ -59,8 +119,12 @@ def generate_excel(quote: dict, output_path: str):
         ws[f"G{row}"] = item.get("unit") or "m2"
         ws[f"I{row}"] = item.get("unitPrice") or item.get("unit_price", 0)
 
-    ws["J17"] = "=SUM(J9:J16)"
+    total = sum(_quote_amount(item) for item in items)
+    ws["J17"] = total
     ws["F18"] = '=IF(J17=0,"",TEXT(J17,"[dbnum2]人民币0元整"))'
+
+    ws["F18"] = _to_chinese_amount(total)
+    ws["A19"] = quote.get("noticeText") or DEFAULT_NOTICE_TEXT
 
     ws.print_area = "A1:J24"
     ws.sheet_properties.pageSetUpPr.fitToPage = True

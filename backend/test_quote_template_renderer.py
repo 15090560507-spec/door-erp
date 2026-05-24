@@ -1,7 +1,13 @@
+import asyncio
+import io
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+
+from starlette.datastructures import Headers, UploadFile
 
 
 os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="door_quote_export_test_")
@@ -44,6 +50,7 @@ def sample_quote():
         "customerName": "Cloud Test",
         "projectName": "Render Flow",
         "quoteDate": "2026-05-22",
+        "noticeText": "\u672c\u62a5\u4ef7\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u4e0d\u542b\u6728\u7bb1\u3002",
         "items": [
             {
                 "id": 1,
@@ -112,8 +119,47 @@ def test_renderer_module_contract():
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def test_quote_html_contains_uppercase_amount_and_editable_notice():
+    section("2. Quote HTML Amount And Notice")
+
+    repo_root = os.path.dirname(BACKEND_DIR)
+    tmpdir = tempfile.mkdtemp(prefix="quote_html_contract_")
+    quote_path = os.path.join(tmpdir, "quote-data.json")
+    with open(quote_path, "w", encoding="utf-8") as f:
+        import json
+
+        json.dump(sample_quote(), f, ensure_ascii=False)
+
+    code = """
+import { buildQuoteHtml } from './quote-template-pdf/src/renderQuote.mjs';
+const html = await buildQuoteHtml(process.argv[1]);
+process.stdout.write(html);
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", code, quote_path],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    html = result.stdout
+    check("node renderer exits successfully", result.returncode == 0, result.stderr)
+    check(
+        "uppercase amount is rendered",
+        "\u4eba\u6c11\u5e01\u8086\u4edf\u8d30\u4f70\u53c1\u62fe\u8086\u5143\u6574" in html,
+        html[html.find("\u5408\u8ba1\u603b\u91d1\u989d"):html.find("\u5408\u8ba1\u603b\u91d1\u989d") + 160],
+    )
+    check(
+        "custom notice text is rendered",
+        sample_quote()["noticeText"] in html,
+        html[html.find("\u672c\u62a5\u4ef7"):html.find("\u672c\u62a5\u4ef7") + 80],
+    )
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def test_export_routes_use_template_renderer():
-    section("2. Export Routes Use Template Renderer")
+    section("3. Export Routes Use Template Renderer")
     original_get_by_id = quote_routes.quote_db.get_by_id
     original_renderer = quote_routes.render_quote_template_artifacts
 
@@ -174,10 +220,83 @@ def test_export_routes_use_template_renderer():
         quote_routes.render_quote_template_artifacts = original_renderer
 
 
+def test_ai_analysis_parses_openai_compatible_response():
+    section("4. AI Analysis Parses OpenAI Compatible Response")
+
+    original_get_config = quote_routes.ai_config_db.get
+    original_urlopen = quote_routes.urllib.request.urlopen
+
+    quote_routes.ai_config_db.get = lambda: {
+        "baseUrl": "https://api.example.test/v1",
+        "endpointPath": "/chat/completions",
+        "apiKey": "sk-test",
+        "model": "vision-test",
+        "prompt": "Return JSON only.",
+    }
+
+    def fake_urlopen(req, timeout):
+        payload = json.loads(req.data.decode("utf-8"))
+        globals()["check"]("AI request uses configured model", payload["model"] == "vision-test", str(payload))
+        image_part = payload["messages"][1]["content"][1]["image_url"]["url"]
+        globals()["check"]("AI request includes data URL image", image_part.startswith("data:image/jpeg;base64,"), image_part[:40])
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                content = json.dumps({
+                    "customerName": "\u56fe\u7eb8\u5ba2\u6237",
+                    "projectName": "\u56fe\u7eb8\u9879\u76ee",
+                    "outerWidth": 1200,
+                    "outerHeight": 2100,
+                    "openDirection": "\u5185\u53f3\u5f00",
+                    "items": [
+                        {
+                            "productName": "\u9632\u76d7\u95e8",
+                            "width": 1200,
+                            "height": 2100,
+                            "openDirection": "\u5185\u53f3\u5f00",
+                            "unit": "m2",
+                            "unitPrice": 0,
+                        }
+                    ],
+                    "accessories": ["\u6307\u7eb9\u9501"],
+                    "notes": "\u6d4b\u8bd5",
+                }, ensure_ascii=False)
+                return json.dumps({
+                    "choices": [{"message": {"content": f"```json\n{content}\n```"}}]
+                }, ensure_ascii=False).encode("utf-8")
+
+        return Response()
+
+    quote_routes.urllib.request.urlopen = fake_urlopen
+
+    upload = UploadFile(
+        filename="door.jpg",
+        file=io.BytesIO(b"\xff\xd8\xff"),
+        headers=Headers({"content-type": "image/jpeg"}),
+    )
+
+    try:
+        result = asyncio.run(quote_routes.analyze_drawing(upload))
+        check("AI response has filename", result["filename"] == "door.jpg", str(result))
+        check("AI response has analysis", result["analysis"]["customerName"] == "\u56fe\u7eb8\u5ba2\u6237", str(result))
+        check("AI response normalizes items", result["analysis"]["items"][0]["productName"] == "\u9632\u76d7\u95e8", str(result))
+    finally:
+        quote_routes.ai_config_db.get = original_get_config
+        quote_routes.urllib.request.urlopen = original_urlopen
+
+
 if __name__ == "__main__":
     try:
         test_renderer_module_contract()
+        test_quote_html_contains_uppercase_amount_and_editable_notice()
         test_export_routes_use_template_renderer()
+        test_ai_analysis_parses_openai_compatible_response()
         section("Results")
         print(f"  PASS: {PASSED}")
         print(f"  FAIL: {FAILED}")

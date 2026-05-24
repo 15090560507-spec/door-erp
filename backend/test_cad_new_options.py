@@ -82,12 +82,20 @@ def test_cad_new_options_flow():
     _base_msg, base_buffer = run_integrated_system(base_info, base_checks, base_draw_params)
     base_doc = ezdxf.read(io.StringIO(base_buffer.getvalue()))
     base_inserts = [entity.dxf.name for entity in base_doc.modelspace().query("INSERT")]
-    for block_name in ("BBLS", "ZBPLS", "YBPLS"):
-        check(
-            f"{block_name} count is unchanged when handle size is provided",
-            inserts.count(block_name) == base_inserts.count(block_name),
-            f"{block_name}: {base_inserts.count(block_name)} -> {inserts.count(block_name)}",
-        )
+    check(
+        "front sized handle does not add backpack blocks",
+        inserts.count("BBLS") == base_inserts.count("BBLS"),
+        f"BBLS: {base_inserts.count('BBLS')} -> {inserts.count('BBLS')}",
+    )
+    standard_handle_delta = (
+        inserts.count("ZBPLS") + inserts.count("YBPLS")
+        - base_inserts.count("ZBPLS") - base_inserts.count("YBPLS")
+    )
+    check(
+        "back handle style still draws when front handle size is provided",
+        standard_handle_delta == 1,
+        f"standard handle delta: {standard_handle_delta}",
+    )
 
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")

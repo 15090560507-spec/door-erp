@@ -591,14 +591,14 @@ def draw_door_in_frame(
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
 
-    has_sized_handle = bool(parse_handle_size(str(p.get("handle_size", ""))))
+    front_sized_handle = (not is_back) and bool(parse_handle_size(str(p.get("handle_size", ""))))
 
-    if current_handle == "标配拉手" and not has_sized_handle:
+    if current_handle == "标配拉手" and not front_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
             drawer.insert_custom_block(hblock, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
-    if current_handle == "背包拉手" and not has_sized_handle:
+    if current_handle == "背包拉手" and not front_sized_handle:
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 

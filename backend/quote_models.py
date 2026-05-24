@@ -4,6 +4,8 @@
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
+DEFAULT_QUOTE_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
+
 
 # ===================== 配件模型 =====================
 class AccessoryCreate(BaseModel):
@@ -52,6 +54,7 @@ class QuoteCreate(BaseModel):
     customerName: str
     projectName: str
     quoteDate: str
+    noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     items: List[QuoteItemRequest]
 
 
@@ -74,6 +77,7 @@ class QuoteResponse(BaseModel):
     customerName: str
     projectName: str
     quoteDate: str
+    noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     createdAt: str = ""
     items: List[QuoteItemResponse] = []
 

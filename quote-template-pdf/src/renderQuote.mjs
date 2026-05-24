@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -52,6 +53,53 @@ function totalAmount(items) {
   }, 0);
 }
 
+function toChineseAmount(value) {
+  const n = Math.round(Number(value || 0));
+  if (!n) return "";
+  const digits = ["\u96f6", "\u58f9", "\u8d30", "\u53c1", "\u8086", "\u4f0d", "\u9646", "\u67d2", "\u634c", "\u7396"];
+  const units = ["", "\u62fe", "\u4f70", "\u4edf"];
+  const sections = ["", "\u4e07", "\u4ebf", "\u4e07\u4ebf"];
+
+  function sectionToChinese(section) {
+    let str = "";
+    let zero = false;
+    for (let i = 0; i < 4; i += 1) {
+      const divisor = 10 ** (3 - i);
+      const digit = Math.floor(section / divisor) % 10;
+      const unitIndex = 3 - i;
+      if (digit === 0) {
+        zero = str.length > 0;
+      } else {
+        if (zero) str += digits[0];
+        str += digits[digit] + units[unitIndex];
+        zero = false;
+      }
+    }
+    return str;
+  }
+
+  let remaining = n;
+  let sectionIndex = 0;
+  let result = "";
+  let needZero = false;
+  while (remaining > 0) {
+    const section = remaining % 10000;
+    if (section === 0) {
+      needZero = result.length > 0;
+    } else {
+      let sectionText = sectionToChinese(section) + sections[sectionIndex];
+      if (needZero || (section < 1000 && remaining >= 10000)) {
+        sectionText = digits[0] + sectionText;
+      }
+      result = sectionText + result;
+      needZero = false;
+    }
+    remaining = Math.floor(remaining / 10000);
+    sectionIndex += 1;
+  }
+  return `\u4eba\u6c11\u5e01${result}\u5143\u6574`;
+}
+
 function renderItemRows(items) {
   const rows = [];
   for (let index = 0; index < 8; index += 1) {
@@ -78,6 +126,7 @@ function renderItemRows(items) {
 function renderHtml(quote, cssText) {
   const items = Array.isArray(quote.items) ? quote.items.slice(0, 8) : [];
   const total = totalAmount(items);
+  const noticeText = quote.noticeText || DEFAULT_NOTICE_TEXT;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -140,10 +189,10 @@ function renderHtml(quote, cssText) {
         </tr>
         <tr class="r18">
           <td class="amount-label" colspan="5">合计总金额（大写）:</td>
-          <td class="amount-text" colspan="5"></td>
+          <td class="amount-text" colspan="5">${escapeHtml(toChineseAmount(total))}</td>
         </tr>
         <tr class="r19">
-          <td class="notice" colspan="10">本报价不含税工厂结算价，含木箱。</td>
+          <td class="notice" colspan="10">${escapeHtml(noticeText)}</td>
         </tr>
         <tr class="r20">
           <td class="yellow terms" colspan="10" rowspan="3">1.付款方式:确定制作，先安排货款50%的定金，款清发货
