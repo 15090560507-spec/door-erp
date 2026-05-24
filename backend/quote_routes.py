@@ -414,8 +414,16 @@ async def analyze_drawing(file: UploadFile = File(...)):
             response_data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
+        message = body[:300]
+        try:
+            error_payload = json.loads(body)
+            error_info = error_payload.get("error", error_payload)
+            if isinstance(error_info, dict):
+                message = error_info.get("message") or error_info.get("detail") or message
+        except json.JSONDecodeError:
+            pass
         logger.warning("AI analysis HTTP error: %s %s", exc.code, body[:500])
-        raise HTTPException(status_code=502, detail=f"AI 接口返回错误 {exc.code}: {body[:200]}") from exc
+        raise HTTPException(status_code=502, detail=f"AI 接口返回错误 {exc.code}: {message}") from exc
     except Exception as exc:
         logger.exception("AI analysis request failed")
         raise HTTPException(status_code=502, detail=f"AI 识别请求失败: {exc}") from exc

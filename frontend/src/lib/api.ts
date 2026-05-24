@@ -1,10 +1,11 @@
 import axios from "axios";
 import type {
-  LoginResponse, VerifyResponse,
-  UserInfo,
   DoorFormData,
+  LoginResponse,
   TaskItem,
   TaskListResponse,
+  UserInfo,
+  VerifyResponse,
 } from "./types";
 
 export const api = axios.create({
@@ -12,13 +13,11 @@ export const api = axios.create({
   timeout: 60000,
 });
 
-// ===================== Token 管理（sessionStorage: 关浏览器即清除） =====================
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return sessionStorage.getItem("door_token");
 }
 
-// 请求拦截器：自动附加 Authorization header
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -27,7 +26,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截器：401 跳转登录页，超时/网络错误统一处理
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -40,17 +38,22 @@ api.interceptors.response.use(
         window.dispatchEvent(new Event("auth-401"));
       }
     }
-    // 超时或网络错误：注入友好消息供上层显示
-    if (error.code === "ECONNABORTED") {
+
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string" && detail.trim()) {
+      error.userMessage = detail;
+    } else if (Array.isArray(detail) && detail.length > 0) {
+      error.userMessage = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
+    } else if (error.code === "ECONNABORTED") {
       error.userMessage = "请求超时，请检查网络后重试";
     } else if (!error.response) {
       error.userMessage = "网络连接失败，请检查服务器状态";
     }
+
     return Promise.reject(error);
   }
 );
 
-// ===================== 用户 / 认证 =====================
 export async function login(uid: string, pwd: string): Promise<LoginResponse> {
   const { data } = await api.post<LoginResponse>("/login", { uid, pwd });
   return data;
@@ -85,11 +88,11 @@ export async function resetPassword(uid: string, newPwd: string) {
   return data;
 }
 
-// ===================== 任务 =====================
 export async function getAllTasks(): Promise<TaskListResponse> {
   const { data } = await api.get<TaskListResponse>("/admin/tasks");
   return data;
 }
+
 export async function getTasks(params?: {
   date?: string;
   status?: string;
@@ -134,21 +137,21 @@ export async function deleteTask(taskId: string) {
   return data;
 }
 
-// ===================== 下拉选项 =====================
-
 const DROPDOWN_CACHE_KEY = "door_dropdown_options_cache";
 
 export async function loadDropdownOptions(): Promise<Record<string, string[]>> {
-  // 优先从 localStorage 缓存读取，避免冗余请求
   if (typeof window !== "undefined") {
     const cached = sessionStorage.getItem(DROPDOWN_CACHE_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (parsed && Object.keys(parsed).length > 0) return parsed;
-      } catch { /* ignore */ }
+      } catch {
+        // ignore broken cache
+      }
     }
   }
+
   try {
     const { data } = await api.get("/admin/dropdown-options");
     const options = data.options || {};
@@ -161,7 +164,6 @@ export async function loadDropdownOptions(): Promise<Record<string, string[]>> {
   }
 }
 
-// ===================== CAD 生成 =====================
 export async function generateCad(formData: DoorFormData): Promise<Blob> {
   const { data } = await api.post("/generate_cad", formData, {
     responseType: "blob",
