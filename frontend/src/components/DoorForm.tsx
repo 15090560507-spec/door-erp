@@ -5,7 +5,7 @@ import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
-  MATERIALS, HANDLES, LOCKS, HINGES, COLOR_PRESETS,
+  MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
   TRIM_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
@@ -37,12 +37,14 @@ const Input = memo(function Input({ label, value, onChange, placeholder, type = 
   );
 });
 
-const Select = memo(function Select({ label, value, options, onChange }: {
-  label: string; value: string; options: string[]; onChange: (v: string) => void;
+const Select = memo(function Select({ label, value, options, onChange, required }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void; required?: boolean;
 }) {
   return (
     <div>
-      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">{label}</label>
+      <label className="block text-[13px] font-medium text-[#8E8E93] mb-0.5">
+        {required && <span className="text-[#FF3B30] mr-0.5">*</span>}{label}
+      </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -196,7 +198,12 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </Card>
 
         <Card title="尺寸输入中心">
-          <Checkbox label="切换为见光尺寸" checked={data.use_light_size} onChange={(v) => set("use_light_size", v)} />
+          <div className="flex flex-wrap gap-4">
+            <Checkbox label="切换为见光尺寸" checked={data.use_light_size} onChange={(v) => set("use_light_size", v)} />
+            {!data.use_light_size && (
+              <Checkbox label="标注见光尺寸" checked={data.mark_light_size} onChange={(v) => set("mark_light_size", v)} />
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             {data.use_light_size ? (
               <>
@@ -250,12 +257,18 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
             <Input label="右框宽 (外/内)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
             <Input label="上框宽 (外/内)" value={data.fw_top_str} onChange={(v) => set("fw_top_str", v)} />
-            <Select label="下槛方案" value={data.threshold_type} options={o("THRESHOLD_OPTIONS", THRESHOLD_OPTIONS)} onChange={(v) => set("threshold_type", v)} />
+            <Select label="下槛方案" value={data.threshold_type} options={o("THRESHOLD_OPTIONS", THRESHOLD_OPTIONS)} onChange={(v) => {
+              onChange({ ...data, threshold_type: v, has_dj: v === "吊脚" });
+            }} />
           </div>
           {data.threshold_type === "高低槛" ? (
             <Input label="下槛高度 (低/高)" value={data.th_str} onChange={(v) => set("th_str", v)} />
-          ) : (
+          ) : data.threshold_type === "平底槛" ? (
             <Input label="平底槛厚度(mm)" value={data.pdk} onChange={(v) => set("pdk", v)} />
+          ) : (
+            <Input label="吊脚高度(mm)" required value={data.dj_height} type="number" onChange={(v) => {
+              onChange({ ...data, dj_height: Number(v), has_dj: true });
+            }} />
           )}
         </Card>
       </div>
@@ -267,7 +280,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
             <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("fmls", v)} />
             <Combobox label="锁体类型" value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
-            <Combobox label="合页样式" value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
+            <Combobox label="指纹锁" value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
+            <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
+            <Combobox label="合页样式" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
           </div>
           <div className="mt-3">
             <Select label="单扇合页数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
@@ -278,20 +293,19 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="flex gap-4 mb-3">
             <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => set("has_outer", v)} />
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
-            {(data.has_outer || data.has_inner) && (
-              <Input label="压框" value={data.overlap} type="number" onChange={(v) => set("overlap", Number(v))} />
-            )}
           </div>
           {data.has_outer && (
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="外包套宽" value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
-              <Select label="外包套款式" value={data.trim_style_outer} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_outer", v)} />
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="外包套宽" required value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
+              <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
+              <Select label="外包套款式" required value={data.trim_style_outer} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_outer", v)} />
             </div>
           )}
           {data.has_inner && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="内包套宽" value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
-              <Select label="内包套款式" value={data.trim_style_inner} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_inner", v)} />
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <Input label="内包套宽" required value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
+              <Input label="反面压框" value={data.overlap_back} type="number" onChange={(v) => set("overlap_back", Number(v))} />
+              <Select label="内包套款式" required value={data.trim_style_inner} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_inner", v)} />
             </div>
           )}
           <div className="flex gap-3 mt-3">

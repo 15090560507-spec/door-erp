@@ -106,11 +106,16 @@ class EzdxfDrawer:
     def insert_hinge_block(self, insert_point, layer="A-DOOR-FRAME"):
         self.ms.add_blockref(self.hinge_block_name, insert_point, dxfattribs={'layer': layer})
 
-    def insert_custom_block(self, block_name, insert_point, layer="A-DOOR-PANEL"):
+    def insert_custom_block(self, block_name, insert_point, layer="A-DOOR-PANEL", xscale=1, yscale=1, rotation=0):
         if block_name not in self.doc.blocks:
             block = self.doc.blocks.new(name=block_name)
             block.add_lwpolyline([(-15, -150), (15, -150), (15, 150), (-15, 150)], close=True)
-        self.ms.add_blockref(block_name, insert_point, dxfattribs={'layer': layer})
+        self.ms.add_blockref(block_name, insert_point, dxfattribs={
+            'layer': layer,
+            'xscale': xscale,
+            'yscale': yscale,
+            'rotation': rotation,
+        })
 
 
 # ===================== 门体绘制 =====================
@@ -125,7 +130,8 @@ def draw_door_in_frame(
     fw_top = p['fw_top_back'] if is_back else p['fw_top_front']
     th = p['th_back'] if is_back else p['th_front']
     trim_w = p['trim_back'] if is_back else p['trim_front']
-    overlap = p['overlap'] if trim_w > 0 else 0
+    overlap_key = 'overlap_back' if is_back else 'overlap_front'
+    overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
     dw = p['dw']
     dh = p['dh']
 
@@ -266,6 +272,7 @@ def draw_door_in_frame(
             block_name_map = {
                 '斜包套': 'XBT', '阶梯包套': 'JTBT',
                 '工字形包套': 'GZXBT', '01款包套': '01BT', '02款包套': '02BT',
+                '平包套': 'PBT',
             }
             block_name = block_name_map.get(trim_style, 'XBT')
             trim_left_x = O - W  # 包套最左侧
@@ -344,7 +351,7 @@ def draw_door_in_frame(
         panel_positions.extend([(son_panel_x1, son_panel_x2), (mother_panel_x1, mother_panel_x2)])
 
         if not is_back:
-            drawer.draw_dim(off((mother_panel_x1, panel_y_bot - 100)), off((mother_panel_x2, panel_y_bot - 100)), off((mother_panel_x1 - 100, panel_y_bot - 150)), 0, 'YQ_DIM', f"母门宽 {mother_width}")
+            drawer.draw_dim(off((mother_panel_x1, panel_y_bot - 100)), off((mother_panel_x2, panel_y_bot - 100)), off((mother_panel_x1 - 100, panel_y_bot - 150)), 0, 'YQ_DIM', "母门宽 <>")
 
     elif door_type == "折叠四开门":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -367,7 +374,7 @@ def draw_door_in_frame(
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
 
         if not is_back:
-            drawer.draw_dim(off((lmx1, panel_y_bot - 150)), off((rmx2, panel_y_bot - 150)), off((lmx1 + mid_total_width / 2, panel_y_bot - 200)), 0, 'YQ_DIM', f"中门宽度 {mid_total_width}mm")
+            drawer.draw_dim(off((lmx1, panel_y_bot - 150)), off((rmx2, panel_y_bot - 150)), off((lmx1 + mid_total_width / 2, panel_y_bot - 200)), 0, 'YQ_DIM', "中门宽度 <>")
 
     elif door_type == "两定两开":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -412,8 +419,16 @@ def draw_door_in_frame(
         dims_h.append(("含包套总宽", outer_left, outer_right, -400, True, "含包套总宽 <>"))
         dims_h.append(("门套宽", ox1, ix1, -200, True, f" {trim_w}"))
 
-    if use_light_size and light_w > 0 and ((nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)):
-        dims_h.append(("见光宽", ref_left + left_gap, dw - ref_right - right_gap, -200, True, f"见光宽 {light_w}"))
+    should_mark_light = p.get("mark_light_size", False) or use_light_size
+    should_draw_light_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
+    if should_mark_light and should_draw_light_view:
+        light_x1 = ref_left
+        light_x2 = dw - ref_right
+        if door_type in ("两定两开", "折叠四开门") and len(panel_positions) >= 4:
+            light_x1 = panel_positions[0][1]
+            light_x2 = panel_positions[-1][0]
+        light_text = f"见光宽 {light_w}" if use_light_size and light_w > 0 else "见光宽 <>"
+        dims_h.append(("见光宽", light_x1, light_x2, -200, True, light_text))
 
     dims_h.append(("洞口宽", 0, dw, -300, True, None))
 
@@ -429,8 +444,9 @@ def draw_door_in_frame(
         dims_v.append(("气窗上部高度", mid_frame_top, dh, 200, True, None))
         dims_v.append(("门板下部高度", 0, mid_frame_top, 200, True, None))
 
-    if use_light_size and light_h > 0 and ((nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)):
-        dims_v.append(("见光高", panel_y_bot, panel_y_top, 100, True, f"见光高 {light_h}"))
+    if should_mark_light and should_draw_light_view:
+        light_text_h = f"见光高 {light_h}" if use_light_size and light_h > 0 else "见光高 <>"
+        dims_v.append(("见光高", panel_y_bot, panel_y_top, 100, True, light_text_h))
 
     dims_v.append(("洞口高", 0, dh, 300, True, None))
 
@@ -521,44 +537,79 @@ def draw_door_in_frame(
                     'A-DOOR-PANEL'
                 )
 
-    # ===================== 标配拉手绘制 =====================
+    def parse_handle_size(value: str) -> Optional[Tuple[float, float]]:
+        if not value:
+            return None
+        normalized = value.lower().replace("×", "*").replace("x", "*")
+        parts = [part.strip() for part in normalized.split("*") if part.strip()]
+        if len(parts) != 2:
+            return None
+        try:
+            a, b = float(parts[0]), float(parts[1])
+        except ValueError:
+            return None
+        return min(a, b), max(a, b)
+
+    def handle_targets(distance: float = 60, primary_only: bool = False):
+        targets = []
+        if not panel_positions:
+            return targets
+
+        def add(px1, px2, edge_side):
+            if edge_side == "left":
+                targets.append((px1 + distance, 1, "YBPLS"))
+            else:
+                targets.append((px2 - distance, -1, "ZBPLS"))
+
+        if door_type == "单门":
+            eff_dir = ("右开" if door_open_dir == "左开" else "左开") if is_back else door_open_dir
+            add(*panel_positions[0], "right" if eff_dir == "左开" else "left")
+        elif door_type == "对开门" and len(panel_positions) >= 2:
+            if primary_only:
+                idx = 1 if door_open_dir == "右开" else 0
+                add(*panel_positions[idx], "left" if idx == 1 else "right")
+            else:
+                add(*panel_positions[0], "right")
+                add(*panel_positions[1], "left")
+        elif door_type == "子母门" and len(panel_positions) >= 2:
+            mother_right = (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开")
+            add(*panel_positions[1], "left" if mother_right else "right")
+        elif door_type in ["折叠四开门", "两定两开"] and len(panel_positions) >= 4:
+            if primary_only:
+                idx = 2 if door_open_dir == "右开" else 1
+                add(*panel_positions[idx], "left" if idx == 2 else "right")
+            else:
+                add(*panel_positions[1], "right")
+                add(*panel_positions[2], "left")
+        return targets
+
+    # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
 
     if current_handle == "标配拉手":
-        handles_to_draw = []
         handle_y = panel_y_bot + 1000
-
-        if door_type == "单门":
-            if is_back:
-                if door_open_dir == "左开":
-                    eff_dir = "右开"
-                else:
-                    eff_dir = "左开"
-            else:
-                eff_dir = door_open_dir
-
-            if eff_dir == "左开":
-                handles_to_draw.append((panel_positions[0][1] - 60, "ZBPLS"))
-            else:
-                handles_to_draw.append((panel_positions[0][0] + 60, "YBPLS"))
-
-        elif door_type == "对开门" and len(panel_positions) >= 2:
-            handles_to_draw.extend([(panel_positions[0][1] - 60, "ZBPLS"), (panel_positions[1][0] + 60, "YBPLS")])
-        elif door_type == "子母门" and len(panel_positions) >= 2:
-            # 母门始终是 panel_positions[1]，子门不画拉手
-            is_mother_right = (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开")
-            if is_mother_right:
-                # 母门在右，拉手在母门左边缘（靠中缝）
-                handles_to_draw.append((panel_positions[1][0] + 60, "YBPLS"))
-            else:
-                # 母门在左，拉手在母门右边缘（靠中缝）
-                handles_to_draw.append((panel_positions[1][1] - 60, "ZBPLS"))
-
-        elif door_type in ["折叠四开门", "两定两开"] and len(panel_positions) >= 4:
-            handles_to_draw.extend([(panel_positions[1][1] - 60, "ZBPLS"), (panel_positions[2][0] + 60, "YBPLS")])
-
-        for hx, hblock in handles_to_draw:
+        for hx, _toward_hinge, hblock in handle_targets(60):
             drawer.insert_custom_block(hblock, off((hx, handle_y)), layer="A-DOOR-PANEL")
+
+    if current_handle == "背包拉手":
+        for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
+            drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
+
+    handle_size = parse_handle_size(str(p.get("handle_size", "")))
+    if handle_size:
+        handle_w, handle_h = handle_size
+        for hx, _toward_hinge, _hblock in handle_targets(80, primary_only=True):
+            y_center = 1200
+            drawer.draw_poly([
+                off((hx - handle_w / 2, y_center - handle_h / 2)),
+                off((hx + handle_w / 2, y_center - handle_h / 2)),
+                off((hx + handle_w / 2, y_center + handle_h / 2)),
+                off((hx - handle_w / 2, y_center + handle_h / 2)),
+            ], "A-DOOR-PANEL")
+
+    if not is_back and p.get("fingerprint_lock") == "安志杰AF-12":
+        for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
+            drawer.insert_custom_block("AZJ", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
     drawer.update_progress(f"{view_name}绘制完成")
 
@@ -593,6 +644,7 @@ def run_integrated_system(
             "ZMLS": info.get("ZMLS", ""),
             "FMLS": info.get("FMLS", ""),
             "ST": info.get("ST", ""),
+            "ZWS": info.get("ZWS", ""),
             "HYSL": info.get("HYSL", ""),
             "QH": info.get("QH", ""),
             "MSHD": info.get("MSHD", ""),
@@ -604,6 +656,8 @@ def run_integrated_system(
             "DXK": info.get("DXK", ""),
             "GXK": info.get("GXK", ""),
             "PXK": info.get("PXK", ""),
+            "DJ": info.get("DJ", ""),
+            "DJG": info.get("DJG", ""),
             "MX": info.get("MX", ""),
             "QC_HEIGHT": info.get("QC_HEIGHT", ""),
             "MM_HEIGHT": info.get("MM_HEIGHT", ""),
@@ -642,6 +696,7 @@ def run_integrated_system(
             "BZ_MX": "√" if bz == "木箱" else "",
             "GDK": "√" if threshold == "高低槛" else "",
             "PDK": "√" if threshold == "平底槛" else "",
+            "DJ": "√" if threshold == "吊脚" else checks.get("DJ", ""),
         }
 
         all_attrs = {**base_attrs, **check_attrs}

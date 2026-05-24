@@ -144,18 +144,42 @@ export default function DashboardPage() {
     flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
   };
 
+  const validateDoorForm = (data: DoorFormData): string | null => {
+    const missing: string[] = [];
+    if (!data.dhdw.trim()) missing.push("订货单位");
+    if (!data.sl.trim()) missing.push("数量(樘)");
+    if (!data.zzcl.trim()) missing.push("制作材料");
+    if (!data.ys.trim()) missing.push("颜色");
+    if (!data.sel_hys.trim()) missing.push("合页样式");
+    if (data.use_light_size) {
+      if (!data.light_w || data.light_w <= 0) missing.push("见光宽(W)");
+      if (!data.light_h || data.light_h <= 0) missing.push("见光高(H)");
+    } else {
+      if (!data.dw || data.dw <= 0) missing.push("洞口总宽(W)");
+      if (!data.dh || data.dh <= 0) missing.push("洞口总高(H)");
+    }
+    if (data.has_outer) {
+      if (!data.trim_front_in || data.trim_front_in <= 0) missing.push("外包套宽");
+      if (!data.trim_style_outer.trim()) missing.push("外包套款式");
+    }
+    if (data.has_inner) {
+      if (!data.trim_back_in || data.trim_back_in <= 0) missing.push("内包套宽");
+      if (!data.trim_style_inner.trim()) missing.push("内包套款式");
+    }
+    if (data.threshold_type === "吊脚" && (!data.dj_height || data.dj_height <= 0)) {
+      missing.push("吊脚高度");
+    }
+    if (data.handle_size && !/^\s*\d+(\.\d+)?\s*[*xX×]\s*\d+(\.\d+)?\s*$/.test(data.handle_size)) {
+      return "拉手尺寸格式请填写为 40*800 或 800*40";
+    }
+    return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
+  };
+
   // ===================== 录入模块 =====================
   const handleSubmitOrder = async () => {
-    // 必填项校验
-    const missing: string[] = [];
-    if (!formData.dhdw.trim()) missing.push("订货单位");
-    if (!formData.sl.trim()) missing.push("数量(樘)");
-    if (!formData.zzcl.trim()) missing.push("制作材料");
-    if (!formData.ys.trim()) missing.push("颜色");
-    if (!formData.dw || formData.dw <= 0) missing.push("洞口总宽(W)");
-    if (!formData.dh || formData.dh <= 0) missing.push("洞口总高(H)");
-    if (missing.length > 0) {
-      setValidationError(`请填写以下必填项：${missing.join("、")}`);
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
       return;
     }
     setSubmitting(true);
@@ -181,6 +205,11 @@ export default function DashboardPage() {
   };
 
   const handleQuickCad = async () => {
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
     setCadLoading(true);
     try {
       const blob = await generateCad(formData);
@@ -194,6 +223,11 @@ export default function DashboardPage() {
 
   // ===================== 绘制模块 =====================
   const handleGenerateCad = async () => {
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
     setCadLoading(true);
     try {
       const blob = await generateCad(formData);

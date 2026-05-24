@@ -73,17 +73,21 @@ def build_cad_params(req: CADRequest):
     原封不动地从 door_26.py 的 generate_cad_trigger 逻辑提取
     """
     # --- 包套批注 ---
-    overlap = req.overlap
+    overlap_front = req.overlap_front if req.overlap_front is not None else req.overlap
+    overlap_back = req.overlap_back if req.overlap_back is not None else req.overlap
     current_note = req.sm
     frame_notes = []
 
     if req.has_outer:
         outer_w = req.trim_front_in
-        frame_notes.append(f"外门套宽/压墙/压框={outer_w}/{outer_w - overlap}/{overlap}mm")
+        frame_notes.append(f"外门套宽/压墙/压框={outer_w}/{outer_w - overlap_front}/{overlap_front}mm")
 
     if req.has_inner:
         inner_w = req.trim_back_in
-        frame_notes.append(f"内门套宽/压墙/压框={inner_w}/{inner_w - overlap}/{overlap}mm")
+        frame_notes.append(f"内门套宽/压墙/压框={inner_w}/{inner_w - overlap_back}/{overlap_back}mm")
+
+    if req.handle_size.strip():
+        frame_notes.append(f"拉手尺寸={req.handle_size.strip()}")
 
     if frame_notes:
         note_line = "\n".join(frame_notes)
@@ -144,7 +148,15 @@ def build_cad_params(req: CADRequest):
             dw, dh = res_light[0], res_light[1]
 
     # --- 下槛处理 ---
-    if req.threshold_type == "平底槛":
+    dj_val = ""
+    djg_val = ""
+    if req.threshold_type == "吊脚" or req.has_dj:
+        dxk_val = ""
+        gxk_val = ""
+        pdk_val = ""
+        dj_val = "√"
+        djg_val = str(req.dj_height or "")
+    elif req.threshold_type == "平底槛":
         dxk_val = ""
         gxk_val = ""
         pdk_val = req.pdk
@@ -183,17 +195,19 @@ def build_cad_params(req: CADRequest):
         "DHDW": req.dhdw, "GDMC": req.gdmc, "ZZCL": req.zzcl,
         "DHRQ": req.dhrq, "DDH": req.ddh, "SL": req.sl,
         "YS": req.ys, "ZMLS": req.zmls, "FMLS": req.fmls,
-        "ST": req.st_val, "HYSL": req.hysl, "QH": qh_val,
+        "ST": req.st_val, "ZWS": req.fingerprint_lock, "HYSL": req.hysl, "QH": qh_val,
         "MSHD": mshd_val, "HHXD": req.hhxd, "BZ": final_note,
         "DOOR_TYPE": req.door_type, "MOTHER_DOOR_WIDTH": req.mother_door_width,
         "MID_DOOR_WIDTH": req.mid_door_width, "PILLAR_WIDTH_STR": req.pillar_width_str,
         "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
-        "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "MX": dt_cn,
+        "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
         "ZMKS": req.zmks, "FMKS": req.fmks,
         "TRIM_STYLE_OUTER": req.trim_style_outer,
         "TRIM_STYLE_INNER": req.trim_style_inner,
         "LOCK_SIDE_OFFSET": req.lock_side_offset,
+        "HANDLE_SIZE": req.handle_size,
+        "FINGERPRINT_LOCK": req.fingerprint_lock,
     }
 
     # --- check_map ---
@@ -215,6 +229,7 @@ def build_cad_params(req: CADRequest):
 
     gdk_m = "√" if req.threshold_type == "高低槛" else ""
     pdk_m = "√" if req.threshold_type == "平底槛" else ""
+    dj_m = "√" if req.threshold_type == "吊脚" or req.has_dj else ""
 
     check_map = {
         "kx": req.sel_kx, "nk": req.sel_nk, "qc": req.sel_qc,
@@ -228,7 +243,7 @@ def build_cad_params(req: CADRequest):
         "MM_YES": mm_y, "MM_NO": mm_n,
         "QC_GLASS": qc_g, "QC_SEAL": qc_s,
         "BZ_QB": bz_q, "BZ_MX": bz_m,
-        "GDK": gdk_m, "PDK": pdk_m,
+        "GDK": gdk_m, "PDK": pdk_m, "DJ": dj_m,
         "threshold": req.threshold_type,
     }
 
@@ -243,7 +258,9 @@ def build_cad_params(req: CADRequest):
         "fw_top_front": ftf, "fw_top_back": ftb,
         "th_front": thf, "th_back": thb,
         "trim_front": trim_f, "trim_back": trim_b,
-        "overlap": overlap,
+        "overlap": req.overlap,
+        "overlap_front": overlap_front,
+        "overlap_back": overlap_back,
         "door_type": req.door_type,
         "mother_door_width": req.mother_door_width,
         "mid_door_width": req.mid_door_width,
@@ -258,11 +275,14 @@ def build_cad_params(req: CADRequest):
         "top_bottom_gap": (req.top_gap, req.bottom_gap) if (req.top_gap or req.bottom_gap) else parse_gap_str(req.top_bottom_gap_str, 0),
         "middle_gap": req.middle_gap,
         "use_light_size": req.use_light_size,
+        "mark_light_size": req.mark_light_size,
         "light_w": req.light_w, "light_h": req.light_h,
         "zmls": req.zmls, "fmls": req.fmls,
         "trim_style_outer": req.trim_style_outer,
         "trim_style_inner": req.trim_style_inner,
         "lock_side_offset": req.lock_side_offset,
+        "handle_size": req.handle_size,
+        "fingerprint_lock": req.fingerprint_lock,
     }
 
     return info_map, check_map, draw_params

@@ -18,7 +18,7 @@ body {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
   color: #000;
-  font-family: "KaiTi", "STKaiti", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  font-family: "SimSun", "Songti SC", "AR PL UMing CN", "Noto Serif CJK SC", "Source Han Serif SC", "Microsoft YaHei", serif;
 }
 
 .page {

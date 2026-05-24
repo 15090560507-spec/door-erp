@@ -60,7 +60,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, ite
           className="w-full table-fixed border-collapse border border-black text-black"
           style={{
             fontFamily:
-              '"KaiTi", "STKaiti", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif',
+              '"SimSun", "Songti SC", "AR PL UMing CN", "Noto Serif CJK SC", "Source Han Serif SC", "Microsoft YaHei", serif',
           }}
         >
           <colgroup>

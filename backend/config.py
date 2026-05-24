@@ -44,7 +44,9 @@ class Config:
     HINGE_TYPES: Dict[str, str] = field(default_factory=lambda: {
         "葫芦头合页": "hlt",
         "可拆卸合页": "kcx",
+        "三位可调合页": "kcx",
         "暗合页": "暗合页块",
+        "北京暗合页": "暗合页块",
         "明合页暗装": "明合页暗装块",
         "明合页": "明合页块"
     })
@@ -64,6 +66,9 @@ class Config:
     ])
     LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
         "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"
+    ])
+    FINGERPRINT_LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
+        "无", "安志杰AF-12", "客备"
     ])
 
 

@@ -20,6 +20,7 @@ RUN apt-get update && \
         libreoffice-calc \
         poppler-utils \
         fonts-noto-cjk \
+        fonts-arphic-uming \
         nodejs \
         npm \
         chromium && \

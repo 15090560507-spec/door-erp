@@ -77,7 +77,7 @@ export async function renderQuoteArtifacts({ quotePath, outputDir }) {
       viewport: {
         width: 794,
         height: 1123,
-        deviceScaleFactor: 2,
+        deviceScaleFactor: 3,
       },
     });
 
@@ -90,10 +90,16 @@ export async function renderQuoteArtifacts({ quotePath, outputDir }) {
       preferCSSPageSize: true,
     });
 
+    await page.evaluate(() => {
+      document.documentElement.style.background = "#ffffff";
+      document.body.style.background = "#ffffff";
+      document.body.style.zoom = "3";
+    });
+
     await page.screenshot({
       path: jpgPath,
       type: "jpeg",
-      quality: 92,
+      quality: 96,
       fullPage: true,
     });
 

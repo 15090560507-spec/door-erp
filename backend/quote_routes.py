@@ -131,12 +131,12 @@ def export_quote_xlsx(quote_id: int):
     os.close(fd)
     try:
         generate_excel(quote, tmp_path)
-        filename = f"报价单_{quote.get('customerName', 'export')}_{quote_id}.xlsx"
+        filename = f"quote_{quote_id}.xlsx"
         return FileResponse(
             tmp_path,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename=filename,
-            background=None,  # delete temp file after response
+            background=BackgroundTask(lambda path: os.path.exists(path) and os.unlink(path), tmp_path),
         )
     except Exception:
         logger.exception("Excel export failed for quote_id=%s", quote_id)
