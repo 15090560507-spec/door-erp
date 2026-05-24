@@ -382,7 +382,7 @@ async def analyze_drawing(file: UploadFile = File(...)):
     url = f"{base_url}/{endpoint_path.lstrip('/')}"
     payload = {
         "model": model,
-        "temperature": 0.1,
+        "temperature": 1,
         "messages": [
             {"role": "system", "content": "你是门业报价图纸识别助手。只输出 JSON，不要输出 Markdown 或解释。"},
             {

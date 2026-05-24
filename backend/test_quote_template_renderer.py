@@ -237,6 +237,7 @@ def test_ai_analysis_parses_openai_compatible_response():
     def fake_urlopen(req, timeout):
         payload = json.loads(req.data.decode("utf-8"))
         globals()["check"]("AI request uses configured model", payload["model"] == "vision-test", str(payload))
+        globals()["check"]("AI request uses model-compatible temperature", payload["temperature"] == 1, str(payload))
         image_part = payload["messages"][1]["content"][1]["image_url"]["url"]
         globals()["check"]("AI request includes data URL image", image_part.startswith("data:image/jpeg;base64,"), image_part[:40])
 
