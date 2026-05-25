@@ -105,8 +105,53 @@ def test_cad_new_options_flow():
     check("hanging door panel starts at 20mm above bottom", abs(min_panel_y - 20) < 0.01, str(min_panel_y))
 
 
+def test_a1022_handle_backpack_handle_and_adjustable_hinge():
+    req = CADRequest(
+        sel_hys="\u4e09\u4f4d\u53ef\u8c03\u5408\u9875",
+        zmls="A1022",
+        fmls="\u80cc\u5305\u62c9\u624b",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("A1022 CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    inserts = [entity.dxf.name for entity in doc.modelspace().query("INSERT")]
+
+    baseline_req = req.model_copy(deep=True)
+    baseline_req.zmls = "\u65e0"
+    baseline_req.fmls = "\u65e0"
+    baseline_req.sel_hys = "\u5317\u4eac\u6697\u5408\u9875"
+    base_info, base_checks, base_draw_params = build_cad_params(baseline_req)
+    _base_msg, base_buffer = run_integrated_system(base_info, base_checks, base_draw_params)
+    base_doc = ezdxf.read(io.StringIO(base_buffer.getvalue()))
+    base_inserts = [entity.dxf.name for entity in base_doc.modelspace().query("INSERT")]
+
+    a1022_count = inserts.count("Z1022") + inserts.count("Y1022")
+    base_a1022_count = base_inserts.count("Z1022") + base_inserts.count("Y1022")
+    check(
+        "A1022 handle inserts mapped block",
+        a1022_count > base_a1022_count,
+        f"A1022 mapped blocks: {base_a1022_count} -> {a1022_count}",
+    )
+    check(
+        "backpack handle uses BBLS block",
+        inserts.count("BBLS") > base_inserts.count("BBLS"),
+        f"BBLS: {base_inserts.count('BBLS')} -> {inserts.count('BBLS')}",
+    )
+    check(
+        "three-way adjustable hinge uses kcx block",
+        inserts.count("kcx") > base_inserts.count("kcx"),
+        f"kcx: {base_inserts.count('kcx')} -> {inserts.count('kcx')}",
+    )
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
+    test_a1022_handle_backpack_handle_and_adjustable_hinge()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
