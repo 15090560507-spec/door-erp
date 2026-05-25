@@ -32,7 +32,7 @@ def test_cad_new_options_flow():
         dhdw="测试客户",
         gdmc="测试项目",
         ddh="CAD-NEW-001",
-        sel_hys="三位可调合页",
+        sel_hys="三维可调合页",
         threshold_type="吊脚",
         has_dj=True,
         dj_height=20,
@@ -107,7 +107,7 @@ def test_cad_new_options_flow():
 
 def test_a1022_handle_backpack_handle_and_adjustable_hinge():
     req = CADRequest(
-        sel_hys="\u4e09\u4f4d\u53ef\u8c03\u5408\u9875",
+        sel_hys="\u4e09\u7ef4\u53ef\u8c03\u5408\u9875",
         zmls="A1022",
         fmls="\u80cc\u5305\u62c9\u624b",
     )

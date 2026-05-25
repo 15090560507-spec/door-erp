@@ -44,6 +44,7 @@ class Config:
     HINGE_TYPES: Dict[str, str] = field(default_factory=lambda: {
         "葫芦头合页": "hlt",
         "可拆卸合页": "kcx",
+        "三维可调合页": "kcx",
         "三位可调合页": "kcx",
         "暗合页": "暗合页块",
         "北京暗合页": "暗合页块",

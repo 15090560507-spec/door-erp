@@ -562,6 +562,25 @@ import threading as _threading
 
 _DROPDOWN_OPTIONS_PATH = os.path.join(DATA_DIR, "dropdown_options.json")
 _dropdown_lock = _threading.Lock()
+_DEFAULT_DROPDOWN_OPTIONS = {
+    "DOOR_TYPES": ["单门", "对开门", "子母门", "两定两开", "折叠四开门"],
+    "KX_OPTIONS": ["左开", "右开"],
+    "NK_OPTIONS": ["内开", "外开"],
+    "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
+    "HANDLES": ["标配拉手", "A1022", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
+    "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
+    "FINGERPRINT_LOCKS": ["无", "安志杰AF-12", "客备"],
+    "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"],
+    "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"],
+    "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
+    "THRESHOLD_OPTIONS": ["高低槛", "平底槛", "吊脚"],
+    "QC_OPTIONS": ["无", "玻璃", "封闭"],
+    "BZ_OPTIONS": ["全包", "木箱"],
+    "HYSL_OPTIONS": ["3个/扇", "2个/扇", "4个/扇", "5个/扇"],
+}
+_DROPDOWN_ALIASES = {
+    "三位可调合页": "三维可调合页",
+}
 
 def _load_dropdown_options() -> dict:
     try:
@@ -577,10 +596,27 @@ def _save_dropdown_options(data: dict):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _merge_dropdown_options(configured: dict) -> dict:
+    merged = {}
+    all_keys = list(_DEFAULT_DROPDOWN_OPTIONS.keys())
+    for key in configured:
+        if key not in all_keys:
+            all_keys.append(key)
+
+    for key in all_keys:
+        values = []
+        for value in _DEFAULT_DROPDOWN_OPTIONS.get(key, []) + configured.get(key, []):
+            text = _DROPDOWN_ALIASES.get(str(value), str(value)).strip()
+            if text and text not in values:
+                values.append(text)
+        merged[key] = values
+    return merged
+
+
 @app.get("/api/admin/dropdown-options")
 def get_dropdown_options(current_user: dict = Depends(get_current_user)):
     """获取所有下拉选项配置"""
-    return {"options": _load_dropdown_options()}
+    return {"options": _merge_dropdown_options(_load_dropdown_options())}
 
 
 @app.put("/api/admin/dropdown-options")
@@ -591,9 +627,9 @@ def update_dropdown_options(data: dict, current_user: dict = Depends(get_current
     current = _load_dropdown_options()
     for key, values in data.items():
         if isinstance(values, list):
-            current[key] = [str(v) for v in values]
+            current[key] = [_DROPDOWN_ALIASES.get(str(v), str(v)) for v in values]
     _save_dropdown_options(current)
-    return {"options": current}
+    return {"options": _merge_dropdown_options(current)}
 
 
 # ===================== 健康检查 =====================
