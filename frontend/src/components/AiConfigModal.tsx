@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getAiConfig, updateAiConfig } from "@/lib/quoteApi";
 import type { AiConfig } from "@/lib/quoteTypes";
 
@@ -28,7 +28,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
         const data = await getAiConfig();
         setConfig(data);
       } catch {
-        // keep defaults
+        // keep local defaults
       }
     })();
   }, [open]);
@@ -47,8 +47,9 @@ export default function AiConfigModal({ open, onClose }: Props) {
       setConfig(updated);
       setStatus("AI 配置已保存");
       setTimeout(() => onClose(), 800);
-    } catch (err: any) {
-      setStatus(err?.userMessage || err?.message || "保存失败");
+    } catch (err: unknown) {
+      const error = err as { userMessage?: string; message?: string };
+      setStatus(error?.userMessage || error?.message || "保存失败");
     } finally {
       setSaving(false);
     }
@@ -60,23 +61,23 @@ export default function AiConfigModal({ open, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col mx-4"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5EA]/60">
           <h3 className="text-[16px] font-semibold text-[#1C1C1E]">AI 模型配置</h3>
-          <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">&times;</button>
+          <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">
+            &times;
+          </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           <label className="block">
             <span className="text-[12px] font-medium text-[#8E8E93]">Base URL</span>
             <input
               type="text"
               value={config.baseUrl}
-              onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-              placeholder="例如：https://api.openai.com/v1"
+              onChange={(event) => setConfig({ ...config, baseUrl: event.target.value })}
+              placeholder="https://api.moonshot.cn/v1"
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
             />
           </label>
@@ -86,7 +87,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
             <input
               type="text"
               value={config.endpointPath}
-              onChange={(e) => setConfig({ ...config, endpointPath: e.target.value })}
+              onChange={(event) => setConfig({ ...config, endpointPath: event.target.value })}
               placeholder="/chat/completions"
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
             />
@@ -97,8 +98,8 @@ export default function AiConfigModal({ open, onClose }: Props) {
             <input
               type="text"
               value={config.model}
-              onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              placeholder="例如：gpt-4.1-mini"
+              onChange={(event) => setConfig({ ...config, model: event.target.value })}
+              placeholder="moonshot-v1-8k-vision-preview"
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
             />
           </label>
@@ -108,7 +109,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
             <input
               type="password"
               value={config.apiKey}
-              onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+              onChange={(event) => setConfig({ ...config, apiKey: event.target.value })}
               placeholder="粘贴你的 API Key"
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
             />
@@ -118,18 +119,23 @@ export default function AiConfigModal({ open, onClose }: Props) {
             <span className="text-[12px] font-medium text-[#8E8E93]">识别提示词</span>
             <textarea
               value={config.prompt}
-              onChange={(e) => setConfig({ ...config, prompt: e.target.value })}
+              onChange={(event) => setConfig({ ...config, prompt: event.target.value })}
               rows={8}
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none resize-y"
             />
           </label>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-[#E5E5EA]/60">
-          {status ? <span className={`text-[12px] ${status.includes("失败") ? "text-[#FF3B30]" : "text-[#34C759]"}`}>{status}</span> : <span />}
+          {status ? (
+            <span className={`text-[12px] ${status.includes("失败") ? "text-[#FF3B30]" : "text-[#34C759]"}`}>{status}</span>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 transition-colors">取消</button>
+            <button onClick={onClose} className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 transition-colors">
+              取消
+            </button>
             <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors">
               {saving ? "保存中..." : "保存 AI 配置"}
             </button>

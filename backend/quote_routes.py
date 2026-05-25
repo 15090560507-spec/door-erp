@@ -27,8 +27,11 @@ from quote_template_renderer import render_quote_template_artifacts
 
 quote_router = APIRouter()
 logger = logging.getLogger(__name__)
-AI_IMAGE_MAX_EDGE = 1600
-AI_IMAGE_JPEG_QUALITY = 82
+AI_IMAGE_MAX_EDGE = 1280
+AI_IMAGE_JPEG_QUALITY = 76
+AI_MODEL_ALIASES = {
+    "kimi-k2.65": "moonshot-v1-8k-vision-preview",
+}
 
 # 实例化管理器
 accessory_db = AccessoryDatabaseManager()
@@ -105,6 +108,11 @@ def _normalize_analysis(data: dict) -> dict:
         "accessories": [str(item) for item in accessories if item],
         "notes": str(data.get("notes") or ""),
     }
+
+
+def _normalize_ai_model(model: str) -> str:
+    normalized = (model or "").strip()
+    return AI_MODEL_ALIASES.get(normalized, normalized)
 
 
 def _prepare_ai_image(image_bytes: bytes, content_type: str) -> tuple[bytes, str]:
@@ -397,7 +405,7 @@ async def analyze_drawing(file: UploadFile = File(...)):
     base_url = (config.get("baseUrl") or "").strip().rstrip("/")
     endpoint_path = (config.get("endpointPath") or "/chat/completions").strip()
     api_key = (config.get("apiKey") or "").strip()
-    model = (config.get("model") or "").strip()
+    model = _normalize_ai_model(config.get("model") or "")
     prompt = (config.get("prompt") or "").strip()
     if not base_url or not api_key or not model:
         raise HTTPException(status_code=400, detail="请先配置 AI Base URL、API Key 和模型名")
@@ -412,6 +420,7 @@ async def analyze_drawing(file: UploadFile = File(...)):
     payload = {
         "model": model,
         "temperature": 1,
+        "max_tokens": 1200,
         "messages": [
             {"role": "system", "content": "你是门业报价图纸识别助手。只输出 JSON，不要输出 Markdown 或解释。"},
             {
