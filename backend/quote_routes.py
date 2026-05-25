@@ -11,11 +11,9 @@ import re
 import time
 import urllib.error
 import urllib.request
-from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
-from PIL import Image, ImageOps
 from quote_models import (
     AccessoryCreate, AccessoryImport,
     QuoteCreate,
@@ -27,9 +25,9 @@ from quote_template_renderer import render_quote_template_artifacts
 
 quote_router = APIRouter()
 logger = logging.getLogger(__name__)
-AI_IMAGE_MAX_EDGE = 1280
-AI_IMAGE_JPEG_QUALITY = 76
 AI_MODEL_ALIASES = {
+    "kimi-k2.5": "moonshot-v1-8k-vision-preview",
+    "kimi-k2.6": "moonshot-v1-8k-vision-preview",
     "kimi-k2.65": "moonshot-v1-8k-vision-preview",
 }
 
@@ -45,6 +43,11 @@ def _cleanup_dir(path: str):
 
 def _extract_json_payload(text: str) -> dict:
     cleaned = (text or "").strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=502,
+            detail="AI 返回内容为空；请检查模型是否支持图片识别，建议使用 moonshot-v1-8k-vision-preview。",
+        )
     fence_match = re.search(r"```(?:json)?\s*(.*?)```", cleaned, re.S | re.I)
     if fence_match:
         cleaned = fence_match.group(1).strip()
@@ -56,7 +59,8 @@ def _extract_json_payload(text: str) -> dict:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail=f"AI 返回内容不是有效 JSON: {exc}") from exc
+        preview = cleaned[:200].replace("\n", " ")
+        raise HTTPException(status_code=502, detail=f"AI 返回内容不是有效 JSON: {exc}；返回开头：{preview}") from exc
     if not isinstance(data, dict):
         raise HTTPException(status_code=502, detail="AI 返回 JSON 顶层必须是对象")
     return data
@@ -116,27 +120,8 @@ def _normalize_ai_model(model: str) -> str:
 
 
 def _prepare_ai_image(image_bytes: bytes, content_type: str) -> tuple[bytes, str]:
-    """Downscale uploaded drawings before sending them to the vision model."""
-    try:
-        with Image.open(BytesIO(image_bytes)) as img:
-            img = ImageOps.exif_transpose(img)
-            if img.mode in ("RGBA", "LA", "P"):
-                rgba = img.convert("RGBA")
-                canvas = Image.new("RGB", rgba.size, "#ffffff")
-                canvas.paste(rgba, mask=rgba.getchannel("A"))
-                img = canvas
-            else:
-                img = img.convert("RGB")
-
-            if max(img.size) > AI_IMAGE_MAX_EDGE:
-                img.thumbnail((AI_IMAGE_MAX_EDGE, AI_IMAGE_MAX_EDGE), Image.Resampling.LANCZOS)
-
-            output = BytesIO()
-            img.save(output, "JPEG", quality=AI_IMAGE_JPEG_QUALITY, optimize=True)
-            return output.getvalue(), "image/jpeg"
-    except Exception:
-        logger.warning("AI image optimization failed; using original upload", exc_info=True)
-        return image_bytes, content_type
+    """Keep uploaded drawings unmodified so OCR sees the original details."""
+    return image_bytes, content_type
 
 
 # ===================== 配件管理 =====================
@@ -472,6 +457,11 @@ async def analyze_drawing(file: UploadFile = File(...)):
         raise HTTPException(status_code=502, detail="AI 返回结构缺少 choices[0].message.content") from exc
     if isinstance(content, list):
         content = "\n".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content)
+    if not str(content).strip():
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 返回内容为空；当前实际调用模型为 {model}，请确认该模型支持图片识别。",
+        )
 
     analysis = _normalize_analysis(_extract_json_payload(str(content)))
     return {

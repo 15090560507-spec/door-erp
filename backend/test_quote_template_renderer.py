@@ -232,20 +232,20 @@ def test_ai_analysis_parses_openai_compatible_response():
         "baseUrl": "https://api.example.test/v1",
         "endpointPath": "/chat/completions",
         "apiKey": "sk-test",
-        "model": "kimi-k2.65",
+        "model": "kimi-k2.6",
         "prompt": "Return JSON only.",
     }
 
     def fake_urlopen(req, timeout):
         payload = json.loads(req.data.decode("utf-8"))
-        globals()["check"]("AI request fixes common Kimi model typo", payload["model"] == "moonshot-v1-8k-vision-preview", str(payload))
+        globals()["check"]("AI request maps Kimi text model to vision model", payload["model"] == "moonshot-v1-8k-vision-preview", str(payload))
         globals()["check"]("AI request uses model-compatible temperature", payload["temperature"] == 1, str(payload))
         globals()["check"]("AI request limits output length", payload["max_tokens"] == 1200, str(payload))
         image_part = payload["messages"][1]["content"][1]["image_url"]["url"]
-        globals()["check"]("AI request includes optimized JPEG image", image_part.startswith("data:image/jpeg;base64,"), image_part[:40])
+        globals()["check"]("AI request keeps original PNG image", image_part.startswith("data:image/png;base64,"), image_part[:40])
         image_bytes = base64.b64decode(image_part.split(",", 1)[1])
-        with Image.open(io.BytesIO(image_bytes)) as optimized:
-            globals()["check"]("AI request image is resized for speed", max(optimized.size) <= 1280, str(optimized.size))
+        with Image.open(io.BytesIO(image_bytes)) as uploaded:
+            globals()["check"]("AI request image is not resized", uploaded.size == (2600, 1800), str(uploaded.size))
 
         class Response:
             def __enter__(self):
