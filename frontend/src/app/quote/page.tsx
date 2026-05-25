@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
+import type { Accessory, QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
-import { createQuote } from "@/lib/quoteApi";
+import { createQuote, getAccessories } from "@/lib/quoteApi";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
 import QuotePreview from "@/components/QuotePreview";
 import AccessoryModal from "@/components/AccessoryModal";
@@ -12,6 +12,60 @@ import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const QUOTE_ROW_COUNT = 8;
+
+function chooseAccessoryMatch(name: string, matches: Accessory[]): Accessory | null {
+  const query = name.trim();
+  if (!query || !matches.length) return null;
+  return (
+    matches.find((item) => item.name.trim() === query) ||
+    matches.find((item) => item.name.includes(query) || query.includes(item.name.trim())) ||
+    matches[0]
+  );
+}
+
+async function resolveAiAccessoryRows(accessories: string[]): Promise<{
+  rows: QuoteItem[];
+  matchedCount: number;
+  lookupFailedCount: number;
+}> {
+  const names = accessories.map((item) => String(item || "").trim()).filter(Boolean);
+  const lookups = await Promise.all(
+    names.map(async (name) => {
+      try {
+        const matches = await getAccessories(name);
+        return { name, match: chooseAccessoryMatch(name, matches), failed: false };
+      } catch (error) {
+        console.warn("AI accessory lookup failed:", name, error);
+        return { name, match: null, failed: true };
+      }
+    })
+  );
+
+  let matchedCount = 0;
+  let lookupFailedCount = 0;
+  const rows = lookups.map(({ name, match, failed }) => {
+    if (failed) lookupFailedCount += 1;
+    if (match) {
+      matchedCount += 1;
+      return {
+        ...createEmptyQuoteItem(),
+        accessoryId: match.id,
+        productName: match.name,
+        unit: match.unit || "",
+        unitPrice: match.unitPrice ?? 0,
+      };
+    }
+    return {
+      ...createEmptyQuoteItem(),
+      productName: name,
+      unit: "",
+      unitPrice: 0,
+    };
+  });
+
+  return { rows, matchedCount, lookupFailedCount };
+}
 
 export default function QuotePage() {
   // Form state
@@ -19,7 +73,7 @@ export default function QuotePage() {
   const [projectName, setProjectName] = useState("");
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
-  const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: 8 }, () => createEmptyQuoteItem()));
+  const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
 
   // Modal state
   const [accessoryOpen, setAccessoryOpen] = useState(false);
@@ -122,41 +176,62 @@ export default function QuotePage() {
   }
 
   // Apply AI analysis results
-  function handleApplyAnalysis(result: AnalysisResult) {
+  async function handleApplyAnalysis(result: AnalysisResult) {
     if (result.customerName) setCustomerName(result.customerName);
     if (result.projectName) setProjectName(result.projectName);
 
     const globalDir = normalizeOpenDirection(result.openDirection);
     const fallbackWidth = result.outerWidth ?? null;
     const fallbackHeight = result.outerHeight ?? null;
+    const mainItem = result.items?.[0] || null;
+    const rawDir = mainItem?.openDirection || globalDir || "";
+    const mainRow: QuoteItem = mainItem
+      ? {
+          accessoryId: null,
+          productName: mainItem.productName || "",
+          width: mainItem.width ?? fallbackWidth,
+          height: mainItem.height ?? fallbackHeight,
+          openDirection: normalizeOpenDirection(rawDir),
+          unit: mainItem.unit || "m2",
+          unitPrice: mainItem.unitPrice ?? 0,
+        }
+      : {
+          ...createEmptyQuoteItem(),
+          width: fallbackWidth,
+          height: fallbackHeight,
+          openDirection: globalDir,
+        };
 
-    setItems(
-      Array.from({ length: 8 }, (_, index) => {
-        const item = result.items?.[index];
-        if (item) {
-          const rawDir = item.openDirection || globalDir || "";
-          return {
-            accessoryId: null,
-            productName: item.productName || "",
-            width: item.width ?? fallbackWidth,
-            height: item.height ?? fallbackHeight,
-            openDirection: normalizeOpenDirection(rawDir),
-            unit: item.unit || "m2",
-            unitPrice: item.unitPrice ?? 0,
-          };
-        }
-        if (index === 0 && (fallbackWidth || fallbackHeight || globalDir)) {
-          return {
-            ...createEmptyQuoteItem(),
-            width: fallbackWidth,
-            height: fallbackHeight,
-            openDirection: globalDir,
-          };
-        }
-        return createEmptyQuoteItem();
-      })
-    );
-    setStatus("AI 识别结果已回填");
+    let accessoryRows: QuoteItem[] = [];
+    let matchedCount = 0;
+    let lookupFailedCount = 0;
+    try {
+      const resolved = await resolveAiAccessoryRows(result.accessories || []);
+      accessoryRows = resolved.rows;
+      matchedCount = resolved.matchedCount;
+      lookupFailedCount = resolved.lookupFailedCount;
+    } catch (error) {
+      console.warn("AI accessories mapping failed:", error);
+      accessoryRows = (result.accessories || [])
+        .map((name) => String(name || "").trim())
+        .filter(Boolean)
+        .map((name) => ({
+          ...createEmptyQuoteItem(),
+          productName: name,
+        }));
+      lookupFailedCount = accessoryRows.length;
+    }
+
+    const rows = [mainRow, ...accessoryRows].slice(0, QUOTE_ROW_COUNT);
+    while (rows.length < QUOTE_ROW_COUNT) rows.push(createEmptyQuoteItem());
+    setItems(rows);
+
+    const overflowCount = Math.max(0, accessoryRows.length - (QUOTE_ROW_COUNT - 1));
+    const statusParts = ["AI 识别结果已回填"];
+    if (result.accessories?.length) statusParts.push(`配件匹配 ${matchedCount}/${result.accessories.length}`);
+    if (lookupFailedCount) statusParts.push(`${lookupFailedCount} 个配件查库失败已按原名填入`);
+    if (overflowCount) statusParts.push(`超过模板行数的 ${overflowCount} 个配件未回填`);
+    setStatus(statusParts.join("，"));
   }
 
   // Load quote from history
@@ -166,7 +241,7 @@ export default function QuotePage() {
     setQuoteDate(quote.quoteDate);
     setNoticeText(quote.noticeText || DEFAULT_QUOTE_NOTICE_TEXT);
     setItems(
-      Array.from({ length: 8 }, (_, index) => {
+      Array.from({ length: QUOTE_ROW_COUNT }, (_, index) => {
         const item = quote.items?.[index];
         return item
           ? {
@@ -190,7 +265,7 @@ export default function QuotePage() {
     setProjectName("");
     setQuoteDate(new Date().toISOString().slice(0, 10));
     setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
-    setItems(Array.from({ length: 8 }, () => createEmptyQuoteItem()));
+    setItems(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
     setLastQuoteId(null);
     setStatus("表单已清空");
   }
