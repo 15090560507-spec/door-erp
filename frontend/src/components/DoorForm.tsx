@@ -131,8 +131,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     loadDropdownOptions().then(setOpts);
   }, []);
 
-  const o = (key: string, fallback: string[]) =>
-    (opts && opts[key] && opts[key].length > 0) ? opts[key] : fallback;
+  const o = (key: string, fallback: string[]) => {
+    const configured = opts?.[key] || [];
+    return Array.from(new Set([...fallback, ...configured])).filter(Boolean);
+  };
 
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
