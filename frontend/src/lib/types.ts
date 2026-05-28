@@ -78,7 +78,14 @@ export interface DoorFormData {
   sm: string;
   trim_style_outer: string;
   trim_style_inner: string;
-  lock_side_offset: number;
+  lock_side_offset?: number;
+  door_panel_style: string;
+  panel_lock_offset_x: number;
+  panel_hinge_offset_y: number;
+  panel_middle_offset_z: number;
+  panel_plus_offset_a: number;
+  panel_plus_offset_b: number;
+  panel_fill_style: string;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -147,13 +154,17 @@ export const FINGERPRINT_LOCKS = ["无", "安志杰AF-12", "客备"];
 export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"];
+export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "H型布局", "H+型布局"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
   zmks: "按图", fmks: "按图",
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "无",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
-  sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 150, ddh: "", sl: "1 樘", hhxd: "D",
+  sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0,
+  door_panel_style: "无造型", panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
+  panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
+  panel_fill_style: "", ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/70",

@@ -505,42 +505,67 @@ def draw_door_in_frame(
         for hinge_y in hinge_ys:
             drawer.insert_hinge_block(off((hinge_x, hinge_y)))
 
-    # ===================== 锁边偏移线绘制 =====================
-    lock_side_offset = p.get('lock_side_offset', 150)
+    # ===================== 门板样式线条绘制 =====================
+    panel_style = p.get('door_panel_style') or "无造型"
+    panel_lock_offset_x = float(p.get('panel_lock_offset_x', 180) or 0)
+    panel_hinge_offset_y = float(p.get('panel_hinge_offset_y', 100) or 0)
+    panel_middle_offset_z = float(p.get('panel_middle_offset_z', 180) or 0)
+    panel_plus_offset_a = float(p.get('panel_plus_offset_a', 350) or 0)
+    panel_plus_offset_b = float(p.get('panel_plus_offset_b', 100) or 0)
 
-    if lock_side_offset > 0 and panel_positions:
+    def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
+        if door_type == "单门":
+            if (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开"):
+                return px1
+            return px2
+        if door_type in ("对开门", "子母门"):
+            return px2 if (px1 + px2) / 2 < dw / 2 else px1
+        if door_type in ("折叠四开门", "两定两开"):
+            return px2 if index <= 1 else px1
+        return None
+
+    def draw_panel_line(x1: float, y1: float, x2: float, y2: float):
+        drawer.draw_line(off((x1, y1)), off((x2, y2)), 'A-DOOR-PANEL')
+
+    if panel_style != "无造型" and panel_positions and panel_lock_offset_x > 0:
         for idx, (px1, px2) in enumerate(panel_positions):
-            lock_x = None
+            lock_edge = panel_lock_edge(idx, px1, px2)
+            if lock_edge is None:
+                continue
 
-            if door_type == "单门":
-                if (is_back and door_open_dir == "左开") or (not is_back and door_open_dir == "右开"):
-                    lock_x = px1 + lock_side_offset
-                else:
-                    lock_x = px2 - lock_side_offset
-            elif door_type == "对开门":
-                if idx == 0:
-                    lock_x = px2 - lock_side_offset
-                else:
-                    lock_x = px1 + lock_side_offset
-            elif door_type == "子母门":
-                # 母门始终是 panel_positions[1]，锁边=中缝侧，向合页边偏移
-                if idx == 1:
-                    if is_mother_right:
-                        lock_x = px1 + lock_side_offset  # 母门在右，中缝=母门左边
-                    else:
-                        lock_x = px2 - lock_side_offset  # 母门在左，中缝=母门右边
-            elif door_type in ("折叠四开门", "两定两开"):
-                if idx <= 1:
-                    lock_x = px2 - lock_side_offset
-                else:
-                    lock_x = px1 + lock_side_offset
+            direction = 1 if abs(lock_edge - px1) < 0.01 else -1
+            hinge_edge = px2 if direction == 1 else px1
+            lock_line_x = lock_edge + direction * panel_lock_offset_x
+            if not (px1 < lock_line_x < px2):
+                continue
+            draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
 
-            if lock_x is not None:
-                drawer.draw_line(
-                    off((lock_x, panel_y_bot)),
-                    off((lock_x, panel_y_top)),
-                    'A-DOOR-PANEL'
-                )
+            if panel_style not in ("H型布局", "H+型布局"):
+                continue
+
+            hinge_line_x = hinge_edge - direction * panel_hinge_offset_y
+            if not (px1 < hinge_line_x < px2):
+                continue
+            if abs(hinge_line_x - lock_line_x) < 1:
+                continue
+            draw_panel_line(hinge_line_x, panel_y_bot, hinge_line_x, panel_y_top)
+
+            bx1, bx2 = sorted((lock_line_x, hinge_line_x))
+            lower_line_y = panel_y_bot + panel_middle_offset_z
+            upper_line_y = panel_y_top - panel_middle_offset_z
+            y_lines = []
+            if panel_y_bot < lower_line_y < panel_y_top:
+                y_lines.append(lower_line_y)
+            if panel_y_bot < upper_line_y < panel_y_top and abs(upper_line_y - lower_line_y) > 1:
+                y_lines.append(upper_line_y)
+            if panel_style == "H+型布局":
+                plus_a_y = lower_line_y + panel_plus_offset_a
+                plus_b_y = plus_a_y + panel_plus_offset_b
+                for y in (plus_a_y, plus_b_y):
+                    if panel_y_bot < y < panel_y_top and all(abs(y - exists) > 1 for exists in y_lines):
+                        y_lines.append(y)
+            for y in sorted(y_lines):
+                draw_panel_line(bx1, y, bx2, y)
 
     def parse_handle_size(value: str) -> Optional[Tuple[float, float]]:
         if not value:

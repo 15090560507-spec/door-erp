@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES,
+  TRIM_STYLES, DOOR_PANEL_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -139,6 +139,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
   };
+  const panelStyle = data.door_panel_style || "无造型";
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -248,9 +249,63 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         <details className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 cursor-pointer">
           <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
             门板设置
+            <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
+              {panelStyle}
+            </span>
           </summary>
-          <div className="grid grid-cols-1 gap-3 mt-4">
-            <Input label="锁边偏移量(mm)" value={data.lock_side_offset} type="number" onChange={(v) => set("lock_side_offset", Number(v))} />
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <Select
+              label="门板样式"
+              value={panelStyle}
+              options={DOOR_PANEL_STYLES}
+              onChange={(v) => set("door_panel_style", v)}
+            />
+            <Input
+              label="填充样式"
+              value={data.panel_fill_style || ""}
+              placeholder="预留，暂不生成填充"
+              onChange={(v) => set("panel_fill_style", v)}
+            />
+            {panelStyle !== "无造型" && (
+              <Input
+                label="锁边偏移X(mm)"
+                value={data.panel_lock_offset_x ?? 180}
+                type="number"
+                onChange={(v) => set("panel_lock_offset_x", Number(v))}
+              />
+            )}
+            {["H型布局", "H+型布局"].includes(panelStyle) && (
+              <>
+                <Input
+                  label="合页边偏移Y(mm)"
+                  value={data.panel_hinge_offset_y ?? 100}
+                  type="number"
+                  onChange={(v) => set("panel_hinge_offset_y", Number(v))}
+                />
+                <Input
+                  label="中区上下偏移Z(mm)"
+                  value={data.panel_middle_offset_z ?? 180}
+                  type="number"
+                  onChange={(v) => set("panel_middle_offset_z", Number(v))}
+                />
+              </>
+            )}
+            {panelStyle === "H+型布局" && (
+              <>
+                <Input
+                  label="H+上偏移A(mm)"
+                  value={data.panel_plus_offset_a ?? 350}
+                  type="number"
+                  onChange={(v) => set("panel_plus_offset_a", Number(v))}
+                />
+                <Input
+                  label="H+上偏移B(mm)"
+                  value={data.panel_plus_offset_b ?? 100}
+                  type="number"
+                  onChange={(v) => set("panel_plus_offset_b", Number(v))}
+                />
+              </>
+            )}
           </div>
         </details>
 

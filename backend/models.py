@@ -63,7 +63,14 @@ class CADRequest(BaseModel):
     sm: str = ""                        # 批注
     trim_style_outer: str = ""          # 外包套款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
     trim_style_inner: str = ""          # 内包套款式
-    lock_side_offset: int = 150         # 锁边偏移量 (mm)
+    lock_side_offset: int = 0           # 兼容旧数据：旧锁边偏移量 (mm)
+    door_panel_style: str = "无造型"     # 门板样式
+    panel_lock_offset_x: int = 180      # 锁边向合页边偏移 X
+    panel_hinge_offset_y: int = 100     # 合页边向锁边偏移 Y
+    panel_middle_offset_z: int = 180    # B 区域上下向中间偏移 Z
+    panel_plus_offset_a: int = 350      # H+ 第一段上偏移 A
+    panel_plus_offset_b: int = 100      # H+ 第二段上偏移 B
+    panel_fill_style: str = ""          # 预留填充样式
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
     top_gap: int = 5                    # 上门缝

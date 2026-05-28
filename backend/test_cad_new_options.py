@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import io
 
 import ezdxf
 
@@ -149,9 +150,39 @@ def test_a1022_handle_backpack_handle_and_adjustable_hinge():
     )
 
 
+def test_door_panel_style_lines():
+    req = CADRequest(
+        door_panel_style="H+型布局",
+        panel_lock_offset_x=180,
+        panel_hinge_offset_y=100,
+        panel_middle_offset_z=180,
+        panel_plus_offset_a=350,
+        panel_plus_offset_b=100,
+        panel_fill_style="",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    check("panel style passes to info map", info["DOOR_PANEL_STYLE"] == "H+型布局", str(info))
+    check("panel style passes to drawing", draw_params["door_panel_style"] == "H+型布局", str(draw_params))
+    check("panel lock offset default is 180-compatible", draw_params["panel_lock_offset_x"] == 180, str(draw_params))
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("panel style CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_lines = [
+        entity for entity in doc.modelspace().query("LINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    check("H+ panel style draws extra panel lines", len(panel_lines) >= 12, f"line count: {len(panel_lines)}")
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
+    test_door_panel_style_lines()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
