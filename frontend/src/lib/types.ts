@@ -90,9 +90,6 @@ export interface DoorFormData {
   panel_three_col_a: number;
   panel_three_col_b: number;
   panel_three_col_c: number;
-  panel_fill_style: string;
-  panel_lock_fill_pattern: string;
-  panel_hinge_fill_pattern: string;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -162,7 +159,6 @@ export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局"];
-export const DOOR_PANEL_FILL_OPTIONS = ["", "钱币", "万字纹", "鱼鳞纹", "紫荆花", "竖条", "实虚线", "四方纳福", "流星雨"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
@@ -170,11 +166,11 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "无",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0,
-  door_panel_style: "无造型", back_door_panel_style: "", child_door_panel_style: "",
+  door_panel_style: "无造型", back_door_panel_style: "无造型", child_door_panel_style: "",
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
-  panel_three_col_a: 0, panel_three_col_b: 0, panel_three_col_c: 0,
-  panel_fill_style: "", panel_lock_fill_pattern: "", panel_hinge_fill_pattern: "", ddh: "", sl: "1 樘", hhxd: "D",
+  panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
+  ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/70",
@@ -184,8 +180,8 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   has_outer: true, trim_front_in: 160,
   has_inner: false, trim_back_in: 140,
   dw: 900, dh: 2100, overlap: 20, overlap_front: 20, overlap_back: 20,
-  fw_left_str: "60/60", fw_right_str: "60/60", fw_top_str: "60/60",
-  th_str: "55/70", threshold_type: "高低槛", has_dj: false, dj_height: 0,
+  fw_left_str: "55/85", fw_right_str: "55/62", fw_top_str: "55/75",
+  th_str: "55/75", threshold_type: "高低槛", has_dj: false, dj_height: 0,
   left_gap: 2, right_gap: 2, top_gap: 5, bottom_gap: 7, middle_gap: 4,
   use_light_size: false, mark_light_size: false, light_w: 0, light_h: 0,
   pdk: "60", sel_bz: "全包",

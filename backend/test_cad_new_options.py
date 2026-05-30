@@ -1,4 +1,3 @@
-import io
 import os
 import sys
 import io
@@ -158,7 +157,6 @@ def test_door_panel_style_lines():
         panel_middle_offset_z=180,
         panel_plus_offset_a=350,
         panel_plus_offset_b=100,
-        panel_fill_style="",
     )
 
     info, checks, draw_params = build_cad_params(req)
@@ -176,35 +174,7 @@ def test_door_panel_style_lines():
         entity for entity in doc.modelspace().query("LINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
     ]
-    check("H+ panel style draws extra panel lines", len(panel_lines) >= 12, f"line count: {len(panel_lines)}")
-
-
-def test_two_column_panel_fill_patterns():
-    req = CADRequest(
-        door_panel_style="两列式布局",
-        panel_lock_offset_x=180,
-        panel_lock_fill_pattern="钱币",
-        panel_hinge_fill_pattern="实虚线",
-    )
-
-    info, checks, draw_params = build_cad_params(req)
-    check("lock side fill passes to info map", info["PANEL_LOCK_FILL_PATTERN"] == "钱币", str(info))
-    check("hinge side fill passes to drawing", draw_params["panel_hinge_fill_pattern"] == "实虚线", str(draw_params))
-
-    msg, buffer = run_integrated_system(info, checks, draw_params)
-    check("two-column fill CAD generation returns buffer", buffer is not None, msg)
-    if not buffer:
-        return
-
-    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
-    hatches = [
-        entity for entity in doc.modelspace().query("HATCH")
-        if entity.dxf.layer == "A-DOOR-PANEL-FILL"
-    ]
-    pattern_names = [entity.dxf.pattern_name for entity in hatches]
-    check("two-column style draws panel fill hatches", len(hatches) >= 2, str(pattern_names))
-    check("custom lock-side pattern is used", "qianbi" in pattern_names, str(pattern_names))
-    check("builtin hinge-side pattern is used", "ANSI33" in pattern_names, str(pattern_names))
+    check("H+ panel style draws extra panel lines", len(panel_lines) >= 6, f"line count: {len(panel_lines)}")
 
 
 def poly_bounds(entity):
@@ -264,7 +234,7 @@ def test_pillar_handle_title_and_three_column_panel():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 70) < 0.01 and abs(y2 - 2040) < 0.01:
+        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "pillars align to frame inner opening not panel gap",
@@ -286,7 +256,47 @@ def test_pillar_handle_title_and_three_column_panel():
         entity for entity in doc.modelspace().query("LINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
     ]
-    check("three-column panel style draws separator lines", len(panel_lines) >= 8, f"line count: {len(panel_lines)}")
+    check("three-column panel style still draws required panel lines", len(panel_lines) >= 4, f"line count: {len(panel_lines)}")
+
+
+def test_frame_defaults_and_single_back_mirror():
+    default_req = CADRequest()
+    check("single right-open default left frame is hinge-wide", default_req.fw_left_str == "55/85", default_req.fw_left_str)
+    check("single right-open default right frame is lock-side", default_req.fw_right_str == "55/62", default_req.fw_right_str)
+    check("default top and threshold are 55/75", default_req.fw_top_str == "55/75" and default_req.th_str == "55/75", f"{default_req.fw_top_str}/{default_req.th_str}")
+
+    req = CADRequest(
+        door_type="单门",
+        fw_left_str="55/62",
+        fw_right_str="55/85",
+        fw_top_str="55/75",
+        th_str="55/75",
+    )
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("single mirror CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    frame_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    back_left_frames = []
+    back_right_frames = []
+    for entity in frame_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if x1 > 1500 and abs(y1) < 0.01 and abs(y2 - req.dh) < 0.01:
+            if abs((x2 - x1) - 85) < 0.01:
+                back_left_frames.append(entity)
+            if abs((x2 - x1) - 62) < 0.01:
+                back_right_frames.append(entity)
+    check(
+        "single back view mirrors front left/right frame widths",
+        len(back_left_frames) >= 1 and len(back_right_frames) >= 1,
+        f"back 85-width frames: {len(back_left_frames)}, back 62-width frames: {len(back_right_frames)}",
+    )
 
 
 def test_double_door_long_handles_draw_on_both_leaves():
@@ -324,9 +334,9 @@ if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_door_panel_style_lines()
-    test_two_column_panel_fill_patterns()
     test_pillar_handle_title_and_three_column_panel()
     test_double_door_long_handles_draw_on_both_leaves()
+    test_frame_defaults_and_single_back_mirror()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

@@ -14,50 +14,6 @@ from config import CONFIG, TEMPLATE_PATH
 from utils import parse_dim_str, parse_gap_str
 
 
-HATCH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hatches")
-PANEL_FILL_PATTERNS = {
-    "钱币": {"pattern": "qianbi", "file": "qianbi.pat", "scale": 1, "angle": 0, "type": "custom"},
-    "qianbi": {"pattern": "qianbi", "file": "qianbi.pat", "scale": 1, "angle": 0, "type": "custom"},
-    "万字纹": {"pattern": "wan", "file": "wan.pat", "scale": 0.5, "angle": 0, "type": "custom"},
-    "wan": {"pattern": "wan", "file": "wan.pat", "scale": 0.5, "angle": 0, "type": "custom"},
-    "鱼鳞纹": {"pattern": "yulin", "file": "yulin.pat", "scale": 0.8, "angle": 0, "type": "custom"},
-    "yulin": {"pattern": "yulin", "file": "yulin.pat", "scale": 0.8, "angle": 0, "type": "custom"},
-    "紫荆花": {"pattern": "zijinghua", "file": "zijinghua.pat", "scale": 0.8, "angle": 0, "type": "custom"},
-    "zijinghua": {"pattern": "zijinghua", "file": "zijinghua.pat", "scale": 0.8, "angle": 0, "type": "custom"},
-    "竖条": {"pattern": "shutiao", "file": "shutiao.pat", "scale": 0.4, "angle": 0, "type": "custom"},
-    "shutiao": {"pattern": "shutiao", "file": "shutiao.pat", "scale": 0.4, "angle": 0, "type": "custom"},
-    "实虚线": {"pattern": "ANSI33", "scale": 10, "angle": 0, "type": "builtin"},
-    "ansi33": {"pattern": "ANSI33", "scale": 10, "angle": 0, "type": "builtin"},
-    "四方纳福": {"pattern": "EARTH", "scale": 6, "angle": 0, "type": "builtin"},
-    "earth": {"pattern": "EARTH", "scale": 6, "angle": 0, "type": "builtin"},
-    "流星雨": {"pattern": "liuxingyu", "file": "liuxingyu.pat", "scale": 1, "angle": 0, "type": "custom"},
-    "liuxingyu": {"pattern": "liuxingyu", "file": "liuxingyu.pat", "scale": 1, "angle": 0, "type": "custom"},
-}
-
-
-def _parse_pat_definition(file_name: str):
-    path = os.path.join(HATCH_DIR, file_name)
-    if not os.path.exists(path):
-        return None
-    definition = []
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line or line.startswith("*") or line.startswith(";"):
-                continue
-            parts = [part.strip() for part in line.split(",")]
-            if len(parts) < 5:
-                continue
-            try:
-                angle = float(parts[0])
-                base = (float(parts[1]), float(parts[2]))
-                offset = (float(parts[3]), float(parts[4]))
-                dashes = [float(part) for part in parts[5:] if part]
-            except ValueError:
-                continue
-            definition.append([angle, base, offset, dashes])
-    return definition or None
-
 # ===================== 模板缓存 =====================
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
 _template_text: Optional[str] = None
@@ -135,31 +91,6 @@ class EzdxfDrawer:
     def draw_line(self, p1, p2, layer):
         self.ms.add_line(p1, p2, dxfattribs={'layer': layer})
 
-    def draw_hatch(self, points, pattern_key, layer="A-DOOR-PANEL-FILL"):
-        config = PANEL_FILL_PATTERNS.get((pattern_key or "").strip())
-        if not config:
-            return None
-        hatch = self.ms.add_hatch(color=256, dxfattribs={'layer': layer})
-        pattern_name = config["pattern"]
-        scale = float(config.get("scale", 1) or 1)
-        angle = float(config.get("angle", 0) or 0)
-        if pattern_name.upper() == "SOLID":
-            hatch.set_solid_fill(color=256)
-        elif config.get("type") == "custom":
-            definition = _parse_pat_definition(config.get("file", ""))
-            hatch.set_pattern_fill(
-                pattern_name,
-                color=256,
-                angle=angle,
-                scale=scale,
-                pattern_type=2,
-                definition=definition,
-            )
-        else:
-            hatch.set_pattern_fill(pattern_name, color=256, angle=angle, scale=scale)
-        hatch.paths.add_polyline_path(points, is_closed=True)
-        return hatch
-
     def draw_dim(self, p1, p2, text_pos, rotation, layer, text_override=""):
         dimstyle = "23231" if "23231" in self.doc.dimstyles else "Standard"
         angle_deg = math.degrees(rotation)
@@ -195,17 +126,24 @@ def draw_door_in_frame(
 ):
     drawer.update_progress(f"开始绘制{view_name}门体...")
 
-    left_width = p['left_width_back'] if is_back else p['left_width_front']
-    right_width = p['right_width_back'] if is_back else p['right_width_front']
-    fw_top = p['fw_top_back'] if is_back else p['fw_top_front']
-    th = p['th_back'] if is_back else p['th_front']
-    trim_w = p['trim_back'] if is_back else p['trim_front']
-    overlap_key = 'overlap_back' if is_back else 'overlap_front'
-    overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
     dw = p['dw']
     dh = p['dh']
 
     door_type = p.get('door_type', '单门')
+    if is_back and door_type == "单门":
+        left_width = p['right_width_front']
+        right_width = p['left_width_front']
+        fw_top = p['fw_top_front']
+        th = p['th_front']
+    else:
+        left_width = p['left_width_back'] if is_back else p['left_width_front']
+        right_width = p['right_width_back'] if is_back else p['right_width_front']
+        fw_top = p['fw_top_back'] if is_back else p['fw_top_front']
+        th = p['th_back'] if is_back else p['th_front']
+    trim_w = p['trim_back'] if is_back else p['trim_front']
+    overlap_key = 'overlap_back' if is_back else 'overlap_front'
+    overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
+
     mother_door_width = p.get('mother_door_width', 600)
     mid_door_width = p.get('mid_door_width', 400)
     pillar_width_str = p.get('pillar_width_str', '55/70')
@@ -220,7 +158,12 @@ def draw_door_in_frame(
     # 面板基准：以开启侧门框为参照计算尺寸和位置，正反面绘制完全一致
     # 外开→正面框为基准, 内开→背面框为基准
     # 无缝侧门框更宽→面板与框自然重叠（物理正确）
-    if nk_choice == "外开":
+    if is_back and door_type == "单门":
+        ref_left = left_width
+        ref_right = right_width
+        ref_fw_top = fw_top
+        ref_th = th
+    elif nk_choice == "外开":
         ref_left = p['left_width_front']
         ref_right = p['right_width_front']
         ref_fw_top = p['fw_top_front']
@@ -579,7 +522,7 @@ def draw_door_in_frame(
 
     # ===================== 门板样式线条绘制 =====================
     front_panel_style = p.get('door_panel_style') or "无造型"
-    back_panel_style = p.get('back_door_panel_style') or front_panel_style
+    back_panel_style = p.get('back_door_panel_style') or "无造型"
     child_panel_style = p.get('child_door_panel_style') or ""
     panel_style_default = back_panel_style if is_back else front_panel_style
     panel_lock_offset_x = float(p.get('panel_lock_offset_x', 180) or 0)
@@ -605,16 +548,16 @@ def draw_door_in_frame(
     def draw_panel_line(x1: float, y1: float, x2: float, y2: float):
         drawer.draw_line(off((x1, y1)), off((x2, y2)), 'A-DOOR-PANEL')
 
-    def draw_panel_hatch(x1: float, x2: float, pattern_key: str):
-        if not pattern_key or abs(x2 - x1) < 1:
+    def draw_panel_rect(x1: float, x2: float):
+        if abs(x2 - x1) < 1:
             return
         left, right = sorted((x1, x2))
-        drawer.draw_hatch([
+        drawer.draw_poly([
             off((left, panel_y_bot)),
             off((right, panel_y_bot)),
             off((right, panel_y_top)),
             off((left, panel_y_top)),
-        ], pattern_key)
+        ], 'A-DOOR-PANEL')
 
     def is_child_panel(index: int) -> bool:
         if door_type == "子母门":
@@ -639,8 +582,8 @@ def draw_door_in_frame(
         elif b and c:
             a = panel_width - b - c
         else:
-            a = panel_lock_offset_x if panel_lock_offset_x > 0 else panel_width / 3
-            c = panel_hinge_offset_y if panel_hinge_offset_y > 0 else panel_width / 3
+            a = panel_three_col_a if panel_three_col_a > 0 else 180
+            c = panel_three_col_c if panel_three_col_c > 0 else 100
             b = panel_width - a - c
         if not a or not b or not c or min(a, b, c) <= 1:
             return None
@@ -668,8 +611,9 @@ def draw_door_in_frame(
                 lock_line_x = lock_edge + direction * a_width
                 hinge_line_x = hinge_edge - direction * c_width
                 if px1 < lock_line_x < px2 and px1 < hinge_line_x < px2 and abs(lock_line_x - hinge_line_x) > 1:
-                    draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
-                    draw_panel_line(hinge_line_x, panel_y_bot, hinge_line_x, panel_y_top)
+                    draw_panel_rect(lock_edge, lock_line_x)
+                    draw_panel_rect(lock_line_x, hinge_line_x)
+                    draw_panel_rect(hinge_line_x, hinge_edge)
                 continue
 
             if panel_lock_offset_x <= 0:
@@ -680,10 +624,9 @@ def draw_door_in_frame(
             draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
 
             if panel_style == "两列式布局":
-                lock_fill = p.get('panel_lock_fill_pattern', '')
-                hinge_fill = p.get('panel_hinge_fill_pattern', '')
-                draw_panel_hatch(lock_edge, lock_line_x, lock_fill)
-                draw_panel_hatch(lock_line_x, hinge_edge, hinge_fill)
+                draw_panel_rect(lock_edge, lock_line_x)
+                draw_panel_rect(lock_line_x, hinge_edge)
+                continue
 
             if panel_style not in ("H型布局", "H+型布局"):
                 continue
@@ -920,7 +863,6 @@ def run_integrated_system(
         drawer.batch_add_layers({
             "A-DOOR-FRAME": 4,
             "A-DOOR-PANEL": 2,
-            "A-DOOR-PANEL-FILL": 8,
             "A-DOOR-TRIM": 1,
             "YQ_DIM": 3,
             "A-DOOR-mark": 7

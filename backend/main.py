@@ -241,9 +241,6 @@ def build_cad_params(req: CADRequest):
         "PANEL_THREE_COL_A": req.panel_three_col_a,
         "PANEL_THREE_COL_B": req.panel_three_col_b,
         "PANEL_THREE_COL_C": req.panel_three_col_c,
-        "PANEL_FILL_STYLE": req.panel_fill_style,
-        "PANEL_LOCK_FILL_PATTERN": req.panel_lock_fill_pattern,
-        "PANEL_HINGE_FILL_PATTERN": req.panel_hinge_fill_pattern,
         "HANDLE_SIZE": req.handle_size,
         "FINGERPRINT_LOCK": req.fingerprint_lock,
     }
@@ -331,9 +328,6 @@ def build_cad_params(req: CADRequest):
         "panel_three_col_a": req.panel_three_col_a,
         "panel_three_col_b": req.panel_three_col_b,
         "panel_three_col_c": req.panel_three_col_c,
-        "panel_fill_style": req.panel_fill_style,
-        "panel_lock_fill_pattern": req.panel_lock_fill_pattern,
-        "panel_hinge_fill_pattern": req.panel_hinge_fill_pattern,
         "handle_size": req.handle_size,
         "fingerprint_lock": req.fingerprint_lock,
     }

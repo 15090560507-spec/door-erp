@@ -32,11 +32,11 @@ class CADRequest(BaseModel):
     light_h: int = 0                    # 见光高
     mother_door_width: int = 600        # 母门单扇宽
     mid_door_width: int = 400           # 中门单扇宽
-    fw_left_str: str = "60/60"          # 左框宽 (外/内)
-    fw_right_str: str = "60/60"         # 右框宽 (外/内)
-    fw_top_str: str = "60/60"           # 上框宽 (外/内)
+    fw_left_str: str = "55/85"          # 左框宽 (外/内)
+    fw_right_str: str = "55/62"         # 右框宽 (外/内)
+    fw_top_str: str = "55/75"           # 上框宽 (外/内)
     threshold_type: str = "高低槛"      # 下槛方案
-    th_str: str = "55/70"               # 下槛高度 (低/高)
+    th_str: str = "55/75"               # 下槛高度 (低/高)
     pdk: str = "60"                     # 平底槛厚度
     has_dj: bool = False                # 吊脚
     dj_height: int = 0                  # 吊脚高度
@@ -65,19 +65,16 @@ class CADRequest(BaseModel):
     trim_style_inner: str = ""          # 内包套款式
     lock_side_offset: int = 0           # 兼容旧数据：旧锁边偏移量 (mm)
     door_panel_style: str = "无造型"     # 门板样式
-    back_door_panel_style: str = ""     # 反面门板样式，空=沿用正面
+    back_door_panel_style: str = "无造型"  # 反面门板样式
     child_door_panel_style: str = ""    # 子门/边扇门板样式，空=不单独绘制
     panel_lock_offset_x: int = 180      # 锁边向合页边偏移 X
     panel_hinge_offset_y: int = 100     # 合页边向锁边偏移 Y
     panel_middle_offset_z: int = 180    # B 区域上下向中间偏移 Z
     panel_plus_offset_a: int = 350      # H+ 第一段上偏移 A
     panel_plus_offset_b: int = 100      # H+ 第二段上偏移 B
-    panel_three_col_a: int = 0          # 三列式 A 锁边区域宽，0 表示自动
+    panel_three_col_a: int = 180        # 三列式 A 锁边区域宽，0 表示自动
     panel_three_col_b: int = 0          # 三列式 B 中间区域宽，0 表示自动
-    panel_three_col_c: int = 0          # 三列式 C 合页区域宽，0 表示自动
-    panel_fill_style: str = ""          # 预留填充样式
-    panel_lock_fill_pattern: str = ""   # 两列式锁边区域填充图案
-    panel_hinge_fill_pattern: str = ""  # 两列式合页边区域填充图案
+    panel_three_col_c: int = 100        # 三列式 C 合页区域宽，0 表示自动
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
     top_gap: int = 5                    # 上门缝
