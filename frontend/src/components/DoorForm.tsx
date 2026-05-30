@@ -139,14 +139,16 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
   };
+  const setField = (key: keyof DoorFormData, value: string | number | boolean) => {
+    onChange({ ...data, [key]: value });
+  };
   const panelStyle = data.door_panel_style || "无造型";
   const hasChildPanel = ["子母门", "两定两开", "折叠四开门"].includes(data.door_type);
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
-  const activePanelStyles = [panelStyle, data.back_door_panel_style || "无造型", data.child_door_panel_style || ""];
-  const usesOffsetX = activePanelStyles.some((style) => ["两列式布局", "H型布局", "H+型布局"].includes(style));
-  const usesThreeColumnPanel = activePanelStyles.includes("三列式布局");
-  const usesHPanel = activePanelStyles.some((style) => ["H型布局", "H+型布局"].includes(style));
-  const usesHPlusPanel = activePanelStyles.includes("H+型布局");
+  const usesOffsetX = (style: string) => ["两列式布局", "H型布局", "H+型布局"].includes(style);
+  const usesThreeColumnPanel = (style: string) => style === "三列式布局";
+  const usesHPanel = (style: string) => ["H型布局", "H+型布局"].includes(style);
+  const usesHPlusPanel = (style: string) => style === "H+型布局";
   const applyFrameDefaults = (next: DoorFormData): DoorFormData => {
     if (next.door_type === "单门") {
       const rightOpen = next.sel_kx !== "左开";
@@ -163,6 +165,107 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     }
     return next;
   };
+
+  const renderPanelControls = ({
+    title,
+    styleKey,
+    style,
+    styleOptions,
+    lockKey,
+    hingeKey,
+    middleKey,
+    plusAKey,
+    plusBKey,
+    threeAKey,
+    threeBKey,
+    threeCKey,
+  }: {
+    title: string;
+    styleKey: keyof DoorFormData;
+    style: string;
+    styleOptions: string[];
+    lockKey: keyof DoorFormData;
+    hingeKey: keyof DoorFormData;
+    middleKey: keyof DoorFormData;
+    plusAKey: keyof DoorFormData;
+    plusBKey: keyof DoorFormData;
+    threeAKey: keyof DoorFormData;
+    threeBKey: keyof DoorFormData;
+    threeCKey: keyof DoorFormData;
+  }) => (
+    <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Select
+          label={`${title}样式`}
+          value={style}
+          options={styleOptions}
+          onChange={(v) => setField(styleKey, v)}
+        />
+        {usesOffsetX(style) && (
+          <Input
+            label={`${title}锁边偏移X(mm)`}
+            value={(data[lockKey] as number) ?? 180}
+            type="number"
+            onChange={(v) => setField(lockKey, Number(v))}
+          />
+        )}
+        {usesThreeColumnPanel(style) && (
+          <>
+            <Input
+              label={`${title}A锁边区宽(mm)`}
+              value={(data[threeAKey] as number) ?? 0}
+              type="number"
+              onChange={(v) => setField(threeAKey, Number(v))}
+            />
+            <Input
+              label={`${title}B中间区宽(mm)`}
+              value={(data[threeBKey] as number) ?? 0}
+              type="number"
+              onChange={(v) => setField(threeBKey, Number(v))}
+            />
+            <Input
+              label={`${title}C合页区宽(mm)`}
+              value={(data[threeCKey] as number) ?? 0}
+              type="number"
+              onChange={(v) => setField(threeCKey, Number(v))}
+            />
+          </>
+        )}
+        {usesHPanel(style) && (
+          <>
+            <Input
+              label={`${title}合页边偏移Y(mm)`}
+              value={(data[hingeKey] as number) ?? 100}
+              type="number"
+              onChange={(v) => setField(hingeKey, Number(v))}
+            />
+            <Input
+              label={`${title}中区上下偏移Z(mm)`}
+              value={(data[middleKey] as number) ?? 180}
+              type="number"
+              onChange={(v) => setField(middleKey, Number(v))}
+            />
+          </>
+        )}
+        {usesHPlusPanel(style) && (
+          <>
+            <Input
+              label={`${title}H+上偏移A(mm)`}
+              value={(data[plusAKey] as number) ?? 350}
+              type="number"
+              onChange={(v) => setField(plusAKey, Number(v))}
+            />
+            <Input
+              label={`${title}H+上偏移B(mm)`}
+              value={(data[plusBKey] as number) ?? 100}
+              type="number"
+              onChange={(v) => setField(plusBKey, Number(v))}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -298,88 +401,48 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             </span>
           </summary>
           <div className="grid grid-cols-2 gap-3 mt-4">
-            <Select
-              label="门板样式"
-              value={panelStyle}
-              options={DOOR_PANEL_STYLES}
-              onChange={(v) => set("door_panel_style", v)}
-            />
-            <Select
-              label="反面门板样式"
-              value={data.back_door_panel_style || "无造型"}
-              options={DOOR_PANEL_STYLES}
-              onChange={(v) => set("back_door_panel_style", v)}
-            />
-            {hasChildPanel && (
-              <Select
-                label="子门门板样式"
-                value={data.child_door_panel_style || ""}
-                options={childPanelStyles}
-                onChange={(v) => set("child_door_panel_style", v)}
-              />
-            )}
-            {usesOffsetX && (
-              <Input
-                label="锁边偏移X(mm)"
-                value={data.panel_lock_offset_x ?? 180}
-                type="number"
-                onChange={(v) => set("panel_lock_offset_x", Number(v))}
-              />
-            )}
-            {usesThreeColumnPanel && (
-              <>
-                <Input
-                  label="A锁边区宽(mm)"
-                  value={data.panel_three_col_a ?? 0}
-                  type="number"
-                  onChange={(v) => set("panel_three_col_a", Number(v))}
-                />
-                <Input
-                  label="B中间区宽(mm)"
-                  value={data.panel_three_col_b ?? 0}
-                  type="number"
-                  onChange={(v) => set("panel_three_col_b", Number(v))}
-                />
-                <Input
-                  label="C合页区宽(mm)"
-                  value={data.panel_three_col_c ?? 0}
-                  type="number"
-                  onChange={(v) => set("panel_three_col_c", Number(v))}
-                />
-              </>
-            )}
-            {usesHPanel && (
-              <>
-                <Input
-                  label="合页边偏移Y(mm)"
-                  value={data.panel_hinge_offset_y ?? 100}
-                  type="number"
-                  onChange={(v) => set("panel_hinge_offset_y", Number(v))}
-                />
-                <Input
-                  label="中区上下偏移Z(mm)"
-                  value={data.panel_middle_offset_z ?? 180}
-                  type="number"
-                  onChange={(v) => set("panel_middle_offset_z", Number(v))}
-                />
-              </>
-            )}
-            {usesHPlusPanel && (
-              <>
-                <Input
-                  label="H+上偏移A(mm)"
-                  value={data.panel_plus_offset_a ?? 350}
-                  type="number"
-                  onChange={(v) => set("panel_plus_offset_a", Number(v))}
-                />
-                <Input
-                  label="H+上偏移B(mm)"
-                  value={data.panel_plus_offset_b ?? 100}
-                  type="number"
-                  onChange={(v) => set("panel_plus_offset_b", Number(v))}
-                />
-              </>
-            )}
+            {renderPanelControls({
+              title: "正面门板",
+              styleKey: "door_panel_style",
+              style: panelStyle,
+              styleOptions: DOOR_PANEL_STYLES,
+              lockKey: "panel_lock_offset_x",
+              hingeKey: "panel_hinge_offset_y",
+              middleKey: "panel_middle_offset_z",
+              plusAKey: "panel_plus_offset_a",
+              plusBKey: "panel_plus_offset_b",
+              threeAKey: "panel_three_col_a",
+              threeBKey: "panel_three_col_b",
+              threeCKey: "panel_three_col_c",
+            })}
+            {renderPanelControls({
+              title: "反面门板",
+              styleKey: "back_door_panel_style",
+              style: data.back_door_panel_style || "无造型",
+              styleOptions: DOOR_PANEL_STYLES,
+              lockKey: "back_panel_lock_offset_x",
+              hingeKey: "back_panel_hinge_offset_y",
+              middleKey: "back_panel_middle_offset_z",
+              plusAKey: "back_panel_plus_offset_a",
+              plusBKey: "back_panel_plus_offset_b",
+              threeAKey: "back_panel_three_col_a",
+              threeBKey: "back_panel_three_col_b",
+              threeCKey: "back_panel_three_col_c",
+            })}
+            {hasChildPanel && renderPanelControls({
+              title: "子门门板",
+              styleKey: "child_door_panel_style",
+              style: data.child_door_panel_style || "",
+              styleOptions: childPanelStyles,
+              lockKey: "child_panel_lock_offset_x",
+              hingeKey: "child_panel_hinge_offset_y",
+              middleKey: "child_panel_middle_offset_z",
+              plusAKey: "child_panel_plus_offset_a",
+              plusBKey: "child_panel_plus_offset_b",
+              threeAKey: "child_panel_three_col_a",
+              threeBKey: "child_panel_three_col_b",
+              threeCKey: "child_panel_three_col_c",
+            })}
           </div>
         </details>
 

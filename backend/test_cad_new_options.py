@@ -198,6 +198,10 @@ def test_pillar_handle_title_and_three_column_panel():
         panel_three_col_a=120,
         panel_three_col_b=260,
         panel_three_col_c=0,
+        back_panel_lock_offset_x=130,
+        back_panel_hinge_offset_y=90,
+        back_panel_middle_offset_z=160,
+        child_panel_lock_offset_x=140,
     )
 
     info, checks, draw_params = build_cad_params(req)
@@ -205,6 +209,8 @@ def test_pillar_handle_title_and_three_column_panel():
     check("three-column B width passes to drawing", draw_params["panel_three_col_b"] == 260, str(draw_params))
     check("back panel style passes to drawing", draw_params["back_door_panel_style"] == "H型布局", str(draw_params))
     check("child panel style passes to drawing", draw_params["child_door_panel_style"] == "两列式布局", str(draw_params))
+    check("back panel offset passes independently", draw_params["back_panel_lock_offset_x"] == 130, str(draw_params))
+    check("child panel offset passes independently", draw_params["child_panel_lock_offset_x"] == 140, str(draw_params))
 
     msg, buffer = run_integrated_system(info, checks, draw_params)
     check("pillar/handle/three-column CAD generation returns buffer", buffer is not None, msg)

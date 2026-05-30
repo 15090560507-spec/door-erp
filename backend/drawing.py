@@ -525,14 +525,20 @@ def draw_door_in_frame(
     back_panel_style = p.get('back_door_panel_style') or "无造型"
     child_panel_style = p.get('child_door_panel_style') or ""
     panel_style_default = back_panel_style if is_back else front_panel_style
-    panel_lock_offset_x = float(p.get('panel_lock_offset_x', 180) or 0)
-    panel_hinge_offset_y = float(p.get('panel_hinge_offset_y', 100) or 0)
-    panel_middle_offset_z = float(p.get('panel_middle_offset_z', 180) or 0)
-    panel_plus_offset_a = float(p.get('panel_plus_offset_a', 350) or 0)
-    panel_plus_offset_b = float(p.get('panel_plus_offset_b', 100) or 0)
-    panel_three_col_a = float(p.get('panel_three_col_a', 0) or 0)
-    panel_three_col_b = float(p.get('panel_three_col_b', 0) or 0)
-    panel_three_col_c = float(p.get('panel_three_col_c', 0) or 0)
+
+    def panel_settings(group: str, style: str) -> Dict[str, float | str]:
+        prefix = "" if group == "front" else f"{group}_panel_"
+        return {
+            "style": style,
+            "lock_offset_x": float(p.get(f"{prefix}lock_offset_x", p.get("panel_lock_offset_x", 180)) or 0),
+            "hinge_offset_y": float(p.get(f"{prefix}hinge_offset_y", p.get("panel_hinge_offset_y", 100)) or 0),
+            "middle_offset_z": float(p.get(f"{prefix}middle_offset_z", p.get("panel_middle_offset_z", 180)) or 0),
+            "plus_offset_a": float(p.get(f"{prefix}plus_offset_a", p.get("panel_plus_offset_a", 350)) or 0),
+            "plus_offset_b": float(p.get(f"{prefix}plus_offset_b", p.get("panel_plus_offset_b", 100)) or 0),
+            "three_col_a": float(p.get(f"{prefix}three_col_a", p.get("panel_three_col_a", 180)) or 0),
+            "three_col_b": float(p.get(f"{prefix}three_col_b", p.get("panel_three_col_b", 0)) or 0),
+            "three_col_c": float(p.get(f"{prefix}three_col_c", p.get("panel_three_col_c", 100)) or 0),
+        }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
         if door_type == "单门":
@@ -566,15 +572,15 @@ def draw_door_in_frame(
             return index in (0, 3)
         return False
 
-    def panel_style_for(index: int) -> str:
+    def panel_settings_for(index: int) -> Dict[str, float | str]:
         if is_child_panel(index):
-            return child_panel_style
-        return panel_style_default
+            return panel_settings("child", child_panel_style)
+        return panel_settings("back" if is_back else "front", panel_style_default)
 
-    def resolve_three_col_widths(panel_width: float):
-        a = panel_three_col_a if panel_three_col_a > 0 else None
-        b = panel_three_col_b if panel_three_col_b > 0 else None
-        c = panel_three_col_c if panel_three_col_c > 0 else None
+    def resolve_three_col_widths(panel_width: float, settings: Dict[str, float | str]):
+        a = settings["three_col_a"] if settings["three_col_a"] > 0 else None
+        b = settings["three_col_b"] if settings["three_col_b"] > 0 else None
+        c = settings["three_col_c"] if settings["three_col_c"] > 0 else None
         if a and c:
             b = panel_width - a - c
         elif a and b:
@@ -582,8 +588,8 @@ def draw_door_in_frame(
         elif b and c:
             a = panel_width - b - c
         else:
-            a = panel_three_col_a if panel_three_col_a > 0 else 180
-            c = panel_three_col_c if panel_three_col_c > 0 else 100
+            a = settings["three_col_a"] if settings["three_col_a"] > 0 else 180
+            c = settings["three_col_c"] if settings["three_col_c"] > 0 else 100
             b = panel_width - a - c
         if not a or not b or not c or min(a, b, c) <= 1:
             return None
@@ -593,7 +599,8 @@ def draw_door_in_frame(
 
     if panel_positions:
         for idx, (px1, px2) in enumerate(panel_positions):
-            panel_style = panel_style_for(idx)
+            settings = panel_settings_for(idx)
+            panel_style = str(settings["style"])
             if not panel_style or panel_style == "无造型":
                 continue
             lock_edge = panel_lock_edge(idx, px1, px2)
@@ -604,7 +611,7 @@ def draw_door_in_frame(
             hinge_edge = px2 if direction == 1 else px1
 
             if panel_style == "三列式布局":
-                widths = resolve_three_col_widths(abs(px2 - px1))
+                widths = resolve_three_col_widths(abs(px2 - px1), settings)
                 if not widths:
                     continue
                 a_width, _b_width, c_width = widths
@@ -616,6 +623,7 @@ def draw_door_in_frame(
                     draw_panel_rect(hinge_line_x, hinge_edge)
                 continue
 
+            panel_lock_offset_x = float(settings["lock_offset_x"])
             if panel_lock_offset_x <= 0:
                 continue
             lock_line_x = lock_edge + direction * panel_lock_offset_x
@@ -631,7 +639,7 @@ def draw_door_in_frame(
             if panel_style not in ("H型布局", "H+型布局"):
                 continue
 
-            hinge_line_x = hinge_edge - direction * panel_hinge_offset_y
+            hinge_line_x = hinge_edge - direction * float(settings["hinge_offset_y"])
             if not (px1 < hinge_line_x < px2):
                 continue
             if abs(hinge_line_x - lock_line_x) < 1:
@@ -639,16 +647,16 @@ def draw_door_in_frame(
             draw_panel_line(hinge_line_x, panel_y_bot, hinge_line_x, panel_y_top)
 
             bx1, bx2 = sorted((lock_line_x, hinge_line_x))
-            lower_line_y = panel_y_bot + panel_middle_offset_z
-            upper_line_y = panel_y_top - panel_middle_offset_z
+            lower_line_y = panel_y_bot + float(settings["middle_offset_z"])
+            upper_line_y = panel_y_top - float(settings["middle_offset_z"])
             y_lines = []
             if panel_y_bot < lower_line_y < panel_y_top:
                 y_lines.append(lower_line_y)
             if panel_y_bot < upper_line_y < panel_y_top and abs(upper_line_y - lower_line_y) > 1:
                 y_lines.append(upper_line_y)
             if panel_style == "H+型布局":
-                plus_a_y = lower_line_y + panel_plus_offset_a
-                plus_b_y = plus_a_y + panel_plus_offset_b
+                plus_a_y = lower_line_y + float(settings["plus_offset_a"])
+                plus_b_y = plus_a_y + float(settings["plus_offset_b"])
                 for y in (plus_a_y, plus_b_y):
                     if panel_y_bot < y < panel_y_top and all(abs(y - exists) > 1 for exists in y_lines):
                         y_lines.append(y)

@@ -90,6 +90,22 @@ export interface DoorFormData {
   panel_three_col_a: number;
   panel_three_col_b: number;
   panel_three_col_c: number;
+  back_panel_lock_offset_x: number;
+  back_panel_hinge_offset_y: number;
+  back_panel_middle_offset_z: number;
+  back_panel_plus_offset_a: number;
+  back_panel_plus_offset_b: number;
+  back_panel_three_col_a: number;
+  back_panel_three_col_b: number;
+  back_panel_three_col_c: number;
+  child_panel_lock_offset_x: number;
+  child_panel_hinge_offset_y: number;
+  child_panel_middle_offset_z: number;
+  child_panel_plus_offset_a: number;
+  child_panel_plus_offset_b: number;
+  child_panel_three_col_a: number;
+  child_panel_three_col_b: number;
+  child_panel_three_col_c: number;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -170,6 +186,12 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
   panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
+  back_panel_lock_offset_x: 180, back_panel_hinge_offset_y: 100,
+  back_panel_middle_offset_z: 180, back_panel_plus_offset_a: 350, back_panel_plus_offset_b: 100,
+  back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100,
+  child_panel_lock_offset_x: 180, child_panel_hinge_offset_y: 100,
+  child_panel_middle_offset_z: 180, child_panel_plus_offset_a: 350, child_panel_plus_offset_b: 100,
+  child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
