@@ -368,6 +368,8 @@ def draw_door_in_frame(
         panel_y_bot = max(0, p.get("dj_height", 0))
     else:
         panel_y_bot = ref_th + bottom_gap
+    pillar_y_bot = 0 if p.get("has_dj") else th
+    pillar_y_top = dh - fw_top
 
     pillar_width_front = 0
     pillar_width_back = 0
@@ -470,11 +472,11 @@ def draw_door_in_frame(
 
         drawer.draw_poly([off((lx1, panel_y_bot)), off((lx2, panel_y_bot)), off((lx2, panel_y_top)), off((lx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar:
-            drawer.draw_poly([off((lpx1, panel_y_bot)), off((lpx2, panel_y_bot)), off((lpx2, panel_y_top)), off((lpx1, panel_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((lpx1, pillar_y_bot)), off((lpx2, pillar_y_bot)), off((lpx2, pillar_y_top)), off((lpx1, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((lmx1, panel_y_bot)), off((lmx2, panel_y_bot)), off((lmx2, panel_y_top)), off((lmx1, panel_y_top))], 'A-DOOR-PANEL')
         drawer.draw_poly([off((rmx1, panel_y_bot)), off((rmx2, panel_y_bot)), off((rmx2, panel_y_top)), off((rmx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar:
-            drawer.draw_poly([off((rpx1, panel_y_bot)), off((rpx2, panel_y_bot)), off((rpx2, panel_y_top)), off((rpx1, panel_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((rpx1, pillar_y_bot)), off((rpx2, pillar_y_bot)), off((rpx2, pillar_y_top)), off((rpx1, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((rx1, panel_y_bot)), off((rx2, panel_y_bot)), off((rx2, panel_y_top)), off((rx1, panel_y_top))], 'A-DOOR-PANEL')
 
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
@@ -533,7 +535,7 @@ def draw_door_in_frame(
         if condition:
             drawer.draw_dim(off((outer_right + x_offset, y1)), off((outer_right + x_offset, y2)), off((outer_right + x_offset + 50, y1 + (y2 - y1) / 2)), rad90, 'YQ_DIM', text)
 
-    drawer.draw_text(f"{view_name}", off((dw / 2 - 60, outer_top + 300)), 80, 'A-DOOR-mark')
+    drawer.draw_text(f"{view_name}", off((dw / 2 - 60, outer_top + 300)), 128, 'A-DOOR-mark')
 
     # ===================== 合页绘制 =====================
     hinge_ys = []
@@ -576,12 +578,18 @@ def draw_door_in_frame(
             drawer.insert_hinge_block(off((hinge_x, hinge_y)))
 
     # ===================== 门板样式线条绘制 =====================
-    panel_style = p.get('door_panel_style') or "无造型"
+    front_panel_style = p.get('door_panel_style') or "无造型"
+    back_panel_style = p.get('back_door_panel_style') or front_panel_style
+    child_panel_style = p.get('child_door_panel_style') or ""
+    panel_style_default = back_panel_style if is_back else front_panel_style
     panel_lock_offset_x = float(p.get('panel_lock_offset_x', 180) or 0)
     panel_hinge_offset_y = float(p.get('panel_hinge_offset_y', 100) or 0)
     panel_middle_offset_z = float(p.get('panel_middle_offset_z', 180) or 0)
     panel_plus_offset_a = float(p.get('panel_plus_offset_a', 350) or 0)
     panel_plus_offset_b = float(p.get('panel_plus_offset_b', 100) or 0)
+    panel_three_col_a = float(p.get('panel_three_col_a', 0) or 0)
+    panel_three_col_b = float(p.get('panel_three_col_b', 0) or 0)
+    panel_three_col_c = float(p.get('panel_three_col_c', 0) or 0)
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
         if door_type == "单门":
@@ -608,14 +616,64 @@ def draw_door_in_frame(
             off((left, panel_y_top)),
         ], pattern_key)
 
-    if panel_style != "无造型" and panel_positions and panel_lock_offset_x > 0:
+    def is_child_panel(index: int) -> bool:
+        if door_type == "子母门":
+            return index == 0
+        if door_type in ("两定两开", "折叠四开门"):
+            return index in (0, 3)
+        return False
+
+    def panel_style_for(index: int) -> str:
+        if is_child_panel(index):
+            return child_panel_style
+        return panel_style_default
+
+    def resolve_three_col_widths(panel_width: float):
+        a = panel_three_col_a if panel_three_col_a > 0 else None
+        b = panel_three_col_b if panel_three_col_b > 0 else None
+        c = panel_three_col_c if panel_three_col_c > 0 else None
+        if a and c:
+            b = panel_width - a - c
+        elif a and b:
+            c = panel_width - a - b
+        elif b and c:
+            a = panel_width - b - c
+        else:
+            a = panel_lock_offset_x if panel_lock_offset_x > 0 else panel_width / 3
+            c = panel_hinge_offset_y if panel_hinge_offset_y > 0 else panel_width / 3
+            b = panel_width - a - c
+        if not a or not b or not c or min(a, b, c) <= 1:
+            return None
+        if abs((a + b + c) - panel_width) > 1:
+            return None
+        return a, b, c
+
+    if panel_positions:
         for idx, (px1, px2) in enumerate(panel_positions):
+            panel_style = panel_style_for(idx)
+            if not panel_style or panel_style == "无造型":
+                continue
             lock_edge = panel_lock_edge(idx, px1, px2)
             if lock_edge is None:
                 continue
 
             direction = 1 if abs(lock_edge - px1) < 0.01 else -1
             hinge_edge = px2 if direction == 1 else px1
+
+            if panel_style == "三列式布局":
+                widths = resolve_three_col_widths(abs(px2 - px1))
+                if not widths:
+                    continue
+                a_width, _b_width, c_width = widths
+                lock_line_x = lock_edge + direction * a_width
+                hinge_line_x = hinge_edge - direction * c_width
+                if px1 < lock_line_x < px2 and px1 < hinge_line_x < px2 and abs(lock_line_x - hinge_line_x) > 1:
+                    draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
+                    draw_panel_line(hinge_line_x, panel_y_bot, hinge_line_x, panel_y_top)
+                continue
+
+            if panel_lock_offset_x <= 0:
+                continue
             lock_line_x = lock_edge + direction * panel_lock_offset_x
             if not (px1 < lock_line_x < px2):
                 continue
@@ -702,28 +760,28 @@ def draw_door_in_frame(
 
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
+    handle_size = parse_handle_size(str(p.get("handle_size", "")))
+    current_sized_handle = bool(handle_size and "长拉手" in str(current_handle))
 
-    front_sized_handle = (not is_back) and bool(parse_handle_size(str(p.get("handle_size", ""))))
-
-    if current_handle == "标配拉手" and not front_sized_handle:
+    if current_handle == "标配拉手" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
             drawer.insert_custom_block(hblock, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
-    if current_handle == "A1022" and not front_sized_handle:
+    if current_handle == "A1022" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
             a1022_block = "Z1022" if hblock == "YBPLS" else "Y1022"
             drawer.insert_custom_block(a1022_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
-    if current_handle == "背包拉手" and not front_sized_handle:
+    if current_handle == "背包拉手" and not current_sized_handle:
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
-    handle_size = parse_handle_size(str(p.get("handle_size", "")))
-    if handle_size and not is_back:
+    if handle_size and current_sized_handle:
         handle_w, handle_h = handle_size
-        for hx, _toward_hinge, _hblock in handle_targets(110, primary_only=True):
+        primary_only = door_type != "对开门"
+        for hx, _toward_hinge, _hblock in handle_targets(110, primary_only=primary_only):
             y_center = 1200
             drawer.draw_poly([
                 off((hx - handle_w / 2, y_center - handle_h / 2)),

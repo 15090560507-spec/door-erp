@@ -207,11 +207,126 @@ def test_two_column_panel_fill_patterns():
     check("builtin hinge-side pattern is used", "ANSI33" in pattern_names, str(pattern_names))
 
 
+def poly_bounds(entity):
+    points = list(entity.get_points("xy"))
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def test_pillar_handle_title_and_three_column_panel():
+    req = CADRequest(
+        door_type="两定两开",
+        has_pillar=True,
+        pillar_width_str="55/70",
+        zmls="自制长拉手",
+        fmls="自制长拉手",
+        handle_size="40*800",
+        door_panel_style="三列式布局",
+        back_door_panel_style="H型布局",
+        child_door_panel_style="两列式布局",
+        panel_three_col_a=120,
+        panel_three_col_b=260,
+        panel_three_col_c=0,
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    check("three-column A width passes to drawing", draw_params["panel_three_col_a"] == 120, str(draw_params))
+    check("three-column B width passes to drawing", draw_params["panel_three_col_b"] == 260, str(draw_params))
+    check("back panel style passes to drawing", draw_params["back_door_panel_style"] == "H型布局", str(draw_params))
+    check("child panel style passes to drawing", draw_params["child_door_panel_style"] == "两列式布局", str(draw_params))
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("pillar/handle/three-column CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    long_handle_rects = []
+    for entity in panel_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
+            long_handle_rects.append(entity)
+    check(
+        "front and back views draw configured long handles",
+        len(long_handle_rects) >= 2,
+        f"long handle rectangles: {len(long_handle_rects)}",
+    )
+
+    frame_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    pillar_polys = []
+    for entity in frame_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 70) < 0.01 and abs(y2 - 2040) < 0.01:
+            pillar_polys.append(entity)
+    check(
+        "pillars align to frame inner opening not panel gap",
+        len(pillar_polys) >= 2,
+        f"pillar polys: {len(pillar_polys)}",
+    )
+
+    title_texts = [
+        entity for entity in doc.modelspace().query("TEXT")
+        if entity.dxf.layer == "A-DOOR-mark" and entity.dxf.text in {"正面", "背面"}
+    ]
+    check(
+        "front/back titles are enlarged",
+        len(title_texts) >= 2 and all(abs(entity.dxf.height - 128) < 0.01 for entity in title_texts),
+        [(entity.dxf.text, entity.dxf.height) for entity in title_texts],
+    )
+
+    panel_lines = [
+        entity for entity in doc.modelspace().query("LINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    check("three-column panel style draws separator lines", len(panel_lines) >= 8, f"line count: {len(panel_lines)}")
+
+
+def test_double_door_long_handles_draw_on_both_leaves():
+    req = CADRequest(
+        door_type="对开门",
+        zmls="自制长拉手",
+        fmls="自制长拉手",
+        handle_size="40*800",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("double door long-handle CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    long_handle_rects = []
+    for entity in panel_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
+            long_handle_rects.append(entity)
+    check(
+        "double door draws long handles on both leaves in both views",
+        len(long_handle_rects) >= 4,
+        f"long handle rectangles: {len(long_handle_rects)}",
+    )
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_door_panel_style_lines()
     test_two_column_panel_fill_patterns()
+    test_pillar_handle_title_and_three_column_panel()
+    test_double_door_long_handles_draw_on_both_leaves()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

@@ -140,6 +140,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     onChange({ ...data, [key]: value });
   };
   const panelStyle = data.door_panel_style || "无造型";
+  const hasChildPanel = ["子母门", "两定两开", "折叠四开门"].includes(data.door_type);
+  const optionalPanelStyles = ["", ...DOOR_PANEL_STYLES];
+  const activePanelStyles = [panelStyle, data.back_door_panel_style || "", data.child_door_panel_style || ""];
+  const hasAnyPanelStyle = activePanelStyles.some((style) => style && style !== "无造型");
+  const usesTwoColumnPanel = activePanelStyles.includes("两列式布局");
+  const usesThreeColumnPanel = activePanelStyles.includes("三列式布局");
+  const usesHPanel = activePanelStyles.some((style) => ["H型布局", "H+型布局"].includes(style));
+  const usesHPlusPanel = activePanelStyles.includes("H+型布局");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -260,13 +268,27 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               options={DOOR_PANEL_STYLES}
               onChange={(v) => set("door_panel_style", v)}
             />
+            <Select
+              label="反面门板样式"
+              value={data.back_door_panel_style || ""}
+              options={optionalPanelStyles}
+              onChange={(v) => set("back_door_panel_style", v)}
+            />
+            {hasChildPanel && (
+              <Select
+                label="子门门板样式"
+                value={data.child_door_panel_style || ""}
+                options={optionalPanelStyles}
+                onChange={(v) => set("child_door_panel_style", v)}
+              />
+            )}
             <Input
               label="填充样式"
               value={data.panel_fill_style || ""}
               placeholder="预留，暂不生成填充"
               onChange={(v) => set("panel_fill_style", v)}
             />
-            {panelStyle !== "无造型" && (
+            {hasAnyPanelStyle && (
               <Input
                 label="锁边偏移X(mm)"
                 value={data.panel_lock_offset_x ?? 180}
@@ -274,7 +296,29 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 onChange={(v) => set("panel_lock_offset_x", Number(v))}
               />
             )}
-            {panelStyle === "两列式布局" && (
+            {usesThreeColumnPanel && (
+              <>
+                <Input
+                  label="A锁边区宽(mm)"
+                  value={data.panel_three_col_a ?? 0}
+                  type="number"
+                  onChange={(v) => set("panel_three_col_a", Number(v))}
+                />
+                <Input
+                  label="B中间区宽(mm)"
+                  value={data.panel_three_col_b ?? 0}
+                  type="number"
+                  onChange={(v) => set("panel_three_col_b", Number(v))}
+                />
+                <Input
+                  label="C合页区宽(mm)"
+                  value={data.panel_three_col_c ?? 0}
+                  type="number"
+                  onChange={(v) => set("panel_three_col_c", Number(v))}
+                />
+              </>
+            )}
+            {usesTwoColumnPanel && (
               <>
                 <Select
                   label="锁边填充图案"
@@ -290,7 +334,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 />
               </>
             )}
-            {["H型布局", "H+型布局"].includes(panelStyle) && (
+            {usesHPanel && (
               <>
                 <Input
                   label="合页边偏移Y(mm)"
@@ -306,7 +350,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 />
               </>
             )}
-            {panelStyle === "H+型布局" && (
+            {usesHPlusPanel && (
               <>
                 <Input
                   label="H+上偏移A(mm)"
