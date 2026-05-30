@@ -237,6 +237,8 @@ def build_cad_params(req: CADRequest):
         "PANEL_PLUS_OFFSET_A": req.panel_plus_offset_a,
         "PANEL_PLUS_OFFSET_B": req.panel_plus_offset_b,
         "PANEL_FILL_STYLE": req.panel_fill_style,
+        "PANEL_LOCK_FILL_PATTERN": req.panel_lock_fill_pattern,
+        "PANEL_HINGE_FILL_PATTERN": req.panel_hinge_fill_pattern,
         "HANDLE_SIZE": req.handle_size,
         "FINGERPRINT_LOCK": req.fingerprint_lock,
     }
@@ -320,6 +322,8 @@ def build_cad_params(req: CADRequest):
         "panel_plus_offset_a": req.panel_plus_offset_a,
         "panel_plus_offset_b": req.panel_plus_offset_b,
         "panel_fill_style": req.panel_fill_style,
+        "panel_lock_fill_pattern": req.panel_lock_fill_pattern,
+        "panel_hinge_fill_pattern": req.panel_hinge_fill_pattern,
         "handle_size": req.handle_size,
         "fingerprint_lock": req.fingerprint_lock,
     }

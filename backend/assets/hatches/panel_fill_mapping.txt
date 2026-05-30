@@ -1,0 +1,119 @@
+门板填充图案映射表
+用途：用于约定前端门板填充下拉选项、后端 PAT 文件/图案名、默认比例、角度、颜色/图层。
+说明：当前只是配置说明文件，后续接入 CAD 生成时按此表读取或硬编码映射均可。
+
+通用默认参数
+图层 layer: A-DOOR-PANEL-FILL
+颜色 color: ByLayer
+比例 scale: 1
+角度 angle: 0
+填充对象: 仅门板造型区域，暂不覆盖锁、指纹锁、拉手等配件
+
+字段说明
+frontendName: 前端显示名称
+backendKey: 前后端传递的稳定值
+patFile: PAT 文件名
+patternName: PAT 内部图案名，即 .pat 文件第一行 * 后面的名称
+scale: 默认填充比例，可按效果微调
+angle: 默认填充角度，单位为度
+layer: CAD 图层
+color: CAD 颜色，建议先使用 ByLayer
+enabled: 是否在前端下拉中启用
+remark: 备注
+
+映射列表
+
+frontendName=钱币
+backendKey=qianbi
+patFile=qianbi.pat
+patternName=qianbi
+scale=1
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=待实际出图后微调比例
+
+frontendName=万字纹
+backendKey=wan
+patFile=wan.pat
+patternName=wan
+scale=0.5
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=待实际出图后微调比例
+
+frontendName=鱼鳞纹
+backendKey=yulin
+patFile=yulin.pat
+patternName=yulin
+scale=0.8
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=待实际出图后微调比例
+
+frontendName=紫荆花
+backendKey=zijinghua
+patFile=zijinghua.pat
+patternName=zijinghua
+scale=0.8
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=待实际出图后微调比例
+
+frontendName=竖条
+backendKey=shutiao
+patFile=shutiao.pat
+patternName=shutiao
+scale=0.4
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=待实际出图后微调比例
+
+frontendName=实虚线
+backendKey=ansi33
+patFile=CAD_BUILTIN
+patternName=ANSI33
+scale=10
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=CAD自带实虚线填充
+
+frontendName=四方纳福
+backendKey=earth
+patFile=CAD_BUILTIN
+patternName=EARTH
+scale=6
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=CAD自带实四方纳福填充
+
+frontendName=流星雨
+backendKey=liuxingyu
+patFile=CAD_BUILTIN
+patternName=LIUXINGYU
+scale=1
+angle=0
+layer=A-DOOR-PANEL-FILL
+color=ByLayer
+enabled=true
+remark=CAD自带实四方纳福填充
+
+调整建议
+1. 如果图案太密，增大 scale。
+2. 如果图案太稀，减小 scale。
+3. 如果需要旋转纹理，修改 angle，例如 45、90。
+4. 如果需要统一改颜色，优先修改图层 A-DOOR-PANEL-FILL 的颜色。
+5. 如果某个图案暂时不想显示在前端，把 enabled 改为 false。

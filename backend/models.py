@@ -71,6 +71,8 @@ class CADRequest(BaseModel):
     panel_plus_offset_a: int = 350      # H+ 第一段上偏移 A
     panel_plus_offset_b: int = 100      # H+ 第二段上偏移 B
     panel_fill_style: str = ""          # 预留填充样式
+    panel_lock_fill_pattern: str = ""   # 两列式锁边区域填充图案
+    panel_hinge_fill_pattern: str = ""  # 两列式合页边区域填充图案
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
     top_gap: int = 5                    # 上门缝

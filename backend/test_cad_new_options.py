@@ -179,10 +179,39 @@ def test_door_panel_style_lines():
     check("H+ panel style draws extra panel lines", len(panel_lines) >= 12, f"line count: {len(panel_lines)}")
 
 
+def test_two_column_panel_fill_patterns():
+    req = CADRequest(
+        door_panel_style="两列式布局",
+        panel_lock_offset_x=180,
+        panel_lock_fill_pattern="钱币",
+        panel_hinge_fill_pattern="实虚线",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    check("lock side fill passes to info map", info["PANEL_LOCK_FILL_PATTERN"] == "钱币", str(info))
+    check("hinge side fill passes to drawing", draw_params["panel_hinge_fill_pattern"] == "实虚线", str(draw_params))
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("two-column fill CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    hatches = [
+        entity for entity in doc.modelspace().query("HATCH")
+        if entity.dxf.layer == "A-DOOR-PANEL-FILL"
+    ]
+    pattern_names = [entity.dxf.pattern_name for entity in hatches]
+    check("two-column style draws panel fill hatches", len(hatches) >= 2, str(pattern_names))
+    check("custom lock-side pattern is used", "qianbi" in pattern_names, str(pattern_names))
+    check("builtin hinge-side pattern is used", "ANSI33" in pattern_names, str(pattern_names))
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_door_panel_style_lines()
+    test_two_column_panel_fill_patterns()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

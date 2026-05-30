@@ -86,6 +86,8 @@ export interface DoorFormData {
   panel_plus_offset_a: number;
   panel_plus_offset_b: number;
   panel_fill_style: string;
+  panel_lock_fill_pattern: string;
+  panel_hinge_fill_pattern: string;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -155,6 +157,7 @@ export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "H型布局", "H+型布局"];
+export const DOOR_PANEL_FILL_OPTIONS = ["", "钱币", "万字纹", "鱼鳞纹", "紫荆花", "竖条", "实虚线", "四方纳福", "流星雨"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
@@ -164,7 +167,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0,
   door_panel_style: "无造型", panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
-  panel_fill_style: "", ddh: "", sl: "1 樘", hhxd: "D",
+  panel_fill_style: "", panel_lock_fill_pattern: "", panel_hinge_fill_pattern: "", ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/70",

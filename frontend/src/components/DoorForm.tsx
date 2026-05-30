@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES, DOOR_PANEL_STYLES,
+  TRIM_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_FILL_OPTIONS,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -273,6 +273,22 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 type="number"
                 onChange={(v) => set("panel_lock_offset_x", Number(v))}
               />
+            )}
+            {panelStyle === "两列式布局" && (
+              <>
+                <Select
+                  label="锁边填充图案"
+                  value={data.panel_lock_fill_pattern || ""}
+                  options={DOOR_PANEL_FILL_OPTIONS}
+                  onChange={(v) => set("panel_lock_fill_pattern", v)}
+                />
+                <Select
+                  label="合页边填充图案"
+                  value={data.panel_hinge_fill_pattern || ""}
+                  options={DOOR_PANEL_FILL_OPTIONS}
+                  onChange={(v) => set("panel_hinge_fill_pattern", v)}
+                />
+              </>
             )}
             {["H型布局", "H+型布局"].includes(panelStyle) && (
               <>
