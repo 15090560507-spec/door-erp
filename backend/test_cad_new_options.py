@@ -336,17 +336,17 @@ def test_double_door_long_handles_draw_on_both_leaves():
     )
 
 
-def test_back_backpack_handle_uses_visual_side():
-    def bbls_x_for(open_dir: str):
+def test_back_backpack_handle_stays_near_lock_edge():
+    def bbls_x_for(open_dir: str, door_type: str = "单门"):
         req = CADRequest(
-            door_type="单门",
+            door_type=door_type,
             sel_kx=open_dir,
             zmls="无",
             fmls="背包拉手",
         )
         info, checks, draw_params = build_cad_params(req)
         msg, buffer = run_integrated_system(info, checks, draw_params)
-        check(f"back backpack {open_dir} CAD generation returns buffer", buffer is not None, msg)
+        check(f"back backpack {door_type} {open_dir} CAD generation returns buffer", buffer is not None, msg)
         if not buffer:
             return None
         doc = ezdxf.read(io.StringIO(buffer.getvalue()))
@@ -370,15 +370,27 @@ def test_back_backpack_handle_uses_visual_side():
 
     right_result = bbls_x_for("右开")
     left_result = bbls_x_for("左开")
+    double_right_result = bbls_x_for("右开", "对开门")
+    double_left_result = bbls_x_for("左开", "对开门")
     check(
-        "right-open back backpack handle is on visual left",
+        "right-open single back backpack handle is on lock side",
         bool(right_result and right_result[0] < right_result[1]),
         str(right_result),
     )
     check(
-        "left-open back backpack handle is on visual right",
+        "left-open single back backpack handle is on lock side",
         bool(left_result and left_result[0] > left_result[1]),
         str(left_result),
+    )
+    check(
+        "right-open double back backpack handle is near center lock edge",
+        bool(double_right_result and double_right_result[0] < double_right_result[1] and abs(double_right_result[0] - double_right_result[1]) < 120),
+        str(double_right_result),
+    )
+    check(
+        "left-open double back backpack handle is near center lock edge",
+        bool(double_left_result and double_left_result[0] > double_left_result[1] and abs(double_left_result[0] - double_left_result[1]) < 120),
+        str(double_left_result),
     )
 
 
@@ -388,7 +400,7 @@ if __name__ == "__main__":
     test_door_panel_style_lines()
     test_pillar_handle_title_and_three_column_panel()
     test_double_door_long_handles_draw_on_both_leaves()
-    test_back_backpack_handle_uses_visual_side()
+    test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")

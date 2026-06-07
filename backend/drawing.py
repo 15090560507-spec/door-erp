@@ -721,15 +721,20 @@ def draw_door_in_frame(
                 return [(px1 + distance, 1, "YBPLS")]
             return [(px2 - distance, -1, "ZBPLS")]
 
-        if door_open_dir == "右开":
-            if door_type in ("折叠四开门", "两定两开") and len(panel_positions) >= 4:
-                return add_target(1, "left")
-            return add_target(0, "left")
+        if door_type == "单门":
+            return add_target(0, "left" if door_open_dir == "右开" else "right")
+
+        if door_type == "对开门" and len(panel_positions) >= 2:
+            return add_target(0, "right") if door_open_dir == "右开" else add_target(1, "left")
+
+        if door_type == "子母门" and len(panel_positions) >= 2:
+            return add_target(1, "right") if door_open_dir == "右开" else add_target(1, "left")
 
         if door_type in ("折叠四开门", "两定两开") and len(panel_positions) >= 4:
-            return add_target(2, "right")
-        if door_type in ("对开门", "子母门") and len(panel_positions) >= 2:
-            return add_target(1, "right")
+            return add_target(1, "right") if door_open_dir == "右开" else add_target(2, "left")
+
+        if door_open_dir == "右开":
+            return add_target(0, "left")
         return add_target(0, "right")
 
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
