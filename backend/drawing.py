@@ -17,6 +17,7 @@ from utils import parse_dim_str, parse_gap_str
 # ===================== 模板缓存 =====================
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
 _template_text: Optional[str] = None
+DIMENSION_SPACING_DELTA = 40
 
 
 def _load_template() -> None:
@@ -369,7 +370,8 @@ def draw_door_in_frame(
         panel_positions.extend([(son_panel_x1, son_panel_x2), (mother_panel_x1, mother_panel_x2)])
 
         if not is_back:
-            drawer.draw_dim(off((mother_panel_x1, panel_y_bot - 100)), off((mother_panel_x2, panel_y_bot - 100)), off((mother_panel_x1 - 100, panel_y_bot - 150)), 0, 'YQ_DIM', "母门宽 <>")
+            mother_dim_y = panel_y_bot - 100 - DIMENSION_SPACING_DELTA
+            drawer.draw_dim(off((mother_panel_x1, mother_dim_y)), off((mother_panel_x2, mother_dim_y)), off((mother_panel_x1 - 100, mother_dim_y - 50)), 0, 'YQ_DIM', "母门宽 <>")
 
     elif door_type == "折叠四开门":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -392,7 +394,8 @@ def draw_door_in_frame(
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
 
         if not is_back:
-            drawer.draw_dim(off((lmx1, panel_y_bot - 150)), off((rmx2, panel_y_bot - 150)), off((lmx1 + mid_total_width / 2, panel_y_bot - 200)), 0, 'YQ_DIM', "中门宽度 <>")
+            mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
+            drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门宽度 <>")
 
     elif door_type == "两定两开":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -435,7 +438,7 @@ def draw_door_in_frame(
     dims_h = []
     if trim_w > 0:
         dims_h.append(("含包套总宽", outer_left, outer_right, -400, True, "含包套总宽 <>"))
-        dims_h.append(("门套宽", ox1, ix1, -200, True, f" {trim_w}"))
+        dims_h.append(("门套宽", ox1, ix1, -200, True, f"{trim_w}"))
 
     should_mark_light = p.get("mark_light_size", False) or use_light_size
     should_draw_light_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
@@ -472,11 +475,13 @@ def draw_door_in_frame(
 
     for name, x1, x2, y_offset, condition, text in dims_h:
         if condition:
-            drawer.draw_dim(off((x1, y_offset)), off((x2, y_offset)), off((x1 + (x2 - x1) / 2, y_offset - 50)), 0, 'YQ_DIM', text)
+            dim_y = y_offset - DIMENSION_SPACING_DELTA
+            drawer.draw_dim(off((x1, dim_y)), off((x2, dim_y)), off((x1 + (x2 - x1) / 2, dim_y - 50)), 0, 'YQ_DIM', text)
 
     for name, y1, y2, x_offset, condition, text in dims_v:
         if condition:
-            drawer.draw_dim(off((outer_right + x_offset, y1)), off((outer_right + x_offset, y2)), off((outer_right + x_offset + 50, y1 + (y2 - y1) / 2)), rad90, 'YQ_DIM', text)
+            dim_x = outer_right + x_offset + DIMENSION_SPACING_DELTA
+            drawer.draw_dim(off((dim_x, y1)), off((dim_x, y2)), off((dim_x + 50, y1 + (y2 - y1) / 2)), rad90, 'YQ_DIM', text)
 
     drawer.draw_text(f"{view_name}", off((dw / 2 - 60, outer_top + 300)), 128, 'A-DOOR-mark')
 

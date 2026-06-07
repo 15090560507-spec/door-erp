@@ -305,6 +305,48 @@ def test_frame_defaults_and_single_back_mirror():
     )
 
 
+def test_dimension_spacing_and_trim_width_text():
+    req = CADRequest(
+        has_outer=True,
+        trim_front_in=160,
+        trim_style_outer="\u5e73\u5305\u5957",
+        mark_light_size=True,
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("dimension spacing CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    dims = list(doc.modelspace().query("DIMENSION"))
+    dim_texts = [entity.dxf.text for entity in dims]
+    check("trim width dimension has no leading blank", "160" in dim_texts and " 160" not in dim_texts, dim_texts)
+
+    front_horizontal_y = sorted(
+        round(float(entity.dxf.defpoint2.y), 2)
+        for entity in dims
+        if abs(float(entity.dxf.angle)) < 0.01 and float(entity.dxf.defpoint2.x) < 1000
+    )
+    check(
+        "front horizontal dimensions are spaced 40mm farther out",
+        front_horizontal_y == [-440.0, -340.0, -240.0, -240.0],
+        front_horizontal_y,
+    )
+
+    front_vertical_x = sorted(
+        round(float(entity.dxf.defpoint2.x), 2)
+        for entity in dims
+        if abs(float(entity.dxf.angle) - 90) < 0.01 and float(entity.dxf.defpoint2.x) < 1000
+    )
+    check(
+        "front vertical dimensions are spaced 40mm farther out",
+        front_vertical_x == [570.0, 770.0, 870.0],
+        front_vertical_x,
+    )
+
+
 def test_double_door_long_handles_draw_on_both_leaves():
     req = CADRequest(
         door_type="对开门",
@@ -402,6 +444,7 @@ if __name__ == "__main__":
     test_double_door_long_handles_draw_on_both_leaves()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
+    test_dimension_spacing_and_trim_width_text()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
