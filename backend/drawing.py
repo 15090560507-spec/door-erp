@@ -18,6 +18,7 @@ from utils import parse_dim_str, parse_gap_str
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
 _template_text: Optional[str] = None
 DIMENSION_SPACING_DELTA = 40
+VIEW_TRIM_EDGE_GAP = 1200
 
 
 def _load_template() -> None:
@@ -189,12 +190,17 @@ def draw_door_in_frame(
 
     frame_center_x = 0.0
     frame_center_y = 0.0
-    front_total_width = dw + 2 * p.get('trim_front', 0)
+    front_trim = p.get('trim_front', 0)
+    front_total_width = dw + 2 * front_trim
+    front_overlap = p.get('overlap_front', p.get('overlap', 20)) if front_trim > 0 else 0
+    front_outer_right = dw - front_overlap + front_trim if front_trim > 0 else dw
+    view_outer_left = overlap - trim_w if trim_w > 0 else 0
+    front_offset_x = frame_center_x - front_total_width / 2
 
     if not is_back:
-        offset_x = frame_center_x - front_total_width / 2
+        offset_x = front_offset_x
     else:
-        offset_x = (frame_center_x - front_total_width / 2) + front_total_width + (dw + 2 * p.get('trim_back', 0)) + 300
+        offset_x = front_offset_x + front_outer_right + VIEW_TRIM_EDGE_GAP - view_outer_left
 
     offset_y = frame_center_y
 
@@ -313,7 +319,7 @@ def draw_door_in_frame(
     else:
         panel_y_bot = ref_th + bottom_gap
     pillar_y_bot = 0 if p.get("has_dj") else th
-    pillar_y_top = dh - fw_top
+    pillar_y_top = mid_frame_bottom if qc_h > 0 else dh - fw_top
 
     pillar_width_front = 0
     pillar_width_back = 0
@@ -458,7 +464,7 @@ def draw_door_in_frame(
         dims_v.append(("含包套总高", outer_bottom, outer_top, 400, True, "含包套总高 <>"))
 
     if has_mm and mm_height > 0 and trim_w > 0:
-        dims_v.append(("门楣高度", dh - O + mm_height, dh - O, 300, True, f"门楣高度 {mm_height}"))
+        dims_v.append(("门楣高度", dh - O + mm_height, dh - O, 300, True, f"{mm_height}"))
 
     if qc_h > 0:
         mid_frame_top = top_frame_bottom - qc_h

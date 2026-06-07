@@ -391,6 +391,68 @@ def test_middle_door_dimension_text_and_transom_light_height():
     )
 
 
+def test_transom_pillar_lintel_label_and_view_gap():
+    req = CADRequest(
+        has_outer=True,
+        has_inner=True,
+        trim_front_in=160,
+        trim_back_in=140,
+        trim_style_outer="\u5e73\u5305\u5957",
+        trim_style_inner="\u5e73\u5305\u5957",
+        has_mm=True,
+        mm_height=260,
+        sel_qc="\u73bb\u7483",
+        qc_height=400,
+        door_type="\u4e24\u5b9a\u4e24\u5f00",
+        has_pillar=True,
+        pillar_width_str="55/70",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("transom pillar/lintel/view-gap CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    dim_texts = [entity.dxf.text for entity in doc.modelspace().query("DIMENSION")]
+    check("lintel height dimension uses numeric text only", "260" in dim_texts and "\u95e8\u6963\u9ad8\u5ea6 260" not in dim_texts, dim_texts)
+
+    frame_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    pillar_polys = []
+    for entity in frame_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 1550) < 0.01:
+            pillar_polys.append(entity)
+    check(
+        "transom pillars stay between middle rail and threshold",
+        len(pillar_polys) >= 2,
+        f"pillar polys: {len(pillar_polys)}",
+    )
+
+    trim_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-TRIM"
+    ]
+    trim_bounds = [poly_bounds(entity) for entity in trim_polys]
+    front_bounds = [bounds for bounds in trim_bounds if bounds[1] < 1500]
+    back_bounds = [bounds for bounds in trim_bounds if bounds[0] > 1500]
+    if not front_bounds or not back_bounds:
+        check("front and back trim bounds exist", False, trim_bounds)
+        return
+
+    front_right = max(bounds[1] for bounds in front_bounds)
+    back_left = min(bounds[0] for bounds in back_bounds)
+    check(
+        "front and back trim edges are 1200mm apart",
+        abs((back_left - front_right) - 1200) < 0.01,
+        f"front right {front_right}, back left {back_left}, gap {back_left - front_right}",
+    )
+
+
 def test_double_door_long_handles_draw_on_both_leaves():
     req = CADRequest(
         door_type="对开门",
@@ -490,6 +552,7 @@ if __name__ == "__main__":
     test_frame_defaults_and_single_back_mirror()
     test_dimension_spacing_and_trim_width_text()
     test_middle_door_dimension_text_and_transom_light_height()
+    test_transom_pillar_lintel_label_and_view_gap()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
