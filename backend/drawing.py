@@ -395,7 +395,7 @@ def draw_door_in_frame(
 
         if not is_back:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
-            drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门宽度 <>")
+            drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
 
     elif door_type == "两定两开":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -468,19 +468,28 @@ def draw_door_in_frame(
     if should_mark_light and should_draw_light_view:
         light_text_h = f"见光高 {light_h}" if use_light_size and light_h > 0 else "见光高 <>"
         light_y1 = th
-        light_y2 = dh - fw_top
+        light_y2 = (top_frame_bottom - qc_h - fw_top) if qc_h > 0 else dh - fw_top
         dims_v.append(("见光高", light_y1, light_y2, 100, True, light_text_h))
 
     dims_v.append(("洞口高", 0, dh, 300, True, None))
 
+    horizontal_layers = {
+        offset: (index + 1) * DIMENSION_SPACING_DELTA
+        for index, offset in enumerate(sorted({y_offset for _, _, _, y_offset, condition, _ in dims_h if condition}, reverse=True))
+    }
+    vertical_layers = {
+        offset: (index + 1) * DIMENSION_SPACING_DELTA
+        for index, offset in enumerate(sorted({x_offset for _, _, _, x_offset, condition, _ in dims_v if condition}))
+    }
+
     for name, x1, x2, y_offset, condition, text in dims_h:
         if condition:
-            dim_y = y_offset - DIMENSION_SPACING_DELTA
+            dim_y = y_offset - horizontal_layers[y_offset]
             drawer.draw_dim(off((x1, dim_y)), off((x2, dim_y)), off((x1 + (x2 - x1) / 2, dim_y - 50)), 0, 'YQ_DIM', text)
 
     for name, y1, y2, x_offset, condition, text in dims_v:
         if condition:
-            dim_x = outer_right + x_offset + DIMENSION_SPACING_DELTA
+            dim_x = outer_right + x_offset + vertical_layers[x_offset]
             drawer.draw_dim(off((dim_x, y1)), off((dim_x, y2)), off((dim_x + 50, y1 + (y2 - y1) / 2)), rad90, 'YQ_DIM', text)
 
     drawer.draw_text(f"{view_name}", off((dw / 2 - 60, outer_top + 300)), 128, 'A-DOOR-mark')

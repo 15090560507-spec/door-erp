@@ -330,8 +330,8 @@ def test_dimension_spacing_and_trim_width_text():
         if abs(float(entity.dxf.angle)) < 0.01 and float(entity.dxf.defpoint2.x) < 1000
     )
     check(
-        "front horizontal dimensions are spaced 40mm farther out",
-        front_horizontal_y == [-440.0, -340.0, -240.0, -240.0],
+        "front horizontal dimension layers add 40mm cumulatively",
+        front_horizontal_y == [-520.0, -380.0, -240.0, -240.0],
         front_horizontal_y,
     )
 
@@ -341,9 +341,53 @@ def test_dimension_spacing_and_trim_width_text():
         if abs(float(entity.dxf.angle) - 90) < 0.01 and float(entity.dxf.defpoint2.x) < 1000
     )
     check(
-        "front vertical dimensions are spaced 40mm farther out",
-        front_vertical_x == [570.0, 770.0, 870.0],
+        "front vertical dimension layers add 40mm cumulatively",
+        front_vertical_x == [570.0, 810.0, 950.0],
         front_vertical_x,
+    )
+
+
+def test_middle_door_dimension_text_and_transom_light_height():
+    middle_req = CADRequest(door_type="\u6298\u53e0\u56db\u5f00\u95e8")
+    middle_info, middle_checks, middle_draw_params = build_cad_params(middle_req)
+    middle_msg, middle_buffer = run_integrated_system(middle_info, middle_checks, middle_draw_params)
+    check("middle door dimension CAD generation returns buffer", middle_buffer is not None, middle_msg)
+    if middle_buffer:
+        middle_doc = ezdxf.read(io.StringIO(middle_buffer.getvalue()))
+        middle_texts = [entity.dxf.text for entity in middle_doc.modelspace().query("DIMENSION")]
+        check(
+            "middle door dimension text names inner clear width",
+            "\u4e2d\u95e8\u5185\u7a7a\u5bbd <>" in middle_texts,
+            middle_texts,
+        )
+
+    transom_req = CADRequest(
+        sel_qc="\u73bb\u7483",
+        qc_height=400,
+        mark_light_size=True,
+    )
+    transom_info, transom_checks, transom_draw_params = build_cad_params(transom_req)
+    transom_msg, transom_buffer = run_integrated_system(transom_info, transom_checks, transom_draw_params)
+    check("transom light-height CAD generation returns buffer", transom_buffer is not None, transom_msg)
+    if not transom_buffer:
+        return
+
+    transom_doc = ezdxf.read(io.StringIO(transom_buffer.getvalue()))
+    light_height_dims = [
+        entity for entity in transom_doc.modelspace().query("DIMENSION")
+        if entity.dxf.text.startswith("\u89c1\u5149\u9ad8") and abs(float(entity.dxf.angle) - 90) < 0.01
+    ]
+    check("transom drawing has one light-height dimension", len(light_height_dims) == 1, len(light_height_dims))
+    if not light_height_dims:
+        return
+
+    dim = light_height_dims[0]
+    y1 = round(float(dim.dxf.defpoint2.y), 2)
+    y2 = round(float(dim.dxf.defpoint3.y), 2)
+    check(
+        "transom light height dimensions from middle rail underside to threshold top",
+        (y1, y2) == (75.0, 1550.0),
+        (y1, y2),
     )
 
 
@@ -445,6 +489,7 @@ if __name__ == "__main__":
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
     test_dimension_spacing_and_trim_width_text()
+    test_middle_door_dimension_text_and_transom_light_height()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
