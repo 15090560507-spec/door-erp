@@ -453,6 +453,39 @@ def test_transom_pillar_lintel_label_and_view_gap():
     )
 
 
+def test_light_width_uses_pillar_inner_edges():
+    req = CADRequest(
+        door_type="\u4e24\u5b9a\u4e24\u5f00",
+        has_pillar=True,
+        pillar_width_str="55/70",
+        mark_light_size=True,
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("pillar light-width CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    light_width_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if entity.dxf.text.startswith("\u89c1\u5149\u5bbd") and abs(float(entity.dxf.angle)) < 0.01
+    ]
+    check("pillar drawing has one light-width dimension", len(light_width_dims) == 1, len(light_width_dims))
+    if not light_width_dims:
+        return
+
+    dim = light_width_dims[0]
+    x1 = round(float(dim.dxf.defpoint2.x), 2)
+    x2 = round(float(dim.dxf.defpoint3.x), 2)
+    check(
+        "pillar light width dimensions between pillar inner edges",
+        (x1, x2) == (-562.0, 242.0),
+        (x1, x2),
+    )
+
+
 def test_double_door_long_handles_draw_on_both_leaves():
     req = CADRequest(
         door_type="对开门",
@@ -553,6 +586,7 @@ if __name__ == "__main__":
     test_dimension_spacing_and_trim_width_text()
     test_middle_door_dimension_text_and_transom_light_height()
     test_transom_pillar_lintel_label_and_view_gap()
+    test_light_width_uses_pillar_inner_edges()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

@@ -335,6 +335,7 @@ def draw_door_in_frame(
             pillar_width_back = pillar_in
 
     panel_positions = []
+    pillar_inner_light_edges = None
 
     if door_type == "单门":
         panel_x1 = ref_left + left_gap
@@ -432,6 +433,8 @@ def draw_door_in_frame(
         drawer.draw_poly([off((rx1, panel_y_bot)), off((rx2, panel_y_bot)), off((rx2, panel_y_top)), off((rx1, panel_y_top))], 'A-DOOR-PANEL')
 
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
+        if has_pillar:
+            pillar_inner_light_edges = (lpx2, rpx1)
 
     # ===================== 尺寸标注 =====================
     rad90 = math.radians(90)
@@ -451,7 +454,9 @@ def draw_door_in_frame(
     if should_mark_light and should_draw_light_view:
         light_x1 = left_width
         light_x2 = dw - right_width
-        if door_type in ("两定两开", "折叠四开门") and len(panel_positions) >= 4:
+        if pillar_inner_light_edges:
+            light_x1, light_x2 = pillar_inner_light_edges
+        elif door_type in ("两定两开", "折叠四开门") and len(panel_positions) >= 4:
             light_x1 = panel_positions[0][1]
             light_x2 = panel_positions[-1][0]
         light_text = f"见光宽 {light_w}" if use_light_size and light_w > 0 else "见光宽 <>"
