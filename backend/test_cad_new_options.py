@@ -336,12 +336,59 @@ def test_double_door_long_handles_draw_on_both_leaves():
     )
 
 
+def test_back_backpack_handle_uses_visual_side():
+    def bbls_x_for(open_dir: str):
+        req = CADRequest(
+            door_type="单门",
+            sel_kx=open_dir,
+            zmls="无",
+            fmls="背包拉手",
+        )
+        info, checks, draw_params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, draw_params)
+        check(f"back backpack {open_dir} CAD generation returns buffer", buffer is not None, msg)
+        if not buffer:
+            return None
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        bbls = [
+            entity for entity in doc.modelspace().query("INSERT")
+            if entity.dxf.name == "BBLS" and entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        frame_polys = [
+            entity for entity in doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-FRAME"
+        ]
+        back_bounds = [
+            poly_bounds(entity) for entity in frame_polys
+            if poly_bounds(entity)[0] > 1000
+        ]
+        if not bbls or not back_bounds:
+            return None
+        back_min_x = min(bounds[0] for bounds in back_bounds)
+        back_max_x = max(bounds[1] for bounds in back_bounds)
+        return float(bbls[0].dxf.insert.x), (back_min_x + back_max_x) / 2
+
+    right_result = bbls_x_for("右开")
+    left_result = bbls_x_for("左开")
+    check(
+        "right-open back backpack handle is on visual left",
+        bool(right_result and right_result[0] < right_result[1]),
+        str(right_result),
+    )
+    check(
+        "left-open back backpack handle is on visual right",
+        bool(left_result and left_result[0] > left_result[1]),
+        str(left_result),
+    )
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_door_panel_style_lines()
     test_pillar_handle_title_and_three_column_panel()
     test_double_door_long_handles_draw_on_both_leaves()
+    test_back_backpack_handle_uses_visual_side()
     test_frame_defaults_and_single_back_mirror()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")

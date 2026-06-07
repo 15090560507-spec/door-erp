@@ -709,6 +709,29 @@ def draw_door_in_frame(
                 add(*panel_positions[2], "left")
         return targets
 
+    def backpack_handle_targets(distance: float = 60):
+        if not is_back:
+            return handle_targets(distance, primary_only=True)
+        if not panel_positions:
+            return []
+
+        def add_target(index: int, edge_side: str):
+            px1, px2 = panel_positions[max(0, min(index, len(panel_positions) - 1))]
+            if edge_side == "left":
+                return [(px1 + distance, 1, "YBPLS")]
+            return [(px2 - distance, -1, "ZBPLS")]
+
+        if door_open_dir == "右开":
+            if door_type in ("折叠四开门", "两定两开") and len(panel_positions) >= 4:
+                return add_target(1, "left")
+            return add_target(0, "left")
+
+        if door_type in ("折叠四开门", "两定两开") and len(panel_positions) >= 4:
+            return add_target(2, "right")
+        if door_type in ("对开门", "子母门") and len(panel_positions) >= 2:
+            return add_target(1, "right")
+        return add_target(0, "right")
+
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
@@ -726,7 +749,7 @@ def draw_door_in_frame(
             drawer.insert_custom_block(a1022_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
     if current_handle == "背包拉手" and not current_sized_handle:
-        for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
+        for hx, toward_hinge, _hblock in backpack_handle_targets(60):
             drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
     if handle_size and current_sized_handle:
