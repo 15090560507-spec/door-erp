@@ -373,6 +373,16 @@ def test_middle_door_dimension_text_and_transom_light_height():
         return
 
     transom_doc = ezdxf.read(io.StringIO(transom_buffer.getvalue()))
+    transom_frame_max_y = max(
+        poly_bounds(entity)[3]
+        for entity in transom_doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    )
+    check(
+        "transom adds above door height instead of compressing door",
+        abs(transom_frame_max_y - 2500) < 0.01,
+        transom_frame_max_y,
+    )
     light_height_dims = [
         entity for entity in transom_doc.modelspace().query("DIMENSION")
         if entity.dxf.text.startswith("\u89c1\u5149\u9ad8") and abs(float(entity.dxf.angle) - 90) < 0.01
@@ -386,7 +396,7 @@ def test_middle_door_dimension_text_and_transom_light_height():
     y2 = round(float(dim.dxf.defpoint3.y), 2)
     check(
         "transom light height dimensions from middle rail underside to threshold top",
-        (y1, y2) == (75.0, 1625.0),
+        (y1, y2) == (75.0, 2025.0),
         (y1, y2),
     )
 
@@ -425,7 +435,7 @@ def test_transom_pillar_lintel_label_and_view_gap():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 1625) < 0.01:
+        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "transom pillars stay between middle rail and threshold",
@@ -553,6 +563,12 @@ def test_integrated_door_sections_and_dimensions():
         return
 
     doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    frame_max_y = max(
+        poly_bounds(entity)[3]
+        for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    )
+    check("integrated door total height stacks above lower door", abs(frame_max_y - 2900) < 0.01, frame_max_y)
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
@@ -560,7 +576,7 @@ def test_integrated_door_sections_and_dimensions():
     seal_panels = []
     for entity in panel_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs(y1 - 1300) < 0.01 and abs(y2 - 1600) < 0.01:
+        if abs(y1 - 2100) < 0.01 and abs(y2 - 2400) < 0.01:
             seal_panels.append(entity)
     check("integrated door draws middle seal panel", len(seal_panels) >= 1, f"seal panels: {len(seal_panels)}")
 
