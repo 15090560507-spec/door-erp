@@ -227,6 +227,12 @@ def build_cad_params(req: CADRequest):
         "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
+        "QC_SHAPE": req.qc_shape,
+        "IS_INTEGRATED_DOOR": req.is_integrated_door,
+        "INTEGRATED_PANEL_HEIGHT": req.integrated_panel_height,
+        "INTEGRATED_PRESS_TOP_RAIL": req.integrated_press_top_rail,
+        "INTEGRATED_GLASS_BOTTOM_RAIL": req.integrated_glass_bottom_rail,
+        "INTEGRATED_GLASS_HEIGHT": req.integrated_glass_height,
         "ZMKS": req.zmks, "FMKS": req.fmks,
         "TRIM_STYLE_OUTER": req.trim_style_outer,
         "TRIM_STYLE_INNER": req.trim_style_inner,
@@ -320,7 +326,12 @@ def build_cad_params(req: CADRequest):
         "pillar_width_str": req.pillar_width_str,
         "has_pillar": req.has_pillar,
         "kx": req.sel_kx, "nk": req.sel_nk,
-        "qc": req.sel_qc, "qc_height": qc_height_val,
+        "qc": req.sel_qc, "qc_height": qc_height_val, "qc_shape": req.qc_shape,
+        "is_integrated_door": req.is_integrated_door,
+        "integrated_panel_height": req.integrated_panel_height,
+        "integrated_press_top_rail": req.integrated_press_top_rail,
+        "integrated_glass_bottom_rail": req.integrated_glass_bottom_rail,
+        "integrated_glass_height": req.integrated_glass_height,
         "has_mm": req.has_mm, "mm_height": mm_height_val,
         "hys": req.sel_hys, "hysl": req.hysl,
         # 间隙：优先使用新独立字段，回退到旧字符串格式
@@ -621,7 +632,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
     "HANDLES": ["标配拉手", "A1022", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
     "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
-    "FINGERPRINT_LOCKS": ["无", "安志杰AF-12", "客备"],
+    "FINGERPRINT_LOCKS": ["", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
     "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"],
     "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"],
     "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
@@ -633,6 +644,17 @@ _DEFAULT_DROPDOWN_OPTIONS = {
 _DROPDOWN_ALIASES = {
     "三位可调合页": "三维可调合页",
 }
+
+_EMPTY_ALLOWED_DROPDOWNS = {"FINGERPRINT_LOCKS"}
+
+def _normalize_dropdown_value(key: str, value) -> str:
+    raw_text = str(value).strip()
+    if key == "FINGERPRINT_LOCKS":
+        if raw_text in ("", "无"):
+            return ""
+        if raw_text == "客备":
+            return "客备指纹锁"
+    return _DROPDOWN_ALIASES.get(raw_text, raw_text).strip()
 
 def _load_dropdown_options() -> dict:
     try:
@@ -658,8 +680,8 @@ def _merge_dropdown_options(configured: dict) -> dict:
     for key in all_keys:
         values = []
         for value in _DEFAULT_DROPDOWN_OPTIONS.get(key, []) + configured.get(key, []):
-            text = _DROPDOWN_ALIASES.get(str(value), str(value)).strip()
-            if text and text not in values:
+            text = _normalize_dropdown_value(key, value)
+            if (text or key in _EMPTY_ALLOWED_DROPDOWNS) and text not in values:
                 values.append(text)
         merged[key] = values
     return merged
@@ -679,7 +701,7 @@ def update_dropdown_options(data: dict, current_user: dict = Depends(get_current
     current = _load_dropdown_options()
     for key, values in data.items():
         if isinstance(values, list):
-            current[key] = [_DROPDOWN_ALIASES.get(str(v), str(v)) for v in values]
+            current[key] = [_normalize_dropdown_value(key, v) for v in values]
     _save_dropdown_options(current)
     return {"options": _merge_dropdown_options(current)}
 

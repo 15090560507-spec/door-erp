@@ -93,6 +93,15 @@ class EzdxfDrawer:
     def draw_line(self, p1, p2, layer):
         self.ms.add_line(p1, p2, dxfattribs={'layer': layer})
 
+    def draw_arc(self, center, radius, start_angle, end_angle, layer):
+        self.ms.add_arc(
+            center=center,
+            radius=radius,
+            start_angle=start_angle,
+            end_angle=end_angle,
+            dxfattribs={'layer': layer},
+        )
+
     def draw_dim(self, p1, p2, text_pos, rotation, layer, text_override=""):
         dimstyle = "23231" if "23231" in self.doc.dimstyles else "Standard"
         angle_deg = math.degrees(rotation)
@@ -178,6 +187,12 @@ def draw_door_in_frame(
 
     qc_choice = p.get('qc', '无')
     qc_height = p.get('qc_height', 400)
+    qc_shape = p.get('qc_shape', '矩形气窗')
+    is_integrated_door = bool(p.get('is_integrated_door', False))
+    integrated_panel_height = float(p.get('integrated_panel_height', 300) or 0)
+    integrated_press_top_rail = float(p.get('integrated_press_top_rail', 20) or 0)
+    integrated_glass_bottom_rail = float(p.get('integrated_glass_bottom_rail', 20) or 0)
+    integrated_glass_height = float(p.get('integrated_glass_height', 500) or 0)
     has_mm = p.get('has_mm', False)
     mm_height = p.get('mm_height', 200)
     hys_choice = p.get('hys', '葫芦头合页')
@@ -207,6 +222,19 @@ def draw_door_in_frame(
     def off(pt):
         return (pt[0] + offset_x, pt[1] + offset_y)
 
+    def draw_arch_span(left_x: float, right_x: float, spring_y: float, apex_y: float, layer: str):
+        span = right_x - left_x
+        sagitta = apex_y - spring_y
+        if span <= 0 or sagitta <= 0:
+            return
+        half = span / 2
+        radius = (half * half + sagitta * sagitta) / (2 * sagitta)
+        center_x = left_x + half
+        center_y = spring_y - (radius - sagitta)
+        start_angle = math.degrees(math.atan2(spring_y - center_y, right_x - center_x))
+        end_angle = math.degrees(math.atan2(spring_y - center_y, left_x - center_x))
+        drawer.draw_arc(off((center_x, center_y)), radius, start_angle, end_angle, layer)
+
     drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, dh)), off((0, dh))], 'A-DOOR-FRAME')
     drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, dh)), off((dw - right_width, dh))], 'A-DOOR-FRAME')
 
@@ -216,8 +244,10 @@ def draw_door_in_frame(
     drawer.draw_poly([off((left_width, top_frame_bottom)), off((dw - right_width, top_frame_bottom)), off((dw - right_width, dh)), off((left_width, dh))], 'A-DOOR-FRAME')
 
     if qc_h > 0:
-        mid_frame_top = top_frame_bottom - qc_h
+        mid_frame_top = dh - qc_h
         mid_frame_bottom = mid_frame_top - fw_top
+        if qc_shape == "弧形气窗":
+            draw_arch_span(left_width, dw - right_width, mid_frame_top, dh, 'A-DOOR-FRAME')
         drawer.draw_poly([off((left_width, mid_frame_bottom)), off((dw - right_width, mid_frame_bottom)), off((dw - right_width, mid_frame_top)), off((left_width, mid_frame_top))], 'A-DOOR-FRAME')
         if th > 0:
             drawer.draw_poly([off((left_width, 0)), off((dw - right_width, 0)), off((dw - right_width, th)), off((left_width, th))], 'A-DOOR-FRAME')
@@ -241,6 +271,8 @@ def draw_door_in_frame(
         drawer.draw_poly([off((ox1, oy1)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, oy4)), off((ix4, iy4)), off((ix3, iy3)), off((ix2, iy2)), off((ix1, iy1))], 'A-DOOR-TRIM')
         drawer.draw_line(off((ix2, iy2)), off((ox2, oy2)), 'A-DOOR-TRIM')
         drawer.draw_line(off((ix3, iy3)), off((ox3, oy3)), 'A-DOOR-TRIM')
+        if qc_h > 0 and qc_shape == "弧形气窗":
+            draw_arch_span(ox1, ox4, dh - O, oy3, 'A-DOOR-TRIM')
 
         if has_mm and mm_height > 0:
             mm_bottom = dh - O
@@ -307,11 +339,31 @@ def draw_door_in_frame(
 
     if qc_h > 0:
         qc_top = top_frame_bottom
-        qc_bottom = top_frame_bottom - qc_h
+        qc_bottom = mid_frame_top
         drawer.draw_poly([off((left_width, qc_bottom)), off((dw - right_width, qc_bottom)), off((dw - right_width, qc_top)), off((left_width, qc_top))], 'A-DOOR-FRAME')
 
-    if qc_h > 0:
-        panel_y_top = top_frame_bottom - qc_h - ref_fw_top - top_gap
+    integrated_layout = None
+    if is_integrated_door:
+        glass_top = dh
+        glass_bottom = max(th, dh - integrated_glass_height)
+        seal_top = glass_bottom
+        seal_bottom = max(th, seal_top - integrated_panel_height)
+        press_bottom = max(th, seal_bottom - integrated_press_top_rail)
+        glass_rail_top = min(glass_top, glass_bottom + integrated_glass_bottom_rail)
+        drawer.draw_poly([off((left_width, glass_bottom)), off((dw - right_width, glass_bottom)), off((dw - right_width, glass_rail_top)), off((left_width, glass_rail_top))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((left_width, seal_bottom)), off((dw - right_width, seal_bottom)), off((dw - right_width, seal_top)), off((left_width, seal_top))], 'A-DOOR-PANEL')
+        drawer.draw_poly([off((left_width, press_bottom)), off((dw - right_width, press_bottom)), off((dw - right_width, seal_bottom)), off((left_width, seal_bottom))], 'A-DOOR-FRAME')
+        integrated_layout = {
+            "glass_bottom": glass_bottom,
+            "seal_top": seal_top,
+            "seal_bottom": seal_bottom,
+            "press_bottom": press_bottom,
+        }
+
+    if integrated_layout:
+        panel_y_top = integrated_layout["press_bottom"] - top_gap
+    elif qc_h > 0:
+        panel_y_top = mid_frame_bottom - top_gap
     else:
         panel_y_top = dh - ref_fw_top - top_gap
     if p.get("has_dj"):
@@ -471,15 +523,21 @@ def draw_door_in_frame(
     if has_mm and mm_height > 0 and trim_w > 0:
         dims_v.append(("门楣高度", dh - O + mm_height, dh - O, 300, True, f"{mm_height}"))
 
+    if integrated_layout:
+        dims_v.append(("上方玻璃高", integrated_layout["glass_bottom"], dh, 200, True, "上方玻璃高 <>"))
+        dims_v.append(("中间封板高", integrated_layout["seal_bottom"], integrated_layout["seal_top"], 300, True, "中间封板高 <>"))
+        dims_v.append(("下方门高", 0, integrated_layout["press_bottom"], 400, True, "下方门高 <>"))
+        dims_v.append(("连体总高", 0, dh, 500, True, "连体总高 <>"))
+
     if qc_h > 0:
-        mid_frame_top = top_frame_bottom - qc_h
+        mid_frame_top = dh - qc_h
         dims_v.append(("气窗上部高度", mid_frame_top, dh, 200, True, None))
         dims_v.append(("门板下部高度", 0, mid_frame_top, 200, True, None))
 
     if should_mark_light and should_draw_light_view:
         light_text_h = f"见光高 {light_h}" if use_light_size and light_h > 0 else "见光高 <>"
         light_y1 = th
-        light_y2 = (top_frame_bottom - qc_h - fw_top) if qc_h > 0 else dh - fw_top
+        light_y2 = mid_frame_bottom if qc_h > 0 else dh - fw_top
         dims_v.append(("见光高", light_y1, light_y2, 100, True, light_text_h))
 
     dims_v.append(("洞口高", 0, dh, 300, True, None))
@@ -794,7 +852,7 @@ def draw_door_in_frame(
                 off((hx - handle_w / 2, y_center + handle_h / 2)),
             ], "A-DOOR-PANEL")
 
-    if not is_back and p.get("fingerprint_lock") == "安志杰AF-12":
+    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("AZJ", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 

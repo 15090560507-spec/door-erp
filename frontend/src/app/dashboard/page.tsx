@@ -151,6 +151,7 @@ export default function DashboardPage() {
     if (!data.zzcl.trim()) missing.push("制作材料");
     if (!data.ys.trim()) missing.push("颜色");
     if (!data.sel_hys.trim()) missing.push("合页样式");
+    if (!data.fingerprint_lock.trim()) missing.push("指纹锁");
     if (data.use_light_size) {
       if (!data.light_w || data.light_w <= 0) missing.push("见光宽(W)");
       if (!data.light_h || data.light_h <= 0) missing.push("见光高(H)");
@@ -168,6 +169,12 @@ export default function DashboardPage() {
     }
     if (data.threshold_type === "吊脚" && (!data.dj_height || data.dj_height <= 0)) {
       missing.push("吊脚高度");
+    }
+    if (data.is_integrated_door) {
+      if (!data.integrated_panel_height || data.integrated_panel_height <= 0) missing.push("封板高度");
+      if (!data.integrated_press_top_rail || data.integrated_press_top_rail <= 0) missing.push("压门上槛尺寸");
+      if (!data.integrated_glass_bottom_rail || data.integrated_glass_bottom_rail <= 0) missing.push("玻璃下槛尺寸");
+      if (!data.integrated_glass_height || data.integrated_glass_height <= 0) missing.push("上方玻璃高度");
     }
     if (data.handle_size && !/^\s*\d+(\.\d+)?\s*[*xX×]\s*\d+(\.\d+)?\s*$/.test(data.handle_size)) {
       return "拉手尺寸格式请填写为 40*800 或 800*40";

@@ -4,7 +4,7 @@ import { memo, useState, useEffect, useRef } from "react";
 import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
-  QC_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
+  QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
   TRIM_STYLES, DOOR_PANEL_STYLES,
 } from "@/lib/types";
@@ -333,10 +333,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />
             <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
             <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => set("has_pillar", v)} />
+            <Checkbox label="连体门" checked={data.is_integrated_door} onChange={(v) => set("is_integrated_door", v)} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             {data.sel_qc !== "无" && (
-              <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
+              <>
+                <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
+                <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
+              </>
             )}
             {data.has_mm && (
               <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
@@ -344,6 +348,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           </div>
           {data.has_pillar && (
             <Input label="立柱宽(外/内)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
+          )}
+          {data.is_integrated_door && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="封板高度" value={data.integrated_panel_height} type="number" onChange={(v) => set("integrated_panel_height", Number(v))} />
+              <Input label="压门上槛尺寸" value={data.integrated_press_top_rail} type="number" onChange={(v) => set("integrated_press_top_rail", Number(v))} />
+              <Input label="玻璃下槛尺寸" value={data.integrated_glass_bottom_rail} type="number" onChange={(v) => set("integrated_glass_bottom_rail", Number(v))} />
+              <Input label="上方玻璃高度" value={data.integrated_glass_height} type="number" onChange={(v) => set("integrated_glass_height", Number(v))} />
+            </div>
           )}
         </Card>
 
@@ -474,7 +486,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
             <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("fmls", v)} />
             <Combobox label="锁体类型" value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
-            <Combobox label="指纹锁" value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
+            <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
             <Combobox label="合页样式" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
           </div>

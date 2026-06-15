@@ -8,7 +8,7 @@ import ezdxf
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
 
-from main import build_cad_params
+from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
 from models import CADRequest
 from drawing import run_integrated_system
 
@@ -386,7 +386,7 @@ def test_middle_door_dimension_text_and_transom_light_height():
     y2 = round(float(dim.dxf.defpoint3.y), 2)
     check(
         "transom light height dimensions from middle rail underside to threshold top",
-        (y1, y2) == (75.0, 1550.0),
+        (y1, y2) == (75.0, 1625.0),
         (y1, y2),
     )
 
@@ -425,7 +425,7 @@ def test_transom_pillar_lintel_label_and_view_gap():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 1550) < 0.01:
+        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 1625) < 0.01:
             pillar_polys.append(entity)
     check(
         "transom pillars stay between middle rail and threshold",
@@ -483,6 +483,95 @@ def test_light_width_uses_pillar_inner_edges():
         "pillar light width dimensions between pillar inner edges",
         (x1, x2) == (-562.0, 242.0),
         (x1, x2),
+    )
+
+
+def test_new_defaults_fingerprint_and_transom_shape():
+    default_req = CADRequest()
+    check("default top gap is 3mm", default_req.top_gap == 3, default_req.top_gap)
+    check("default bottom gap is 5mm", default_req.bottom_gap == 5, default_req.bottom_gap)
+    check("fingerprint lock defaults blank", default_req.fingerprint_lock == "", default_req.fingerprint_lock)
+    fingerprint_options = _DEFAULT_DROPDOWN_OPTIONS["FINGERPRINT_LOCKS"]
+    check(
+        "fingerprint options include Q3/T5 and renamed customer-provided option",
+        "" in fingerprint_options
+        and "\u5b89\u5fd7\u6770AF-12" in fingerprint_options
+        and "Q3\u6307\u7eb9\u9501" in fingerprint_options
+        and "T5\u6307\u7eb9\u9501" in fingerprint_options
+        and "\u5ba2\u5907\u6307\u7eb9\u9501" in fingerprint_options
+        and "\u5ba2\u5907" not in fingerprint_options,
+        fingerprint_options,
+    )
+
+    for lock_name in ("\u5b89\u5fd7\u6770AF-12", "Q3\u6307\u7eb9\u9501", "T5\u6307\u7eb9\u9501"):
+        req = CADRequest(fingerprint_lock=lock_name)
+        info, checks, draw_params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, draw_params)
+        check(f"{lock_name} CAD generation returns buffer", buffer is not None, msg)
+        if not buffer:
+            continue
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        inserts = [entity.dxf.name for entity in doc.modelspace().query("INSERT")]
+        check(f"{lock_name} uses AZJ block", "AZJ" in inserts, inserts[:20])
+
+    arch_req = CADRequest(
+        has_outer=True,
+        trim_front_in=160,
+        sel_qc="\u73bb\u7483",
+        qc_height=400,
+        qc_shape="\u5f27\u5f62\u6c14\u7a97",
+    )
+    arch_info, arch_checks, arch_draw_params = build_cad_params(arch_req)
+    arch_msg, arch_buffer = run_integrated_system(arch_info, arch_checks, arch_draw_params)
+    check("arched transom CAD generation returns buffer", arch_buffer is not None, arch_msg)
+    if not arch_buffer:
+        return
+    arch_doc = ezdxf.read(io.StringIO(arch_buffer.getvalue()))
+    frame_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-FRAME"]
+    trim_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-TRIM"]
+    check("arched transom draws frame arc", len(frame_arcs) >= 1, len(frame_arcs))
+    check("arched transom draws trim arc when trim exists", len(trim_arcs) >= 1, len(trim_arcs))
+
+
+def test_integrated_door_sections_and_dimensions():
+    req = CADRequest(
+        is_integrated_door=True,
+        integrated_panel_height=300,
+        integrated_press_top_rail=20,
+        integrated_glass_bottom_rail=20,
+        integrated_glass_height=500,
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    check("integrated door flag passes to drawing", draw_params["is_integrated_door"] is True, draw_params)
+    check("integrated seal panel height passes to drawing", draw_params["integrated_panel_height"] == 300, draw_params)
+    check("integrated glass height passes to drawing", draw_params["integrated_glass_height"] == 500, draw_params)
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("integrated door CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    seal_panels = []
+    for entity in panel_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs(y1 - 1300) < 0.01 and abs(y2 - 1600) < 0.01:
+            seal_panels.append(entity)
+    check("integrated door draws middle seal panel", len(seal_panels) >= 1, f"seal panels: {len(seal_panels)}")
+
+    dim_texts = [entity.dxf.text for entity in doc.modelspace().query("DIMENSION")]
+    check(
+        "integrated door adds section dimensions",
+        "\u4e0a\u65b9\u73bb\u7483\u9ad8 <>" in dim_texts
+        and "\u4e2d\u95f4\u5c01\u677f\u9ad8 <>" in dim_texts
+        and "\u4e0b\u65b9\u95e8\u9ad8 <>" in dim_texts
+        and "\u8fde\u4f53\u603b\u9ad8 <>" in dim_texts,
+        dim_texts,
     )
 
 
@@ -587,6 +676,8 @@ if __name__ == "__main__":
     test_middle_door_dimension_text_and_transom_light_height()
     test_transom_pillar_lintel_label_and_view_gap()
     test_light_width_uses_pillar_inner_edges()
+    test_new_defaults_fingerprint_and_transom_shape()
+    test_integrated_door_sections_and_dimensions()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

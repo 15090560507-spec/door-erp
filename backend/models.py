@@ -44,7 +44,7 @@ class CADRequest(BaseModel):
     fmls: str = "标配拉手"              # 反面拉手
     handle_size: str = ""               # 拉手尺寸，如 40*800
     st_val: str = "连体锁"              # 锁体类型
-    fingerprint_lock: str = "无"        # 指纹锁
+    fingerprint_lock: str = ""          # 指纹锁
     sel_hys: str = ""                   # 合页样式
     hysl: str = "3个/扇"                # 合页数量
     has_outer: bool = True              # 外包套
@@ -55,6 +55,12 @@ class CADRequest(BaseModel):
     trim_front_in: int = 160            # 外包套宽
     trim_back_in: int = 140             # 内包套宽
     sel_qc: str = "无"                  # 气窗
+    qc_shape: str = "矩形气窗"          # 气窗形状
+    is_integrated_door: bool = False    # 连体门
+    integrated_panel_height: int = 300  # 连体门中间封板高度
+    integrated_press_top_rail: int = 20 # 压门上槛尺寸
+    integrated_glass_bottom_rail: int = 20 # 上方玻璃下槛尺寸
+    integrated_glass_height: int = 500  # 上方玻璃高度
     has_mm: bool = False                # 门楣
     has_pillar: bool = False            # 立柱
     qc_height: int = 400                # 气窗高
@@ -93,8 +99,8 @@ class CADRequest(BaseModel):
     child_panel_three_col_c: int = 100
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
-    top_gap: int = 5                    # 上门缝
-    bottom_gap: int = 7                 # 下门缝
+    top_gap: int = 3                    # 上门缝
+    bottom_gap: int = 5                 # 下门缝
     middle_gap: int = 4                 # 中缝
     left_right_gap_str: str = "0/0"     # [兼容旧数据] 左右间隙
     top_bottom_gap_str: str = "0/0"     # [兼容旧数据] 上下间隙
