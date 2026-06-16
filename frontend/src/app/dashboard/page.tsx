@@ -172,8 +172,7 @@ export default function DashboardPage() {
     }
     if (data.is_integrated_door) {
       if (!data.integrated_panel_height || data.integrated_panel_height <= 0) missing.push("封板高度");
-      if (!data.integrated_press_top_rail || data.integrated_press_top_rail <= 0) missing.push("压门上槛尺寸");
-      if (!data.integrated_glass_bottom_rail || data.integrated_glass_bottom_rail <= 0) missing.push("玻璃下槛尺寸");
+      if (!data.integrated_press_top_rail || data.integrated_press_top_rail <= 0) missing.push("封板压框尺寸");
       if (!data.integrated_glass_height || data.integrated_glass_height <= 0) missing.push("上方玻璃高度");
     }
     if (data.handle_size && !/^\s*\d+(\.\d+)?\s*[*xX×]\s*\d+(\.\d+)?\s*$/.test(data.handle_size)) {

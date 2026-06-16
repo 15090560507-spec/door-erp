@@ -352,8 +352,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           {data.is_integrated_door && (
             <div className="grid grid-cols-2 gap-3 mt-3">
               <Input label="封板高度" value={data.integrated_panel_height} type="number" onChange={(v) => set("integrated_panel_height", Number(v))} />
-              <Input label="压门上槛尺寸" value={data.integrated_press_top_rail} type="number" onChange={(v) => set("integrated_press_top_rail", Number(v))} />
-              <Input label="玻璃下槛尺寸" value={data.integrated_glass_bottom_rail} type="number" onChange={(v) => set("integrated_glass_bottom_rail", Number(v))} />
+              <Input label="封板压框尺寸" value={data.integrated_press_top_rail} type="number" onChange={(v) => set("integrated_press_top_rail", Number(v))} />
               <Input label="上方玻璃高度" value={data.integrated_glass_height} type="number" onChange={(v) => set("integrated_glass_height", Number(v))} />
             </div>
           )}

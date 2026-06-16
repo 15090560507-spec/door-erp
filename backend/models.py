@@ -58,8 +58,8 @@ class CADRequest(BaseModel):
     qc_shape: str = "矩形气窗"          # 气窗形状
     is_integrated_door: bool = False    # 连体门
     integrated_panel_height: int = 300  # 连体门中间封板高度
-    integrated_press_top_rail: int = 20 # 压门上槛尺寸
-    integrated_glass_bottom_rail: int = 20 # 上方玻璃下槛尺寸
+    integrated_press_top_rail: int = 20 # 封板压框尺寸
+    integrated_glass_bottom_rail: int = 20 # [兼容旧数据] 不再作为窗下框尺寸使用
     integrated_glass_height: int = 500  # 上方玻璃高度
     has_mm: bool = False                # 门楣
     has_pillar: bool = False            # 立柱

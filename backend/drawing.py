@@ -243,12 +243,13 @@ def draw_door_in_frame(
 
     integrated_layout = None
     if is_integrated_door:
-        press_bottom = max(th, dh - integrated_press_top_rail)
+        seal_overlap = integrated_press_top_rail
+        press_bottom = max(th, dh - fw_top)
         seal_bottom = dh
         seal_top = seal_bottom + integrated_panel_height
         glass_bottom = seal_top
         glass_top = total_h
-        glass_rail_top = min(glass_top, glass_bottom + integrated_glass_bottom_rail)
+        glass_rail_top = min(glass_top, glass_bottom + fw_top)
         integrated_layout = {
             "glass_top": glass_top,
             "glass_bottom": glass_bottom,
@@ -256,8 +257,9 @@ def draw_door_in_frame(
             "seal_top": seal_top,
             "seal_bottom": seal_bottom,
             "press_bottom": press_bottom,
-            "seal_dim_bottom": press_bottom,
-            "seal_dim_top": glass_rail_top,
+            "seal_dim_bottom": seal_bottom - seal_overlap,
+            "seal_dim_top": seal_top + seal_overlap,
+            "seal_overlap": seal_overlap,
         }
 
     if integrated_layout:
@@ -376,7 +378,10 @@ def draw_door_in_frame(
 
     if is_integrated_door:
         drawer.draw_poly([off((left_width, integrated_layout["glass_bottom"])), off((dw - right_width, integrated_layout["glass_bottom"])), off((dw - right_width, integrated_layout["glass_rail_top"])), off((left_width, integrated_layout["glass_rail_top"]))], 'A-DOOR-FRAME')
-        drawer.draw_poly([off((left_width, integrated_layout["seal_bottom"])), off((dw - right_width, integrated_layout["seal_bottom"])), off((dw - right_width, integrated_layout["seal_top"])), off((left_width, integrated_layout["seal_top"]))], 'A-DOOR-PANEL')
+        if not is_back:
+            drawer.draw_poly([off((0, integrated_layout["seal_dim_bottom"])), off((left_width, integrated_layout["seal_dim_bottom"])), off((left_width, integrated_layout["seal_dim_top"])), off((0, integrated_layout["seal_dim_top"]))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((dw - right_width, integrated_layout["seal_dim_bottom"])), off((dw, integrated_layout["seal_dim_bottom"])), off((dw, integrated_layout["seal_dim_top"])), off((dw - right_width, integrated_layout["seal_dim_top"]))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((left_width, integrated_layout["seal_dim_bottom"])), off((dw - right_width, integrated_layout["seal_dim_bottom"])), off((dw - right_width, integrated_layout["seal_dim_top"])), off((left_width, integrated_layout["seal_dim_top"]))], 'A-DOOR-PANEL')
         drawer.draw_poly([off((left_width, integrated_layout["press_bottom"])), off((dw - right_width, integrated_layout["press_bottom"])), off((dw - right_width, integrated_layout["seal_bottom"])), off((left_width, integrated_layout["seal_bottom"]))], 'A-DOOR-FRAME')
 
     if integrated_layout:
@@ -544,7 +549,7 @@ def draw_door_in_frame(
 
     if integrated_layout:
         dims_v.append(("上方玻璃", integrated_layout["glass_bottom"], integrated_layout["glass_top"], 200, True, fmt_dim(integrated_glass_height)))
-        dims_v.append(("中间封板", integrated_layout["seal_dim_bottom"], integrated_layout["seal_dim_top"], 200, True, fmt_dim(integrated_panel_height + integrated_press_top_rail + integrated_glass_bottom_rail)))
+        dims_v.append(("中间封板", integrated_layout["seal_dim_bottom"], integrated_layout["seal_dim_top"], 200, True, fmt_dim(integrated_panel_height + integrated_layout["seal_overlap"] * 2)))
         dims_v.append(("下方门", 0, dh, 200, True, fmt_dim(dh)))
         dims_v.append(("连体总高", 0, total_h, 500, True, "连体总高 <>"))
 
@@ -894,6 +899,7 @@ def run_integrated_system(
             doc = ezdxf.read(io.StringIO(cached))
         else:
             doc = ezdxf.new('R2010')
+        doc.header["$DIMASSOC"] = 2
 
         ms = doc.modelspace()
 

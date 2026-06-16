@@ -575,19 +575,28 @@ def test_integrated_door_sections_and_dimensions():
     ]
     front_window_bottom_frames = []
     back_window_bottom_frames = []
-    seal_side_pillars = []
+    front_seal_side_frames = []
+    back_seal_side_frames = []
+    door_top_frames = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs(y1 - 2400) < 0.01 and abs(y2 - 2420) < 0.01 and (x2 - x1) > 500:
+        if abs(y1 - 2400) < 0.01 and abs(y2 - 2475) < 0.01 and (x2 - x1) > 500:
             if x1 < 1000:
                 front_window_bottom_frames.append(entity)
             else:
                 back_window_bottom_frames.append(entity)
-        if abs(y1 - 2100) < 0.01 and abs(y2 - 2400) < 0.01 and (x2 - x1) < 120:
-            seal_side_pillars.append(entity)
+        if abs(y1 - 2025) < 0.01 and abs(y2 - 2100) < 0.01 and (x2 - x1) > 500:
+            door_top_frames.append(entity)
+        if abs(y1 - 2080) < 0.01 and abs(y2 - 2420) < 0.01 and (x2 - x1) < 120:
+            if x1 < 1000:
+                front_seal_side_frames.append(entity)
+            else:
+                back_seal_side_frames.append(entity)
     check("integrated front view keeps window bottom frame", len(front_window_bottom_frames) >= 1, len(front_window_bottom_frames))
     check("integrated back view keeps window bottom frame", len(back_window_bottom_frames) >= 1, len(back_window_bottom_frames))
-    check("integrated seal panel area has no side pillars", len(seal_side_pillars) == 0, len(seal_side_pillars))
+    check("integrated door top frame uses configured top frame width", len(door_top_frames) >= 2, len(door_top_frames))
+    check("integrated front seal panel has side frames", len(front_seal_side_frames) >= 2, len(front_seal_side_frames))
+    check("integrated back seal panel has no side frames", len(back_seal_side_frames) == 0, len(back_seal_side_frames))
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
@@ -595,7 +604,7 @@ def test_integrated_door_sections_and_dimensions():
     seal_panels = []
     for entity in panel_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs(y1 - 2100) < 0.01 and abs(y2 - 2400) < 0.01:
+        if abs(y1 - 2080) < 0.01 and abs(y2 - 2420) < 0.01:
             seal_panels.append(entity)
     check("integrated door draws middle seal panel", len(seal_panels) >= 1, f"seal panels: {len(seal_panels)}")
 
