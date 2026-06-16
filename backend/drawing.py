@@ -262,6 +262,55 @@ def draw_door_in_frame(
             return
         drawer.draw_arc(off((geom["center_x"], geom["center_y"])), radius, geom["start_angle"], geom["end_angle"], layer)
 
+    def arc_top_point_at_x(geom, x: float, radius_delta: float = 0):
+        radius = geom["radius"] + radius_delta
+        if radius <= 0:
+            return None
+        dx = x - geom["center_x"]
+        if abs(dx) > radius:
+            return None
+        y = geom["center_y"] + math.sqrt(max(0, radius * radius - dx * dx))
+        return (x, y)
+
+    def arc_angle_for_point(geom, pt):
+        return math.degrees(math.atan2(pt[1] - geom["center_y"], pt[0] - geom["center_x"]))
+
+    def arch_extended_points(geom, left_x: float, right_x: float, radius_delta: float = 0):
+        if not geom:
+            return None, None, None
+        radius = geom["radius"] + radius_delta
+        if radius <= 0:
+            return None, None, None
+        left_pt = arc_top_point_at_x(geom, left_x, radius_delta)
+        right_pt = arc_top_point_at_x(geom, right_x, radius_delta)
+        if left_pt and right_pt:
+            return left_pt, right_pt, None
+        left_base = arc_point(geom, "end_angle", radius_delta)
+        right_base = arc_point(geom, "start_angle", radius_delta)
+        spring_y = (left_base[1] + right_base[1]) / 2
+        apex_y = geom["center_y"] + radius
+        extended_geom = arch_geometry(left_x, right_x, spring_y, apex_y)
+        if not extended_geom:
+            return None, None, None
+        return (left_x, spring_y), (right_x, spring_y), extended_geom
+
+    def draw_arch_extended_to_x(geom, left_x: float, right_x: float, layer: str, radius_delta: float = 0):
+        left_pt, right_pt, extended_geom = arch_extended_points(geom, left_x, right_x, radius_delta)
+        if not left_pt or not right_pt:
+            return None, None
+        if extended_geom:
+            draw_arch_geom(extended_geom, layer)
+            return left_pt, right_pt
+        radius = geom["radius"] + radius_delta
+        drawer.draw_arc(
+            off((geom["center_x"], geom["center_y"])),
+            radius,
+            arc_angle_for_point(geom, right_pt),
+            arc_angle_for_point(geom, left_pt),
+            layer,
+        )
+        return left_pt, right_pt
+
     def draw_arch_span(left_x: float, right_x: float, spring_y: float, apex_y: float, layer: str):
         draw_arch_geom(arch_geometry(left_x, right_x, spring_y, apex_y), layer)
 
@@ -303,8 +352,7 @@ def draw_door_in_frame(
         inner_apex_y = total_h - fw_top
         arch_frame = arch_geometry(left_width, dw - right_width, inner_spring_y, inner_apex_y)
         if arch_frame:
-            left_outer_top = arc_point(arch_frame, "end_angle", fw_top)
-            right_outer_top = arc_point(arch_frame, "start_angle", fw_top)
+            left_outer_top, right_outer_top, _ = arch_extended_points(arch_frame, 0, dw, fw_top)
             drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, inner_spring_y)), off(left_outer_top), off((0, left_outer_top[1]))], 'A-DOOR-FRAME')
             drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, right_outer_top[1])), off(right_outer_top), off((dw - right_width, inner_spring_y))], 'A-DOOR-FRAME')
     else:
@@ -324,12 +372,11 @@ def draw_door_in_frame(
             inner_apex_y = total_h - fw_top
             arch_frame = arch_geometry(left_width, dw - right_width, inner_spring_y, inner_apex_y)
             if arch_frame:
-                left_outer_top = arc_point(arch_frame, "end_angle", fw_top)
-                right_outer_top = arc_point(arch_frame, "start_angle", fw_top)
                 draw_arch_geom(arch_frame, 'A-DOOR-FRAME')
-                draw_arch_geom(arch_frame, 'A-DOOR-FRAME', fw_top)
-                drawer.draw_line(off(left_outer_top), off((left_width, inner_spring_y)), 'A-DOOR-FRAME')
-                drawer.draw_line(off((dw - right_width, inner_spring_y)), off(right_outer_top), 'A-DOOR-FRAME')
+                left_outer_top, right_outer_top = draw_arch_extended_to_x(arch_frame, 0, dw, 'A-DOOR-FRAME', fw_top)
+                if left_outer_top and right_outer_top:
+                    drawer.draw_line(off(left_outer_top), off((left_width, inner_spring_y)), 'A-DOOR-FRAME')
+                    drawer.draw_line(off((dw - right_width, inner_spring_y)), off(right_outer_top), 'A-DOOR-FRAME')
         drawer.draw_poly([off((left_width, mid_frame_bottom)), off((dw - right_width, mid_frame_bottom)), off((dw - right_width, mid_frame_top)), off((left_width, mid_frame_top))], 'A-DOOR-FRAME')
         if th > 0:
             drawer.draw_poly([off((left_width, 0)), off((dw - right_width, 0)), off((dw - right_width, th)), off((left_width, th))], 'A-DOOR-FRAME')
@@ -357,12 +404,11 @@ def draw_door_in_frame(
             if trim_arch:
                 trim_left_inner = arc_point(trim_arch, "end_angle")
                 trim_right_inner = arc_point(trim_arch, "start_angle")
-                trim_left_outer = arc_point(trim_arch, "end_angle", W)
-                trim_right_outer = arc_point(trim_arch, "start_angle", W)
+                trim_left_outer, trim_right_outer, _ = arch_extended_points(trim_arch, ox1, ox4, W)
                 drawer.draw_poly([off((ox1, oy1)), off((ox1, trim_left_outer[1])), off(trim_left_outer), off(trim_left_inner), off((ix1, iy1))], 'A-DOOR-TRIM')
                 drawer.draw_poly([off((ix4, iy4)), off(trim_right_inner), off(trim_right_outer), off((ox4, trim_right_outer[1])), off((ox4, oy4))], 'A-DOOR-TRIM')
                 draw_arch_geom(trim_arch, 'A-DOOR-TRIM')
-                draw_arch_geom(trim_arch, 'A-DOOR-TRIM', W)
+                draw_arch_extended_to_x(trim_arch, ox1, ox4, 'A-DOOR-TRIM', W)
                 drawer.draw_line(off(trim_left_outer), off(trim_left_inner), 'A-DOOR-TRIM')
                 drawer.draw_line(off(trim_right_inner), off(trim_right_outer), 'A-DOOR-TRIM')
         else:
@@ -391,10 +437,11 @@ def draw_door_in_frame(
             def draw_outer_offset(D):
                 if is_arch_qc and style_trim_arch:
                     radius_delta = max(0, W - D)
-                    left_pt = arc_point(style_trim_arch, "end_angle", radius_delta)
-                    right_pt = arc_point(style_trim_arch, "start_angle", radius_delta)
+                    left_x = O - W + D
+                    right_x = dw - O + W - D
+                    left_pt, right_pt, _ = arch_extended_points(style_trim_arch, left_x, right_x, radius_delta)
                     drawer.draw_line(off((left_pt[0], 0)), off(left_pt), 'A-DOOR-TRIM')
-                    draw_arch_geom(style_trim_arch, 'A-DOOR-TRIM', radius_delta)
+                    draw_arch_extended_to_x(style_trim_arch, left_x, right_x, 'A-DOOR-TRIM', radius_delta)
                     drawer.draw_line(off(right_pt), off((right_pt[0], 0)), 'A-DOOR-TRIM')
                     return
                 left_x = O - W + D
@@ -408,10 +455,11 @@ def draw_door_in_frame(
             def draw_inner_offset(D):
                 if is_arch_qc and style_trim_arch:
                     radius_delta = max(0, D)
-                    left_pt = arc_point(style_trim_arch, "end_angle", radius_delta)
-                    right_pt = arc_point(style_trim_arch, "start_angle", radius_delta)
+                    left_x = O - D
+                    right_x = dw - O + D
+                    left_pt, right_pt, _ = arch_extended_points(style_trim_arch, left_x, right_x, radius_delta)
                     drawer.draw_line(off((left_pt[0], 0)), off(left_pt), 'A-DOOR-TRIM')
-                    draw_arch_geom(style_trim_arch, 'A-DOOR-TRIM', radius_delta)
+                    draw_arch_extended_to_x(style_trim_arch, left_x, right_x, 'A-DOOR-TRIM', radius_delta)
                     drawer.draw_line(off(right_pt), off((right_pt[0], 0)), 'A-DOOR-TRIM')
                     return
                 left_x = O - D

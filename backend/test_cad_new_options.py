@@ -585,25 +585,23 @@ def test_new_defaults_fingerprint_and_transom_shape():
             ),
         )
 
-    frame_arc_groups = {}
-    for arc in frame_arcs:
-        key = (round(float(arc.dxf.center.x), 2), round(float(arc.dxf.center.y), 2))
-        frame_arc_groups.setdefault(key, []).append(round(float(arc.dxf.radius), 2))
-    has_offset_pair = any(
-        any(abs((larger - smaller) - 70) < 0.01 for smaller in radii for larger in radii if larger > smaller)
-        for radii in frame_arc_groups.values()
-    )
-    check(
-        "arched transom outer arc is a true 70mm radial offset",
-        has_offset_pair,
-        frame_arc_groups,
-    )
-
     arc_endpoint_pairs = [arc_endpoints(arc) for arc in frame_arcs]
     check(
         "arched transom outer arc endpoints shift sideways as well as upward",
         any((right[0] - left[0]) > 760 for left, right in arc_endpoint_pairs),
         arc_endpoint_pairs,
+    )
+    check(
+        "arched transom outer frame arc extends to side frame outer edges",
+        any(abs((right[0] - left[0]) - arch_draw_params["dw"]) < 0.01 for left, right in arc_endpoint_pairs),
+        arc_endpoint_pairs,
+    )
+
+    trim_endpoint_pairs = [arc_endpoints(arc) for arc in trim_arcs]
+    check(
+        "arched transom trim outer arc extends to trim outer edges",
+        any((right[0] - left[0]) > 1080 for left, right in trim_endpoint_pairs),
+        trim_endpoint_pairs,
     )
 
     arch_frame_polys = [
