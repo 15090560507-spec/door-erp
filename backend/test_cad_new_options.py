@@ -362,6 +362,19 @@ def test_middle_door_dimension_text_and_transom_light_height():
             middle_texts,
         )
 
+    fixed_req = CADRequest(door_type="\u4e24\u5b9a\u4e24\u5f00")
+    fixed_info, fixed_checks, fixed_draw_params = build_cad_params(fixed_req)
+    fixed_msg, fixed_buffer = run_integrated_system(fixed_info, fixed_checks, fixed_draw_params)
+    check("fixed-and-open door middle dimension CAD generation returns buffer", fixed_buffer is not None, fixed_msg)
+    if fixed_buffer:
+        fixed_doc = ezdxf.read(io.StringIO(fixed_buffer.getvalue()))
+        fixed_texts = [entity.dxf.text for entity in fixed_doc.modelspace().query("DIMENSION")]
+        check(
+            "fixed-and-open middle door dimension text names inner clear width",
+            "\u4e2d\u95e8\u5185\u7a7a\u5bbd <>" in fixed_texts,
+            fixed_texts,
+        )
+
     transom_req = CADRequest(
         sel_qc="\u73bb\u7483",
         qc_height=400,
@@ -530,6 +543,7 @@ def test_new_defaults_fingerprint_and_transom_shape():
         fw_top_str="55/70",
         has_outer=True,
         trim_front_in=160,
+        trim_style_outer="\u0030\u0031\u6b3e\u5305\u5957",
         sel_qc="\u73bb\u7483",
         qc_height=400,
         qc_shape="\u5f27\u5f62\u6c14\u7a97",
@@ -540,10 +554,11 @@ def test_new_defaults_fingerprint_and_transom_shape():
     if not arch_buffer:
         return
     arch_doc = ezdxf.read(io.StringIO(arch_buffer.getvalue()))
+    check("generated dimensions are associative", arch_doc.header.get("$DIMASSOC") == 2, arch_doc.header.get("$DIMASSOC"))
     frame_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-FRAME"]
     trim_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-TRIM"]
     check("arched transom draws inner and outer frame arcs", len(frame_arcs) >= 4, len(frame_arcs))
-    check("arched transom draws trim arcs when trim exists", len(trim_arcs) >= 2, len(trim_arcs))
+    check("arched transom draws trim and trim-style arcs when trim exists", len(trim_arcs) >= 6, len(trim_arcs))
     arch_frame_lines = [
         entity for entity in arch_doc.modelspace().query("LINE")
         if entity.dxf.layer == "A-DOOR-FRAME"
@@ -552,23 +567,58 @@ def test_new_defaults_fingerprint_and_transom_shape():
     for entity in arch_frame_lines:
         y1 = round(float(entity.dxf.start.y), 2)
         y2 = round(float(entity.dxf.end.y), 2)
-        if sorted([y1, y2]) == [2880.0, 2950.0]:
+        if 2880.0 in (y1, y2) and y1 != y2:
             diagonal_lines.append(entity)
     check("arched transom corners use diagonal frame joins", len(diagonal_lines) >= 4, len(diagonal_lines))
 
-    def arc_top_and_spring(arc):
+    def arc_endpoints(arc):
         start = math.radians(float(arc.dxf.start_angle))
         end = math.radians(float(arc.dxf.end_angle))
-        y_start = float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(start)
-        y_end = float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(end)
-        return round(max(float(arc.dxf.center.y) + float(arc.dxf.radius), y_start, y_end), 2), round(min(y_start, y_end), 2)
+        return (
+            (
+                round(float(arc.dxf.center.x) + float(arc.dxf.radius) * math.cos(end), 2),
+                round(float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(end), 2),
+            ),
+            (
+                round(float(arc.dxf.center.x) + float(arc.dxf.radius) * math.cos(start), 2),
+                round(float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(start), 2),
+            ),
+        )
 
-    frame_arc_pairs = {arc_top_and_spring(arc) for arc in frame_arcs}
-    check(
-        "arched transom frame arcs use clear height and offset frame width",
-        (3210.0, 2880.0) in frame_arc_pairs and (3280.0, 2950.0) in frame_arc_pairs,
-        frame_arc_pairs,
+    frame_arc_groups = {}
+    for arc in frame_arcs:
+        key = (round(float(arc.dxf.center.x), 2), round(float(arc.dxf.center.y), 2))
+        frame_arc_groups.setdefault(key, []).append(round(float(arc.dxf.radius), 2))
+    has_offset_pair = any(
+        any(abs((larger - smaller) - 70) < 0.01 for smaller in radii for larger in radii if larger > smaller)
+        for radii in frame_arc_groups.values()
     )
+    check(
+        "arched transom outer arc is a true 70mm radial offset",
+        has_offset_pair,
+        frame_arc_groups,
+    )
+
+    arc_endpoint_pairs = [arc_endpoints(arc) for arc in frame_arcs]
+    check(
+        "arched transom outer arc endpoints shift sideways as well as upward",
+        any((right[0] - left[0]) > 760 for left, right in arc_endpoint_pairs),
+        arc_endpoint_pairs,
+    )
+
+    arch_frame_polys = [
+        entity for entity in arch_doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    arch_frame_bounds = [poly_bounds(entity) for entity in arch_frame_polys]
+    check(
+        "arched transom omits rectangular transom range line",
+        not any(abs(y1 - 2880) < 0.01 and abs(y2 - 3210) < 0.01 and (x2 - x1) > 500 for x1, x2, y1, y2 in arch_frame_bounds),
+        arch_frame_bounds,
+    )
+
+    arch_dim_texts = [entity.dxf.text for entity in arch_doc.modelspace().query("DIMENSION")]
+    check("arched transom door-height dimension omits label", "\u95e8\u9ad8 <>" not in arch_dim_texts, arch_dim_texts)
 
 
 def test_integrated_door_sections_and_dimensions():
