@@ -611,9 +611,37 @@ def test_new_defaults_fingerprint_and_transom_shape():
     arch_frame_bounds = [poly_bounds(entity) for entity in arch_frame_polys]
     check(
         "arched transom omits rectangular transom range line",
-        not any(abs(y1 - 2880) < 0.01 and abs(y2 - 3210) < 0.01 and (x2 - x1) > 500 for x1, x2, y1, y2 in arch_frame_bounds),
+        not any(
+            len(list(entity.get_points("xy"))) == 4
+            and abs(poly_bounds(entity)[2] - 2880) < 0.01
+            and abs(poly_bounds(entity)[3] - 3210) < 0.01
+            and (poly_bounds(entity)[1] - poly_bounds(entity)[0]) > 500
+            for entity in arch_frame_polys
+        ),
         arch_frame_bounds,
     )
+    check(
+        "arched transom inner opening is a selectable closed polyline",
+        any(
+            len(list(entity.get_points("xy"))) > 16
+            and abs(poly_bounds(entity)[2] - 2880) < 0.01
+            and abs(poly_bounds(entity)[3] - 3210) < 0.01
+            for entity in arch_frame_polys
+        ),
+        arch_frame_bounds,
+    )
+
+    panel_bounds = [
+        poly_bounds(entity)
+        for entity in arch_doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+    ]
+    panel_heights = sorted({
+        round(float(y2 - y1), 2)
+        for x1, x2, y1, y2 in panel_bounds
+        if (x2 - x1) > 300 and (y2 - y1) > 1000
+    })
+    check("front and back door panels have the same height", len(panel_heights) == 1, panel_heights)
 
     arch_dim_texts = [entity.dxf.text for entity in arch_doc.modelspace().query("DIMENSION")]
     check("arched transom door-height dimension omits label", "\u95e8\u9ad8 <>" not in arch_dim_texts, arch_dim_texts)
