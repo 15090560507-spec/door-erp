@@ -275,16 +275,24 @@ def draw_door_in_frame(
         drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, total_h)), off((0, total_h))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, total_h)), off((dw - right_width, total_h))], 'A-DOOR-FRAME')
 
+    is_arch_qc = qc_h > 0 and qc_shape == "弧形气窗"
     top_frame_bottom = total_h - fw_top
 
-    drawer.draw_poly([off((left_width, top_frame_bottom)), off((dw - right_width, top_frame_bottom)), off((dw - right_width, total_h)), off((left_width, total_h))], 'A-DOOR-FRAME')
+    if not is_arch_qc:
+        drawer.draw_poly([off((left_width, top_frame_bottom)), off((dw - right_width, top_frame_bottom)), off((dw - right_width, total_h)), off((left_width, total_h))], 'A-DOOR-FRAME')
 
     if qc_h > 0:
         mid_frame_top = total_h - qc_h
         mid_frame_bottom = mid_frame_top - fw_top
-        if qc_shape == "弧形气窗":
-            draw_arch_span(0, dw, mid_frame_top, total_h, 'A-DOOR-FRAME')
-            draw_arch_span(left_width, dw - right_width, mid_frame_top, total_h - fw_top, 'A-DOOR-FRAME')
+        if is_arch_qc:
+            inner_spring_y = mid_frame_top
+            inner_apex_y = total_h - fw_top
+            outer_spring_y = inner_spring_y + fw_top
+            outer_apex_y = total_h
+            draw_arch_span(left_width, dw - right_width, inner_spring_y, inner_apex_y, 'A-DOOR-FRAME')
+            draw_arch_span(0, dw, outer_spring_y, outer_apex_y, 'A-DOOR-FRAME')
+            drawer.draw_line(off((0, outer_spring_y)), off((left_width, inner_spring_y)), 'A-DOOR-FRAME')
+            drawer.draw_line(off((dw - right_width, inner_spring_y)), off((dw, outer_spring_y)), 'A-DOOR-FRAME')
         drawer.draw_poly([off((left_width, mid_frame_bottom)), off((dw - right_width, mid_frame_bottom)), off((dw - right_width, mid_frame_top)), off((left_width, mid_frame_top))], 'A-DOOR-FRAME')
         if th > 0:
             drawer.draw_poly([off((left_width, 0)), off((dw - right_width, 0)), off((dw - right_width, th)), off((left_width, th))], 'A-DOOR-FRAME')
@@ -305,12 +313,22 @@ def draw_door_in_frame(
         ox3, oy3 = dw - O + W, total_h - O + W + mm_offset
         ox4, oy4 = dw - O + W, 0
 
-        drawer.draw_poly([off((ox1, oy1)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, oy4)), off((ix4, iy4)), off((ix3, iy3)), off((ix2, iy2)), off((ix1, iy1))], 'A-DOOR-TRIM')
-        drawer.draw_line(off((ix2, iy2)), off((ox2, oy2)), 'A-DOOR-TRIM')
-        drawer.draw_line(off((ix3, iy3)), off((ox3, oy3)), 'A-DOOR-TRIM')
-        if qc_h > 0 and qc_shape == "弧形气窗":
-            draw_arch_span(ox1, ox4, total_h - O, oy3, 'A-DOOR-TRIM')
-            draw_arch_span(ix1, ix4, total_h - O, iy2, 'A-DOOR-TRIM')
+        if is_arch_qc:
+            frame_outer_spring_y = total_h - qc_h + fw_top
+            trim_inner_spring_y = frame_outer_spring_y - O + mm_offset
+            trim_outer_spring_y = trim_inner_spring_y + W
+            trim_inner_apex_y = total_h - O + mm_offset
+            trim_outer_apex_y = trim_inner_apex_y + W
+            drawer.draw_poly([off((ox1, oy1)), off((ox1, trim_outer_spring_y)), off((ix1, trim_inner_spring_y)), off((ix1, iy1))], 'A-DOOR-TRIM')
+            drawer.draw_poly([off((ix4, iy4)), off((ix4, trim_inner_spring_y)), off((ox4, trim_outer_spring_y)), off((ox4, oy4))], 'A-DOOR-TRIM')
+            draw_arch_span(ix1, ix4, trim_inner_spring_y, trim_inner_apex_y, 'A-DOOR-TRIM')
+            draw_arch_span(ox1, ox4, trim_outer_spring_y, trim_outer_apex_y, 'A-DOOR-TRIM')
+            drawer.draw_line(off((ox1, trim_outer_spring_y)), off((ix1, trim_inner_spring_y)), 'A-DOOR-TRIM')
+            drawer.draw_line(off((ix4, trim_inner_spring_y)), off((ox4, trim_outer_spring_y)), 'A-DOOR-TRIM')
+        else:
+            drawer.draw_poly([off((ox1, oy1)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, oy4)), off((ix4, iy4)), off((ix3, iy3)), off((ix2, iy2)), off((ix1, iy1))], 'A-DOOR-TRIM')
+            drawer.draw_line(off((ix2, iy2)), off((ox2, oy2)), 'A-DOOR-TRIM')
+            drawer.draw_line(off((ix3, iy3)), off((ox3, oy3)), 'A-DOOR-TRIM')
 
         if has_mm and mm_height > 0:
             mm_bottom = total_h - O

@@ -1,6 +1,7 @@
 import os
 import sys
 import io
+import math
 
 import ezdxf
 
@@ -525,6 +526,8 @@ def test_new_defaults_fingerprint_and_transom_shape():
         check(f"{lock_name} uses AZJ block", "AZJ" in inserts, inserts[:20])
 
     arch_req = CADRequest(
+        dh=2880,
+        fw_top_str="55/70",
         has_outer=True,
         trim_front_in=160,
         sel_qc="\u73bb\u7483",
@@ -539,8 +542,33 @@ def test_new_defaults_fingerprint_and_transom_shape():
     arch_doc = ezdxf.read(io.StringIO(arch_buffer.getvalue()))
     frame_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-FRAME"]
     trim_arcs = [entity for entity in arch_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-TRIM"]
-    check("arched transom draws frame arc", len(frame_arcs) >= 1, len(frame_arcs))
-    check("arched transom draws trim arc when trim exists", len(trim_arcs) >= 1, len(trim_arcs))
+    check("arched transom draws inner and outer frame arcs", len(frame_arcs) >= 4, len(frame_arcs))
+    check("arched transom draws trim arcs when trim exists", len(trim_arcs) >= 2, len(trim_arcs))
+    arch_frame_lines = [
+        entity for entity in arch_doc.modelspace().query("LINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    diagonal_lines = []
+    for entity in arch_frame_lines:
+        y1 = round(float(entity.dxf.start.y), 2)
+        y2 = round(float(entity.dxf.end.y), 2)
+        if sorted([y1, y2]) == [2880.0, 2950.0]:
+            diagonal_lines.append(entity)
+    check("arched transom corners use diagonal frame joins", len(diagonal_lines) >= 4, len(diagonal_lines))
+
+    def arc_top_and_spring(arc):
+        start = math.radians(float(arc.dxf.start_angle))
+        end = math.radians(float(arc.dxf.end_angle))
+        y_start = float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(start)
+        y_end = float(arc.dxf.center.y) + float(arc.dxf.radius) * math.sin(end)
+        return round(max(float(arc.dxf.center.y) + float(arc.dxf.radius), y_start, y_end), 2), round(min(y_start, y_end), 2)
+
+    frame_arc_pairs = {arc_top_and_spring(arc) for arc in frame_arcs}
+    check(
+        "arched transom frame arcs use clear height and offset frame width",
+        (3210.0, 2880.0) in frame_arc_pairs and (3280.0, 2950.0) in frame_arc_pairs,
+        frame_arc_pairs,
+    )
 
 
 def test_integrated_door_sections_and_dimensions():
