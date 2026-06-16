@@ -575,7 +575,7 @@ def test_integrated_door_sections_and_dimensions():
     ]
     front_window_bottom_frames = []
     back_window_bottom_frames = []
-    front_seal_side_frames = []
+    front_full_side_frames = []
     back_seal_side_frames = []
     door_top_frames = []
     for entity in frame_polys:
@@ -587,15 +587,15 @@ def test_integrated_door_sections_and_dimensions():
                 back_window_bottom_frames.append(entity)
         if abs(y1 - 2025) < 0.01 and abs(y2 - 2100) < 0.01 and (x2 - x1) > 500:
             door_top_frames.append(entity)
+        if abs(y1) < 0.01 and abs(y2 - 2900) < 0.01 and (x2 - x1) < 120 and x1 < 1000:
+            front_full_side_frames.append(entity)
         if abs(y1 - 2080) < 0.01 and abs(y2 - 2420) < 0.01 and (x2 - x1) < 120:
-            if x1 < 1000:
-                front_seal_side_frames.append(entity)
-            else:
+            if x1 >= 1000:
                 back_seal_side_frames.append(entity)
     check("integrated front view keeps window bottom frame", len(front_window_bottom_frames) >= 1, len(front_window_bottom_frames))
     check("integrated back view keeps window bottom frame", len(back_window_bottom_frames) >= 1, len(back_window_bottom_frames))
     check("integrated door top frame uses configured top frame width", len(door_top_frames) >= 2, len(door_top_frames))
-    check("integrated front seal panel has side frames", len(front_seal_side_frames) >= 2, len(front_seal_side_frames))
+    check("integrated front side frames are single continuous frames", len(front_full_side_frames) >= 2, len(front_full_side_frames))
     check("integrated back seal panel has no side frames", len(back_seal_side_frames) == 0, len(back_seal_side_frames))
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
@@ -616,21 +616,33 @@ def test_integrated_door_sections_and_dimensions():
         and "\u4e0b\u65b9\u95e8\u9ad8 <>" not in dim_texts
         and "500" in dim_texts
         and "340" in dim_texts
+        and "300" in dim_texts
         and "2100" in dim_texts
-        and "\u8fde\u4f53\u603b\u9ad8 <>" in dim_texts,
+        and "\u8fde\u4f53\u603b\u9ad8 <>" not in dim_texts,
         dim_texts,
     )
     section_dims = [
         entity for entity in doc.modelspace().query("DIMENSION")
-        if entity.dxf.text in {"500", "340", "2100"} and abs(float(entity.dxf.angle) - 90) < 0.01
+        if entity.dxf.text in {"500", "340", "300", "2100"} and abs(float(entity.dxf.angle) - 90) < 0.01
     ]
     section_dim_groups = {}
     for entity in section_dims:
         section_dim_groups.setdefault(round(float(entity.dxf.defpoint.x), 2), set()).add(entity.dxf.text)
     check(
         "integrated section dimensions share one vertical dimension line",
-        section_dim_groups and all(texts == {"500", "340", "2100"} for texts in section_dim_groups.values()),
+        section_dim_groups
+        and {"500", "340", "2100"} in section_dim_groups.values()
+        and {"500", "300", "2100"} in section_dim_groups.values(),
         section_dim_groups,
+    )
+    back_titles = [
+        entity for entity in doc.modelspace().query("TEXT")
+        if entity.dxf.text == "\u80cc\u9762" and float(entity.dxf.insert.x) > 1000
+    ]
+    check(
+        "integrated back title stays above back window",
+        bool(back_titles and max(float(entity.dxf.insert.y) for entity in back_titles) > 2900),
+        [(float(entity.dxf.insert.x), float(entity.dxf.insert.y)) for entity in back_titles],
     )
 
 
