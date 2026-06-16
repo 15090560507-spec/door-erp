@@ -569,6 +569,25 @@ def test_integrated_door_sections_and_dimensions():
         if entity.dxf.layer == "A-DOOR-FRAME"
     )
     check("integrated door total height stacks above lower door", abs(frame_max_y - 2900) < 0.01, frame_max_y)
+    frame_polys = [
+        entity for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-FRAME"
+    ]
+    front_window_bottom_frames = []
+    back_window_bottom_frames = []
+    seal_side_pillars = []
+    for entity in frame_polys:
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if abs(y1 - 2400) < 0.01 and abs(y2 - 2420) < 0.01 and (x2 - x1) > 500:
+            if x1 < 1000:
+                front_window_bottom_frames.append(entity)
+            else:
+                back_window_bottom_frames.append(entity)
+        if abs(y1 - 2100) < 0.01 and abs(y2 - 2400) < 0.01 and (x2 - x1) < 120:
+            seal_side_pillars.append(entity)
+    check("integrated front view keeps window bottom frame", len(front_window_bottom_frames) >= 1, len(front_window_bottom_frames))
+    check("integrated back view keeps window bottom frame", len(back_window_bottom_frames) >= 1, len(back_window_bottom_frames))
+    check("integrated seal panel area has no side pillars", len(seal_side_pillars) == 0, len(seal_side_pillars))
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
@@ -582,12 +601,27 @@ def test_integrated_door_sections_and_dimensions():
 
     dim_texts = [entity.dxf.text for entity in doc.modelspace().query("DIMENSION")]
     check(
-        "integrated door adds section dimensions",
-        "\u4e0a\u65b9\u73bb\u7483\u9ad8 <>" in dim_texts
-        and "\u4e2d\u95f4\u5c01\u677f\u9ad8 <>" in dim_texts
-        and "\u4e0b\u65b9\u95e8\u9ad8 <>" in dim_texts
+        "integrated door section dimensions use numeric text only",
+        "\u4e0a\u65b9\u73bb\u7483\u9ad8 <>" not in dim_texts
+        and "\u4e2d\u95f4\u5c01\u677f\u9ad8 <>" not in dim_texts
+        and "\u4e0b\u65b9\u95e8\u9ad8 <>" not in dim_texts
+        and "500" in dim_texts
+        and "340" in dim_texts
+        and "2100" in dim_texts
         and "\u8fde\u4f53\u603b\u9ad8 <>" in dim_texts,
         dim_texts,
+    )
+    section_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if entity.dxf.text in {"500", "340", "2100"} and abs(float(entity.dxf.angle) - 90) < 0.01
+    ]
+    section_dim_groups = {}
+    for entity in section_dims:
+        section_dim_groups.setdefault(round(float(entity.dxf.defpoint.x), 2), set()).add(entity.dxf.text)
+    check(
+        "integrated section dimensions share one vertical dimension line",
+        section_dim_groups and all(texts == {"500", "340", "2100"} for texts in section_dim_groups.values()),
+        section_dim_groups,
     )
 
 

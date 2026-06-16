@@ -238,8 +238,36 @@ def draw_door_in_frame(
         end_angle = math.degrees(math.atan2(spring_y - center_y, left_x - center_x))
         drawer.draw_arc(off((center_x, center_y)), radius, start_angle, end_angle, layer)
 
-    drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, total_h)), off((0, total_h))], 'A-DOOR-FRAME')
-    drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, total_h)), off((dw - right_width, total_h))], 'A-DOOR-FRAME')
+    def fmt_dim(value: float) -> str:
+        return str(int(value)) if abs(value - int(value)) < 0.01 else f"{value:g}"
+
+    integrated_layout = None
+    if is_integrated_door:
+        press_bottom = max(th, dh - integrated_press_top_rail)
+        seal_bottom = dh
+        seal_top = seal_bottom + integrated_panel_height
+        glass_bottom = seal_top
+        glass_top = total_h
+        glass_rail_top = min(glass_top, glass_bottom + integrated_glass_bottom_rail)
+        integrated_layout = {
+            "glass_top": glass_top,
+            "glass_bottom": glass_bottom,
+            "glass_rail_top": glass_rail_top,
+            "seal_top": seal_top,
+            "seal_bottom": seal_bottom,
+            "press_bottom": press_bottom,
+            "seal_dim_bottom": press_bottom,
+            "seal_dim_top": glass_rail_top,
+        }
+
+    if integrated_layout:
+        drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, dh)), off((0, dh))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, dh)), off((dw - right_width, dh))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((0, integrated_layout["glass_bottom"])), off((left_width, integrated_layout["glass_bottom"])), off((left_width, total_h)), off((0, total_h))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((dw - right_width, integrated_layout["glass_bottom"])), off((dw, integrated_layout["glass_bottom"])), off((dw, total_h)), off((dw - right_width, total_h))], 'A-DOOR-FRAME')
+    else:
+        drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, total_h)), off((0, total_h))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, total_h)), off((dw - right_width, total_h))], 'A-DOOR-FRAME')
 
     top_frame_bottom = total_h - fw_top
 
@@ -346,24 +374,10 @@ def draw_door_in_frame(
         qc_bottom = mid_frame_top
         drawer.draw_poly([off((left_width, qc_bottom)), off((dw - right_width, qc_bottom)), off((dw - right_width, qc_top)), off((left_width, qc_top))], 'A-DOOR-FRAME')
 
-    integrated_layout = None
     if is_integrated_door:
-        press_bottom = max(th, dh - integrated_press_top_rail)
-        seal_bottom = dh
-        seal_top = seal_bottom + integrated_panel_height
-        glass_bottom = seal_top
-        glass_top = total_h
-        glass_rail_top = min(glass_top, glass_bottom + integrated_glass_bottom_rail)
-        drawer.draw_poly([off((left_width, glass_bottom)), off((dw - right_width, glass_bottom)), off((dw - right_width, glass_rail_top)), off((left_width, glass_rail_top))], 'A-DOOR-FRAME')
-        drawer.draw_poly([off((left_width, seal_bottom)), off((dw - right_width, seal_bottom)), off((dw - right_width, seal_top)), off((left_width, seal_top))], 'A-DOOR-PANEL')
-        drawer.draw_poly([off((left_width, press_bottom)), off((dw - right_width, press_bottom)), off((dw - right_width, seal_bottom)), off((left_width, seal_bottom))], 'A-DOOR-FRAME')
-        integrated_layout = {
-            "glass_top": glass_top,
-            "glass_bottom": glass_bottom,
-            "seal_top": seal_top,
-            "seal_bottom": seal_bottom,
-            "press_bottom": press_bottom,
-        }
+        drawer.draw_poly([off((left_width, integrated_layout["glass_bottom"])), off((dw - right_width, integrated_layout["glass_bottom"])), off((dw - right_width, integrated_layout["glass_rail_top"])), off((left_width, integrated_layout["glass_rail_top"]))], 'A-DOOR-FRAME')
+        drawer.draw_poly([off((left_width, integrated_layout["seal_bottom"])), off((dw - right_width, integrated_layout["seal_bottom"])), off((dw - right_width, integrated_layout["seal_top"])), off((left_width, integrated_layout["seal_top"]))], 'A-DOOR-PANEL')
+        drawer.draw_poly([off((left_width, integrated_layout["press_bottom"])), off((dw - right_width, integrated_layout["press_bottom"])), off((dw - right_width, integrated_layout["seal_bottom"])), off((left_width, integrated_layout["seal_bottom"]))], 'A-DOOR-FRAME')
 
     if integrated_layout:
         panel_y_top = integrated_layout["press_bottom"] - top_gap
@@ -529,9 +543,9 @@ def draw_door_in_frame(
         dims_v.append(("门楣高度", total_h - O + mm_height, total_h - O, 300, True, f"{mm_height}"))
 
     if integrated_layout:
-        dims_v.append(("上方玻璃高", integrated_layout["glass_bottom"], integrated_layout["glass_top"], 200, True, "上方玻璃高 <>"))
-        dims_v.append(("中间封板高", integrated_layout["seal_bottom"], integrated_layout["seal_top"], 300, True, "中间封板高 <>"))
-        dims_v.append(("下方门高", 0, dh, 400, True, "下方门高 <>"))
+        dims_v.append(("上方玻璃", integrated_layout["glass_bottom"], integrated_layout["glass_top"], 200, True, fmt_dim(integrated_glass_height)))
+        dims_v.append(("中间封板", integrated_layout["seal_dim_bottom"], integrated_layout["seal_dim_top"], 200, True, fmt_dim(integrated_panel_height + integrated_press_top_rail + integrated_glass_bottom_rail)))
+        dims_v.append(("下方门", 0, dh, 200, True, fmt_dim(dh)))
         dims_v.append(("连体总高", 0, total_h, 500, True, "连体总高 <>"))
 
     if qc_h > 0:
