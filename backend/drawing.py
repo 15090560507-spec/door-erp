@@ -1027,7 +1027,7 @@ def draw_door_in_frame(
     current_handle = p.get('fmls') if is_back else p.get('zmls')
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
     non_sized_handles = {"", "无", "标配拉手", "A1022", "背包拉手"}
-    current_sized_handle = bool(handle_size and not is_back and str(current_handle).strip() not in non_sized_handles)
+    current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
 
     if current_handle == "标配拉手" and not current_sized_handle:
         handle_y = panel_y_bot + 1000

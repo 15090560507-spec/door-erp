@@ -803,31 +803,35 @@ def test_integrated_door_sections_and_dimensions():
 
 
 def test_double_door_sized_handles_draw_on_front_only():
-    req = CADRequest(
-        door_type="对开门",
-        zmls="铝雕拉手",
-        fmls="标配拉手",
-        handle_size="40*800",
-    )
+    def sized_handle_rects(front_handle: str, back_handle: str):
+        req = CADRequest(
+            door_type="对开门",
+            zmls=front_handle,
+            fmls=back_handle,
+            handle_size="40*800",
+        )
 
-    info, checks, draw_params = build_cad_params(req)
-    msg, buffer = run_integrated_system(info, checks, draw_params)
-    check("double door sized-handle CAD generation returns buffer", buffer is not None, msg)
-    if not buffer:
-        return
+        info, checks, draw_params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, draw_params)
+        check(f"double door sized-handle CAD generation returns buffer {front_handle}/{back_handle}", buffer is not None, msg)
+        if not buffer:
+            return [], []
 
-    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
-    panel_polys = [
-        entity for entity in doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL"
-    ]
-    long_handle_rects = []
-    for entity in panel_polys:
-        x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
-            long_handle_rects.append((x1, x2, y1, y2))
-    front_rects = [bounds for bounds in long_handle_rects if bounds[1] < 1000]
-    back_rects = [bounds for bounds in long_handle_rects if bounds[0] > 1000]
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        panel_polys = [
+            entity for entity in doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        long_handle_rects = []
+        for entity in panel_polys:
+            x1, x2, y1, y2 = poly_bounds(entity)
+            if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
+                long_handle_rects.append((x1, x2, y1, y2))
+        front_rects = [bounds for bounds in long_handle_rects if bounds[1] < 1000]
+        back_rects = [bounds for bounds in long_handle_rects if bounds[0] > 1000]
+        return front_rects, back_rects
+
+    front_rects, back_rects = sized_handle_rects("铝雕拉手", "标配拉手")
     check(
         "double door draws sized handles on both front leaves",
         len(front_rects) >= 2,
@@ -836,7 +840,13 @@ def test_double_door_sized_handles_draw_on_front_only():
     check(
         "sized handle does not auto-copy to back view",
         len(back_rects) == 0,
-        f"long handle rectangles: {len(long_handle_rects)}",
+        f"back long handle rectangles: {back_rects}",
+    )
+    front_rects_both, back_rects_both = sized_handle_rects("铝雕拉手", "铝雕拉手")
+    check(
+        "double door draws sized handles on both back leaves when back handle is sized",
+        len(back_rects_both) >= 2,
+        f"back long handle rectangles: {back_rects_both}",
     )
 
 
