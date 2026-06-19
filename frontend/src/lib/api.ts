@@ -171,6 +171,13 @@ export async function generateCad(formData: DoorFormData): Promise<Blob> {
   return data;
 }
 
+export async function generateCadPreview(formData: DoorFormData): Promise<string> {
+  const { data } = await api.post<string>("/generate_cad_preview", formData, {
+    responseType: "text",
+  });
+  return data;
+}
+
 export function downloadCadBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");

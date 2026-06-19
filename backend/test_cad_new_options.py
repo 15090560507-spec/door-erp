@@ -12,6 +12,7 @@ sys.path.insert(0, BACKEND_DIR)
 from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
 from models import CADRequest
 from drawing import run_integrated_system
+from cad_preview import render_dxf_svg
 
 
 PASSED = 0
@@ -839,6 +840,19 @@ def test_back_backpack_handle_stays_near_lock_edge():
     )
 
 
+def test_cad_preview_svg_renders():
+    req = CADRequest(dhdw="preview", gdmc="preview", sel_hys="暗合页", fingerprint_lock="无")
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("preview CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    svg = render_dxf_svg(buffer.getvalue())
+    check("preview SVG starts with svg element", svg.startswith("<svg"), svg[:80])
+    check("preview SVG contains drawing geometry", "<path" in svg or "<line" in svg, svg[:200])
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
@@ -853,6 +867,7 @@ if __name__ == "__main__":
     test_light_width_uses_pillar_inner_edges()
     test_new_defaults_fingerprint_and_transom_shape()
     test_integrated_door_sections_and_dimensions()
+    test_cad_preview_svg_renders()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

@@ -11,7 +11,7 @@ from typing import List, Optional, Dict
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -26,6 +26,7 @@ from models import (
 )
 from drawing import run_integrated_system
 from drawing import _load_template
+from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router
 
@@ -419,6 +420,35 @@ def generate_cad(req: CADRequest):
 
 
 # ===================== API: 用户登录 =====================
+@app.post("/api/generate_cad_preview")
+def generate_cad_preview(req: CADRequest):
+    """
+    Reuse the CAD export path and render the generated DXF as an SVG preview.
+    """
+    info_map, check_map, draw_params = build_cad_params(req)
+
+    progress_msgs = []
+
+    def progress_callback(msg: str):
+        progress_msgs.append(msg)
+
+    result_msg, buffer = run_integrated_system(info_map, check_map, draw_params, progress_callback)
+
+    if buffer is None:
+        raise HTTPException(status_code=500, detail=result_msg)
+
+    try:
+        svg = render_dxf_svg(buffer.getvalue())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"CAD preview failed: {exc}") from exc
+
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.post("/api/login", response_model=LoginResponse)
 def login(req: LoginRequest):
     user_info = user_db.authenticate(req.uid, req.pwd)

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask,
-  generateCad, downloadCadBlob,
+  generateCad, generateCadPreview, downloadCadBlob,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
   resetPassword as apiResetPassword, getAllTasks,
 } from "@/lib/api";
@@ -32,6 +32,8 @@ export default function DashboardPage() {
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [cadBlob, setCadBlob] = useState<Blob | null>(null);
   const [cadLoading, setCadLoading] = useState(false);
+  const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -105,6 +107,7 @@ export default function DashboardPage() {
     setUploadImgB64(null);
     setReviewFeedback("");
     setCadBlob(null);
+    setCadPreviewSvg(null);
     setMessage(null);
   }, [module]);
 
@@ -120,6 +123,7 @@ export default function DashboardPage() {
         setUploadImgB64(t.drawing_img_b64 || null);
         setReviewFeedback(t.review_feedback || "");
         setCadBlob(null);
+        setCadPreviewSvg(null);
       }).finally(() => {
         setTaskLoading(false);
       });
@@ -135,6 +139,7 @@ export default function DashboardPage() {
     setUploadImgB64(null);
     setReviewFeedback("");
     setCadBlob(null);
+    setCadPreviewSvg(null);
     setMessage(null);
   };
 
@@ -228,6 +233,23 @@ export default function DashboardPage() {
   };
 
   // ===================== 绘制模块 =====================
+  const handleGeneratePreview = async () => {
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const svg = await generateCadPreview(formData);
+      setCadPreviewSvg(svg);
+      flash("CAD 预览已生成", "success");
+    } catch (e: any) {
+      flash(e?.userMessage || "CAD 预览生成失败", "error");
+    }
+    setPreviewLoading(false);
+  };
+
   const handleGenerateCad = async () => {
     const validation = validateDoorForm(formData);
     if (validation) {
@@ -408,6 +430,13 @@ export default function DashboardPage() {
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
                   <button
+                    onClick={handleGeneratePreview}
+                    disabled={previewLoading || cadLoading}
+                    className="w-full mb-2 py-2.5 rounded-lg bg-[#F2F2F7] text-[#1C1C1E] font-medium text-sm hover:bg-[#E5E5EA] transition-all disabled:opacity-50"
+                  >
+                    {previewLoading ? "正在生成预览..." : "生成 DXF 预览"}
+                  </button>
+                  <button
                     onClick={handleGenerateCad}
                     disabled={cadLoading}
                     className="w-full py-2.5 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-sm hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
@@ -423,6 +452,12 @@ export default function DashboardPage() {
                     </button>
                   )}
                 </Card>
+
+                <CadPreviewPanel
+                  svg={cadPreviewSvg}
+                  loading={previewLoading}
+                  onRefresh={handleGeneratePreview}
+                />
 
                 <Card title="第 2 步：上传深化图纸并提交初审">
                   <ClipboardUpload onImage={setUploadImgB64} />
@@ -622,11 +657,19 @@ export default function DashboardPage() {
                   {cadLoading ? "生成中..." : "快速生成 CAD (仅下载不流转)"}
                 </button>
                 <button
-                  onClick={() => { setFormData(DEFAULT_FORM_DATA); setRefText(""); setRefImages([]); }}
+                  onClick={() => { setFormData(DEFAULT_FORM_DATA); setRefText(""); setRefImages([]); setCadPreviewSvg(null); }}
                   className="col-span-2 py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
                 >
                   清空表单
                 </button>
+              </div>
+
+              <div className="mt-6">
+                <CadPreviewPanel
+                  svg={cadPreviewSvg}
+                  loading={previewLoading}
+                  onRefresh={handleGeneratePreview}
+                />
               </div>
             </div>
           )}
@@ -798,6 +841,45 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-3 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
       {children}
     </div>
+  );
+}
+
+function CadPreviewPanel({
+  svg,
+  loading,
+  onRefresh,
+}: {
+  svg: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Card title="CAD 图纸预览">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <p className="text-xs text-[#8E8E93]">
+          预览与下载使用同一份 DXF 数据生成。复杂填充在网页预览中可能会简化显示。
+        </p>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50"
+        >
+          {loading ? "生成中..." : "生成预览"}
+        </button>
+      </div>
+      <div className="h-[560px] overflow-auto rounded-lg border border-[#D1D5DB] bg-[#F8FAFC] p-3">
+        {svg ? (
+          <div
+            className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto [&_svg]:min-w-[900px]"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm text-[#8E8E93]">
+            点击“生成预览”查看当前图纸。
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
