@@ -832,10 +832,16 @@ def test_double_door_sized_handles_draw_on_front_only():
         return front_rects, back_rects
 
     front_rects, back_rects = sized_handle_rects("铝雕拉手", "标配拉手")
+    front_centers = sorted(round((x1 + x2) / 2, 2) for x1, x2, _y1, _y2 in front_rects)
     check(
         "double door draws sized handles on both front leaves",
         len(front_rects) >= 2,
         f"front long handle rectangles: {front_rects}",
+    )
+    check(
+        "double door front sized handles are split across two leaves",
+        len(set(front_centers)) >= 2 and (front_centers[-1] - front_centers[0]) > 200,
+        f"front long handle centers: {front_centers}",
     )
     check(
         "sized handle does not auto-copy to back view",
@@ -843,10 +849,16 @@ def test_double_door_sized_handles_draw_on_front_only():
         f"back long handle rectangles: {back_rects}",
     )
     front_rects_both, back_rects_both = sized_handle_rects("铝雕拉手", "铝雕拉手")
+    back_centers_both = sorted(round((x1 + x2) / 2, 2) for x1, x2, _y1, _y2 in back_rects_both)
     check(
         "double door draws sized handles on both back leaves when back handle is sized",
         len(back_rects_both) >= 2,
         f"back long handle rectangles: {back_rects_both}",
+    )
+    check(
+        "double door back sized handles are split across two leaves",
+        len(set(back_centers_both)) >= 2 and (back_centers_both[-1] - back_centers_both[0]) > 200,
+        f"back long handle centers: {back_centers_both}",
     )
 
 

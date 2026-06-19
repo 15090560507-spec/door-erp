@@ -995,6 +995,16 @@ def draw_door_in_frame(
                 add(*panel_positions[2], "left")
         return targets
 
+    def sized_handle_targets(distance: float = 110):
+        if "对开" in str(door_type) and len(panel_positions) >= 2:
+            left_x1, left_x2 = panel_positions[0]
+            right_x1, right_x2 = panel_positions[1]
+            return [
+                (left_x2 - distance, -1, "ZBPLS"),
+                (right_x1 + distance, 1, "YBPLS"),
+            ]
+        return handle_targets(distance, primary_only=True)
+
     def backpack_handle_targets(distance: float = 60):
         if not is_back:
             return handle_targets(distance, primary_only=True)
@@ -1046,8 +1056,7 @@ def draw_door_in_frame(
 
     if handle_size and current_sized_handle:
         handle_w, handle_h = handle_size
-        primary_only = door_type != "对开门"
-        for hx, _toward_hinge, _hblock in handle_targets(110, primary_only=primary_only):
+        for hx, _toward_hinge, _hblock in sized_handle_targets(110):
             y_center = 1200
             drawer.draw_poly([
                 off((hx - handle_w / 2, y_center - handle_h / 2)),
