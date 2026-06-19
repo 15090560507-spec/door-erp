@@ -892,14 +892,6 @@ def draw_door_in_frame(
                     draw_panel_rect(hinge_line_x, hinge_edge)
                 continue
 
-            panel_lock_offset_x = float(settings["lock_offset_x"])
-            if panel_lock_offset_x <= 0:
-                continue
-            lock_line_x = lock_edge + direction * panel_lock_offset_x
-            if not (px1 < lock_line_x < px2):
-                continue
-            draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
-
             if panel_style == "圆盘造型":
                 radius = float(settings["disc_radius"])
                 center_y = 1050
@@ -907,16 +899,23 @@ def draw_door_in_frame(
                     continue
                 if not (panel_y_bot < center_y - radius and center_y + radius < panel_y_top):
                     continue
-                if direction == 1 and lock_line_x + radius > px2:
+                if direction == 1 and lock_edge + radius > px2:
                     continue
-                if direction == -1 and lock_line_x - radius < px1:
+                if direction == -1 and lock_edge - radius < px1:
                     continue
-                draw_panel_line(lock_line_x, center_y - radius, lock_line_x, center_y + radius)
                 if direction == 1:
-                    drawer.draw_arc(off((lock_line_x, center_y)), radius, 270, 90, 'A-DOOR-PANEL')
+                    drawer.draw_arc(off((lock_edge, center_y)), radius, 270, 90, 'A-DOOR-PANEL')
                 else:
-                    drawer.draw_arc(off((lock_line_x, center_y)), radius, 90, 270, 'A-DOOR-PANEL')
+                    drawer.draw_arc(off((lock_edge, center_y)), radius, 90, 270, 'A-DOOR-PANEL')
                 continue
+
+            panel_lock_offset_x = float(settings["lock_offset_x"])
+            if panel_lock_offset_x <= 0:
+                continue
+            lock_line_x = lock_edge + direction * panel_lock_offset_x
+            if not (px1 < lock_line_x < px2):
+                continue
+            draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
 
             if panel_style == "两列式布局":
                 draw_panel_rect(lock_edge, lock_line_x)

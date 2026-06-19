@@ -201,17 +201,31 @@ def test_disc_panel_style_draws_semicircle():
         entity for entity in doc.modelspace().query("ARC")
         if entity.dxf.layer == "A-DOOR-PANEL" and abs(float(entity.dxf.radius) - 160) < 0.01
     ]
-    panel_diameter_lines = [
+    panel_lines = [
         entity for entity in doc.modelspace().query("LINE")
         if entity.dxf.layer == "A-DOOR-PANEL"
-        and abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
-        and abs(abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) - 320) < 0.01
+    ]
+    panel_rects = [
+        poly_bounds(entity) for entity in doc.modelspace().query("LWPOLYLINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+        and (poly_bounds(entity)[1] - poly_bounds(entity)[0]) > 100
+        and (poly_bounds(entity)[3] - poly_bounds(entity)[2]) > 1000
     ]
     check("disc panel style draws semicircle arc", len(panel_arcs) >= 1, f"arcs: {len(panel_arcs)}")
     check(
-        "disc panel style draws diameter line centered at 1050",
-        any(abs((float(line.dxf.start.y) + float(line.dxf.end.y)) / 2 - 1050) < 0.01 for line in panel_diameter_lines),
-        f"diameter lines: {len(panel_diameter_lines)}",
+        "disc panel style draws no extra panel lines",
+        len(panel_lines) == 0,
+        f"panel lines: {len(panel_lines)}",
+    )
+    check(
+        "disc panel arc diameter sits on panel lock edge",
+        any(
+            abs(float(arc.dxf.center.x) - edge_x) < 0.01
+            for arc in panel_arcs
+            for rect in panel_rects
+            for edge_x in (rect[0], rect[1])
+        ),
+        f"arcs: {[(float(arc.dxf.center.x), float(arc.dxf.center.y)) for arc in panel_arcs]}, rects: {panel_rects}",
     )
 
 
