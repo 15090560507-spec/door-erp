@@ -169,7 +169,7 @@ def render_dxf_svg(dxf_text: str) -> str:
             'role="img" aria-label="CAD preview">'
         ),
         "<style>",
-        ".cad-bg{fill:#f8fafc}.cad-line{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.cad-text{font-family:'Microsoft YaHei',SimSun,sans-serif;fill:#0f172a;dominant-baseline:middle}.cad-note{fill:#64748b;font-size:24px}",
+        ".cad-bg{fill:#f8fafc}.cad-line{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.cad-text{font-family:'Microsoft YaHei',SimSun,sans-serif;fill:#0f172a;dominant-baseline:middle;font-weight:600}.cad-note{fill:#64748b;font-size:32px}",
         "</style>",
         f'<rect class="cad-bg" x="0" y="0" width="{fmt(view_width)}" height="{fmt(view_height)}"/>',
     ]
@@ -219,7 +219,7 @@ def render_dxf_svg(dxf_text: str) -> str:
             text = html.escape(str(raw_text).replace("\n", " ")[:80])
             if not text:
                 continue
-            font_size = max(9, min(42, float(primitive.data.get("height", 24)) * 0.75))
+            font_size = max(16, min(76, float(primitive.data.get("height", 24)) * 1.15))
             rotation = float(primitive.data.get("rotation", 0) or 0)
             transform = ""
             if rotation:

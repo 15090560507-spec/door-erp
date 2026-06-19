@@ -853,33 +853,111 @@ function CadPreviewPanel({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const canOpen = Boolean(svg);
+  const zoomPercent = Math.round(zoom * 100);
+
+  const openPreview = () => {
+    if (!canOpen) return;
+    setIsOpen(true);
+  };
+
+  const zoomOut = () => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))));
+  const zoomIn = () => setZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))));
+  const resetZoom = () => setZoom(1);
+
   return (
-    <Card title="CAD 图纸预览">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+    <>
+      <Card title="CAD 图纸预览">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <p className="text-xs text-[#8E8E93]">
           预览与下载使用同一份 DXF 数据生成。复杂填充在网页预览中可能会简化显示。
         </p>
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50"
-        >
-          {loading ? "生成中..." : "生成预览"}
-        </button>
-      </div>
-      <div className="h-[560px] overflow-auto rounded-lg border border-[#D1D5DB] bg-[#F8FAFC] p-3">
-        {svg ? (
-          <div
-            className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto [&_svg]:min-w-[900px]"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-[#8E8E93]">
-            点击“生成预览”查看当前图纸。
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openPreview}
+              disabled={!canOpen}
+              className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
+            >
+              放大查看
+            </button>
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50"
+            >
+              {loading ? "生成中..." : "生成预览"}
+            </button>
           </div>
-        )}
-      </div>
-    </Card>
+        </div>
+        <button
+          type="button"
+          onClick={openPreview}
+          disabled={!canOpen}
+          className="block w-full text-left h-[560px] overflow-auto rounded-lg border border-[#D1D5DB] bg-[#F8FAFC] p-3 disabled:cursor-default"
+        >
+          {svg ? (
+            <div
+              className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto [&_svg]:min-w-[1100px]"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-[#8E8E93]">
+              点击“生成预览”查看当前图纸。
+            </div>
+          )}
+        </button>
+      </Card>
+
+      {isOpen && svg && (
+        <div className="fixed inset-0 z-[100] bg-black/70 p-4">
+          <div className="h-full rounded-xl bg-white shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[#E5E5EA]">
+              <div>
+                <h3 className="text-base font-semibold text-[#1C1C1E]">CAD 图纸预览</h3>
+                <p className="text-xs text-[#8E8E93]">滚动查看全图，使用缩放按钮放大标注文字。</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={zoomOut}
+                  className="w-9 h-9 rounded-lg border border-[#C7C7CC] text-lg font-semibold hover:border-[#007AFF] hover:text-[#007AFF]"
+                  aria-label="缩小"
+                >
+                  -
+                </button>
+                <button
+                  onClick={resetZoom}
+                  className="min-w-16 h-9 px-3 rounded-lg border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF]"
+                >
+                  {zoomPercent}%
+                </button>
+                <button
+                  onClick={zoomIn}
+                  className="w-9 h-9 rounded-lg border border-[#C7C7CC] text-lg font-semibold hover:border-[#007AFF] hover:text-[#007AFF]"
+                  aria-label="放大"
+                >
+                  +
+                </button>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="ml-2 px-4 h-9 rounded-lg bg-[#1C1C1E] text-white text-sm font-semibold hover:opacity-90"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
+              <div
+                className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto"
+                style={{ width: `${zoom * 100}%`, minWidth: 1200 }}
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
