@@ -280,8 +280,8 @@ def test_pillar_handle_title_and_three_column_panel():
         if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
             long_handle_rects.append(entity)
     check(
-        "front and back views draw configured long handles",
-        len(long_handle_rects) >= 2,
+        "front view draws configured sized handle",
+        len(long_handle_rects) >= 1,
         f"long handle rectangles: {len(long_handle_rects)}",
     )
 
@@ -802,17 +802,17 @@ def test_integrated_door_sections_and_dimensions():
     )
 
 
-def test_double_door_long_handles_draw_on_both_leaves():
+def test_double_door_sized_handles_draw_on_front_only():
     req = CADRequest(
         door_type="对开门",
-        zmls="自制长拉手",
-        fmls="自制长拉手",
+        zmls="铝雕拉手",
+        fmls="标配拉手",
         handle_size="40*800",
     )
 
     info, checks, draw_params = build_cad_params(req)
     msg, buffer = run_integrated_system(info, checks, draw_params)
-    check("double door long-handle CAD generation returns buffer", buffer is not None, msg)
+    check("double door sized-handle CAD generation returns buffer", buffer is not None, msg)
     if not buffer:
         return
 
@@ -825,10 +825,17 @@ def test_double_door_long_handles_draw_on_both_leaves():
     for entity in panel_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
         if abs((x2 - x1) - 40) < 0.01 and abs((y2 - y1) - 800) < 0.01:
-            long_handle_rects.append(entity)
+            long_handle_rects.append((x1, x2, y1, y2))
+    front_rects = [bounds for bounds in long_handle_rects if bounds[1] < 1000]
+    back_rects = [bounds for bounds in long_handle_rects if bounds[0] > 1000]
     check(
-        "double door draws long handles on both leaves in both views",
-        len(long_handle_rects) >= 4,
+        "double door draws sized handles on both front leaves",
+        len(front_rects) >= 2,
+        f"front long handle rectangles: {front_rects}",
+    )
+    check(
+        "sized handle does not auto-copy to back view",
+        len(back_rects) == 0,
         f"long handle rectangles: {len(long_handle_rects)}",
     )
 
@@ -913,7 +920,7 @@ if __name__ == "__main__":
     test_door_panel_style_lines()
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()
-    test_double_door_long_handles_draw_on_both_leaves()
+    test_double_door_sized_handles_draw_on_front_only()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
     test_dimension_spacing_and_trim_width_text()
