@@ -149,6 +149,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const usesThreeColumnPanel = (style: string) => style === "三列式布局";
   const usesHPanel = (style: string) => ["H型布局", "H+型布局"].includes(style);
   const usesHPlusPanel = (style: string) => style === "H+型布局";
+  const usesDiscPanel = (style: string) => style === "圆盘造型";
   const applyFrameDefaults = (next: DoorFormData): DoorFormData => {
     if (next.door_type === "单门") {
       const rightOpen = next.sel_kx !== "左开";
@@ -179,6 +180,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey,
     threeBKey,
     threeCKey,
+    discRadiusKey,
   }: {
     title: string;
     styleKey: keyof DoorFormData;
@@ -192,6 +194,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey: keyof DoorFormData;
     threeBKey: keyof DoorFormData;
     threeCKey: keyof DoorFormData;
+    discRadiusKey: keyof DoorFormData;
   }) => (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
@@ -262,6 +265,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               onChange={(v) => setField(plusBKey, Number(v))}
             />
           </>
+        )}
+        {usesDiscPanel(style) && (
+          <Input
+            label={`${title}圆盘半径(mm)`}
+            value={(data[discRadiusKey] as number) ?? 120}
+            type="number"
+            onChange={(v) => setField(discRadiusKey, Number(v))}
+          />
         )}
       </div>
     </div>
@@ -425,6 +436,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "panel_three_col_a",
               threeBKey: "panel_three_col_b",
               threeCKey: "panel_three_col_c",
+              discRadiusKey: "panel_disc_radius",
             })}
             {renderPanelControls({
               title: "反面门板",
@@ -439,6 +451,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "back_panel_three_col_a",
               threeBKey: "back_panel_three_col_b",
               threeCKey: "back_panel_three_col_c",
+              discRadiusKey: "back_panel_disc_radius",
             })}
             {hasChildPanel && renderPanelControls({
               title: "子门门板",
@@ -453,6 +466,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "child_panel_three_col_a",
               threeBKey: "child_panel_three_col_b",
               threeCKey: "child_panel_three_col_c",
+              discRadiusKey: "child_panel_disc_radius",
             })}
           </div>
         </details>

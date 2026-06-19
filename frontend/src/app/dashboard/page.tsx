@@ -866,6 +866,48 @@ function CadPreviewPanel({
   const zoomOut = () => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))));
   const zoomIn = () => setZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))));
   const resetZoom = () => setZoom(1);
+  const downloadJpg = async () => {
+    if (!svg) return;
+
+    const viewBox = svg.match(/viewBox="([^"]+)"/)?.[1]?.split(/\s+/).map(Number) || [];
+    const sourceWidth = viewBox[2] || 2400;
+    const sourceHeight = viewBox[3] || 1600;
+    const scale = Math.min(3, 9000 / Math.max(sourceWidth, sourceHeight));
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((jpgBlob) => {
+        URL.revokeObjectURL(url);
+        if (!jpgBlob) return;
+        const jpgUrl = URL.createObjectURL(jpgBlob);
+        const a = document.createElement("a");
+        a.href = jpgUrl;
+        a.download = "cad-preview.jpg";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(jpgUrl);
+      }, "image/jpeg", 0.95);
+    };
+    image.onerror = () => URL.revokeObjectURL(url);
+    image.src = url;
+  };
 
   return (
     <>
@@ -881,6 +923,13 @@ function CadPreviewPanel({
               className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
             >
               放大查看
+            </button>
+            <button
+              onClick={downloadJpg}
+              disabled={!canOpen}
+              className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
+            >
+              下载 JPG
             </button>
             <button
               onClick={onRefresh}
@@ -938,6 +987,12 @@ function CadPreviewPanel({
                   aria-label="放大"
                 >
                   +
+                </button>
+                <button
+                  onClick={downloadJpg}
+                  className="px-4 h-9 rounded-lg border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF]"
+                >
+                  下载 JPG
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}

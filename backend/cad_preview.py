@@ -33,6 +33,48 @@ def _color(layer: str) -> str:
     return LAYER_COLORS.get(layer, "#475569")
 
 
+def _bbox(points: list[tuple[float, float]]) -> tuple[float, float, float, float]:
+    return (
+        min(point[0] for point in points),
+        max(point[0] for point in points),
+        min(point[1] for point in points),
+        max(point[1] for point in points),
+    )
+
+
+def _filter_to_door_views(primitives: list[Primitive]) -> list[Primitive]:
+    title_points = [
+        primitive.points[0]
+        for primitive in primitives
+        if primitive.kind == "text" and str(primitive.data.get("text", "")).strip() in {"正面", "背面"}
+    ]
+    if len(title_points) < 2:
+        return primitives
+
+    title_points = sorted(title_points, key=lambda point: point[0])[:2]
+    title_gap = max(abs(title_points[1][0] - title_points[0][0]), 1)
+    half_width = max(1400.0, title_gap * 0.55)
+    min_allowed_y = min(point[1] for point in title_points) - 7000
+    max_allowed_y = max(point[1] for point in title_points) + 650
+
+    def in_view(primitive: Primitive) -> bool:
+        if not primitive.points:
+            return False
+        min_x, max_x, min_y, max_y = _bbox(primitive.points)
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        if max_x - min_x > half_width * 2.1:
+            return False
+        if max_y - min_y > 8500:
+            return False
+        if center_y < min_allowed_y or center_y > max_allowed_y:
+            return False
+        return any(abs(center_x - title_x) <= half_width for title_x, _title_y in title_points)
+
+    filtered = [primitive for primitive in primitives if in_view(primitive)]
+    return filtered or primitives
+
+
 def _point(value: Any) -> tuple[float, float]:
     return float(value.x), float(value.y)
 
@@ -139,6 +181,7 @@ def render_dxf_svg(dxf_text: str) -> str:
     primitives: list[Primitive] = []
     for entity in doc.modelspace():
         _collect_entity(entity, primitives)
+    primitives = _filter_to_door_views(primitives)
 
     all_points = [point for primitive in primitives for point in primitive.points]
     if not all_points:

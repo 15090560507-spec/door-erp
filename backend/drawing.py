@@ -806,6 +806,7 @@ def draw_door_in_frame(
             "three_col_a": float(p.get(f"{prefix}three_col_a", p.get("panel_three_col_a", 180)) or 0),
             "three_col_b": float(p.get(f"{prefix}three_col_b", p.get("panel_three_col_b", 0)) or 0),
             "three_col_c": float(p.get(f"{prefix}three_col_c", p.get("panel_three_col_c", 100)) or 0),
+            "disc_radius": float(p.get(f"{prefix}disc_radius", p.get("panel_disc_radius", 120)) or 0),
         }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
@@ -898,6 +899,24 @@ def draw_door_in_frame(
             if not (px1 < lock_line_x < px2):
                 continue
             draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
+
+            if panel_style == "圆盘造型":
+                radius = float(settings["disc_radius"])
+                center_y = 1050
+                if radius <= 0:
+                    continue
+                if not (panel_y_bot < center_y - radius and center_y + radius < panel_y_top):
+                    continue
+                if direction == 1 and lock_line_x + radius > px2:
+                    continue
+                if direction == -1 and lock_line_x - radius < px1:
+                    continue
+                draw_panel_line(lock_line_x, center_y - radius, lock_line_x, center_y + radius)
+                if direction == 1:
+                    drawer.draw_arc(off((lock_line_x, center_y)), radius, 270, 90, 'A-DOOR-PANEL')
+                else:
+                    drawer.draw_arc(off((lock_line_x, center_y)), radius, 90, 270, 'A-DOOR-PANEL')
+                continue
 
             if panel_style == "两列式布局":
                 draw_panel_rect(lock_edge, lock_line_x)

@@ -81,6 +81,7 @@ class CADRequest(BaseModel):
     panel_three_col_a: int = 180        # 三列式 A 锁边区域宽，0 表示自动
     panel_three_col_b: int = 0          # 三列式 B 中间区域宽，0 表示自动
     panel_three_col_c: int = 100        # 三列式 C 合页区域宽，0 表示自动
+    panel_disc_radius: int = 120        # 圆盘造型半径
     back_panel_lock_offset_x: int = 180
     back_panel_hinge_offset_y: int = 100
     back_panel_middle_offset_z: int = 180
@@ -89,6 +90,7 @@ class CADRequest(BaseModel):
     back_panel_three_col_a: int = 180
     back_panel_three_col_b: int = 0
     back_panel_three_col_c: int = 100
+    back_panel_disc_radius: int = 120
     child_panel_lock_offset_x: int = 180
     child_panel_hinge_offset_y: int = 100
     child_panel_middle_offset_z: int = 180
@@ -97,11 +99,12 @@ class CADRequest(BaseModel):
     child_panel_three_col_a: int = 180
     child_panel_three_col_b: int = 0
     child_panel_three_col_c: int = 100
+    child_panel_disc_radius: int = 120
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
     top_gap: int = 3                    # 上门缝
     bottom_gap: int = 5                 # 下门缝
-    middle_gap: int = 4                 # 中缝
+    middle_gap: int = 2                 # 中缝
     left_right_gap_str: str = "0/0"     # [兼容旧数据] 左右间隙
     top_bottom_gap_str: str = "0/0"     # [兼容旧数据] 上下间隙
 

@@ -2,6 +2,7 @@ import os
 import sys
 import io
 import math
+import re
 
 import ezdxf
 
@@ -177,6 +178,41 @@ def test_door_panel_style_lines():
         if entity.dxf.layer == "A-DOOR-PANEL"
     ]
     check("H+ panel style draws extra panel lines", len(panel_lines) >= 6, f"line count: {len(panel_lines)}")
+
+
+def test_disc_panel_style_draws_semicircle():
+    req = CADRequest(
+        door_panel_style="\u5706\u76d8\u9020\u578b",
+        panel_lock_offset_x=180,
+        panel_disc_radius=160,
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    check("disc panel radius passes to info map", info["PANEL_DISC_RADIUS"] == 160, str(info))
+    check("disc panel radius passes to drawing", draw_params["panel_disc_radius"] == 160, str(draw_params))
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("disc panel CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_arcs = [
+        entity for entity in doc.modelspace().query("ARC")
+        if entity.dxf.layer == "A-DOOR-PANEL" and abs(float(entity.dxf.radius) - 160) < 0.01
+    ]
+    panel_diameter_lines = [
+        entity for entity in doc.modelspace().query("LINE")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+        and abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
+        and abs(abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) - 320) < 0.01
+    ]
+    check("disc panel style draws semicircle arc", len(panel_arcs) >= 1, f"arcs: {len(panel_arcs)}")
+    check(
+        "disc panel style draws diameter line centered at 1050",
+        any(abs((float(line.dxf.start.y) + float(line.dxf.end.y)) / 2 - 1050) < 0.01 for line in panel_diameter_lines),
+        f"diameter lines: {len(panel_diameter_lines)}",
+    )
 
 
 def poly_bounds(entity):
@@ -506,7 +542,7 @@ def test_light_width_uses_pillar_inner_edges():
     x2 = round(float(dim.dxf.defpoint3.x), 2)
     check(
         "pillar light width dimensions between pillar inner edges",
-        (x1, x2) == (-562.0, 242.0),
+        (x1, x2) == (-561.0, 241.0),
         (x1, x2),
     )
 
@@ -515,6 +551,7 @@ def test_new_defaults_fingerprint_and_transom_shape():
     default_req = CADRequest()
     check("default top gap is 3mm", default_req.top_gap == 3, default_req.top_gap)
     check("default bottom gap is 5mm", default_req.bottom_gap == 5, default_req.bottom_gap)
+    check("default middle gap is 2mm", default_req.middle_gap == 2, default_req.middle_gap)
     check("fingerprint lock defaults blank", default_req.fingerprint_lock == "", default_req.fingerprint_lock)
     fingerprint_options = _DEFAULT_DROPDOWN_OPTIONS["FINGERPRINT_LOCKS"]
     check(
@@ -851,12 +888,16 @@ def test_cad_preview_svg_renders():
     svg = render_dxf_svg(buffer.getvalue())
     check("preview SVG starts with svg element", svg.startswith("<svg"), svg[:80])
     check("preview SVG contains drawing geometry", "<path" in svg or "<line" in svg, svg[:200])
+    view_box = re.search(r'viewBox="([^"]+)"', svg)
+    view_width = float(view_box.group(1).split()[2]) if view_box else 0
+    check("preview SVG crops to front and back views", 0 < view_width < 7000, view_box.group(1) if view_box else svg[:120])
 
 
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_door_panel_style_lines()
+    test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()
     test_double_door_long_handles_draw_on_both_leaves()
     test_back_backpack_handle_stays_near_lock_edge()
