@@ -29,6 +29,7 @@ from drawing import _load_template
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router
+from render_routes import render_router
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -50,6 +51,7 @@ app.add_middleware(
 )
 
 app.include_router(quote_router)
+app.include_router(render_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()

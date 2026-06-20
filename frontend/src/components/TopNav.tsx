@@ -32,6 +32,8 @@ export default function TopNav() {
                   setModule(item.module);
                   if (item.module === "报价系统") {
                     router.push("/quote");
+                  } else if (item.module === "效果渲染") {
+                    router.push("/render");
                   } else if (pathname !== "/dashboard") {
                     router.push("/dashboard");
                   }

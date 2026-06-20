@@ -157,7 +157,7 @@ export interface TaskListResponse {
 }
 
 // ===================== 模块 =====================
-export type ModuleName = "汇总看板" | "图纸信息录入" | "图纸绘制" | "图纸初审" | "图纸终审" | "报价系统" | "后台管理";
+export type ModuleName = "汇总看板" | "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "后台管理";
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
@@ -165,8 +165,9 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "图纸信息录入", module: "图纸信息录入" },
   { title: "图纸绘制", module: "图纸绘制" },
   { title: "图纸初审", module: "图纸初审" },
-  { title: "图纸终审", module: "图纸终审" },
   { title: "报价系统", module: "报价系统" },
+  { title: "效果渲染", module: "效果渲染" },
+  { title: "图纸终审", module: "图纸终审" },
 ];
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "折叠四开门"];
