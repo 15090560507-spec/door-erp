@@ -569,8 +569,9 @@ def test_new_defaults_fingerprint_and_transom_shape():
     check("fingerprint lock defaults blank", default_req.fingerprint_lock == "", default_req.fingerprint_lock)
     fingerprint_options = _DEFAULT_DROPDOWN_OPTIONS["FINGERPRINT_LOCKS"]
     check(
-        "fingerprint options include Q3/T5 and renamed customer-provided option",
+        "fingerprint options include blank/no/Q3/T5 and renamed customer-provided option",
         "" in fingerprint_options
+        and "\u65e0" in fingerprint_options
         and "\u5b89\u5fd7\u6770AF-12" in fingerprint_options
         and "Q3\u6307\u7eb9\u9501" in fingerprint_options
         and "T5\u6307\u7eb9\u9501" in fingerprint_options

@@ -670,7 +670,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
     "HANDLES": ["标配拉手", "A1022", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
     "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
-    "FINGERPRINT_LOCKS": ["", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
+    "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
     "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"],
     "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"],
     "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
@@ -688,7 +688,7 @@ _EMPTY_ALLOWED_DROPDOWNS = {"FINGERPRINT_LOCKS"}
 def _normalize_dropdown_value(key: str, value) -> str:
     raw_text = str(value).strip()
     if key == "FINGERPRINT_LOCKS":
-        if raw_text in ("", "无"):
+        if raw_text == "":
             return ""
         if raw_text == "客备":
             return "客备指纹锁"

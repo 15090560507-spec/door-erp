@@ -69,7 +69,7 @@ class Config:
         "连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"
     ])
     FINGERPRINT_LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
-        "", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"
+        "", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"
     ])
 
 
