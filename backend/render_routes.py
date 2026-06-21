@@ -1,4 +1,4 @@
-"""???? API?????? OpenAI-compatible Images Edits ???"""
+"""Render image API for forwarding two uploaded images to an OpenAI-compatible Images Edits endpoint."""
 import json
 import re
 import uuid
@@ -48,10 +48,10 @@ async def generate_render(
     if not prompt_text:
         missing.append("Prompt")
     if missing:
-        raise HTTPException(status_code=400, detail=f"????{', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
-    line_bytes = await _read_image_upload(lineArt, "???")
-    reference_bytes = await _read_image_upload(reference, "???")
+    line_bytes = await _read_image_upload(lineArt, "Line art")
+    reference_bytes = await _read_image_upload(reference, "Reference image")
     upstream_url = _build_images_edits_url(base_url)
     fields = {"model": model_name, "prompt": prompt_text, "size": image_size, "n": str(image_count)}
     files = [
@@ -74,13 +74,13 @@ async def generate_render(
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
         detail = _extract_error_details(body, exc.code)
-        raise HTTPException(status_code=502, detail=f"???????? {exc.code}: {detail}") from exc
+        raise HTTPException(status_code=502, detail=f"Image API returned error {exc.code}: {detail}") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"????????: {_sanitize_error(str(exc))}") from exc
+        raise HTTPException(status_code=502, detail=f"Render request failed: {_sanitize_error(str(exc))}") from exc
 
     images = _normalize_images(payload)
     if not images:
-        raise HTTPException(status_code=502, detail="???????????? b64_json ? url ??")
+        raise HTTPException(status_code=502, detail="The image API response did not include b64_json or url image data")
     raw_count = len(payload.get("data", [])) if isinstance(payload, dict) and isinstance(payload.get("data"), list) else len(images)
     return {"images": images, "rawCount": raw_count}
 
@@ -88,19 +88,19 @@ async def generate_render(
 async def _read_image_upload(file: UploadFile, label: str) -> bytes:
     content_type = file.content_type or ""
     if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail=f"{label}???????")
+        raise HTTPException(status_code=400, detail=f"{label} must be an image file")
     data = await file.read()
     if not data:
-        raise HTTPException(status_code=400, detail=f"{label}??")
+        raise HTTPException(status_code=400, detail=f"{label} is empty")
     if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail=f"{label}???? 15MB")
+        raise HTTPException(status_code=400, detail=f"{label} must be 15MB or smaller")
     return data
 
 
 def _build_images_edits_url(base_url: str) -> str:
     parsed = urllib.parse.urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="Base URL ?????? http ? https ??")
+        raise HTTPException(status_code=400, detail="Base URL must be a valid http or https URL")
     normalized = base_url.rstrip("/")
     if normalized.endswith("/images/edits"):
         return normalized

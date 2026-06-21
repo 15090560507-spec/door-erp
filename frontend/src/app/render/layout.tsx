@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import TopNav from "@/components/TopNav";
 
+const LOADING_TEXT = "\u52a0\u8f7d\u4e2d...";
+
 export default function RenderLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -18,7 +20,7 @@ export default function RenderLayout({ children }: { children: React.ReactNode }
       <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7]">
         <div className="text-center">
           <div className="w-8 h-8 mx-auto mb-3 border-2 border-[#007AFF] border-t-transparent rounded-full animate-spin" />
-          <p className="text-[#8E8E93] text-sm">???...</p>
+          <p className="text-[#8E8E93] text-sm">{LOADING_TEXT}</p>
         </div>
       </div>
     );
