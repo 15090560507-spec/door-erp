@@ -12,7 +12,7 @@ export interface RenderGenerateResult {
 
 export interface RenderGenerateInput {
   lineArt: File;
-  reference: File;
+  references: { label: string; file: File }[];
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -24,7 +24,10 @@ export interface RenderGenerateInput {
 export async function generateRender(input: RenderGenerateInput): Promise<RenderGenerateResult> {
   const formData = new FormData();
   formData.append("lineArt", input.lineArt);
-  formData.append("reference", input.reference);
+  input.references.forEach((item) => {
+    formData.append("reference", item.file);
+  });
+  formData.append("referenceLabels", JSON.stringify(input.references.map((item) => item.label.trim())));
   formData.append("baseUrl", input.baseUrl.trim());
   formData.append("apiKey", input.apiKey.trim());
   formData.append("model", input.model.trim());

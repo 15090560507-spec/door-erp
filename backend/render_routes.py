@@ -1,4 +1,4 @@
-"""Render image API for forwarding two uploaded images to an OpenAI-compatible Images Edits endpoint."""
+"""Render image API for forwarding uploaded references to an OpenAI-compatible Images Edits endpoint."""
 import json
 import re
 import uuid
@@ -23,7 +23,8 @@ def render_health():
 @render_router.post("/api/render/generate")
 async def generate_render(
     lineArt: UploadFile = File(...),
-    reference: UploadFile = File(...),
+    reference: list[UploadFile] = File(...),
+    referenceLabels: str = Form("[]"),
     baseUrl: str = Form(...),
     apiKey: str = Form(...),
     model: str = Form(...),
@@ -50,14 +51,25 @@ async def generate_render(
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
+    references = reference if isinstance(reference, list) else [reference]
+    if not references:
+        raise HTTPException(status_code=400, detail="At least one reference image is required")
+    labels = _parse_reference_labels(referenceLabels, len(references))
     line_bytes = await _read_image_upload(lineArt, "Line art")
-    reference_bytes = await _read_image_upload(reference, "Reference image")
+    reference_files = []
+    for index, item in enumerate(references):
+        reference_bytes = await _read_image_upload(item, f"Reference image {index + 1}")
+        reference_files.append(
+            ("reference", _safe_filename(item.filename, f"reference-{index + 1}.png"), item.content_type or "image/png", reference_bytes)
+        )
     upstream_url = _build_images_edits_url(base_url)
+    if labels:
+        label_lines = "\n".join(f"{index + 1}. {label or '参考图'}" for index, label in enumerate(labels))
+        prompt_text = f"{prompt_text}\n\n参考图对应内容:\n{label_lines}"
     fields = {"model": model_name, "prompt": prompt_text, "size": image_size, "n": str(image_count)}
     files = [
         ("image", _safe_filename(lineArt.filename, "line-art.png"), lineArt.content_type or "image/png", line_bytes),
-        ("reference", _safe_filename(reference.filename, "reference.png"), reference.content_type or "image/png", reference_bytes),
-    ]
+    ] + reference_files
     body, boundary = _build_multipart(fields, files)
     request = urllib.request.Request(
         upstream_url,
@@ -113,6 +125,19 @@ def _clamp_count(value: int) -> int:
     except (TypeError, ValueError):
         parsed = DEFAULT_COUNT
     return min(max(parsed, 1), 4)
+
+
+def _parse_reference_labels(raw: str, count: int) -> list[str]:
+    try:
+        parsed = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        parsed = []
+    if not isinstance(parsed, list):
+        parsed = []
+    labels = [str(item or "").strip() for item in parsed[:count]]
+    while len(labels) < count:
+        labels.append("")
+    return labels
 
 
 def _safe_filename(name: str | None, fallback: str) -> str:

@@ -165,9 +165,9 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "图纸信息录入", module: "图纸信息录入" },
   { title: "图纸绘制", module: "图纸绘制" },
   { title: "图纸初审", module: "图纸初审" },
-  { title: "报价系统", module: "报价系统" },
-  { title: "效果渲染", module: "效果渲染" },
   { title: "图纸终审", module: "图纸终审" },
+  { title: "效果渲染", module: "效果渲染" },
+  { title: "报价系统", module: "报价系统" },
 ];
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];
