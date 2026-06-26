@@ -102,7 +102,7 @@ def test_cad_new_options_flow():
 
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL"
+        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
     ]
     min_panel_y = min(point[1] for entity in panel_polys for point in entity.get_points("xy"))
     check("hanging door panel starts at 20mm above bottom", abs(min_panel_y - 20) < 0.01, str(min_panel_y))
@@ -291,14 +291,14 @@ def test_disc_panel_style_draws_semicircle():
     ]
     panel_rects = [
         poly_bounds(entity) for entity in doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL"
+        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
         and (poly_bounds(entity)[1] - poly_bounds(entity)[0]) > 100
         and (poly_bounds(entity)[3] - poly_bounds(entity)[2]) > 1000
     ]
     check("disc panel style draws semicircle arc", len(panel_arcs) >= 1, f"arcs: {len(panel_arcs)}")
     check(
-        "disc panel style draws no extra panel lines",
-        len(panel_lines) == 0,
+        "disc panel style draws only body panel edge lines",
+        len(panel_lines) <= 4,
         f"panel lines: {len(panel_lines)}",
     )
     check(
@@ -383,6 +383,17 @@ def test_pillar_handle_title_and_three_column_panel():
         len(pillar_polys) >= 2,
         f"pillar polys: {len(pillar_polys)}",
     )
+    hidden_lines = [
+        entity for entity in doc.modelspace().query("LINE")
+        if entity.dxf.layer == "A-DOOR-HIDDEN"
+    ]
+    check(
+        "covered panel edges are drawn on hidden dashed layer",
+        len(hidden_lines) >= 1 and all(entity.dxf.linetype == "HIDDEN" for entity in hidden_lines),
+        [(entity.dxf.layer, entity.dxf.linetype) for entity in hidden_lines[:5]],
+    )
+    geom_layer = doc.layers.get("A-DOOR-PANEL-GEOM")
+    check("panel geometry layer is non-plot helper", geom_layer.dxf.plot == 0, geom_layer.dxf.plot)
 
     title_texts = [
         entity for entity in doc.modelspace().query("TEXT")
@@ -795,7 +806,7 @@ def test_new_defaults_fingerprint_and_transom_shape():
     panel_bounds = [
         poly_bounds(entity)
         for entity in arch_doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL"
+        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
     ]
     panel_heights = sorted({
         round(float(y2 - y1), 2)
