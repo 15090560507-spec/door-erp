@@ -170,7 +170,7 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "图纸终审", module: "图纸终审" },
 ];
 
-export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "折叠四开门"];
+export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];
 export const KX_OPTIONS = ["左开", "右开"];
 export const NK_OPTIONS = ["内开", "外开"];
 export const THRESHOLD_OPTIONS = ["高低槛", "平底槛", "吊脚"];
@@ -179,12 +179,12 @@ export const QC_SHAPE_OPTIONS = ["矩形气窗", "弧形气窗"];
 export const BZ_OPTIONS = ["全包", "木箱"];
 export const HYSL_OPTIONS = ["3个/扇", "2个/扇", "4个/扇", "5个/扇"];
 export const MATERIALS = ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"];
-export const HANDLES = ["标配拉手", "A1022", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
+export const HANDLES = ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
 export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
 export const FINGERPRINT_LOCKS = ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"];
 export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
-export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"];
+export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
@@ -206,7 +206,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
-  has_pillar: false, pillar_width_str: "55/70",
+  has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",
   sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400,
   is_integrated_door: false, integrated_panel_height: 300,

@@ -143,7 +143,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     onChange({ ...data, [key]: value });
   };
   const panelStyle = data.door_panel_style || "无造型";
-  const hasChildPanel = ["子母门", "两定两开", "折叠四开门"].includes(data.door_type);
+  const hasChildPanel = ["子母门", "两定两开", "四开门", "折叠四开门"].includes(data.door_type);
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
   const usesOffsetX = (style: string) => ["两列式布局", "H型布局", "H+型布局"].includes(style);
   const usesThreeColumnPanel = (style: string) => style === "三列式布局";
@@ -161,7 +161,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         th_str: "55/75",
       };
     }
-    if (["对开门", "两定两开", "折叠四开门"].includes(next.door_type)) {
+    if (["对开门", "子母门", "两定两开", "四开门", "折叠四开门"].includes(next.door_type)) {
       return { ...next, fw_left_str: "55/62", fw_right_str: "55/62", fw_top_str: "55/75", th_str: "55/75" };
     }
     return next;
@@ -343,7 +343,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="flex gap-3 mt-3">
             <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />
             <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
-            <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => set("has_pillar", v)} />
+            <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => onChange({ ...data, has_pillar: v, pillar_width_str: v && (!data.pillar_width_str || data.pillar_width_str === "55/70") ? "55/85" : data.pillar_width_str })} />
             <Checkbox label="连体门" checked={data.is_integrated_door} onChange={(v) => set("is_integrated_door", v)} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
@@ -392,7 +392,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           {data.door_type === "子母门" && (
             <Input label="母门单扇宽" value={data.mother_door_width} type="number" onChange={(v) => set("mother_door_width", Number(v))} />
           )}
-          {["折叠四开门", "两定两开"].includes(data.door_type) && (
+          {["四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
             <Input label="中门单扇宽" value={data.mid_door_width} type="number" onChange={(v) => set("mid_door_width", Number(v))} />
           )}
         </Card>
@@ -401,7 +401,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
             门缝设置 <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
               {data.left_gap}/{data.right_gap}/{data.top_gap}/{data.bottom_gap}
-              {["对开门", "子母门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
+              {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
             </span>
           </summary>
           <div className="grid grid-cols-2 gap-3 mt-4">
@@ -409,7 +409,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="右门缝(mm)" value={data.right_gap} type="number" onChange={(v) => set("right_gap", Number(v))} />
             <Input label="上门缝(mm)" value={data.top_gap} type="number" onChange={(v) => set("top_gap", Number(v))} />
             <Input label="下门缝(mm)" value={data.bottom_gap} type="number" onChange={(v) => set("bottom_gap", Number(v))} />
-            {["对开门", "子母门", "折叠四开门", "两定两开"].includes(data.door_type) && (
+            {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
               <Input label="中缝(mm)" value={data.middle_gap} type="number" onChange={(v) => set("middle_gap", Number(v))} />
             )}
           </div>
@@ -517,14 +517,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <div className="grid grid-cols-3 gap-3">
               <Input label="外包套宽" required value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
               <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
-              <Select label="外包套款式" required value={data.trim_style_outer} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_outer", v)} />
+              <Combobox label="外包套款式" required value={data.trim_style_outer} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_outer", v)} />
             </div>
           )}
           {data.has_inner && (
             <div className="grid grid-cols-3 gap-3 mt-3">
               <Input label="内包套宽" required value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
               <Input label="反面压框" value={data.overlap_back} type="number" onChange={(v) => set("overlap_back", Number(v))} />
-              <Select label="内包套款式" required value={data.trim_style_inner} options={["", ...TRIM_STYLES]} onChange={(v) => set("trim_style_inner", v)} />
+              <Combobox label="内包套款式" required value={data.trim_style_inner} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_inner", v)} />
             </div>
           )}
         </Card>

@@ -65,7 +65,7 @@ class CADRequest(BaseModel):
     has_pillar: bool = False            # 立柱
     qc_height: int = 400                # 气窗高
     mm_height: int = 200                # 门楣高
-    pillar_width_str: str = "55/70"     # 立柱宽(外/内)
+    pillar_width_str: str = "55/85"     # 立柱宽(外/内)
     sm: str = ""                        # 批注
     trim_style_outer: str = ""          # 外包套款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
     trim_style_inner: str = ""          # 内包套款式

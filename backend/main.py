@@ -122,12 +122,19 @@ def build_cad_params(req: CADRequest):
             final_note = current_note
     else:
         final_note = current_note
+    door_type = "四开门" if req.door_type == "折叠四开门" else req.door_type
 
     # --- 框宽解析 ---
-    parts_left = parse_dim_str(req.fw_left_str, 60, 60)
+    fw_left_str = req.fw_left_str
+    fw_right_str = req.fw_right_str
+    if door_type in ("对开门", "子母门", "两定两开", "四开门") and fw_left_str == "55/85" and fw_right_str == "55/62":
+        fw_left_str = "55/62"
+        fw_right_str = "55/62"
+
+    parts_left = parse_dim_str(fw_left_str, 60, 60)
     left_out, left_in = parts_left[0], parts_left[1]
 
-    parts_right = parse_dim_str(req.fw_right_str, 60, 60)
+    parts_right = parse_dim_str(fw_right_str, 60, 60)
     right_out, right_in = parts_right[0], parts_right[1]
 
     parts_top = parse_dim_str(req.fw_top_str, 60, 60)
@@ -199,10 +206,10 @@ def build_cad_params(req: CADRequest):
         pdk_val = ""
 
     # --- 门型中文名 ---
-    if req.door_type == "两定两开":
+    if door_type == "两定两开":
         dt_cn = "两定两开门"
     else:
-        dt_cn = req.door_type
+        dt_cn = door_type
 
     qh_val = ""
     if req.qh:
@@ -225,7 +232,7 @@ def build_cad_params(req: CADRequest):
         "YS": req.ys, "ZMLS": req.zmls, "FMLS": req.fmls,
         "ST": req.st_val, "ZWS": req.fingerprint_lock, "HYSL": req.hysl, "QH": qh_val,
         "MSHD": mshd_val, "HHXD": req.hhxd, "BZ": final_note,
-        "DOOR_TYPE": req.door_type, "MOTHER_DOOR_WIDTH": req.mother_door_width,
+        "DOOR_TYPE": door_type, "MOTHER_DOOR_WIDTH": req.mother_door_width,
         "MID_DOOR_WIDTH": req.mid_door_width, "PILLAR_WIDTH_STR": req.pillar_width_str,
         "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
@@ -326,7 +333,7 @@ def build_cad_params(req: CADRequest):
         "overlap": req.overlap,
         "overlap_front": overlap_front,
         "overlap_back": overlap_back,
-        "door_type": req.door_type,
+        "door_type": door_type,
         "mother_door_width": req.mother_door_width,
         "mid_door_width": req.mid_door_width,
         "pillar_width_str": req.pillar_width_str,
@@ -664,15 +671,15 @@ import threading as _threading
 _DROPDOWN_OPTIONS_PATH = os.path.join(DATA_DIR, "dropdown_options.json")
 _dropdown_lock = _threading.Lock()
 _DEFAULT_DROPDOWN_OPTIONS = {
-    "DOOR_TYPES": ["单门", "对开门", "子母门", "两定两开", "折叠四开门"],
+    "DOOR_TYPES": ["单门", "对开门", "子母门", "两定两开", "四开门"],
     "KX_OPTIONS": ["左开", "右开"],
     "NK_OPTIONS": ["内开", "外开"],
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
-    "HANDLES": ["标配拉手", "A1022", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
+    "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
     "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
     "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
     "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"],
-    "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套"],
+    "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"],
     "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
     "THRESHOLD_OPTIONS": ["高低槛", "平底槛", "吊脚"],
     "QC_OPTIONS": ["无", "玻璃", "封闭"],
@@ -681,6 +688,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
 }
 _DROPDOWN_ALIASES = {
     "三位可调合页": "三维可调合页",
+    "折叠四开门": "四开门",
 }
 
 _EMPTY_ALLOWED_DROPDOWNS = {"FINGERPRINT_LOCKS"}

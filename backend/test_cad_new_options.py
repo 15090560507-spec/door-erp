@@ -240,7 +240,7 @@ def test_pillar_handle_title_and_three_column_panel():
     req = CADRequest(
         door_type="两定两开",
         has_pillar=True,
-        pillar_width_str="55/70",
+        pillar_width_str="55/85",
         zmls="自制长拉手",
         fmls="自制长拉手",
         handle_size="40*800",
@@ -292,7 +292,7 @@ def test_pillar_handle_title_and_three_column_panel():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
+        if abs((x2 - x1) - 55) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "pillars align to frame inner opening not panel gap",
@@ -480,7 +480,7 @@ def test_transom_pillar_lintel_label_and_view_gap():
         qc_height=400,
         door_type="\u4e24\u5b9a\u4e24\u5f00",
         has_pillar=True,
-        pillar_width_str="55/70",
+        pillar_width_str="55/85",
     )
 
     info, checks, draw_params = build_cad_params(req)
@@ -500,7 +500,7 @@ def test_transom_pillar_lintel_label_and_view_gap():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 70) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
+        if abs((x2 - x1) - 55) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "transom pillars stay between middle rail and threshold",
@@ -532,7 +532,7 @@ def test_light_width_uses_pillar_inner_edges():
     req = CADRequest(
         door_type="\u4e24\u5b9a\u4e24\u5f00",
         has_pillar=True,
-        pillar_width_str="55/70",
+        pillar_width_str="55/85",
         mark_light_size=True,
     )
 
@@ -556,7 +556,7 @@ def test_light_width_uses_pillar_inner_edges():
     x2 = round(float(dim.dxf.defpoint3.x), 2)
     check(
         "pillar light width dimensions between pillar inner edges",
-        (x1, x2) == (-561.0, 241.0),
+        (x1, x2) == (-564.0, 242.0),
         (x1, x2),
     )
 
