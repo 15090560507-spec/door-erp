@@ -99,6 +99,20 @@ class EzdxfDrawer:
             attribs['linetype'] = linetype
         self.ms.add_line(p1, p2, dxfattribs=attribs)
 
+    def draw_wipeout_rect(self, x1, y1, x2, y2, layer="A-DOOR-MASK"):
+        left, right = sorted((x1, x2))
+        bottom, top = sorted((y1, y2))
+        if right - left <= 0.01 or top - bottom <= 0.01:
+            return None
+        wipeout = self.ms.add_wipeout([
+            (left, bottom),
+            (right, bottom),
+            (right, top),
+            (left, top),
+        ])
+        wipeout.dxf.layer = layer
+        return wipeout
+
     def draw_arc(self, center, radius, start_angle, end_angle, layer):
         self.ms.add_arc(
             center=center,
@@ -669,25 +683,12 @@ def draw_door_in_frame(
         left, right = sorted((x1, x2))
         if right - left < 1:
             return
-        points = [
-            (left, panel_y_bot),
-            (right, panel_y_bot),
-            (right, panel_y_top),
-            (left, panel_y_top),
-        ]
-        drawer.draw_poly([off(point) for point in points], 'A-DOOR-PANEL-GEOM')
-        edges = [
-            (left, panel_y_bot, right, panel_y_bot),
-            (right, panel_y_bot, right, panel_y_top),
-            (right, panel_y_top, left, panel_y_top),
-            (left, panel_y_top, left, panel_y_bot),
-        ]
-        for ex1, ey1, ex2, ey2 in edges:
-            visible_segments, hidden_segments = split_line_by_cover(ex1, ey1, ex2, ey2)
-            for start, end in visible_segments:
-                drawer.draw_line(off(start), off(end), 'A-DOOR-PANEL')
-            for start, end in hidden_segments:
-                drawer.draw_line(off(start), off(end), 'A-DOOR-HIDDEN', linetype='HIDDEN')
+        drawer.draw_poly([
+            off((left, panel_y_bot)),
+            off((right, panel_y_bot)),
+            off((right, panel_y_top)),
+            off((left, panel_y_top)),
+        ], 'A-DOOR-PANEL')
 
     if door_type == "单门":
         panel_x1 = ref_left + left_gap
@@ -1004,11 +1005,7 @@ def draw_door_in_frame(
         return None
 
     def draw_panel_line(x1: float, y1: float, x2: float, y2: float):
-        visible_segments, hidden_segments = split_line_by_cover(x1, y1, x2, y2)
-        for start, end in visible_segments:
-            drawer.draw_line(off(start), off(end), 'A-DOOR-PANEL')
-        for start, end in hidden_segments:
-            drawer.draw_line(off(start), off(end), 'A-DOOR-HIDDEN', linetype='HIDDEN')
+        drawer.draw_line(off((x1, y1)), off((x2, y2)), 'A-DOOR-PANEL')
 
     def draw_panel_rect(x1: float, x2: float):
         draw_panel_body_rect(x1, x2)
@@ -1277,6 +1274,9 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("AZJ", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
+    for rx1, rx2, ry1, ry2 in cover_rects:
+        drawer.draw_wipeout_rect(*off((rx1, ry1)), *off((rx2, ry2)))
+
     drawer.update_progress(f"{view_name}绘制完成")
 
 
@@ -1404,16 +1404,11 @@ def run_integrated_system(
         drawer.batch_add_layers({
             "A-DOOR-FRAME": 4,
             "A-DOOR-PANEL": 2,
-            "A-DOOR-PANEL-GEOM": 8,
-            "A-DOOR-HIDDEN": 8,
+            "A-DOOR-MASK": 7,
             "A-DOOR-TRIM": 1,
             "YQ_DIM": 3,
             "A-DOOR-mark": 7
         })
-        if "A-DOOR-PANEL-GEOM" in doc.layers:
-            doc.layers.get("A-DOOR-PANEL-GEOM").dxf.plot = 0
-        if "A-DOOR-HIDDEN" in doc.layers:
-            doc.layers.get("A-DOOR-HIDDEN").dxf.linetype = "HIDDEN"
 
         draw_p.update({
             "door_type": info.get("DOOR_TYPE", "单门"),
@@ -1432,6 +1427,16 @@ def run_integrated_system(
 
         draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
         draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
+
+        doc.header["$SORTENTS"] = int(doc.header.get("$SORTENTS", 127)) | 16
+        top_layers = {"A-DOOR-FRAME", "A-DOOR-TRIM", "YQ_DIM", "A-DOOR-mark"}
+        redraw_order = {
+            entity.dxf.handle: "0"
+            for entity in ms
+            if entity.dxf.hasattr("layer") and entity.dxf.layer in top_layers
+        }
+        if redraw_order:
+            ms.set_redraw_order(redraw_order)
 
         buffer = io.StringIO()
         doc.write(buffer)
