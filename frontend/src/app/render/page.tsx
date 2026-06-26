@@ -47,6 +47,9 @@ const T = {
   remove: "\u5220\u9664",
   saveToLibrary: "\u4fdd\u5b58\u5230\u5e38\u7528\u5e93",
   savedToLibrary: "\u5df2\u4fdd\u5b58\u5230\u5e38\u7528\u5e93",
+  uploadToLibrary: "上传到常用库",
+  libraryCategory: "分类",
+  batchUploadLibrary: "批量上传参考图",
   chooseFromLibrary: "\u4ece\u5e93\u9009\u62e9",
   noLibrary: "\u5e38\u7528\u5e93\u6682\u65e0\u56fe\u7247",
   partLabel: "\u53c2\u8003\u5185\u5bb9",
@@ -84,6 +87,7 @@ export default function RenderPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [libraryUploadLabel, setLibraryUploadLabel] = useState(PART_OPTIONS[0]);
   const [lineArt, setLineArt] = useState<File | null>(null);
   const [lineArtPreview, setLineArtPreview] = useState("");
   const [references, setReferences] = useState<ReferenceRow[]>(() => defaultReferenceRows());
@@ -203,6 +207,22 @@ export default function RenderPage() {
     showMessage(T.savedToLibrary, "success");
   }
 
+  async function uploadLibraryFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) return showMessage(T.uploadImageOnly, "error");
+    const items = await Promise.all(imageFiles.map(async (file) => ({
+      id: createId(),
+      label: libraryUploadLabel.trim() || T.imageLabel,
+      name: file.name,
+      dataUrl: await readFileAsDataUrl(file),
+      createdAt: Date.now(),
+    })));
+    setLibrary((current) => [...items, ...current]);
+    showMessage(`${T.savedToLibrary} ${items.length} ${T.generatedSuffix}`, "success");
+  }
+
   function applyLibraryItem(rowId: string, itemId: string) {
     const item = library.find((entry) => entry.id === itemId);
     if (!item) return;
@@ -302,10 +322,17 @@ export default function RenderPage() {
         </div>
       </Collapsible>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,420px)_1fr] gap-4">
-        <UploadPanel title={T.lineArtTitle} kicker="Line Art" preview={lineArtPreview} fileName={lineArt?.name} onPick={pickLineArt} onClear={() => { revokePreview(lineArtPreview); setLineArt(null); setLineArtPreview(""); }} />
-        <ResultPanel activeResult={activeResult} activeIndex={activeIndex} results={results} loading={loading} onDownload={downloadActive} onSelect={setActiveIndex} />
-      </div>
+      <Collapsible title={T.libraryTitle} open={libraryOpen} onToggle={() => setLibraryOpen((open) => !open)}>
+        <LibraryManager
+          library={library}
+          uploadLabel={libraryUploadLabel}
+          onUploadLabel={setLibraryUploadLabel}
+          onUpload={uploadLibraryFiles}
+          onRemove={removeLibraryItem}
+        />
+      </Collapsible>
+
+      <UploadPanel title={T.lineArtTitle} kicker="Line Art" preview={lineArtPreview} fileName={lineArt?.name} onPick={pickLineArt} onClear={() => { revokePreview(lineArtPreview); setLineArt(null); setLineArtPreview(""); }} />
 
       <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -334,24 +361,18 @@ export default function RenderPage() {
         </div>
       </section>
 
-      <Collapsible title={T.libraryTitle} open={libraryOpen} onToggle={() => setLibraryOpen((open) => !open)}>
-        {library.length ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {library.map((item) => <LibraryCard key={item.id} item={item} onRemove={() => removeLibraryItem(item.id)} />)}
-          </div>
-        ) : <p className="text-[13px] text-[#8E8E93]">{T.noLibrary}</p>}
-      </Collapsible>
-
       <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-[160px_1fr] gap-3">
-          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Size</span><select value={size} onChange={(event) => setSize(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"><option value="1k">1K</option><option value="2k">2K</option><option value="4k">4K</option></select></label>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_160px] gap-3">
           <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Prompt</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={4} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none resize-y" /></label>
+          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Size</span><select value={size} onChange={(event) => setSize(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"><option value="1k">1K</option><option value="2k">2K</option><option value="4k">4K</option></select></label>
         </div>
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={resetAll} disabled={loading} className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 disabled:opacity-50 transition-colors">{T.clear}</button>
           <button type="button" onClick={handleGenerate} disabled={!canGenerate || loading} className="px-5 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors">{loading ? T.generatingShort : T.generate}</button>
         </div>
       </section>
+
+      <ResultPanel activeResult={activeResult} activeIndex={activeIndex} results={results} loading={loading} onDownload={downloadActive} onSelect={setActiveIndex} />
     </div>
   );
 }
@@ -372,6 +393,45 @@ function ReferenceEditor({ row, index, library, onLabel, onPick, onClear, onRemo
   const matchedLibrary = library.filter((item) => !row.label.trim() || item.label === row.label.trim());
   const choices = matchedLibrary.length ? matchedLibrary : library;
   return <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr_190px] gap-3 rounded-xl border border-[#E5E5EA]/60 bg-[#FAFAFC] p-3"><label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">{T.partLabel} {index + 1}</span><input list="render-part-options" value={row.label} onChange={(event) => onLabel(event.target.value)} placeholder={T.customPart} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white" /></label><label className="min-h-[120px] rounded-xl border border-dashed border-[#C7C7CC] bg-white hover:bg-[#F2F2F7] transition-colors cursor-pointer overflow-hidden flex items-center justify-center"><input type="file" accept="image/*" onChange={onPick} className="hidden" />{row.preview ? <img src={row.preview} alt={`${row.label || T.imageLabel}${T.preview}`} className="max-h-[160px] max-w-full object-contain" /> : <span className="text-center text-[13px] text-[#8E8E93]">{T.clickUpload}{T.imageLabel}<br /><span className="text-[12px]">{T.support}</span></span>}</label><div className="flex flex-col gap-2"><select value="" onChange={(event) => { if (event.target.value) onChooseLibrary(event.target.value); }} className="px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg bg-white focus:border-[#007AFF] focus:outline-none"><option value="">{T.chooseFromLibrary}</option>{choices.map((item) => <option key={item.id} value={item.id}>{item.label} - {item.name}</option>)}</select>{row.fileName && <p className="text-[12px] text-[#8E8E93] truncate">{row.fileName}</p>}<button type="button" onClick={onSave} disabled={!row.preview} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 disabled:opacity-50 transition-colors">{T.saveToLibrary}</button><div className="grid grid-cols-2 gap-2"><button type="button" onClick={onClear} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 transition-colors">{T.clear}</button><button type="button" onClick={onRemove} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#FF3B30]/10 text-[#FF3B30] hover:bg-[#FF3B30]/15 transition-colors">{T.remove}</button></div></div></div>;
+}
+
+function LibraryManager({ library, uploadLabel, onUploadLabel, onUpload, onRemove }: { library: LibraryItem[]; uploadLabel: string; onUploadLabel: (value: string) => void; onUpload: (event: ChangeEvent<HTMLInputElement>) => void; onRemove: (itemId: string) => void }) {
+  const groups = PART_OPTIONS.map((label) => ({
+    label,
+    items: library.filter((item) => item.label === label),
+  }));
+  const customGroups = Array.from(new Set(library.map((item) => item.label).filter((label) => !PART_OPTIONS.includes(label)))).map((label) => ({
+    label,
+    items: library.filter((item) => item.label === label),
+  }));
+  const allGroups = [...groups, ...customGroups].filter((group) => group.items.length);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 rounded-xl border border-[#E5E5EA]/60 bg-[#FAFAFC] p-3">
+        <label className="block">
+          <span className="text-[12px] font-medium text-[#8E8E93]">{T.libraryCategory}</span>
+          <input list="render-part-options" value={uploadLabel} onChange={(event) => onUploadLabel(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white" />
+        </label>
+        <label className="min-h-[86px] rounded-xl border border-dashed border-[#C7C7CC] bg-white hover:bg-[#F2F2F7] transition-colors cursor-pointer flex items-center justify-center">
+          <input type="file" accept="image/*" multiple onChange={onUpload} className="hidden" />
+          <span className="text-center text-[13px] text-[#8E8E93]">{T.uploadToLibrary}<br /><span className="text-[12px]">{T.batchUploadLibrary}</span></span>
+        </label>
+      </div>
+      {allGroups.length ? (
+        <div className="space-y-4">
+          {allGroups.map((group) => (
+            <div key={group.label} className="space-y-2">
+              <h3 className="text-[13px] font-semibold text-[#1C1C1E]">{group.label}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {group.items.map((item) => <LibraryCard key={item.id} item={item} onRemove={() => onRemove(item.id)} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-[13px] text-[#8E8E93]">{T.noLibrary}</p>}
+    </div>
+  );
 }
 
 function LibraryCard({ item, onRemove }: { item: LibraryItem; onRemove: () => void }) {
