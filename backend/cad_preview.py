@@ -158,13 +158,6 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
                 {"center": center, "radius": radius},
             )
         )
-    elif kind == "WIPEOUT":
-        try:
-            points = [(float(point.x), float(point.y)) for point in entity.boundary_path_wcs()]
-        except Exception:
-            points = []
-        if len(points) >= 3:
-            primitives.append(Primitive("wipeout", layer, points, {}))
     elif kind == "TEXT":
         text = str(entity.dxf.text or "")
         insert = _point(entity.dxf.insert)
@@ -186,12 +179,7 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
 def render_dxf_svg(dxf_text: str) -> str:
     doc = ezdxf.read(io.StringIO(dxf_text))
     primitives: list[Primitive] = []
-    ms = doc.modelspace()
-    try:
-        entities = list(ms.entities_in_redraw_order())
-    except Exception:
-        entities = list(ms)
-    for entity in entities:
+    for entity in doc.modelspace():
         _collect_entity(entity, primitives)
     primitives = _filter_to_door_views(primitives)
 
@@ -268,9 +256,6 @@ def render_dxf_svg(dxf_text: str) -> str:
             parts.append(
                 f'<circle class="cad-line" cx="{fmt(sx(center[0]))}" cy="{fmt(sy(center[1]))}" r="{fmt(radius)}" stroke="{color}" stroke-width="{stroke_width}"/>'
             )
-        elif primitive.kind == "wipeout":
-            points = " ".join(f"{fmt(sx(x))},{fmt(sy(y))}" for x, y in primitive.points)
-            parts.append(f'<polygon points="{points}" fill="#f8fafc" stroke="none"/>')
         elif primitive.kind in {"text", "insert"}:
             x, y = primitive.points[0]
             raw_text = primitive.data.get("text", "")
