@@ -559,6 +559,7 @@ def draw_door_in_frame(
     pillar_width_front = 0
     pillar_width_back = 0
     current_pillar_width = 0
+    layout_pillar_width = 0
     if door_type in ("两定两开", "四开门") and has_pillar and pillar_width_str:
         parts = parse_dim_str(pillar_width_str, 55, 85)
         pillar_out = parts[0]
@@ -570,6 +571,7 @@ def draw_door_in_frame(
             pillar_width_front = pillar_in
             pillar_width_back = pillar_out
         current_pillar_width = pillar_width_back if is_back else pillar_width_front
+        layout_pillar_width = pillar_width_front
 
     panel_positions = []
     pillar_inner_light_edges = None
@@ -622,17 +624,17 @@ def draw_door_in_frame(
         if has_pillar and current_pillar_width > 0:
             internal_gap_count = 5
             mid_total_width = 2 * mid_door_width + middle_gap
-            side_width = (total_door_width - 2 * current_pillar_width - 2 * mid_door_width - internal_gap_count * middle_gap) / 2
+            side_width = (total_door_width - 2 * layout_pillar_width - 2 * mid_door_width - internal_gap_count * middle_gap) / 2
             lx1 = ref_left + left_gap
             lx2 = lx1 + side_width
             lpx1 = lx2 + middle_gap
-            lpx2 = lpx1 + current_pillar_width
+            lpx2 = lpx1 + layout_pillar_width
             lmx1 = lpx2 + middle_gap
             lmx2 = lmx1 + mid_door_width
             rmx1 = lmx2 + middle_gap
             rmx2 = rmx1 + mid_door_width
             rpx1 = rmx2 + middle_gap
-            rpx2 = rpx1 + current_pillar_width
+            rpx2 = rpx1 + layout_pillar_width
             rx1 = rpx2 + middle_gap
             rx2 = rx1 + side_width
         else:
@@ -649,18 +651,28 @@ def draw_door_in_frame(
             rx1 = rmx2
             rx2 = rx1 + side_width
 
+        lpx1_draw, lpx2_draw = lpx1, lpx2
+        rpx1_draw, rpx2_draw = rpx1, rpx2
+        if has_pillar and current_pillar_width > 0:
+            left_pillar_center = (lpx1 + lpx2) / 2
+            right_pillar_center = (rpx1 + rpx2) / 2
+            lpx1_draw = left_pillar_center - current_pillar_width / 2
+            lpx2_draw = left_pillar_center + current_pillar_width / 2
+            rpx1_draw = right_pillar_center - current_pillar_width / 2
+            rpx2_draw = right_pillar_center + current_pillar_width / 2
+
         drawer.draw_poly([off((lx1, panel_y_bot)), off((lx2, panel_y_bot)), off((lx2, panel_y_top)), off((lx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar and current_pillar_width > 0:
-            drawer.draw_poly([off((lpx1, pillar_y_bot)), off((lpx2, pillar_y_bot)), off((lpx2, pillar_y_top)), off((lpx1, pillar_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((lpx1_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_top)), off((lpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((lmx1, panel_y_bot)), off((lmx2, panel_y_bot)), off((lmx2, panel_y_top)), off((lmx1, panel_y_top))], 'A-DOOR-PANEL')
         drawer.draw_poly([off((rmx1, panel_y_bot)), off((rmx2, panel_y_bot)), off((rmx2, panel_y_top)), off((rmx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar and current_pillar_width > 0:
-            drawer.draw_poly([off((rpx1, pillar_y_bot)), off((rpx2, pillar_y_bot)), off((rpx2, pillar_y_top)), off((rpx1, pillar_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((rpx1_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_top)), off((rpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((rx1, panel_y_bot)), off((rx2, panel_y_bot)), off((rx2, panel_y_top)), off((rx1, panel_y_top))], 'A-DOOR-PANEL')
 
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
         if has_pillar and current_pillar_width > 0:
-            pillar_inner_light_edges = (lpx2, rpx1)
+            pillar_inner_light_edges = (lpx2_draw, rpx1_draw)
 
         if not is_back:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
@@ -671,17 +683,17 @@ def draw_door_in_frame(
         if has_pillar and current_pillar_width > 0:
             internal_gap_count = 5
             mid_total_width = 2 * mid_door_width + middle_gap
-            side_width = (total_door_width - mid_total_width - 2 * current_pillar_width - internal_gap_count * middle_gap) / 2
+            side_width = (total_door_width - mid_total_width - 2 * layout_pillar_width - internal_gap_count * middle_gap) / 2
             lx1 = ref_left + left_gap
             lx2 = lx1 + side_width
             lpx1 = lx2 + middle_gap
-            lpx2 = lpx1 + current_pillar_width
+            lpx2 = lpx1 + layout_pillar_width
             lmx1 = lpx2 + middle_gap
             lmx2 = lmx1 + mid_door_width
             rmx1 = lmx2 + middle_gap
             rmx2 = rmx1 + mid_door_width
             rpx1 = rmx2 + middle_gap
-            rpx2 = rpx1 + current_pillar_width
+            rpx2 = rpx1 + layout_pillar_width
             rx1 = rpx2 + middle_gap
             rx2 = rx1 + side_width
         else:
@@ -698,18 +710,28 @@ def draw_door_in_frame(
             rx1 = rmx2
             rx2 = rx1 + side_width
 
+        lpx1_draw, lpx2_draw = lpx1, lpx2
+        rpx1_draw, rpx2_draw = rpx1, rpx2
+        if has_pillar and current_pillar_width > 0:
+            left_pillar_center = (lpx1 + lpx2) / 2
+            right_pillar_center = (rpx1 + rpx2) / 2
+            lpx1_draw = left_pillar_center - current_pillar_width / 2
+            lpx2_draw = left_pillar_center + current_pillar_width / 2
+            rpx1_draw = right_pillar_center - current_pillar_width / 2
+            rpx2_draw = right_pillar_center + current_pillar_width / 2
+
         drawer.draw_poly([off((lx1, panel_y_bot)), off((lx2, panel_y_bot)), off((lx2, panel_y_top)), off((lx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar and current_pillar_width > 0:
-            drawer.draw_poly([off((lpx1, pillar_y_bot)), off((lpx2, pillar_y_bot)), off((lpx2, pillar_y_top)), off((lpx1, pillar_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((lpx1_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_top)), off((lpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((lmx1, panel_y_bot)), off((lmx2, panel_y_bot)), off((lmx2, panel_y_top)), off((lmx1, panel_y_top))], 'A-DOOR-PANEL')
         drawer.draw_poly([off((rmx1, panel_y_bot)), off((rmx2, panel_y_bot)), off((rmx2, panel_y_top)), off((rmx1, panel_y_top))], 'A-DOOR-PANEL')
         if has_pillar and current_pillar_width > 0:
-            drawer.draw_poly([off((rpx1, pillar_y_bot)), off((rpx2, pillar_y_bot)), off((rpx2, pillar_y_top)), off((rpx1, pillar_y_top))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((rpx1_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_top)), off((rpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((rx1, panel_y_bot)), off((rx2, panel_y_bot)), off((rx2, panel_y_top)), off((rx1, panel_y_top))], 'A-DOOR-PANEL')
 
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
         if has_pillar and current_pillar_width > 0:
-            pillar_inner_light_edges = (lpx2, rpx1)
+            pillar_inner_light_edges = (lpx2_draw, rpx1_draw)
         if not is_back:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
             drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
@@ -1040,9 +1062,16 @@ def draw_door_in_frame(
         return targets
 
     def sized_handle_targets(distance: float = 110):
-        if "对开" in str(door_type) and len(panel_positions) >= 2:
+        if door_type == "对开门" and len(panel_positions) >= 2:
             left_x1, left_x2 = panel_positions[0]
             right_x1, right_x2 = panel_positions[1]
+            return [
+                (left_x2 - distance, -1, "ZBPLS"),
+                (right_x1 + distance, 1, "YBPLS"),
+            ]
+        if door_type in ("四开门", "两定两开") and len(panel_positions) >= 4:
+            left_x1, left_x2 = panel_positions[1]
+            right_x1, right_x2 = panel_positions[2]
             return [
                 (left_x2 - distance, -1, "ZBPLS"),
                 (right_x1 + distance, 1, "YBPLS"),
@@ -1094,11 +1123,20 @@ def draw_door_in_frame(
             a1022_block = "Z1022" if hblock == "YBPLS" else "Y1022"
             drawer.insert_custom_block(a1022_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
-    special_handle_blocks = {"A635": "A635", "分体拉手": "FTLS"}
-    if current_handle in special_handle_blocks and not current_sized_handle:
+    if current_handle == "A635" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, _hblock in handle_targets(60):
-            drawer.insert_custom_block(special_handle_blocks[current_handle], off((hx, handle_y)), layer="A-DOOR-PANEL")
+            drawer.insert_custom_block("A635", off((hx, handle_y)), layer="A-DOOR-PANEL")
+
+    if current_handle == "分体拉手" and not current_sized_handle:
+        handle_y = panel_y_bot + 1000
+        targets = handle_targets(60)
+        if is_back and door_type == "对开门" and len(panel_positions) >= 2:
+            left_x1, left_x2 = panel_positions[0]
+            targets = [(left_x2 - 60, -1, "ZBPLS")]
+        for hx, _toward_hinge, hblock in targets:
+            split_block = "YFTLS" if hblock == "YBPLS" else "ZFTLS"
+            drawer.insert_custom_block(split_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
     if current_handle == "背包拉手" and not current_sized_handle:
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):

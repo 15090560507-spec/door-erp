@@ -152,6 +152,38 @@ def test_a1022_handle_backpack_handle_and_adjustable_hinge():
     )
 
 
+def test_split_handle_uses_directional_blocks():
+    req = CADRequest(
+        door_type="对开门",
+        zmls="分体拉手",
+        fmls="分体拉手",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("split handle CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    inserts = [entity.dxf.name for entity in doc.modelspace().query("INSERT")]
+
+    baseline_req = req.model_copy(deep=True)
+    baseline_req.zmls = "无"
+    baseline_req.fmls = "无"
+    base_info, base_checks, base_draw_params = build_cad_params(baseline_req)
+    _base_msg, base_buffer = run_integrated_system(base_info, base_checks, base_draw_params)
+    base_doc = ezdxf.read(io.StringIO(base_buffer.getvalue()))
+    base_inserts = [entity.dxf.name for entity in base_doc.modelspace().query("INSERT")]
+
+    y_delta = inserts.count("YFTLS") - base_inserts.count("YFTLS")
+    z_delta = inserts.count("ZFTLS") - base_inserts.count("ZFTLS")
+    old_delta = inserts.count("FTLS") - base_inserts.count("FTLS")
+    check("split handle inserts right directional block", y_delta >= 1, f"YFTLS delta: {y_delta}")
+    check("split handle inserts left directional block", z_delta >= 1, f"ZFTLS delta: {z_delta}")
+    check("split handle no longer inserts old undirected block", old_delta == 0, f"FTLS delta: {old_delta}")
+
+
 def test_door_panel_style_lines():
     req = CADRequest(
         door_panel_style="H+型布局",
@@ -940,6 +972,7 @@ def test_cad_preview_svg_renders():
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
+    test_split_handle_uses_directional_blocks()
     test_door_panel_style_lines()
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()

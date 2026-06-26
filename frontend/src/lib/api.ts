@@ -179,12 +179,16 @@ export async function generateCadPreview(formData: DoorFormData): Promise<string
 }
 
 export function downloadCadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob);
+  const downloadBlob = blob.type === "application/octet-stream"
+    ? blob
+    : new Blob([blob], { type: "application/octet-stream" });
+  const url = window.URL.createObjectURL(downloadBlob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  window.URL.revokeObjectURL(url);
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 }

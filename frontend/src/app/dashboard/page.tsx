@@ -42,6 +42,7 @@ export default function DashboardPage() {
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const PAGE_SIZE = 20;
 
   // 用 ref 保存 module，避免 fetchTasks 因 module 变化而重建导致双重请求
@@ -91,10 +92,26 @@ export default function DashboardPage() {
     setLoading(false);
   }, []); // 空依赖：fetchTasks 引用稳定
 
+  const fetchStatusCounts = useCallback(async (date?: string) => {
+    const statuses = ["待绘制", "待初审", "待终审", "待修改", "已通过"];
+    try {
+      const results = await Promise.all(
+        statuses.map(async (status) => {
+          const res = await getTasks({ status, date: date || undefined, limit: 1, offset: 0 });
+          return [status, res.total] as const;
+        })
+      );
+      setStatusCounts(Object.fromEntries(results));
+    } catch (e) {
+      // 统计失败不阻塞任务列表，卡片保留上一次结果。
+    }
+  }, []);
+
   useEffect(() => {
     setPage(0);
     fetchTasks(filterDate, filterStatus, 0);
-  }, [fetchTasks, filterDate, filterStatus, module]); // module 变化时重新触发
+    fetchStatusCounts(filterDate);
+  }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, module]); // module 变化时重新触发
 
   // 切换模块时自动返回任务列表（保留表单数据以便返回继续编辑）
   useEffect(() => {
@@ -200,6 +217,7 @@ export default function DashboardPage() {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => setToast(null), 3000);
       fetchTasks(filterDate, filterStatus);
+      fetchStatusCounts(filterDate);
     } catch { flash("提交失败", "error"); }
     setSubmitting(false);
   };
@@ -212,6 +230,7 @@ export default function DashboardPage() {
       setActiveTask(updated);
       flash("修改已保存", "success");
       fetchTasks(filterDate, filterStatus);
+      fetchStatusCounts(filterDate);
     } catch { flash("保存失败", "error"); }
   };
 
@@ -280,6 +299,7 @@ export default function DashboardPage() {
       flash("成功流转至初审！", "success");
       backToList();
       fetchTasks(filterDate, filterStatus);
+      fetchStatusCounts(filterDate);
     } catch { flash("提交失败", "error"); }
   };
 
@@ -291,6 +311,7 @@ export default function DashboardPage() {
       flash("已打回修改", "success");
       backToList();
       fetchTasks(filterDate, filterStatus);
+      fetchStatusCounts(filterDate);
     } catch { flash("操作失败", "error"); }
   };
 
@@ -303,6 +324,7 @@ export default function DashboardPage() {
       flash(msg, "success");
       backToList();
       fetchTasks(filterDate, filterStatus);
+      fetchStatusCounts(filterDate);
     } catch { flash("操作失败", "error"); }
   };
 
@@ -682,29 +704,29 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                   {module === "图纸绘制" && (
                     <>
-                      <StatCard label="待绘制" count={total} color="bg-[#E8E8ED] text-[#48484A]" />
-                      <StatCard label="待修改" count={tasks.filter(t => t.status === "待修改").length} color="bg-[#FFEBEB] text-[#CC2F2A]" />
+                      <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
                       <StatCard label="今日新增" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
                   {module === "图纸初审" && (
                     <>
-                      <StatCard label="待初审" count={total} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="今日提交" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E8E8ED] text-[#48484A]" />
                     </>
                   )}
                   {module === "图纸终审" && (
                     <>
-                      <StatCard label="待终审" count={tasks.filter(t => t.status === "待终审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="已通过" count={tasks.filter(t => t.status === "已通过").length} color="bg-[#E5F9E5] text-[#248A3D]" />
+                      <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
                   {module === "汇总看板" && (
                     <>
-                      <StatCard label="待绘制" count={tasks.filter(t => t.status === "待绘制").length} color="bg-[#E8E8ED] text-[#48484A]" />
-                      <StatCard label="待初审" count={tasks.filter(t => t.status === "待初审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="待终审" count={tasks.filter(t => t.status === "待终审").length} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="待修改" count={tasks.filter(t => t.status === "待修改").length} color="bg-[#FFEBEB] text-[#CC2F2A]" />
+                      <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
+                      <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
                     </>
                   )}
                 </div>

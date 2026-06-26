@@ -424,7 +424,7 @@ def generate_cad(req: CADRequest):
 
     return StreamingResponse(
         bytes_io,
-        media_type="application/dxf",
+        media_type="application/octet-stream",
         headers={
             "Content-Disposition": (
                 f'attachment; filename="{ascii_filename}"; '
