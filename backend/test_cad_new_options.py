@@ -102,7 +102,9 @@ def test_cad_new_options_flow():
 
     panel_polys = [
         entity for entity in doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
+        if entity.dxf.layer == "A-DOOR-PANEL"
+        and (poly_bounds(entity)[1] - poly_bounds(entity)[0]) > 300
+        and (poly_bounds(entity)[3] - poly_bounds(entity)[2]) > 1000
     ]
     min_panel_y = min(point[1] for entity in panel_polys for point in entity.get_points("xy"))
     check("hanging door panel starts at 20mm above bottom", abs(min_panel_y - 20) < 0.01, str(min_panel_y))
@@ -291,7 +293,7 @@ def test_disc_panel_style_draws_semicircle():
     ]
     panel_rects = [
         poly_bounds(entity) for entity in doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
+        if entity.dxf.layer == "A-DOOR-PANEL"
         and (poly_bounds(entity)[1] - poly_bounds(entity)[0]) > 100
         and (poly_bounds(entity)[3] - poly_bounds(entity)[2]) > 1000
     ]
@@ -387,13 +389,15 @@ def test_pillar_handle_title_and_three_column_panel():
         entity for entity in doc.modelspace().query("LINE")
         if entity.dxf.layer == "A-DOOR-HIDDEN"
     ]
+    wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT")]
     check(
-        "covered panel edges are drawn on hidden dashed layer",
-        len(hidden_lines) >= 1 and all(entity.dxf.linetype == "HIDDEN" for entity in hidden_lines),
-        [(entity.dxf.layer, entity.dxf.linetype) for entity in hidden_lines[:5]],
+        "panel drawing does not use cover masks or hidden dashed edges",
+        not hidden_lines and not wipeouts,
+        f"hidden={len(hidden_lines)}, wipeouts={len(wipeouts)}",
     )
-    geom_layer = doc.layers.get("A-DOOR-PANEL-GEOM")
-    check("panel geometry layer is non-plot helper", geom_layer.dxf.plot == 0, geom_layer.dxf.plot)
+    layer_names = [layer.dxf.name for layer in doc.layers]
+    check("panel helper geometry layer is removed", "A-DOOR-PANEL-GEOM" not in doc.layers, layer_names)
+    check("hidden dashed panel layer is removed", "A-DOOR-HIDDEN" not in doc.layers, layer_names)
 
     title_texts = [
         entity for entity in doc.modelspace().query("TEXT")
@@ -806,7 +810,7 @@ def test_new_defaults_fingerprint_and_transom_shape():
     panel_bounds = [
         poly_bounds(entity)
         for entity in arch_doc.modelspace().query("LWPOLYLINE")
-        if entity.dxf.layer == "A-DOOR-PANEL-GEOM"
+        if entity.dxf.layer == "A-DOOR-PANEL"
     ]
     panel_heights = sorted({
         round(float(y2 - y1), 2)

@@ -584,110 +584,17 @@ def draw_door_in_frame(
 
     panel_positions = []
     pillar_inner_light_edges = None
-    cover_rects = []
-
-    def add_cover_rect(x1: float, x2: float, y1: float, y2: float):
-        left, right = sorted((x1, x2))
-        bottom, top = sorted((y1, y2))
-        if right - left > 0.01 and top - bottom > 0.01:
-            cover_rects.append((left, right, bottom, top))
-
-    add_cover_rect(0, left_width, 0, total_h)
-    add_cover_rect(dw - right_width, dw, 0, total_h)
-    add_cover_rect(left_width, dw - right_width, total_h - fw_top, total_h)
-    if th > 0:
-        add_cover_rect(left_width, dw - right_width, 0, th)
-    if qc_h > 0:
-        add_cover_rect(left_width, dw - right_width, mid_frame_bottom, mid_frame_top)
-    if is_integrated_door and integrated_layout:
-        add_cover_rect(left_width, dw - right_width, integrated_layout["press_bottom"], integrated_layout["seal_bottom"])
-        add_cover_rect(left_width, dw - right_width, integrated_layout["glass_bottom"], integrated_layout["glass_rail_top"])
-    if trim_w > 0:
-        add_cover_rect(ox1, ix1, oy1, oy3)
-        add_cover_rect(ix4, ox4, oy1, oy3)
-        add_cover_rect(ix1, ix4, iy3, oy3)
-
-    def merged_intervals(intervals):
-        if not intervals:
-            return []
-        intervals = sorted(intervals)
-        merged = [list(intervals[0])]
-        for start, end in intervals[1:]:
-            if start <= merged[-1][1] + 0.01:
-                merged[-1][1] = max(merged[-1][1], end)
-            else:
-                merged.append([start, end])
-        return [(start, end) for start, end in merged if end - start > 0.01]
-
-    def split_line_by_cover(x1: float, y1: float, x2: float, y2: float):
-        hidden = []
-        if abs(y1 - y2) < 0.01:
-            axis_min, axis_max = sorted((x1, x2))
-            y = y1
-            for rx1, rx2, ry1, ry2 in cover_rects:
-                if ry1 - 0.01 <= y <= ry2 + 0.01:
-                    start, end = max(axis_min, rx1), min(axis_max, rx2)
-                    if end - start > 0.01:
-                        hidden.append((start, end))
-            hidden = merged_intervals(hidden)
-            visible = []
-            cursor = axis_min
-            for start, end in hidden:
-                if start - cursor > 0.01:
-                    visible.append((cursor, start))
-                cursor = max(cursor, end)
-            if axis_max - cursor > 0.01:
-                visible.append((cursor, axis_max))
-            return (
-                [((start, y), (end, y)) for start, end in visible],
-                [((start, y), (end, y)) for start, end in hidden],
-            )
-        if abs(x1 - x2) < 0.01:
-            axis_min, axis_max = sorted((y1, y2))
-            x = x1
-            for rx1, rx2, ry1, ry2 in cover_rects:
-                if rx1 - 0.01 <= x <= rx2 + 0.01:
-                    start, end = max(axis_min, ry1), min(axis_max, ry2)
-                    if end - start > 0.01:
-                        hidden.append((start, end))
-            hidden = merged_intervals(hidden)
-            visible = []
-            cursor = axis_min
-            for start, end in hidden:
-                if start - cursor > 0.01:
-                    visible.append((cursor, start))
-                cursor = max(cursor, end)
-            if axis_max - cursor > 0.01:
-                visible.append((cursor, axis_max))
-            return (
-                [((x, start), (x, end)) for start, end in visible],
-                [((x, start), (x, end)) for start, end in hidden],
-            )
-        return ([((x1, y1), (x2, y2))], [])
 
     def draw_panel_body_rect(x1: float, x2: float):
         left, right = sorted((x1, x2))
         if right - left < 1:
             return
-        points = [
-            (left, panel_y_bot),
-            (right, panel_y_bot),
-            (right, panel_y_top),
-            (left, panel_y_top),
-        ]
-        drawer.draw_poly([off(point) for point in points], 'A-DOOR-PANEL-GEOM')
-        edges = [
-            (left, panel_y_bot, right, panel_y_bot),
-            (right, panel_y_bot, right, panel_y_top),
-            (right, panel_y_top, left, panel_y_top),
-            (left, panel_y_top, left, panel_y_bot),
-        ]
-        for ex1, ey1, ex2, ey2 in edges:
-            visible_segments, hidden_segments = split_line_by_cover(ex1, ey1, ex2, ey2)
-            for start, end in visible_segments:
-                drawer.draw_line(off(start), off(end), 'A-DOOR-PANEL')
-            for start, end in hidden_segments:
-                drawer.draw_line(off(start), off(end), 'A-DOOR-HIDDEN', linetype='HIDDEN')
+        drawer.draw_poly([
+            off((left, panel_y_bot)),
+            off((right, panel_y_bot)),
+            off((right, panel_y_top)),
+            off((left, panel_y_top)),
+        ], 'A-DOOR-PANEL')
 
     if door_type == "单门":
         panel_x1 = ref_left + left_gap
@@ -773,8 +680,6 @@ def draw_door_in_frame(
             lpx2_draw = left_pillar_center + current_pillar_width / 2
             rpx1_draw = right_pillar_center - current_pillar_width / 2
             rpx2_draw = right_pillar_center + current_pillar_width / 2
-            add_cover_rect(lpx1_draw, lpx2_draw, pillar_y_bot, pillar_y_top)
-            add_cover_rect(rpx1_draw, rpx2_draw, pillar_y_bot, pillar_y_top)
 
         draw_panel_body_rect(lx1, lx2)
         if has_pillar and current_pillar_width > 0:
@@ -834,8 +739,6 @@ def draw_door_in_frame(
             lpx2_draw = left_pillar_center + current_pillar_width / 2
             rpx1_draw = right_pillar_center - current_pillar_width / 2
             rpx2_draw = right_pillar_center + current_pillar_width / 2
-            add_cover_rect(lpx1_draw, lpx2_draw, pillar_y_bot, pillar_y_top)
-            add_cover_rect(rpx1_draw, rpx2_draw, pillar_y_bot, pillar_y_top)
 
         draw_panel_body_rect(lx1, lx2)
         if has_pillar and current_pillar_width > 0:
@@ -1004,11 +907,7 @@ def draw_door_in_frame(
         return None
 
     def draw_panel_line(x1: float, y1: float, x2: float, y2: float):
-        visible_segments, hidden_segments = split_line_by_cover(x1, y1, x2, y2)
-        for start, end in visible_segments:
-            drawer.draw_line(off(start), off(end), 'A-DOOR-PANEL')
-        for start, end in hidden_segments:
-            drawer.draw_line(off(start), off(end), 'A-DOOR-HIDDEN', linetype='HIDDEN')
+        drawer.draw_line(off((x1, y1)), off((x2, y2)), 'A-DOOR-PANEL')
 
     def draw_panel_rect(x1: float, x2: float):
         draw_panel_body_rect(x1, x2)
@@ -1404,16 +1303,10 @@ def run_integrated_system(
         drawer.batch_add_layers({
             "A-DOOR-FRAME": 4,
             "A-DOOR-PANEL": 2,
-            "A-DOOR-PANEL-GEOM": 8,
-            "A-DOOR-HIDDEN": 8,
             "A-DOOR-TRIM": 1,
             "YQ_DIM": 3,
             "A-DOOR-mark": 7
         })
-        if "A-DOOR-PANEL-GEOM" in doc.layers:
-            doc.layers.get("A-DOOR-PANEL-GEOM").dxf.plot = 0
-        if "A-DOOR-HIDDEN" in doc.layers:
-            doc.layers.get("A-DOOR-HIDDEN").dxf.linetype = "HIDDEN"
 
         draw_p.update({
             "door_type": info.get("DOOR_TYPE", "单门"),
