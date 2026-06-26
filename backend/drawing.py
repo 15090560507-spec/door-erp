@@ -573,7 +573,9 @@ def draw_door_in_frame(
             pillar_width_front = pillar_small
             pillar_width_back = pillar_big
         current_pillar_width = pillar_width_back if is_back else pillar_width_front
-        layout_pillar_width = pillar_width_front
+        # 门板排布始终以立柱小面为基准，保证小面与门板保持输入门缝。
+        # 大面只在对应视图中变宽，从而形成压门框/压门板的效果。
+        layout_pillar_width = pillar_small
 
     panel_positions = []
     pillar_inner_light_edges = None
@@ -1122,7 +1124,10 @@ def draw_door_in_frame(
     if current_handle == "A1022" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
-            a1022_block = "Z1022" if hblock == "YBPLS" else "Y1022"
+            if is_back:
+                a1022_block = "Y1022" if hblock == "YBPLS" else "Z1022"
+            else:
+                a1022_block = "Z1022" if hblock == "YBPLS" else "Y1022"
             drawer.insert_custom_block(a1022_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
     if current_handle == "A635" and not current_sized_handle:
@@ -1134,8 +1139,12 @@ def draw_door_in_frame(
         handle_y = panel_y_bot + 1000
         targets = handle_targets(60)
         if is_back and door_type == "对开门" and len(panel_positions) >= 2:
-            left_x1, left_x2 = panel_positions[0]
-            targets = [(left_x2 - 60, -1, "ZBPLS")]
+            if door_open_dir == "右开":
+                left_x1, left_x2 = panel_positions[0]
+                targets = [(left_x2 - 60, -1, "ZBPLS")]
+            else:
+                right_x1, right_x2 = panel_positions[1]
+                targets = [(right_x1 + 60, 1, "YBPLS")]
         for hx, _toward_hinge, hblock in targets:
             split_block = "YFTLS" if hblock == "YBPLS" else "ZFTLS"
             drawer.insert_custom_block(split_block, off((hx, handle_y)), layer="A-DOOR-PANEL")

@@ -183,6 +183,58 @@ def test_split_handle_uses_directional_blocks():
     check("split handle inserts left directional block", z_delta >= 1, f"ZFTLS delta: {z_delta}")
     check("split handle no longer inserts old undirected block", old_delta == 0, f"FTLS delta: {old_delta}")
 
+    for open_dir, expected_block in (("右开", "ZFTLS"), ("左开", "YFTLS")):
+        back_req = CADRequest(
+            door_type="对开门",
+            sel_kx=open_dir,
+            zmls="无",
+            fmls="分体拉手",
+        )
+        back_info, back_checks, back_draw_params = build_cad_params(back_req)
+        back_msg, back_buffer = run_integrated_system(back_info, back_checks, back_draw_params)
+        check(f"back split handle {open_dir} CAD generation returns buffer", back_buffer is not None, back_msg)
+        if not back_buffer:
+            continue
+        back_doc = ezdxf.read(io.StringIO(back_buffer.getvalue()))
+        split_inserts = [
+            entity for entity in back_doc.modelspace().query("INSERT")
+            if entity.dxf.name in {"YFTLS", "ZFTLS"} and float(entity.dxf.insert.x) < 10000
+        ]
+        check(
+            f"back split handle {open_dir} keeps only one handle",
+            len(split_inserts) == 1 and split_inserts[0].dxf.name == expected_block,
+            [(entity.dxf.name, float(entity.dxf.insert.x)) for entity in split_inserts],
+        )
+
+
+def test_back_a1022_handle_direction_blocks():
+    req = CADRequest(
+        door_type="对开门",
+        zmls="无",
+        fmls="A1022",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("back A1022 CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    y1022_x = [
+        float(entity.dxf.insert.x) for entity in doc.modelspace().query("INSERT")
+        if entity.dxf.name == "Y1022"
+    ]
+    z1022_x = [
+        float(entity.dxf.insert.x) for entity in doc.modelspace().query("INSERT")
+        if entity.dxf.name == "Z1022"
+    ]
+    check(
+        "back A1022 right leaf uses Y1022 and left leaf uses Z1022",
+        bool(y1022_x and z1022_x and min(z1022_x) < max(y1022_x)),
+        f"Y1022 x: {y1022_x}, Z1022 x: {z1022_x}",
+    )
+
 
 def test_door_panel_style_lines():
     req = CADRequest(
@@ -612,7 +664,7 @@ def test_light_width_uses_pillar_inner_edges():
     x2 = round(float(dim.dxf.defpoint3.x), 2)
     check(
         "pillar light width dimensions between pillar inner edges",
-        (x1, x2) == (-564.0, 242.0),
+        (x1, x2) == (-549.0, 227.0),
         (x1, x2),
     )
 
@@ -997,6 +1049,7 @@ if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_split_handle_uses_directional_blocks()
+    test_back_a1022_handle_direction_blocks()
     test_door_panel_style_lines()
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()

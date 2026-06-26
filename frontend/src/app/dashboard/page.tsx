@@ -18,6 +18,13 @@ import { Thumbnail } from "@/components/ImageModal";
 import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 
+function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
+  const now = new Date();
+  const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const customer = (data.dhdw || "未命名").trim().replace(/[\\/:*?"<>|\s]+/g, "");
+  return `${customer || "未命名"}${date}.dxf`;
+}
+
 export default function DashboardPage() {
   const { module, user } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -244,8 +251,7 @@ export default function DashboardPage() {
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
-      const ts = new Date().toISOString().slice(0,10).replace(/-/g,"");
-      downloadCadBlob(blob, `${formData.dhdw || "unnamed"}${ts}.dxf`);
+      downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("CAD 生成完成！", "success");
     } catch { flash("CAD 生成失败", "error"); }
     setCadLoading(false);
@@ -279,7 +285,7 @@ export default function DashboardPage() {
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
-      downloadCadBlob(blob, `基准图纸_${activeTaskId}.dxf`);
+      downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("基准 CAD 底图已生成", "success");
     } catch { flash("CAD 生成失败", "error"); }
     setCadLoading(false);
@@ -467,7 +473,7 @@ export default function DashboardPage() {
                   </button>
                   {cadBlob && (
                     <button
-                      onClick={() => downloadCadBlob(cadBlob!, `基准图纸_${activeTaskId}.dxf`)}
+                      onClick={() => downloadCadBlob(cadBlob!, cadDownloadFilename(formData))}
                       className="w-full mt-2 py-2.5 rounded-lg bg-[#007AFF] text-white font-semibold text-sm transition-all"
                     >
                       确认下载 DXF

@@ -420,7 +420,11 @@ def generate_cad(req: CADRequest):
 
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
     ts = datetime.datetime.now().strftime("%Y%m%d")
-    raw_filename = f"{req.dhdw or 'weimingming'}{ts}.dxf"
+    safe_customer = "".join(
+        ch for ch in (req.dhdw or "未命名").strip()
+        if ch not in '\\/:*?"<>|' and not ch.isspace()
+    ) or "未命名"
+    raw_filename = f"{safe_customer}{ts}.dxf"
     encoded_filename = quote(raw_filename)
     ascii_filename = "drawing.dxf"
 
