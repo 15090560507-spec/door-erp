@@ -32,9 +32,9 @@ class CADRequest(BaseModel):
     light_h: int = 0                    # 见光高
     mother_door_width: int = 600        # 母门单扇宽
     mid_door_width: int = 400           # 中门单扇宽
-    fw_left_str: str = "55/85"          # 左框宽 (外/内)
-    fw_right_str: str = "55/62"         # 右框宽 (外/内)
-    fw_top_str: str = "55/75"           # 上框宽 (外/内)
+    fw_left_str: str = "55/85"          # 左框宽 (小/大，按开向分配)
+    fw_right_str: str = "55/62"         # 右框宽 (小/大，按开向分配)
+    fw_top_str: str = "55/75"           # 上框宽 (小/大，按开向分配)
     threshold_type: str = "高低槛"      # 下槛方案
     th_str: str = "55/75"               # 下槛高度 (低/高)
     pdk: str = "60"                     # 平底槛厚度
@@ -65,7 +65,7 @@ class CADRequest(BaseModel):
     has_pillar: bool = False            # 立柱
     qc_height: int = 400                # 气窗高
     mm_height: int = 200                # 门楣高
-    pillar_width_str: str = "55/85"     # 立柱宽(外/内)
+    pillar_width_str: str = "55/85"     # 立柱宽(小/大，按开向分配)
     sm: str = ""                        # 批注
     trim_style_outer: str = ""          # 外包套款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
     trim_style_inner: str = ""          # 内包套款式

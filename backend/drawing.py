@@ -562,14 +562,16 @@ def draw_door_in_frame(
     layout_pillar_width = 0
     if door_type in ("两定两开", "四开门") and has_pillar and pillar_width_str:
         parts = parse_dim_str(pillar_width_str, 55, 85)
-        pillar_out = parts[0]
-        pillar_in = parts[1]
+        pillar_small = min(parts[0], parts[1])
+        pillar_big = max(parts[0], parts[1])
         if nk_choice == "内开":
-            pillar_width_front = pillar_out
-            pillar_width_back = pillar_in
+            # 内开时外侧（正面）立柱用大值，内侧（背面）用小值。
+            pillar_width_front = pillar_big
+            pillar_width_back = pillar_small
         else:
-            pillar_width_front = pillar_in
-            pillar_width_back = pillar_out
+            # 外开时内侧（背面）立柱用大值，外侧（正面）用小值。
+            pillar_width_front = pillar_small
+            pillar_width_back = pillar_big
         current_pillar_width = pillar_width_back if is_back else pillar_width_front
         layout_pillar_width = pillar_width_front
 

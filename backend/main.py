@@ -132,28 +132,30 @@ def build_cad_params(req: CADRequest):
         fw_right_str = "55/62"
 
     parts_left = parse_dim_str(fw_left_str, 60, 60)
-    left_out, left_in = parts_left[0], parts_left[1]
+    left_small, left_big = min(parts_left[0], parts_left[1]), max(parts_left[0], parts_left[1])
 
     parts_right = parse_dim_str(fw_right_str, 60, 60)
-    right_out, right_in = parts_right[0], parts_right[1]
+    right_small, right_big = min(parts_right[0], parts_right[1]), max(parts_right[0], parts_right[1])
 
     parts_top = parse_dim_str(req.fw_top_str, 60, 60)
-    fw_top_out, fw_top_in = parts_top[0], parts_top[1]
+    fw_top_small, fw_top_big = min(parts_top[0], parts_top[1]), max(parts_top[0], parts_top[1])
 
     parts_th = parse_dim_str(req.th_str, 60, 60)
-    th_out, th_in = parts_th[0], parts_th[1]
+    th_small, th_big = min(parts_th[0], parts_th[1]), max(parts_th[0], parts_th[1])
 
-    # --- 内外开框宽分配 ---
+    # --- 框宽按开向分配：输入值只表示小/大，不再表示外/内 ---
     if req.sel_nk == "内开":
-        lwf, rwf = left_in, right_in
-        lwb, rwb = left_out, right_out
-        ftf, ftb = fw_top_in, fw_top_out
-        thf, thb = th_in, th_out
+        # 内开时外侧（正面）用大值，内侧（背面）用小值。
+        lwf, rwf = left_big, right_big
+        lwb, rwb = left_small, right_small
+        ftf, ftb = fw_top_big, fw_top_small
+        thf, thb = th_big, th_small
     else:
-        lwf, rwf = left_out, right_out
-        lwb, rwb = left_in, right_in
-        ftf, ftb = fw_top_out, fw_top_in
-        thf, thb = th_out, th_in
+        # 外开时内侧（背面）用大值，外侧（正面）用小值。
+        lwf, rwf = left_small, right_small
+        lwb, rwb = left_big, right_big
+        ftf, ftb = fw_top_small, fw_top_big
+        thf, thb = th_small, th_big
 
     dw = req.dw
     dh = req.dh

@@ -324,7 +324,7 @@ def test_pillar_handle_title_and_three_column_panel():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 55) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
+        if abs((x2 - x1) - 85) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "pillars align to frame inner opening not panel gap",
@@ -354,6 +354,30 @@ def test_frame_defaults_and_single_back_mirror():
     check("single right-open default left frame is hinge-wide", default_req.fw_left_str == "55/85", default_req.fw_left_str)
     check("single right-open default right frame is lock-side", default_req.fw_right_str == "55/62", default_req.fw_right_str)
     check("default top and threshold are 55/75", default_req.fw_top_str == "55/75" and default_req.th_str == "55/75", f"{default_req.fw_top_str}/{default_req.th_str}")
+
+    inner_info, inner_checks, inner_draw_params = build_cad_params(CADRequest(sel_nk="内开", fw_left_str="55/85", fw_right_str="55/62", fw_top_str="55/75", th_str="55/75"))
+    check(
+        "inner-open frame sizes put big values on front/outside",
+        inner_draw_params["left_width_front"] == 85
+        and inner_draw_params["right_width_front"] == 62
+        and inner_draw_params["fw_top_front"] == 75
+        and inner_draw_params["th_front"] == 75
+        and inner_draw_params["left_width_back"] == 55
+        and inner_draw_params["right_width_back"] == 55,
+        inner_draw_params,
+    )
+
+    outer_info, outer_checks, outer_draw_params = build_cad_params(CADRequest(sel_nk="外开", fw_left_str="55/85", fw_right_str="55/62", fw_top_str="55/75", th_str="55/75"))
+    check(
+        "outer-open frame sizes put big values on back/inside",
+        outer_draw_params["left_width_front"] == 55
+        and outer_draw_params["right_width_front"] == 55
+        and outer_draw_params["fw_top_front"] == 55
+        and outer_draw_params["th_front"] == 55
+        and outer_draw_params["left_width_back"] == 85
+        and outer_draw_params["right_width_back"] == 62,
+        outer_draw_params,
+    )
 
     req = CADRequest(
         door_type="单门",
@@ -532,7 +556,7 @@ def test_transom_pillar_lintel_label_and_view_gap():
     pillar_polys = []
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
-        if abs((x2 - x1) - 55) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
+        if abs((x2 - x1) - 85) < 0.01 and abs(y1 - 75) < 0.01 and abs(y2 - 2025) < 0.01:
             pillar_polys.append(entity)
     check(
         "transom pillars stay between middle rail and threshold",

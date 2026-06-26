@@ -358,7 +358,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             )}
           </div>
           {data.has_pillar && (
-            <Input label="立柱宽(外/内)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
+            <Input label="立柱宽(小/大)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
           )}
           {data.is_integrated_door && (
             <div className="grid grid-cols-2 gap-3 mt-3">
@@ -473,9 +473,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="边框与下槛截面">
           <div className="grid grid-cols-2 gap-3">
-            <Input label="左框宽 (外/内)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
-            <Input label="右框宽 (外/内)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
-            <Input label="上框宽 (外/内)" value={data.fw_top_str} onChange={(v) => set("fw_top_str", v)} />
+            <Input label="左框宽 (小/大)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
+            <Input label="右框宽 (小/大)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
+            <Input label="上框宽 (小/大)" value={data.fw_top_str} onChange={(v) => set("fw_top_str", v)} />
             <Select label="下槛方案" value={data.threshold_type} options={o("THRESHOLD_OPTIONS", THRESHOLD_OPTIONS)} onChange={(v) => {
               onChange({ ...data, threshold_type: v, has_dj: v === "吊脚" });
             }} />
