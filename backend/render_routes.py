@@ -85,7 +85,7 @@ async def generate_render(
             payload: Any = json.loads(response_text) if "application/json" in content_type else response_text
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
-        detail = _extract_error_details(body, exc.code)
+        detail = _extract_error_details(body, exc.code, upstream_url)
         raise HTTPException(status_code=502, detail=f"Image API returned error {exc.code}: {detail}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Render request failed: {_sanitize_error(str(exc))}") from exc
@@ -114,7 +114,8 @@ def _build_images_edits_url(base_url: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HTTPException(status_code=400, detail="Base URL must be a valid http or https URL")
     normalized = base_url.rstrip("/")
-    if normalized.endswith("/images/edits"):
+    path = parsed.path.rstrip("/").lower()
+    if re.search(r"/images/(edits|generations|variations)$", path):
         return normalized
     return f"{normalized}/images/edits"
 
@@ -194,7 +195,7 @@ def _normalize_images(payload: Any) -> list[dict[str, str]]:
     return images
 
 
-def _extract_error_details(body: str, status: int) -> str:
+def _extract_error_details(body: str, status: int, upstream_url: str = "") -> str:
     try:
         payload = json.loads(body)
         error = payload.get("error", payload) if isinstance(payload, dict) else payload
@@ -205,6 +206,14 @@ def _extract_error_details(body: str, status: int) -> str:
     except json.JSONDecodeError:
         message = body or f"HTTP {status}"
     message = _sanitize_error(message)
+    safe_url = _safe_url_for_message(upstream_url)
+    if status == 404:
+        suffix = f" 实际调用地址: {safe_url}" if safe_url else ""
+        return (
+            "上游图片接口不存在。请确认 Base URL 是图片接口根路径，例如 https://api.example.com/v1；"
+            "如果服务商图片接口不是 /images/edits，请直接把完整图片接口地址填到 Base URL。"
+            f"{suffix}。原始错误: {_truncate(message, 180)}"
+        )
     if status == 403 and re.search(r"(?:code\s*[:=]?\s*)?1010|error\s+1010", message, re.I):
         return (
             "上游图片接口返回 403/1010，通常表示服务商网关拦截或当前 API Key/模型没有图片编辑权限。"
@@ -213,6 +222,13 @@ def _extract_error_details(body: str, status: int) -> str:
             f"{_truncate(message, 180)}"
         )
     return _truncate(message, 500)
+
+
+def _safe_url_for_message(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urllib.parse.urlparse(url)
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
 
 
 def _sanitize_error(message: str) -> str:
