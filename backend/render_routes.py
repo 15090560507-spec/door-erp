@@ -74,7 +74,7 @@ async def generate_render(
     request = urllib.request.Request(
         upstream_url,
         data=body,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers=_build_upstream_headers(api_key, boundary),
         method="POST",
     )
 
@@ -117,6 +117,18 @@ def _build_images_edits_url(base_url: str) -> str:
     if normalized.endswith("/images/edits"):
         return normalized
     return f"{normalized}/images/edits"
+
+
+def _build_upstream_headers(api_key: str, boundary: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 DoorERP/1.0",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cache-Control": "no-cache",
+    }
 
 
 def _clamp_count(value: int) -> int:
@@ -192,7 +204,15 @@ def _extract_error_details(body: str, status: int) -> str:
             message = str(error)
     except json.JSONDecodeError:
         message = body or f"HTTP {status}"
-    return _truncate(_sanitize_error(message), 500)
+    message = _sanitize_error(message)
+    if status == 403 and re.search(r"(?:code\s*[:=]?\s*)?1010|error\s+1010", message, re.I):
+        return (
+            "上游图片接口返回 403/1010，通常表示服务商网关拦截或当前 API Key/模型没有图片编辑权限。"
+            "请确认 Base URL 指向 OpenAI-compatible 图片接口根路径、模型支持 /images/edits，"
+            "并检查该服务商是否限制服务器 IP 或 Cloudflare/WAF 访问。原始错误: "
+            f"{_truncate(message, 180)}"
+        )
+    return _truncate(message, 500)
 
 
 def _sanitize_error(message: str) -> str:
