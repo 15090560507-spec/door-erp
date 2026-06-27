@@ -117,6 +117,8 @@ def _build_images_edits_url(base_url: str) -> str:
     path = parsed.path.rstrip("/").lower()
     if re.search(r"/images/(edits|generations|variations)$", path):
         return normalized
+    if path and not path.endswith("/v1"):
+        return normalized
     return f"{normalized}/images/edits"
 
 
