@@ -1,10 +1,12 @@
-"""Render image API for forwarding uploaded references to an OpenAI-compatible Images Edits endpoint."""
+"""Render image API for forwarding uploaded references to image generation providers."""
+import base64
 import json
 import re
 import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -13,6 +15,12 @@ render_router = APIRouter()
 MAX_FILE_SIZE = 15 * 1024 * 1024
 DEFAULT_SIZE = "1k"
 DEFAULT_COUNT = 1
+
+
+@dataclass(frozen=True)
+class RenderEndpoint:
+    url: str
+    mode: str
 
 
 @render_router.get("/api/render/health")
@@ -62,21 +70,49 @@ async def generate_render(
         reference_files.append(
             ("reference", _safe_filename(item.filename, f"reference-{index + 1}.png"), item.content_type or "image/png", reference_bytes)
         )
-    upstream_url = _build_images_edits_url(base_url)
+    endpoint = _build_render_endpoint(base_url)
     if labels:
         label_lines = "\n".join(f"{index + 1}. {label or '参考图'}" for index, label in enumerate(labels))
         prompt_text = f"{prompt_text}\n\n参考图对应内容:\n{label_lines}"
-    fields = {"model": model_name, "prompt": prompt_text, "size": image_size, "n": str(image_count)}
-    files = [
-        ("image", _safe_filename(lineArt.filename, "line-art.png"), lineArt.content_type or "image/png", line_bytes),
-    ] + reference_files
-    body, boundary = _build_multipart(fields, files)
-    request = urllib.request.Request(
-        upstream_url,
-        data=body,
-        headers=_build_upstream_headers(api_key, boundary),
-        method="POST",
-    )
+    if endpoint.mode == "ark_images_generations":
+        image_inputs = [_image_data_url(line_bytes, lineArt.content_type or "image/png")]
+        image_inputs.extend(_image_data_url(data, content_type) for _field, _name, content_type, data in reference_files)
+        ark_payload: dict[str, Any] = {
+            "model": model_name,
+            "prompt": prompt_text,
+            "image": image_inputs,
+            "size": _normalize_ark_size(image_size),
+            "response_format": "url",
+            "stream": False,
+            "watermark": False,
+        }
+        if image_count > 1:
+            ark_payload["sequential_image_generation"] = "auto"
+            ark_payload["sequential_image_generation_options"] = {"max_images": image_count}
+        else:
+            ark_payload["sequential_image_generation"] = "disabled"
+        body = json.dumps(
+            ark_payload,
+            ensure_ascii=False,
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            endpoint.url,
+            data=body,
+            headers=_build_json_upstream_headers(api_key),
+            method="POST",
+        )
+    else:
+        fields = {"model": model_name, "prompt": prompt_text, "size": image_size, "n": str(image_count)}
+        files = [
+            ("image", _safe_filename(lineArt.filename, "line-art.png"), lineArt.content_type or "image/png", line_bytes),
+        ] + reference_files
+        body, boundary = _build_multipart(fields, files)
+        request = urllib.request.Request(
+            endpoint.url,
+            data=body,
+            headers=_build_upstream_headers(api_key, boundary),
+            method="POST",
+        )
 
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
@@ -85,7 +121,7 @@ async def generate_render(
             payload: Any = json.loads(response_text) if "application/json" in content_type else response_text
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
-        detail = _extract_error_details(body, exc.code, upstream_url)
+        detail = _extract_error_details(body, exc.code, endpoint.url)
         raise HTTPException(status_code=502, detail=f"Image API returned error {exc.code}: {detail}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Render request failed: {_sanitize_error(str(exc))}") from exc
@@ -109,17 +145,26 @@ async def _read_image_upload(file: UploadFile, label: str) -> bytes:
     return data
 
 
-def _build_images_edits_url(base_url: str) -> str:
+def _build_render_endpoint(base_url: str) -> RenderEndpoint:
     parsed = urllib.parse.urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HTTPException(status_code=400, detail="Base URL must be a valid http or https URL")
     normalized = base_url.rstrip("/")
     path = parsed.path.rstrip("/").lower()
+    host = parsed.netloc.lower()
+    if host.endswith("volces.com") and path.startswith("/api/v3"):
+        if re.search(r"/images/(?:edits|generations|variations)$", path):
+            url = re.sub(r"/images/(?:edits|variations)$", "/images/generations", normalized, flags=re.I)
+        elif path.endswith("/api/v3"):
+            url = f"{normalized}/images/generations"
+        else:
+            url = normalized
+        return RenderEndpoint(url=url, mode="ark_images_generations")
     if re.search(r"/images/(edits|generations|variations)$", path):
-        return normalized
+        return RenderEndpoint(url=normalized, mode="openai_images_edits")
     if path and not path.endswith("/v1"):
-        return normalized
-    return f"{normalized}/images/edits"
+        return RenderEndpoint(url=normalized, mode="openai_images_edits")
+    return RenderEndpoint(url=f"{normalized}/images/edits", mode="openai_images_edits")
 
 
 def _build_upstream_headers(api_key: str, boundary: str) -> dict[str, str]:
@@ -132,6 +177,30 @@ def _build_upstream_headers(api_key: str, boundary: str) -> dict[str, str]:
         "X-Requested-With": "XMLHttpRequest",
         "Cache-Control": "no-cache",
     }
+
+
+def _build_json_upstream_headers(api_key: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 DoorERP/1.0",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cache-Control": "no-cache",
+    }
+
+
+def _image_data_url(data: bytes, content_type: str) -> str:
+    media_type = content_type if content_type.startswith("image/") else "image/png"
+    return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def _normalize_ark_size(size: str) -> str:
+    value = (size or DEFAULT_SIZE).strip()
+    if value.lower() in {"1k", "2k", "4k"}:
+        return value.upper()
+    return value
 
 
 def _clamp_count(value: int) -> int:
