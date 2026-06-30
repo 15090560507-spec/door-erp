@@ -48,6 +48,8 @@ class VolcengineArkProvider(BaseProvider):
                 data = parse_json_response(response)
         except urllib.error.HTTPError as exc:
             raise extract_http_error(exc, url) from exc
+        except ProviderError:
+            raise
         except Exception as exc:
             raise ProviderError(f"模型请求失败: {exc}", error_type="request_error") from exc
         results = normalize_images(data)
@@ -75,4 +77,3 @@ def _ark_size(size: str, line_art: dict) -> str:
     out_w = max(8, int(round(out_w / 8)) * 8)
     out_h = max(8, int(round(out_h / 8)) * 8)
     return f"{out_w}x{out_h}"
-

@@ -166,23 +166,62 @@ function normalizeRenderError(error: unknown): Error & { userMessage?: string; t
   const err = error as {
     userMessage?: string;
     message?: string;
-    response?: { data?: { detail?: unknown } };
+    response?: { status?: number; data?: unknown };
   };
-  const detail = err.response?.data?.detail;
-  let message = "";
-  let task: RenderTask | undefined;
-  let raw = "";
-  if (typeof detail === "string") message = detail;
-  else if (detail && typeof detail === "object") {
-    const record = detail as Record<string, unknown>;
-    if (record.task && typeof record.task === "object") task = record.task as RenderTask;
-    if (typeof record.raw === "string") raw = record.raw;
-    message = String(record.message || record.errorMessage || JSON.stringify(detail));
+  const parsed = extractRenderErrorPayload(err.response?.data);
+  let message = parsed.message || err.userMessage || err.message || "效果渲染请求失败";
+  if (/^Request failed with status code \d+$/i.test(message) && err.response?.status) {
+    message = `效果渲染请求失败，状态码 ${err.response.status}`;
   }
-  if (!message) message = err.userMessage || err.message || "效果渲染请求失败";
   const next = new Error(message) as Error & { userMessage?: string; task?: RenderTask; raw?: string };
   next.userMessage = message;
-  next.task = task;
-  next.raw = raw;
+  next.task = parsed.task;
+  next.raw = parsed.raw;
   return next;
+}
+
+function extractRenderErrorPayload(data: unknown): { message: string; task?: RenderTask; raw?: string } {
+  if (!data) return { message: "" };
+  if (typeof data === "string") return { message: cleanupErrorText(data) };
+  if (Array.isArray(data)) {
+    return { message: data.map((item) => extractRenderErrorPayload(item).message).filter(Boolean).join("; ") };
+  }
+  if (typeof data !== "object") return { message: "" };
+
+  const record = data as Record<string, unknown>;
+  const nested = record.detail ? extractRenderErrorPayload(record.detail) : { message: "" };
+  const task = record.task && typeof record.task === "object" ? record.task as RenderTask : nested.task;
+  const raw =
+    typeof record.raw === "string" ? record.raw :
+    typeof record.upstreamRawError === "string" ? record.upstreamRawError :
+    nested.raw;
+  const direct = firstString(record.message, record.errorMessage, record.error, record.reason);
+  const message = direct || nested.message || fallbackObjectMessage(record);
+  return { message: cleanupErrorText(message), task, raw };
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function fallbackObjectMessage(record: Record<string, unknown>): string {
+  try {
+    const text = JSON.stringify(record);
+    return text === "{}" ? "" : text;
+  } catch {
+    return "";
+  }
+}
+
+function cleanupErrorText(text: string): string {
+  const value = (text || "").trim();
+  if (!value) return "";
+  if (/^\s*<!doctype html/i.test(value) || /^\s*<html/i.test(value)) {
+    const title = value.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+    return title ? `上游返回 HTML 页面：${title}` : "上游返回 HTML 页面，不是图片接口 JSON";
+  }
+  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }

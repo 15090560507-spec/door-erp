@@ -59,6 +59,8 @@ class OpenAIImagesProvider(BaseProvider):
                 payload = parse_json_response(response)
         except urllib.error.HTTPError as exc:
             raise extract_http_error(exc, url) from exc
+        except ProviderError:
+            raise
         except Exception as exc:
             raise ProviderError(f"模型请求失败: {exc}", error_type="request_error") from exc
         images = normalize_images(payload)

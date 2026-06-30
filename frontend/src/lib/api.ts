@@ -44,6 +44,9 @@ api.interceptors.response.use(
       error.userMessage = detail;
     } else if (Array.isArray(detail) && detail.length > 0) {
       error.userMessage = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
+    } else if (detail && typeof detail === "object") {
+      const detailMessage = extractApiErrorMessage(detail);
+      if (detailMessage) error.userMessage = detailMessage;
     } else if (error.code === "ECONNABORTED") {
       error.userMessage = "请求超时，请检查网络后重试";
     } else if (!error.response) {
@@ -53,6 +56,31 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+function extractApiErrorMessage(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return cleanupApiErrorText(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => extractApiErrorMessage(item)).filter(Boolean).join("; ");
+  }
+  if (typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  for (const key of ["message", "errorMessage", "error", "reason"]) {
+    const item = record[key];
+    if (typeof item === "string" && item.trim()) return cleanupApiErrorText(item);
+  }
+  if (record.detail) return extractApiErrorMessage(record.detail);
+  return "";
+}
+
+function cleanupApiErrorText(text: string): string {
+  const value = (text || "").trim();
+  if (/^\s*<!doctype html/i.test(value) || /^\s*<html/i.test(value)) {
+    const title = value.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim();
+    return title ? `上游返回 HTML 页面：${title}` : "上游返回 HTML 页面，不是接口 JSON";
+  }
+  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
 
 export async function login(uid: string, pwd: string): Promise<LoginResponse> {
   const { data } = await api.post<LoginResponse>("/login", { uid, pwd });
