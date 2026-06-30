@@ -1,7 +1,11 @@
 import json
+import math
+import re
 import urllib.error
 import urllib.request
 import uuid
+
+from rendering.storage import image_size
 
 from .base import (
     BaseProvider,
@@ -24,11 +28,15 @@ class OpenAIImagesProvider(BaseProvider):
         api_key = request.config.get("apiKey") or ""
         if not api_key:
             raise ProviderError("模型配置缺少 API Key", status_code=400, error_type="config_error")
+        image_options = _image2_options(request.size, request.line_art)
+        model = _normalize_model(request.config.get("model"))
         if api_type == "openai_images_generations":
             payload = {
-                "model": request.config.get("model"),
+                "model": model,
                 "prompt": request.prompt,
-                "size": _normalize_size(request.size),
+                "size": image_options["size"],
+                "aspect_ratio": image_options["aspect_ratio"],
+                "resolution": image_options["resolution"],
                 "n": request.count,
             }
             upstream = urllib.request.Request(
@@ -39,9 +47,11 @@ class OpenAIImagesProvider(BaseProvider):
             )
         else:
             fields = {
-                "model": request.config.get("model", ""),
+                "model": model,
                 "prompt": _prompt_with_labels(request),
-                "size": _normalize_size(request.size),
+                "size": image_options["size"],
+                "aspect_ratio": image_options["aspect_ratio"],
+                "resolution": image_options["resolution"],
                 "n": str(request.count),
             }
             files = [("image", request.line_art)]
@@ -69,9 +79,73 @@ class OpenAIImagesProvider(BaseProvider):
         return {"images": images, "raw": payload}
 
 
-def _normalize_size(size: str) -> str:
-    value = (size or "").strip()
-    return "1024x1024" if value in {"", "original"} else value
+def _normalize_model(model: str | None) -> str:
+    value = (model or "").strip()
+    return "gpt-image-2" if value in {"", "image2"} else value
+
+
+def _image2_options(size: str, line_art: dict | None = None) -> dict[str, str]:
+    value = (size or "original").strip().lower()
+    width, height = _source_size(line_art)
+    if re.fullmatch(r"\d+x\d+", value):
+        width, height = [int(part) for part in value.split("x", 1)]
+        aspect_ratio = _closest_aspect_ratio(width, height)
+        resolution = _resolution_from_size(width, height)
+        return {"size": value, "aspect_ratio": aspect_ratio, "resolution": resolution}
+
+    aspect_ratio = _closest_aspect_ratio(width, height)
+    resolution = value if value in {"1k", "2k", "4k"} else _resolution_from_size(width, height)
+    out_width, out_height = _size_from_ratio(aspect_ratio, resolution)
+    return {"size": f"{out_width}x{out_height}", "aspect_ratio": aspect_ratio, "resolution": resolution}
+
+
+def _source_size(line_art: dict | None) -> tuple[int, int]:
+    try:
+        if line_art and line_art.get("filePath"):
+            return image_size(line_art["filePath"])
+    except Exception:
+        pass
+    return (1024, 1024)
+
+
+def _resolution_from_size(width: int, height: int) -> str:
+    long_side = max(width, height)
+    if long_side > 2600:
+        return "4k"
+    if long_side > 1300:
+        return "2k"
+    return "1k"
+
+
+def _closest_aspect_ratio(width: int, height: int) -> str:
+    supported = {
+        "1x1": (1, 1),
+        "5x4": (5, 4),
+        "9x16": (9, 16),
+        "21x9": (21, 9),
+        "16x9": (16, 9),
+        "4x3": (4, 3),
+        "3x2": (3, 2),
+        "4x5": (4, 5),
+        "3x4": (3, 4),
+        "2x3": (2, 3),
+    }
+    target = max(width, 1) / max(height, 1)
+    return min(supported, key=lambda key: abs(math.log((supported[key][0] / supported[key][1]) / target)))
+
+
+def _size_from_ratio(aspect_ratio: str, resolution: str) -> tuple[int, int]:
+    base = {"1k": 1024, "2k": 2048, "4k": 4096}.get(resolution, 1024)
+    ratio_width, ratio_height = [int(part) for part in aspect_ratio.split("x", 1)]
+    if ratio_width >= ratio_height:
+        width = base
+        height = round(base * ratio_height / ratio_width)
+    else:
+        height = base
+        width = round(base * ratio_width / ratio_height)
+    width = max(8, int(round(width / 8)) * 8)
+    height = max(8, int(round(height / 8)) * 8)
+    return width, height
 
 
 def _prompt_with_labels(request: RenderProviderRequest) -> str:

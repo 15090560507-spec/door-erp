@@ -24,7 +24,7 @@ const EMPTY_CONFIG: ModelConfigInput = {
   provider: "image2_proxy",
   baseUrl: "",
   apiKey: "",
-  model: "",
+  model: "image2",
   endpoint: "/images/edits",
   apiType: "openai_images_edits",
   defaultSize: "original",
@@ -268,7 +268,7 @@ export default function RenderPage() {
             <span className="text-[12px] font-medium text-[#8E8E93]">提示词</span>
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
           </label>
-          <Select label="尺寸" value={size} onChange={setSize} options={[["original", "原比例"], ["2k", "2K"], ["4k", "4K"], ["1024x1024", "1024x1024"]]} />
+          <Select label="尺寸" value={size} onChange={setSize} options={[["original", "原比例"], ["1k", "1K"], ["2k", "2K"], ["4k", "4K"], ["1024x1024", "1024x1024"]]} />
           <label>
             <span className="text-[12px] font-medium text-[#8E8E93]">数量</span>
             <input type="number" min={1} max={1} value={count} disabled onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] disabled:bg-[#F2F2F7]" />
