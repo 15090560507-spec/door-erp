@@ -82,11 +82,9 @@ async def generate_render(
         ark_payload: dict[str, Any] = {
             "model": model_name,
             "prompt": prompt_text,
-            "image": image_inputs,
-                "size": _normalize_ark_size(image_size, line_bytes),
+            "images": image_inputs,
+            "size": _normalize_ark_size(image_size, line_bytes),
             "response_format": "url",
-            "stream": False,
-            "watermark": False,
         }
         if image_count > 1:
             ark_payload["sequential_image_generation"] = "auto"
@@ -202,7 +200,7 @@ def _normalize_ark_size(size: str, source_image: bytes) -> str:
     value = (size or DEFAULT_SIZE).strip()
     lower = value.lower()
     if lower in {"original", "auto", "原比例"}:
-        return _image_pixel_size(source_image)
+        return _image_ratio_size(source_image)
     if lower in {"2k", "4k"}:
         return lower
     if re.fullmatch(r"\d+x\d+", lower):
@@ -212,13 +210,28 @@ def _normalize_ark_size(size: str, source_image: bytes) -> str:
     return value
 
 
-def _image_pixel_size(data: bytes) -> str:
+def _image_ratio_size(data: bytes) -> str:
     try:
         with Image.open(BytesIO(data)) as image:
             width, height = image.size
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Cannot read line art image size: {_sanitize_error(str(exc))}") from exc
-    return f"{width}x{height}"
+    if width <= 0 or height <= 0:
+        raise HTTPException(status_code=400, detail="Cannot read a valid line art image size")
+    target_long_edge = 2048
+    if width >= height:
+        target_width = target_long_edge
+        target_height = round(height * target_long_edge / width)
+    else:
+        target_height = target_long_edge
+        target_width = round(width * target_long_edge / height)
+    target_width = _round_to_multiple(target_width, 8)
+    target_height = _round_to_multiple(target_height, 8)
+    return f"{target_width}x{target_height}"
+
+
+def _round_to_multiple(value: int, step: int) -> int:
+    return max(step, int(round(value / step)) * step)
 
 
 def _clamp_count(value: int) -> int:
