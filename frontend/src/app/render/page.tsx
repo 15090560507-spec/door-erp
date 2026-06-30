@@ -50,6 +50,7 @@ export default function RenderPage() {
   const [count, setCount] = useState(1);
   const [activeTask, setActiveTask] = useState<RenderTask | null>(null);
   const [message, setMessage] = useState("");
+  const [errorDialog, setErrorDialog] = useState<{ title: string; message: string; raw?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const selectedConfig = configs.find((item) => item.id === selectedConfigId);
 
@@ -143,8 +144,14 @@ export default function RenderPage() {
       setTasks(await listRenderTasks());
       setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
     } catch (error: unknown) {
-      const err = error as { userMessage?: string; message?: string };
-      setMessage(err.userMessage || err.message || "效果渲染失败");
+      const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
+      const text = err.userMessage || err.message || "效果渲染失败";
+      if (err.task) {
+        setActiveTask(err.task);
+        setTasks(await listRenderTasks());
+      }
+      setMessage(text);
+      setErrorDialog({ title: "效果渲染失败", message: text, raw: err.raw || err.task?.upstreamRawError || "" });
     } finally {
       setLoading(false);
     }
@@ -168,6 +175,26 @@ export default function RenderPage() {
         </div>
         {message && <span className="max-w-[520px] rounded-full bg-[#007AFF]/10 px-3 py-1 text-[12px] font-medium text-[#007AFF]">{message}</span>}
       </header>
+      {errorDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[16px] font-semibold text-[#1C1C1E]">{errorDialog.title}</h2>
+              <button type="button" onClick={() => setErrorDialog(null)} className="rounded-lg px-2 py-1 text-[18px] text-[#8E8E93] hover:bg-[#F2F2F7]">×</button>
+            </div>
+            <p className="rounded-xl bg-[#FF3B30]/10 px-3 py-2 text-[13px] leading-6 text-[#FF3B30]">{errorDialog.message}</p>
+            {errorDialog.raw && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-[12px] font-medium text-[#007AFF]">查看上游原始返回</summary>
+                <pre className="mt-2 max-h-52 overflow-auto rounded-xl bg-[#1C1C1E] p-3 text-[11px] leading-5 text-white">{errorDialog.raw}</pre>
+              </details>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => setErrorDialog(null)} className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white">知道了</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">

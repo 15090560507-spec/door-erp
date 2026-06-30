@@ -67,24 +67,62 @@ def parse_json_response(response) -> Any:
 
 
 def normalize_images(payload: Any) -> list[dict]:
-    candidates: list[Any] = []
-    if isinstance(payload, dict):
-        if isinstance(payload.get("data"), list):
-            candidates.extend(payload["data"])
-        if payload.get("b64_json") or payload.get("url"):
-            candidates.append(payload)
-        if isinstance(payload.get("images"), list):
-            candidates.extend(payload["images"])
     images: list[dict] = []
-    for item in candidates:
-        if not isinstance(item, dict):
-            continue
-        if item.get("b64_json"):
-            value = str(item["b64_json"])
-            images.append({"type": "b64_json", "src": value if value.startswith("data:") else f"data:image/png;base64,{value}"})
-        elif item.get("url"):
-            images.append({"type": "url", "src": str(item["url"])})
+    seen: set[str] = set()
+
+    def add_image(kind: str, value: Any):
+        src = str(value or "").strip()
+        if not src:
+            return
+        if kind == "b64_json" and not src.startswith("data:"):
+            src = f"data:image/png;base64,{src}"
+        if src in seen:
+            return
+        seen.add(src)
+        images.append({"type": kind, "src": src})
+
+    def walk(value: Any, key_hint: str = ""):
+        if value is None:
+            return
+        if isinstance(value, str):
+            text = value.strip()
+            lower_key = key_hint.lower()
+            if text.startswith("data:image/"):
+                add_image("b64_json", text)
+            elif text.startswith(("http://", "https://")) and _looks_like_image_url_key(lower_key, text):
+                add_image("url", text)
+            elif lower_key in {"b64_json", "base64", "image_base64", "imagebase64"} and len(text) > 100:
+                add_image("b64_json", text)
+            return
+        if isinstance(value, list):
+            for item in value:
+                walk(item, key_hint)
+            return
+        if not isinstance(value, dict):
+            return
+
+        for key in ["b64_json", "base64", "image_base64", "imageBase64"]:
+            if key in value:
+                add_image("b64_json", value.get(key))
+        for key in ["url", "image_url", "imageUrl", "image", "output_url", "outputUrl"]:
+            if key in value and isinstance(value.get(key), str):
+                item = str(value.get(key) or "").strip()
+                if item.startswith("data:image/"):
+                    add_image("b64_json", item)
+                elif item.startswith(("http://", "https://")):
+                    add_image("url", item)
+
+        for key, child in value.items():
+            walk(child, str(key))
+
+    walk(payload)
     return images
+
+
+def _looks_like_image_url_key(key: str, value: str) -> bool:
+    if any(token in key for token in ["url", "image", "img", "output", "result"]):
+        return True
+    return bool(re.search(r"\.(png|jpe?g|webp)(?:\?|$)", value, re.I))
 
 
 def safe_join_url(base_url: str, endpoint: str) -> str:
@@ -128,4 +166,3 @@ def _sanitize(text: str) -> str:
     value = re.sub(r"Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [hidden]", value, flags=re.I)
     value = re.sub(r"api[_-]?key[\"']?\s*[:=]\s*[\"'][^\"']+[\"']", "api_key: [hidden]", value, flags=re.I)
     return value
-

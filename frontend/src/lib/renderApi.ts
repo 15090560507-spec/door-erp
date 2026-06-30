@@ -162,7 +162,7 @@ export async function listRenderTasks(limit = 30): Promise<RenderTask[]> {
   return data.tasks || [];
 }
 
-function normalizeRenderError(error: unknown): Error & { userMessage?: string } {
+function normalizeRenderError(error: unknown): Error & { userMessage?: string; task?: RenderTask; raw?: string } {
   const err = error as {
     userMessage?: string;
     message?: string;
@@ -170,13 +170,19 @@ function normalizeRenderError(error: unknown): Error & { userMessage?: string } 
   };
   const detail = err.response?.data?.detail;
   let message = "";
+  let task: RenderTask | undefined;
+  let raw = "";
   if (typeof detail === "string") message = detail;
   else if (detail && typeof detail === "object") {
     const record = detail as Record<string, unknown>;
+    if (record.task && typeof record.task === "object") task = record.task as RenderTask;
+    if (typeof record.raw === "string") raw = record.raw;
     message = String(record.message || record.errorMessage || JSON.stringify(detail));
   }
   if (!message) message = err.userMessage || err.message || "效果渲染请求失败";
-  const next = new Error(message) as Error & { userMessage?: string };
+  const next = new Error(message) as Error & { userMessage?: string; task?: RenderTask; raw?: string };
   next.userMessage = message;
+  next.task = task;
+  next.raw = raw;
   return next;
 }
