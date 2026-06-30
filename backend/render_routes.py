@@ -7,13 +7,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from PIL import Image
 
 render_router = APIRouter()
 MAX_FILE_SIZE = 15 * 1024 * 1024
-DEFAULT_SIZE = "1k"
+DEFAULT_SIZE = "original"
 DEFAULT_COUNT = 1
 
 
@@ -81,7 +83,7 @@ async def generate_render(
             "model": model_name,
             "prompt": prompt_text,
             "image": image_inputs,
-            "size": _normalize_ark_size(image_size),
+                "size": _normalize_ark_size(image_size, line_bytes),
             "response_format": "url",
             "stream": False,
             "watermark": False,
@@ -196,11 +198,27 @@ def _image_data_url(data: bytes, content_type: str) -> str:
     return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
 
 
-def _normalize_ark_size(size: str) -> str:
+def _normalize_ark_size(size: str, source_image: bytes) -> str:
     value = (size or DEFAULT_SIZE).strip()
-    if value.lower() in {"1k", "2k", "4k"}:
-        return value.upper()
+    lower = value.lower()
+    if lower in {"original", "auto", "原比例"}:
+        return _image_pixel_size(source_image)
+    if lower in {"2k", "4k"}:
+        return lower
+    if re.fullmatch(r"\d+x\d+", lower):
+        return lower
+    if lower == "3k":
+        return "2k"
     return value
+
+
+def _image_pixel_size(data: bytes) -> str:
+    try:
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot read line art image size: {_sanitize_error(str(exc))}") from exc
+    return f"{width}x{height}"
 
 
 def _clamp_count(value: int) -> int:

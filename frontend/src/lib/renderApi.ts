@@ -32,7 +32,7 @@ export async function generateRender(input: RenderGenerateInput): Promise<Render
   formData.append("apiKey", input.apiKey.trim());
   formData.append("model", input.model.trim());
   formData.append("prompt", input.prompt.trim());
-  formData.append("size", input.size || "1k");
+  formData.append("size", input.size || "original");
   formData.append("count", String(input.count || 1));
 
   try {

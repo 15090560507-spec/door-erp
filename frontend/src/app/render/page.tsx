@@ -92,7 +92,7 @@ export default function RenderPage() {
   const [lineArtPreview, setLineArtPreview] = useState("");
   const [references, setReferences] = useState<ReferenceRow[]>(() => defaultReferenceRows());
   const [prompt, setPrompt] = useState(T.defaultPrompt);
-  const [size, setSize] = useState("1k");
+  const [size, setSize] = useState("original");
   const [results, setResults] = useState<RenderImageResult[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -283,7 +283,7 @@ export default function RenderPage() {
     setLineArtPreview("");
     setReferences(defaultReferenceRows());
     setPrompt(T.defaultPrompt);
-    setSize("1k");
+    setSize("original");
     setResults([]);
     setActiveIndex(0);
     showMessage(T.resetKeptConfig, "");
@@ -364,7 +364,7 @@ export default function RenderPage() {
       <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-5 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_160px] gap-3">
           <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Prompt</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={4} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none resize-y" /></label>
-          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Size</span><select value={size} onChange={(event) => setSize(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"><option value="1k">1K</option><option value="2k">2K</option><option value="4k">4K</option></select></label>
+          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Size</span><select value={size} onChange={(event) => setSize(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"><option value="original">原比例</option><option value="2k">2K</option><option value="4k">4K</option></select></label>
         </div>
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={resetAll} disabled={loading} className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 disabled:opacity-50 transition-colors">{T.clear}</button>
