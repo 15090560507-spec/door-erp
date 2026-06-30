@@ -63,6 +63,13 @@ def parse_json_response(response) -> Any:
     text = response.read().decode("utf-8", errors="ignore")
     if "application/json" in content_type or text.strip().startswith(("{", "[")):
         return json.loads(text)
+    if _looks_like_html(text):
+        raise ProviderError(
+            "上游返回的是网页 HTML，不是图片接口 JSON。通常是 Base URL 或 Endpoint 配错了；New API/OpenAI 兼容接口一般需要 /v1/images/edits 或 /v1/images/generations。",
+            status_code=502,
+            error_type="upstream_html_response",
+            raw=_sanitize(text)[:1200],
+        )
     return text
 
 
@@ -138,6 +145,23 @@ def safe_join_url(base_url: str, endpoint: str) -> str:
     return f"{base}/{path.lstrip('/')}" if path else base
 
 
+def openai_join_url(base_url: str, endpoint: str) -> str:
+    base = (base_url or "").strip().rstrip("/")
+    path = (endpoint or "").strip() or "/images/edits"
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    parsed = urllib.parse.urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ProviderError("Base URL 必须是有效的 http/https 地址", status_code=400, error_type="config_error")
+    lower_base_path = parsed.path.rstrip("/").lower()
+    clean_path = path.lstrip("/")
+    if clean_path.startswith("v1/") or lower_base_path.endswith("/v1"):
+        return f"{base}/{clean_path}"
+    if clean_path.startswith("images/"):
+        return f"{base}/v1/{clean_path}"
+    return f"{base}/{clean_path}"
+
+
 def extract_http_error(exc, url: str = "") -> ProviderError:
     body = exc.read().decode("utf-8", errors="ignore")
     message = body or f"HTTP {exc.code}"
@@ -166,3 +190,8 @@ def _sanitize(text: str) -> str:
     value = re.sub(r"Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [hidden]", value, flags=re.I)
     value = re.sub(r"api[_-]?key[\"']?\s*[:=]\s*[\"'][^\"']+[\"']", "api_key: [hidden]", value, flags=re.I)
     return value
+
+
+def _looks_like_html(text: str) -> bool:
+    sample = (text or "").lstrip()[:300].lower()
+    return sample.startswith("<!doctype html") or sample.startswith("<html") or "<title>" in sample

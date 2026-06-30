@@ -10,9 +10,8 @@ from .base import (
     auth_headers,
     extract_http_error,
     normalize_images,
+    openai_join_url,
     parse_json_response,
-    read_data_url,
-    safe_join_url,
 )
 
 
@@ -20,7 +19,7 @@ class OpenAIImagesProvider(BaseProvider):
     def render(self, request: RenderProviderRequest) -> dict:
         api_type = request.config.get("apiType") or "openai_images_edits"
         endpoint = request.config.get("endpoint") or "/images/edits"
-        url = safe_join_url(request.config.get("baseUrl", ""), endpoint)
+        url = openai_join_url(request.config.get("baseUrl", ""), endpoint)
         timeout = int(request.config.get("timeoutSeconds") or 180)
         api_key = request.config.get("apiKey") or ""
         if not api_key:
@@ -105,4 +104,3 @@ def _multipart(fields: dict[str, str], files: list[tuple[str, dict]]) -> tuple[b
         chunks.append(b"\r\n")
     chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
     return b"".join(chunks), boundary
-
