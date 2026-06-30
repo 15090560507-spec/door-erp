@@ -1,483 +1,321 @@
-
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { generateRender, type RenderImageResult } from "@/lib/renderApi";
+import {
+  RENDER_CATEGORIES,
+  createRenderModelConfig,
+  createRenderTask,
+  deleteRenderAsset,
+  listRenderAssets,
+  listRenderModelConfigs,
+  listRenderTasks,
+  updateRenderModelConfig,
+  uploadRenderAsset,
+  type ModelConfigInput,
+  type RenderAsset,
+  type RenderModelConfig,
+  type RenderTask,
+} from "@/lib/renderApi";
 
-const CONFIG_KEY = "door_render_config_v1";
-const LIBRARY_KEY = "door_render_reference_library_v1";
+const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
 
-const PART_OPTIONS = ["\u6b3e\u5f0f", "\u62c9\u624b", "\u82b1\u4ef6", "\u989c\u8272", "\u5408\u9875"];
-const DEFAULT_REFERENCE_LABELS = ["\u6b3e\u5f0f", "\u62c9\u624b", "\u82b1\u4ef6", "\u5408\u9875"];
-
-const T = {
-  defaultPrompt: "\u57fa\u4e8e\u7ebf\u7a3f\u7ed3\u6784\u751f\u6210\u95e8\u4e1a\u6548\u679c\u56fe\uff0c\u4fdd\u7559\u95e8\u578b\u6bd4\u4f8b\u548c\u4e3b\u8981\u7ebf\u6761\uff0c\u53c2\u8003\u56fe\u6309\u5bf9\u5e94\u6587\u672c\u4ec5\u7528\u4e8e\u76f8\u5e94\u90e8\u4ef6\u3001\u6750\u8d28\u3001\u989c\u8272\u548c\u6c1b\u56f4\uff0c\u771f\u5b9e\u4ea7\u54c1\u6e32\u67d3\u98ce\u683c\u3002",
-  uploadImageOnly: "\u8bf7\u4e0a\u4f20\u56fe\u7247\u6587\u4ef6",
-  loaded: "\u5df2\u8f7d\u5165",
-  uploadLineFirst: "\u8bf7\u5148\u4e0a\u4f20\u7ebf\u7a3f\u56fe",
-  uploadReferenceFirst: "\u8bf7\u81f3\u5c11\u4e0a\u4f20\u4e00\u5f20\u53c2\u8003\u56fe",
-  fill: "\u8bf7\u586b\u5199",
-  generating: "\u6b63\u5728\u751f\u6210\u6548\u679c\u56fe...",
-  generatedPrefix: "\u751f\u6210\u5b8c\u6210\uff0c\u5171",
-  generatedSuffix: "\u5f20",
-  failed: "\u6548\u679c\u6e32\u67d3\u5931\u8d25",
-  filenamePrefix: "\u6548\u679c\u6e32\u67d3",
-  resetKeptConfig: "\u5df2\u6e05\u7a7a\u4e0a\u4f20\u548c\u7ed3\u679c\uff0c\u6a21\u578b\u914d\u7f6e\u548c\u5e38\u7528\u5e93\u5df2\u4fdd\u7559",
-  title: "\u6548\u679c\u6e32\u67d3",
-  subtitle: "\u4e0a\u4f20\u7ebf\u7a3f\uff0c\u4e3a\u6b3e\u5f0f\u3001\u62c9\u624b\u3001\u82b1\u4ef6\u7b49\u914d\u4ef6\u5206\u522b\u6dfb\u52a0\u53c2\u8003\u56fe\u3002",
-  configTitle: "\u6a21\u578b\u914d\u7f6e",
-  libraryTitle: "\u6211\u7684\u5e38\u7528\u53c2\u8003\u5e93",
-  collapse: "\u6536\u8d77",
-  expand: "\u5c55\u5f00",
-  lineArtTitle: "\u7ebf\u7a3f\u56fe\u7eb8",
-  referencesTitle: "\u53c2\u8003\u56fe\u7eb8",
-  resultTitle: "\u751f\u6210\u7ed3\u679c",
-  download: "\u4e0b\u8f7d",
-  resultAlt: "\u6548\u679c\u6e32\u67d3\u7ed3\u679c",
-  emptyResult: "\u751f\u6210\u540e\u7684\u6548\u679c\u56fe\u4f1a\u663e\u793a\u5728\u8fd9\u91cc",
-  resultThumb: "\u7ed3\u679c",
-  clear: "\u6e05\u7a7a",
-  generate: "\u751f\u6210\u6548\u679c\u56fe",
-  generatingShort: "\u751f\u6210\u4e2d...",
-  clickUpload: "\u70b9\u51fb\u4e0a\u4f20",
-  support: "\u652f\u6301 PNG\u3001JPG\u3001WEBP",
-  clearPrefix: "\u6e05\u7a7a",
-  preview: "\u9884\u89c8",
-  addReference: "\u6dfb\u52a0\u53c2\u8003\u9879",
-  remove: "\u5220\u9664",
-  saveToLibrary: "\u4fdd\u5b58\u5230\u5e38\u7528\u5e93",
-  savedToLibrary: "\u5df2\u4fdd\u5b58\u5230\u5e38\u7528\u5e93",
-  uploadToLibrary: "上传到常用库",
-  libraryCategory: "分类",
-  batchUploadLibrary: "批量上传参考图",
-  chooseFromLibrary: "\u4ece\u5e93\u9009\u62e9",
-  noLibrary: "\u5e38\u7528\u5e93\u6682\u65e0\u56fe\u7247",
-  partLabel: "\u53c2\u8003\u5185\u5bb9",
-  imageLabel: "\u53c2\u8003\u56fe",
-  customPart: "\u8f93\u5165\u6216\u9009\u62e9\u914d\u4ef6\u7c7b\u578b",
+const EMPTY_CONFIG: ModelConfigInput = {
+  name: "",
+  provider: "image2_proxy",
+  baseUrl: "",
+  apiKey: "",
+  model: "",
+  endpoint: "/images/edits",
+  apiType: "openai_images_edits",
+  defaultSize: "original",
+  timeoutSeconds: 180,
+  enabled: true,
 };
 
-interface RenderConfig {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  count: number;
-}
-
-interface ReferenceRow {
-  id: string;
-  label: string;
-  file: File | null;
-  preview: string;
-  fileName: string;
-}
-
-interface LibraryItem {
-  id: string;
-  label: string;
-  name: string;
-  dataUrl: string;
-  createdAt: number;
-}
-
-const defaultConfig: RenderConfig = { baseUrl: "", apiKey: "", model: "", count: 1 };
-
 export default function RenderPage() {
-  const [config, setConfig] = useState<RenderConfig>(defaultConfig);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [library, setLibrary] = useState<LibraryItem[]>([]);
-  const [libraryUploadLabel, setLibraryUploadLabel] = useState(PART_OPTIONS[0]);
+  const [configs, setConfigs] = useState<RenderModelConfig[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState("");
+  const [configForm, setConfigForm] = useState<ModelConfigInput>(EMPTY_CONFIG);
+  const [editingConfigId, setEditingConfigId] = useState("");
+  const [assets, setAssets] = useState<RenderAsset[]>([]);
+  const [tasks, setTasks] = useState<RenderTask[]>([]);
+  const [category, setCategory] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [lineArt, setLineArt] = useState<File | null>(null);
-  const [lineArtPreview, setLineArtPreview] = useState("");
-  const [references, setReferences] = useState<ReferenceRow[]>(() => defaultReferenceRows());
-  const [prompt, setPrompt] = useState(T.defaultPrompt);
+  const [styleReference, setStyleReference] = useState<File | null>(null);
+  const [tempAssets, setTempAssets] = useState<File[]>([]);
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [size, setSize] = useState("original");
-  const [results, setResults] = useState<RenderImageResult[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [count, setCount] = useState(1);
+  const [activeTask, setActiveTask] = useState<RenderTask | null>(null);
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<"" | "success" | "error">("");
+  const [loading, setLoading] = useState(false);
+  const selectedConfig = configs.find((item) => item.id === selectedConfigId);
 
   useEffect(() => {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    if (raw) {
-      try {
-        const saved = JSON.parse(raw) as Partial<RenderConfig>;
-        setConfig({ baseUrl: saved.baseUrl || "", apiKey: saved.apiKey || "", model: saved.model || "", count: clampCount(saved.count) });
-      } catch {
-        localStorage.removeItem(CONFIG_KEY);
-      }
-    }
-
-    const rawLibrary = localStorage.getItem(LIBRARY_KEY);
-    if (rawLibrary) {
-      try {
-        const savedLibrary = JSON.parse(rawLibrary) as LibraryItem[];
-        setLibrary(Array.isArray(savedLibrary) ? savedLibrary.filter((item) => item?.dataUrl) : []);
-      } catch {
-        localStorage.removeItem(LIBRARY_KEY);
-      }
-    }
+    refreshAll();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-  }, [config]);
-
-  useEffect(() => {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
-  }, [library]);
-
-  useEffect(() => () => {
-    revokePreview(lineArtPreview);
-    references.forEach((row) => revokePreview(row.preview));
-  }, [lineArtPreview, references]);
-
-  const activeResult = results[activeIndex] || null;
-  const selectedReferences = references.filter((row) => row.preview);
-  const canGenerate = Boolean(lineArt && selectedReferences.length > 0 && config.baseUrl.trim() && config.apiKey.trim() && config.model.trim() && prompt.trim());
-
-  function updateConfig<K extends keyof RenderConfig>(key: K, value: RenderConfig[K]) {
-    setConfig((current) => ({ ...current, [key]: value }));
+  async function refreshAll() {
+    const [nextConfigs, nextAssets, nextTasks] = await Promise.all([
+      listRenderModelConfigs(true),
+      listRenderAssets(),
+      listRenderTasks(),
+    ]);
+    setConfigs(nextConfigs);
+    setAssets(nextAssets);
+    setTasks(nextTasks);
+    setSelectedConfigId((current) => current || nextConfigs.find((item) => item.enabled)?.id || "");
+    setActiveTask((current) => current || nextTasks[0] || null);
   }
 
-  function pickLineArt(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return showMessage(T.uploadImageOnly, "error");
-    const url = URL.createObjectURL(file);
-    revokePreview(lineArtPreview);
-    setLineArt(file);
-    setLineArtPreview(url);
-    showMessage(`${file.name} ${T.loaded}`, "success");
+  async function refreshAssets() {
+    setAssets(await listRenderAssets({ category: category || undefined, q: search || undefined }));
   }
 
-  function pickReference(rowId: string, event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return showMessage(T.uploadImageOnly, "error");
-    const url = URL.createObjectURL(file);
-    setReferences((current) => current.map((row) => {
-      if (row.id !== rowId) return row;
-      revokePreview(row.preview);
-      return { ...row, file, preview: url, fileName: file.name };
-    }));
-    showMessage(`${file.name} ${T.loaded}`, "success");
+  async function saveConfig() {
+    if (!configForm.name.trim() || !configForm.baseUrl.trim() || !configForm.model.trim()) {
+      return setMessage("请填写配置名称、Base URL 和 Model");
+    }
+    const saved = editingConfigId
+      ? await updateRenderModelConfig(editingConfigId, configForm)
+      : await createRenderModelConfig(configForm);
+    const nextConfigs = await listRenderModelConfigs(true);
+    setConfigs(nextConfigs);
+    setSelectedConfigId(saved.id);
+    setEditingConfigId("");
+    setConfigForm(EMPTY_CONFIG);
+    setMessage("模型配置已保存");
   }
 
-  function updateReference(rowId: string, patch: Partial<ReferenceRow>) {
-    setReferences((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
-  }
-
-  function clearReference(rowId: string) {
-    setReferences((current) => current.map((row) => {
-      if (row.id !== rowId) return row;
-      revokePreview(row.preview);
-      return { ...row, file: null, preview: "", fileName: "" };
-    }));
-  }
-
-  function addReference() {
-    setReferences((current) => [...current, newReferenceRow("")]);
-  }
-
-  function removeReference(rowId: string) {
-    setReferences((current) => {
-      const target = current.find((row) => row.id === rowId);
-      if (target) revokePreview(target.preview);
-      const next = current.filter((row) => row.id !== rowId);
-      return next.length ? next : [newReferenceRow("")];
+  function editConfig(config: RenderModelConfig) {
+    setEditingConfigId(config.id);
+    setConfigForm({
+      name: config.name,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      apiKey: "",
+      model: config.model,
+      endpoint: config.endpoint,
+      apiType: config.apiType,
+      defaultSize: config.defaultSize,
+      timeoutSeconds: config.timeoutSeconds,
+      enabled: config.enabled,
     });
   }
 
-  async function saveReferenceToLibrary(row: ReferenceRow) {
-    if (!row.preview) return showMessage(T.uploadReferenceFirst, "error");
-    const dataUrl = row.file ? await readFileAsDataUrl(row.file) : row.preview;
-    const item: LibraryItem = {
-      id: createId(),
-      label: row.label.trim() || T.imageLabel,
-      name: row.fileName || `${row.label || T.imageLabel}.png`,
-      dataUrl,
-      createdAt: Date.now(),
-    };
-    setLibrary((current) => [item, ...current]);
-    showMessage(T.savedToLibrary, "success");
-  }
-
-  async function uploadLibraryFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || []);
+  async function uploadAsset(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     event.target.value = "";
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-    if (!imageFiles.length) return showMessage(T.uploadImageOnly, "error");
-    const items = await Promise.all(imageFiles.map(async (file) => ({
-      id: createId(),
-      label: libraryUploadLabel.trim() || T.imageLabel,
-      name: file.name,
-      dataUrl: await readFileAsDataUrl(file),
-      createdAt: Date.now(),
-    })));
-    setLibrary((current) => [...items, ...current]);
-    showMessage(`${T.savedToLibrary} ${items.length} ${T.generatedSuffix}`, "success");
+    if (!file) return;
+    const name = window.prompt("素材名称", file.name.replace(/\.[^.]+$/, "")) || file.name;
+    const asset = await uploadRenderAsset({ file, name, category: category || "其他", favorite: true });
+    setAssets((current) => [asset, ...current]);
+    setMessage("素材已上传到个人素材库");
   }
 
-  function applyLibraryItem(rowId: string, itemId: string) {
-    const item = library.find((entry) => entry.id === itemId);
-    if (!item) return;
-    setReferences((current) => current.map((row) => {
-      if (row.id !== rowId) return row;
-      revokePreview(row.preview);
-      return { ...row, label: row.label || item.label, file: null, preview: item.dataUrl, fileName: item.name };
-    }));
-    showMessage(`${item.name} ${T.loaded}`, "success");
+  async function removeAsset(assetId: string) {
+    await deleteRenderAsset(assetId);
+    setAssets((current) => current.filter((item) => item.id !== assetId));
+    setSelectedAssetIds((current) => current.filter((id) => id !== assetId));
   }
 
-  function removeLibraryItem(itemId: string) {
-    setLibrary((current) => current.filter((item) => item.id !== itemId));
-  }
-
-  async function handleGenerate() {
-    if (!lineArt) return showMessage(T.uploadLineFirst, "error");
-    if (!selectedReferences.length) return showMessage(T.uploadReferenceFirst, "error");
-    if (!config.baseUrl.trim()) return showMessage(`${T.fill} Base URL`, "error");
-    if (!config.apiKey.trim()) return showMessage(`${T.fill} API Key`, "error");
-    if (!config.model.trim()) return showMessage(`${T.fill} Model`, "error");
-    if (!prompt.trim()) return showMessage(`${T.fill} Prompt`, "error");
-
+  async function submitTask() {
+    if (!selectedConfigId) return setMessage("请先选择模型配置");
+    if (!lineArt) return setMessage("请上传线稿图");
+    if (!styleReference) return setMessage("请上传参考款式图");
+    if (!prompt.trim()) return setMessage("请填写提示词");
     setLoading(true);
-    setResults([]);
-    setActiveIndex(0);
-    showMessage(T.generating, "");
+    setMessage("正在提交渲染任务...");
     try {
-      const referenceFiles = selectedReferences.map((row, index) => ({
-        label: row.label.trim() || `${T.imageLabel}${index + 1}`,
-        file: row.file || dataUrlToFile(row.preview, row.fileName || `reference-${index + 1}.png`),
-      }));
-      const data = await generateRender({ lineArt, references: referenceFiles, baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, prompt, size, count: config.count });
-      setResults(data.images || []);
-      showMessage(`${T.generatedPrefix} ${data.images?.length || 0} ${T.generatedSuffix}`, "success");
+      const task = await createRenderTask({
+        modelConfigId: selectedConfigId,
+        prompt,
+        size,
+        count,
+        selectedAssetIds,
+        lineArt,
+        styleReference,
+        tempAssets,
+      });
+      setActiveTask(task);
+      setTasks(await listRenderTasks());
+      setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
     } catch (error: unknown) {
-      const err = error as { userMessage?: string; response?: { data?: { detail?: string } }; message?: string };
-      showMessage(err.userMessage || err.response?.data?.detail || err.message || T.failed, "error");
+      const err = error as { userMessage?: string; message?: string };
+      setMessage(err.userMessage || err.message || "效果渲染失败");
     } finally {
       setLoading(false);
     }
   }
 
-  function downloadActive() {
-    if (!activeResult) return;
-    const link = document.createElement("a");
-    link.href = activeResult.src;
-    link.download = `${T.filenamePrefix}-${activeIndex + 1}.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  function resetAll() {
-    revokePreview(lineArtPreview);
-    references.forEach((row) => revokePreview(row.preview));
-    setLineArt(null);
-    setLineArtPreview("");
-    setReferences(defaultReferenceRows());
-    setPrompt(T.defaultPrompt);
-    setSize("original");
-    setResults([]);
-    setActiveIndex(0);
-    showMessage(T.resetKeptConfig, "");
-  }
-
-  function showMessage(text: string, type: "" | "success" | "error") {
-    setMessage(text);
-    setMessageType(type);
-  }
-
-  const statusClass = useMemo(() => {
-    if (messageType === "error") return "bg-[#FF3B30]/10 text-[#FF3B30]";
-    if (messageType === "success") return "bg-[#34C759]/10 text-[#34C759]";
-    return "bg-[#007AFF]/10 text-[#007AFF]";
-  }, [messageType]);
+  const filteredAssets = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return assets.filter((item) => {
+      if (category && item.category !== category) return false;
+      if (!q) return true;
+      return [item.name, item.category, item.remark, ...(item.tags || [])].join(" ").toLowerCase().includes(q);
+    });
+  }, [assets, category, search]);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[18px] font-semibold text-[#1C1C1E]">{T.title}</h1>
-          <p className="text-[12px] text-[#8E8E93] mt-1">{T.subtitle}</p>
+          <h1 className="text-[18px] font-semibold text-[#1C1C1E]">效果渲染</h1>
+          <p className="mt-1 text-[12px] text-[#8E8E93]">线稿图、参考款式图、素材库配件和模型配置全部通过后端统一管理。</p>
         </div>
-        {message && <span className={`text-[12px] px-3 py-1 rounded-full font-medium ${statusClass}`}>{message}</span>}
-      </div>
+        {message && <span className="max-w-[520px] rounded-full bg-[#007AFF]/10 px-3 py-1 text-[12px] font-medium text-[#007AFF]">{message}</span>}
+      </header>
 
-      <Collapsible title={T.configTitle} open={settingsOpen} onToggle={() => setSettingsOpen((open) => !open)}>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <TextField label="Base URL" value={config.baseUrl} onChange={(value) => updateConfig("baseUrl", value)} placeholder="https://api.example.com/v1" />
-          <TextField label="API Key" type="password" value={config.apiKey} onChange={(value) => updateConfig("apiKey", value)} placeholder="sk-..." />
-          <TextField label="Model" value={config.model} onChange={(value) => updateConfig("model", value)} placeholder="image-edit-model" />
-          <label className="block">
-            <span className="text-[12px] font-medium text-[#8E8E93]">Count</span>
-            <input type="number" min={1} max={4} value={config.count} onChange={(event) => updateConfig("count", clampCount(event.target.value))} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none" />
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-[#1C1C1E]">模型配置</h2>
+          <select value={selectedConfigId} onChange={(event) => setSelectedConfigId(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+            <option value="">选择模型配置</option>
+            {configs.filter((item) => item.enabled).map((config) => <option key={config.id} value={config.id}>{config.name}</option>)}
+          </select>
+        </div>
+        {selectedConfig && <p className="mb-3 text-[12px] text-[#8E8E93]">当前：{selectedConfig.provider} / {selectedConfig.apiType} / {selectedConfig.model} / API Key {selectedConfig.hasApiKey ? "已保存" : "未保存"}</p>}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+          <Input label="配置名称" value={configForm.name} onChange={(value) => setConfigForm({ ...configForm, name: value })} />
+          <Select label="Provider" value={configForm.provider} onChange={(value) => setConfigForm({ ...configForm, provider: value })} options={[["image2_proxy", "Image2 中转站"], ["openai_compatible", "OpenAI 兼容"], ["volcengine_ark", "火山方舟"]]} />
+          <Input label="Base URL" value={configForm.baseUrl} onChange={(value) => setConfigForm({ ...configForm, baseUrl: value })} />
+          <Input label="API Key" type="password" value={configForm.apiKey || ""} onChange={(value) => setConfigForm({ ...configForm, apiKey: value })} placeholder={editingConfigId ? "留空则不修改" : ""} />
+          <Input label="Model" value={configForm.model} onChange={(value) => setConfigForm({ ...configForm, model: value })} />
+          <Input label="Endpoint" value={configForm.endpoint} onChange={(value) => setConfigForm({ ...configForm, endpoint: value })} />
+          <Select label="API Type" value={configForm.apiType} onChange={(value) => setConfigForm({ ...configForm, apiType: value })} options={[["openai_images_edits", "OpenAI Images Edits"], ["openai_images_generations", "OpenAI Images Generations"], ["ark_images_generations", "Ark Images Generations"]]} />
+          <div className="flex items-end gap-2">
+            <button type="button" onClick={saveConfig} className="h-9 flex-1 rounded-lg bg-[#007AFF] px-3 text-[13px] font-medium text-white">{editingConfigId ? "更新配置" : "新增配置"}</button>
+            {editingConfigId && <button type="button" onClick={() => { setEditingConfigId(""); setConfigForm(EMPTY_CONFIG); }} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px]">取消</button>}
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {configs.map((config) => (
+            <button key={config.id} type="button" onClick={() => editConfig(config)} className="rounded-full bg-[#F2F2F7] px-3 py-1 text-[12px] text-[#3C3C43]">{config.name || "未命名"}{config.enabled ? "" : "（停用）"}</button>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} required />
+        <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} required />
+      </section>
+
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">个人素材库</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次专用配件在下方临时上传。</p>
+          </div>
+          <div className="flex-1" />
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+            <option value="">全部分类</option>
+            {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={refreshAssets} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+          <label className="cursor-pointer rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white">
+            上传素材
+            <input type="file" accept="image/*" onChange={uploadAsset} className="hidden" />
           </label>
         </div>
-      </Collapsible>
-
-      <Collapsible title={T.libraryTitle} open={libraryOpen} onToggle={() => setLibraryOpen((open) => !open)}>
-        <LibraryManager
-          library={library}
-          uploadLabel={libraryUploadLabel}
-          onUploadLabel={setLibraryUploadLabel}
-          onUpload={uploadLibraryFiles}
-          onRemove={removeLibraryItem}
-        />
-      </Collapsible>
-
-      <UploadPanel title={T.lineArtTitle} kicker="Line Art" preview={lineArtPreview} fileName={lineArt?.name} onPick={pickLineArt} onClear={() => { revokePreview(lineArtPreview); setLineArt(null); setLineArtPreview(""); }} />
-
-      <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold text-[#007AFF] uppercase">Reference</p>
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{T.referencesTitle}</h2>
-          </div>
-          <button type="button" onClick={addReference} className="px-3 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 transition-colors">+ {T.addReference}</button>
-        </div>
-        <datalist id="render-part-options">{PART_OPTIONS.map((option) => <option key={option} value={option} />)}</datalist>
-        <div className="space-y-3">
-          {references.map((row, index) => (
-            <ReferenceEditor
-              key={row.id}
-              row={row}
-              index={index}
-              library={library}
-              onLabel={(value) => updateReference(row.id, { label: value })}
-              onPick={(event) => pickReference(row.id, event)}
-              onClear={() => clearReference(row.id)}
-              onRemove={() => removeReference(row.id)}
-              onSave={() => saveReferenceToLibrary(row)}
-              onChooseLibrary={(itemId) => applyLibraryItem(row.id, itemId)}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_160px] gap-3">
-          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Prompt</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={4} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none resize-y" /></label>
-          <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">Size</span><select value={size} onChange={(event) => setSize(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"><option value="original">原比例</option><option value="2k">2K</option><option value="4k">4K</option></select></label>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <button type="button" onClick={resetAll} disabled={loading} className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 disabled:opacity-50 transition-colors">{T.clear}</button>
-          <button type="button" onClick={handleGenerate} disabled={!canGenerate || loading} className="px-5 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors">{loading ? T.generatingShort : T.generate}</button>
-        </div>
-      </section>
-
-      <ResultPanel activeResult={activeResult} activeIndex={activeIndex} results={results} loading={loading} onDownload={downloadActive} onSelect={setActiveIndex} />
-    </div>
-  );
-}
-
-function Collapsible({ title, open, onToggle, children }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
-  return <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 overflow-hidden"><button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-[#F2F2F7] transition-colors"><span className="text-[14px] font-semibold text-[#1C1C1E]">{title}</span><span className="text-[12px] text-[#8E8E93]">{open ? T.collapse : T.expand}</span></button>{open && <div className="px-5 pb-5 border-t border-[#E5E5EA]/60 pt-4">{children}</div>}</section>;
-}
-
-function TextField({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
-  return <label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none" /></label>;
-}
-
-function UploadPanel({ title, kicker, preview, fileName, onPick, onClear }: { title: string; kicker: string; preview: string; fileName?: string; onPick: (event: ChangeEvent<HTMLInputElement>) => void; onClear: () => void }) {
-  return <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4 min-h-[320px] flex flex-col"><div className="flex items-center justify-between mb-3"><div><p className="text-[11px] font-semibold text-[#007AFF] uppercase">{kicker}</p><h2 className="text-[15px] font-semibold text-[#1C1C1E]">{title}</h2></div><button type="button" onClick={onClear} className="w-8 h-8 rounded-lg text-[#8E8E93] hover:text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors" aria-label={`${T.clearPrefix}${title}`}>x</button></div><label className="flex-1 min-h-[240px] rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7] hover:bg-[#E5E5EA]/50 transition-colors cursor-pointer overflow-hidden flex items-center justify-center"><input type="file" accept="image/*" onChange={onPick} className="hidden" />{preview ? <img src={preview} alt={`${title}${T.preview}`} className="w-full h-full object-contain" /> : <span className="text-center text-[13px] text-[#8E8E93]">{T.clickUpload}{title}<br /><span className="text-[12px]">{T.support}</span></span>}</label>{fileName && <p className="text-[12px] text-[#8E8E93] mt-2 truncate">{fileName}</p>}</section>;
-}
-
-function ReferenceEditor({ row, index, library, onLabel, onPick, onClear, onRemove, onSave, onChooseLibrary }: { row: ReferenceRow; index: number; library: LibraryItem[]; onLabel: (value: string) => void; onPick: (event: ChangeEvent<HTMLInputElement>) => void; onClear: () => void; onRemove: () => void; onSave: () => void; onChooseLibrary: (itemId: string) => void }) {
-  const matchedLibrary = library.filter((item) => !row.label.trim() || item.label === row.label.trim());
-  const choices = matchedLibrary.length ? matchedLibrary : library;
-  return <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr_190px] gap-3 rounded-xl border border-[#E5E5EA]/60 bg-[#FAFAFC] p-3"><label className="block"><span className="text-[12px] font-medium text-[#8E8E93]">{T.partLabel} {index + 1}</span><input list="render-part-options" value={row.label} onChange={(event) => onLabel(event.target.value)} placeholder={T.customPart} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white" /></label><label className="min-h-[120px] rounded-xl border border-dashed border-[#C7C7CC] bg-white hover:bg-[#F2F2F7] transition-colors cursor-pointer overflow-hidden flex items-center justify-center"><input type="file" accept="image/*" onChange={onPick} className="hidden" />{row.preview ? <img src={row.preview} alt={`${row.label || T.imageLabel}${T.preview}`} className="max-h-[160px] max-w-full object-contain" /> : <span className="text-center text-[13px] text-[#8E8E93]">{T.clickUpload}{T.imageLabel}<br /><span className="text-[12px]">{T.support}</span></span>}</label><div className="flex flex-col gap-2"><select value="" onChange={(event) => { if (event.target.value) onChooseLibrary(event.target.value); }} className="px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg bg-white focus:border-[#007AFF] focus:outline-none"><option value="">{T.chooseFromLibrary}</option>{choices.map((item) => <option key={item.id} value={item.id}>{item.label} - {item.name}</option>)}</select>{row.fileName && <p className="text-[12px] text-[#8E8E93] truncate">{row.fileName}</p>}<button type="button" onClick={onSave} disabled={!row.preview} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 disabled:opacity-50 transition-colors">{T.saveToLibrary}</button><div className="grid grid-cols-2 gap-2"><button type="button" onClick={onClear} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/70 transition-colors">{T.clear}</button><button type="button" onClick={onRemove} className="px-3 py-2 text-[12px] font-medium rounded-lg bg-[#FF3B30]/10 text-[#FF3B30] hover:bg-[#FF3B30]/15 transition-colors">{T.remove}</button></div></div></div>;
-}
-
-function LibraryManager({ library, uploadLabel, onUploadLabel, onUpload, onRemove }: { library: LibraryItem[]; uploadLabel: string; onUploadLabel: (value: string) => void; onUpload: (event: ChangeEvent<HTMLInputElement>) => void; onRemove: (itemId: string) => void }) {
-  const groups = PART_OPTIONS.map((label) => ({
-    label,
-    items: library.filter((item) => item.label === label),
-  }));
-  const customGroups = Array.from(new Set(library.map((item) => item.label).filter((label) => !PART_OPTIONS.includes(label)))).map((label) => ({
-    label,
-    items: library.filter((item) => item.label === label),
-  }));
-  const allGroups = [...groups, ...customGroups].filter((group) => group.items.length);
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 rounded-xl border border-[#E5E5EA]/60 bg-[#FAFAFC] p-3">
-        <label className="block">
-          <span className="text-[12px] font-medium text-[#8E8E93]">{T.libraryCategory}</span>
-          <input list="render-part-options" value={uploadLabel} onChange={(event) => onUploadLabel(event.target.value)} className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white" />
-        </label>
-        <label className="min-h-[86px] rounded-xl border border-dashed border-[#C7C7CC] bg-white hover:bg-[#F2F2F7] transition-colors cursor-pointer flex items-center justify-center">
-          <input type="file" accept="image/*" multiple onChange={onUpload} className="hidden" />
-          <span className="text-center text-[13px] text-[#8E8E93]">{T.uploadToLibrary}<br /><span className="text-[12px]">{T.batchUploadLibrary}</span></span>
-        </label>
-      </div>
-      {allGroups.length ? (
-        <div className="space-y-4">
-          {allGroups.map((group) => (
-            <div key={group.label} className="space-y-2">
-              <h3 className="text-[13px] font-semibold text-[#1C1C1E]">{group.label}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {group.items.map((item) => <LibraryCard key={item.id} item={item} onRemove={() => onRemove(item.id)} />)}
-              </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          {filteredAssets.map((asset) => (
+            <div key={asset.id} className={`rounded-xl border p-2 ${selectedAssetIds.includes(asset.id) ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
+              <button type="button" onClick={() => setSelectedAssetIds((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} className="block w-full">
+                <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} className="h-full w-full object-contain" /></div>
+                <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
+                <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
+              </button>
+              <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
             </div>
           ))}
+          {!filteredAssets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
         </div>
-      ) : <p className="text-[13px] text-[#8E8E93]">{T.noLibrary}</p>}
+      </section>
+
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_160px_120px]">
+          <label>
+            <span className="text-[12px] font-medium text-[#8E8E93]">提示词</span>
+            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+          </label>
+          <Select label="尺寸" value={size} onChange={setSize} options={[["original", "原比例"], ["2k", "2K"], ["4k", "4K"], ["1024x1024", "1024x1024"]]} />
+          <label>
+            <span className="text-[12px] font-medium text-[#8E8E93]">数量</span>
+            <input type="number" min={1} max={4} value={count} onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="cursor-pointer rounded-lg bg-[#F2F2F7] px-3 py-2 text-[13px] font-medium">
+            临时上传本次配件
+            <input type="file" accept="image/*" multiple onChange={(event) => setTempAssets(Array.from(event.target.files || []))} className="hidden" />
+          </label>
+          <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedAssetIds.length} 个，临时配件 {tempAssets.length} 个</span>
+          <div className="flex-1" />
+          <button type="button" onClick={submitTask} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">{loading ? "生成中..." : "提交渲染任务"}</button>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">生成结果</h2>
+            <button type="button" onClick={() => refreshAll()} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px]">刷新</button>
+          </div>
+          {activeTask?.status === "failed" && <p className="mb-3 rounded-lg bg-[#FF3B30]/10 px-3 py-2 text-[13px] text-[#FF3B30]">{activeTask.errorMessage}</p>}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(activeTask?.images || []).map((image) => (
+              <div key={image.id} className="rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] p-2">
+                <img src={image.src} alt="效果图" className="max-h-[520px] w-full object-contain" />
+                <a href={image.src} download className="mt-2 inline-block rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-[#007AFF]">下载</a>
+              </div>
+            ))}
+            {!activeTask?.images?.length && <p className="text-[13px] text-[#8E8E93]">生成后的效果图会显示在这里</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+          <h2 className="mb-3 text-[15px] font-semibold text-[#1C1C1E]">历史记录</h2>
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <button key={task.id} type="button" onClick={() => setActiveTask(task)} className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
+                <span className="font-medium">{task.status}</span>
+                <span className="ml-2">{new Date(task.createdAt).toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
 
-function LibraryCard({ item, onRemove }: { item: LibraryItem; onRemove: () => void }) {
-  return <div className="rounded-xl border border-[#E5E5EA]/60 bg-[#FAFAFC] p-3"><div className="aspect-[4/3] rounded-lg bg-white border border-[#E5E5EA]/60 overflow-hidden flex items-center justify-center"><img src={item.dataUrl} alt={item.name} className="w-full h-full object-contain" /></div><div className="mt-2 flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-[12px] font-semibold text-[#1C1C1E] truncate">{item.label}</p><p className="text-[12px] text-[#8E8E93] truncate">{item.name}</p></div><button type="button" onClick={onRemove} className="text-[12px] text-[#FF3B30] shrink-0">{T.remove}</button></div></div>;
+function UploadBox({ title, file, onPick, required }: { title: string; file: File | null; onPick: (file: File | null) => void; required?: boolean }) {
+  return (
+    <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{title}{required ? " *" : ""}</h2>
+        {file && <button type="button" onClick={() => onPick(null)} className="text-[12px] text-[#FF3B30]">清空</button>}
+      </div>
+      <label className="flex min-h-[240px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7]">
+        <input type="file" accept="image/*" onChange={(event) => onPick(event.target.files?.[0] || null)} className="hidden" />
+        <span className="text-center text-[13px] text-[#8E8E93]">{file ? file.name : `点击上传${title}`}</span>
+      </label>
+    </section>
+  );
 }
 
-function ResultPanel({ activeResult, activeIndex, results, loading, onDownload, onSelect }: { activeResult: RenderImageResult | null; activeIndex: number; results: RenderImageResult[]; loading: boolean; onDownload: () => void; onSelect: (index: number) => void }) {
-  return <section className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4 min-h-[320px] flex flex-col"><div className="flex items-center justify-between mb-3"><div><p className="text-[11px] font-semibold text-[#007AFF] uppercase">Result</p><h2 className="text-[15px] font-semibold text-[#1C1C1E]">{T.resultTitle}</h2></div><button type="button" onClick={onDownload} disabled={!activeResult} className="px-3 py-1.5 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] disabled:opacity-50 hover:bg-[#E5E5EA]/70 transition-colors">{T.download}</button></div><div className="flex-1 min-h-[240px] rounded-xl bg-[#F2F2F7] border border-[#E5E5EA]/60 flex items-center justify-center overflow-hidden">{loading ? <div className="text-center text-[#8E8E93] text-[13px]"><div className="w-8 h-8 mx-auto mb-3 border-2 border-[#007AFF] border-t-transparent rounded-full animate-spin" />{T.generatingShort}</div> : activeResult ? <img src={activeResult.src} alt={`${T.resultAlt} ${activeIndex + 1}`} className="max-w-full max-h-[520px] object-contain" /> : <p className="text-[13px] text-[#8E8E93]">{T.emptyResult}</p>}</div>{results.length > 1 && <div className="flex gap-2 mt-3 overflow-x-auto">{results.map((image, index) => <button key={`${image.src.slice(0, 32)}-${index}`} type="button" onClick={() => onSelect(index)} className={`w-16 h-16 rounded-lg border overflow-hidden shrink-0 ${index === activeIndex ? "border-[#007AFF]" : "border-[#E5E5EA]"}`}><img src={image.src} alt={`${T.resultThumb} ${index + 1}`} className="w-full h-full object-cover" /></button>)}</div>}</section>;
+function Input({ label, value, onChange, type = "text", placeholder = "" }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
+  return <label><span className="text-[12px] font-medium text-[#8E8E93]">{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" /></label>;
 }
 
-function defaultReferenceRows(): ReferenceRow[] {
-  return DEFAULT_REFERENCE_LABELS.map(newReferenceRow);
-}
-
-function newReferenceRow(label: string): ReferenceRow {
-  return { id: createId(), label, file: null, preview: "", fileName: "" };
-}
-
-function createId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: [string, string][] }) {
+  return <label><span className="text-[12px] font-medium text-[#8E8E93]">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">{options.map(([optionValue, labelText]) => <option key={optionValue} value={optionValue}>{labelText}</option>)}</select></label>;
 }
 
 function clampCount(value: unknown): number {
   const parsed = Number.parseInt(String(value ?? 1), 10);
   if (Number.isNaN(parsed)) return 1;
   return Math.min(Math.max(parsed, 1), 4);
-}
-
-function revokePreview(value: string) {
-  if (value.startsWith("blob:")) URL.revokeObjectURL(value);
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-function dataUrlToFile(dataUrl: string, fileName: string): File {
-  const [header, data] = dataUrl.split(",");
-  const mime = header.match(/data:(.*?);base64/)?.[1] || "image/png";
-  const binary = atob(data || "");
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new File([bytes], fileName, { type: mime });
 }

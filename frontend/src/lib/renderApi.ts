@@ -1,91 +1,182 @@
 import { api } from "./api";
 
-export interface RenderImageResult {
-  type: "b64_json" | "url";
-  src: string;
+export const RENDER_CATEGORIES = ["款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"];
+
+export interface ProviderCapabilities {
+  textToImage: boolean;
+  imageToImage: boolean;
+  imageEdit: boolean;
+  singleReference: boolean;
+  multiReference: boolean;
+  inputBase64: boolean;
+  inputUrl: boolean;
+  sync: boolean;
+  asyncTask: boolean;
 }
 
-export interface RenderGenerateResult {
-  images: RenderImageResult[];
-  rawCount: number;
-}
-
-export interface RenderGenerateInput {
-  lineArt: File;
-  references: { label: string; file: File }[];
+export interface RenderModelConfig {
+  id: string;
+  name: string;
+  provider: string;
   baseUrl: string;
-  apiKey: string;
   model: string;
+  endpoint: string;
+  apiType: string;
+  capabilities: ProviderCapabilities;
+  defaultSize: string;
+  timeoutSeconds: number;
+  enabled: boolean;
+  hasApiKey: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RenderAsset {
+  id: string;
+  name: string;
+  category: string;
+  url: string;
+  thumbnailUrl: string;
+  tags: string[];
+  remark: string;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RenderResultImage {
+  id: string;
+  type: "url" | "file" | "b64_json";
+  src: string;
+  filePath?: string;
+}
+
+export interface RenderTask {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed" | string;
+  modelConfigId: string;
   prompt: string;
   size: string;
   count: number;
+  files: unknown[];
+  selectedAssetIds: string[];
+  images: RenderResultImage[];
+  errorType: string;
+  errorMessage: string;
+  upstreamRawError: string;
+  createdAt: string;
+  startedAt: string;
+  finishedAt: string;
 }
 
-export async function generateRender(input: RenderGenerateInput): Promise<RenderGenerateResult> {
+export interface ModelConfigInput {
+  name: string;
+  provider: string;
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+  endpoint: string;
+  apiType: string;
+  defaultSize: string;
+  timeoutSeconds: number;
+  enabled: boolean;
+}
+
+export async function listRenderModelConfigs(includeDisabled = true): Promise<RenderModelConfig[]> {
+  const { data } = await api.get<{ configs: RenderModelConfig[] }>("/render/model-configs", { params: { includeDisabled } });
+  return data.configs || [];
+}
+
+export async function createRenderModelConfig(input: ModelConfigInput): Promise<RenderModelConfig> {
+  const { data } = await api.post<{ config: RenderModelConfig }>("/render/model-configs", input);
+  return data.config;
+}
+
+export async function updateRenderModelConfig(id: string, input: Partial<ModelConfigInput>): Promise<RenderModelConfig> {
+  const { data } = await api.put<{ config: RenderModelConfig }>(`/render/model-configs/${id}`, input);
+  return data.config;
+}
+
+export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean }): Promise<RenderAsset[]> {
+  const { data } = await api.get<{ assets: RenderAsset[] }>("/render/assets", { params });
+  return data.assets || [];
+}
+
+export async function uploadRenderAsset(input: {
+  file: File;
+  name: string;
+  category: string;
+  tags?: string[];
+  remark?: string;
+  favorite?: boolean;
+}): Promise<RenderAsset> {
   const formData = new FormData();
-  formData.append("lineArt", input.lineArt);
-  input.references.forEach((item) => {
-    formData.append("reference", item.file);
-  });
-  formData.append("referenceLabels", JSON.stringify(input.references.map((item) => item.label.trim())));
-  formData.append("baseUrl", input.baseUrl.trim());
-  formData.append("apiKey", input.apiKey.trim());
-  formData.append("model", input.model.trim());
-  formData.append("prompt", input.prompt.trim());
+  formData.append("file", input.file);
+  formData.append("name", input.name);
+  formData.append("category", input.category);
+  formData.append("tags", JSON.stringify(input.tags || []));
+  formData.append("remark", input.remark || "");
+  formData.append("favorite", String(Boolean(input.favorite)));
+  const { data } = await api.post<{ asset: RenderAsset }>("/render/assets", formData, { timeout: 120000 });
+  return data.asset;
+}
+
+export async function updateRenderAsset(id: string, patch: Partial<Pick<RenderAsset, "name" | "category" | "tags" | "remark" | "favorite">>): Promise<RenderAsset> {
+  const { data } = await api.put<{ asset: RenderAsset }>(`/render/assets/${id}`, patch);
+  return data.asset;
+}
+
+export async function deleteRenderAsset(id: string): Promise<void> {
+  await api.delete(`/render/assets/${id}`);
+}
+
+export async function createRenderTask(input: {
+  modelConfigId: string;
+  prompt: string;
+  size: string;
+  count: number;
+  selectedAssetIds: string[];
+  lineArt: File;
+  styleReference?: File | null;
+  tempAssets: File[];
+}): Promise<RenderTask> {
+  const formData = new FormData();
+  formData.append("modelConfigId", input.modelConfigId);
+  formData.append("prompt", input.prompt);
   formData.append("size", input.size || "original");
   formData.append("count", String(input.count || 1));
-
+  formData.append("selectedAssetIds", JSON.stringify(input.selectedAssetIds || []));
+  formData.append("lineArt", input.lineArt);
+  if (input.styleReference) formData.append("styleReference", input.styleReference);
+  input.tempAssets.forEach((file) => formData.append("tempAssets", file));
   try {
-    const { data } = await api.post<RenderGenerateResult>("/render/generate", formData, { timeout: 180000 });
-    return data;
+    const { data } = await api.post<{ task: RenderTask }>("/render/tasks", formData, { timeout: 240000 });
+    return data.task;
   } catch (error: unknown) {
-    const message = extractRenderErrorMessage(error);
-    const nextError = new Error(message) as Error & { userMessage?: string };
-    nextError.userMessage = message;
-    throw nextError;
+    throw normalizeRenderError(error);
   }
 }
 
-function extractRenderErrorMessage(error: unknown): string {
+export async function listRenderTasks(limit = 30): Promise<RenderTask[]> {
+  const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", { params: { limit } });
+  return data.tasks || [];
+}
+
+function normalizeRenderError(error: unknown): Error & { userMessage?: string } {
   const err = error as {
     userMessage?: string;
     message?: string;
-    response?: {
-      status?: number;
-      data?: unknown;
-    };
+    response?: { data?: { detail?: unknown } };
   };
-  const data = err.response?.data;
-  const status = err.response?.status;
-  const fromData = extractMessageFromData(data);
-  if (fromData) return fromData;
-  if (err.userMessage) return err.userMessage;
-  if (status) return `效果渲染请求失败，状态码 ${status}。请检查后端日志或上游图片接口配置。`;
-  return err.message || "效果渲染请求失败";
-}
-
-function extractMessageFromData(data: unknown): string {
-  if (!data) return "";
-  if (typeof data === "string") return cleanupErrorText(data);
-  if (typeof data !== "object") return "";
-  const record = data as Record<string, unknown>;
-  for (const key of ["detail", "details", "error", "message"]) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return cleanupErrorText(value);
-    if (value && typeof value === "object") {
-      const nested = extractMessageFromData(value);
-      if (nested) return nested;
-    }
+  const detail = err.response?.data?.detail;
+  let message = "";
+  if (typeof detail === "string") message = detail;
+  else if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    message = String(record.message || record.errorMessage || JSON.stringify(detail));
   }
-  return "";
-}
-
-function cleanupErrorText(text: string): string {
-  const stripped = text
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return stripped.length > 500 ? `${stripped.slice(0, 500)}...` : stripped;
+  if (!message) message = err.userMessage || err.message || "效果渲染请求失败";
+  const next = new Error(message) as Error & { userMessage?: string };
+  next.userMessage = message;
+  return next;
 }

@@ -1,0 +1,2 @@
+"""Effect rendering module."""
+
