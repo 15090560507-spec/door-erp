@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -9,6 +10,7 @@ from .service import create_asset_from_upload, file_response_path, run_render_ta
 
 
 render_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @render_router.get("/api/render/health")
@@ -98,16 +100,22 @@ async def create_render_task(
     count: int = Form(1),
     selectedAssetIds: str = Form("[]"),
 ):
-    task = await run_render_task(
-        model_config_id=modelConfigId,
-        prompt=prompt,
-        size=size,
-        count=count,
-        selected_asset_ids=_parse_string_list(selectedAssetIds),
-        line_art=lineArt,
-        style_reference=styleReference,
-        temp_assets=tempAssets or [],
-    )
+    try:
+        task = await run_render_task(
+            model_config_id=modelConfigId,
+            prompt=prompt,
+            size=size,
+            count=count,
+            selected_asset_ids=_parse_string_list(selectedAssetIds),
+            line_art=lineArt,
+            style_reference=styleReference,
+            temp_assets=tempAssets or [],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Render task failed with unexpected error")
+        raise HTTPException(status_code=500, detail={"message": f"效果渲染服务内部错误: {type(exc).__name__}: {exc}"}) from exc
     return {"task": task}
 
 
@@ -137,4 +145,3 @@ def _parse_string_list(raw: str) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item).strip() for item in parsed if str(item).strip()]
-

@@ -134,7 +134,7 @@ export default function RenderPage() {
         modelConfigId: selectedConfigId,
         prompt,
         size,
-        count,
+        count: 1,
         selectedAssetIds,
         lineArt,
         styleReference,
@@ -271,7 +271,7 @@ export default function RenderPage() {
           <Select label="尺寸" value={size} onChange={setSize} options={[["original", "原比例"], ["2k", "2K"], ["4k", "4K"], ["1024x1024", "1024x1024"]]} />
           <label>
             <span className="text-[12px] font-medium text-[#8E8E93]">数量</span>
-            <input type="number" min={1} max={4} value={count} onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+            <input type="number" min={1} max={1} value={count} disabled onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] disabled:bg-[#F2F2F7]" />
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -293,7 +293,7 @@ export default function RenderPage() {
           </div>
           {activeTask?.status === "failed" && <p className="mb-3 rounded-lg bg-[#FF3B30]/10 px-3 py-2 text-[13px] text-[#FF3B30]">{activeTask.errorMessage}</p>}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {(activeTask?.images || []).map((image) => (
+            {(activeTask?.images || []).slice(0, 1).map((image) => (
               <div key={image.id} className="rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] p-2">
                 <img src={image.src} alt="效果图" className="max-h-[520px] w-full object-contain" />
                 <a href={image.src} download className="mt-2 inline-block rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-[#007AFF]">下载</a>
@@ -342,7 +342,5 @@ function Select({ label, value, onChange, options }: { label: string; value: str
 }
 
 function clampCount(value: unknown): number {
-  const parsed = Number.parseInt(String(value ?? 1), 10);
-  if (Number.isNaN(parsed)) return 1;
-  return Math.min(Math.max(parsed, 1), 4);
+  return 1;
 }

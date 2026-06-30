@@ -144,7 +144,7 @@ export async function createRenderTask(input: {
   formData.append("modelConfigId", input.modelConfigId);
   formData.append("prompt", input.prompt);
   formData.append("size", input.size || "original");
-  formData.append("count", String(input.count || 1));
+  formData.append("count", "1");
   formData.append("selectedAssetIds", JSON.stringify(input.selectedAssetIds || []));
   formData.append("lineArt", input.lineArt);
   if (input.styleReference) formData.append("styleReference", input.styleReference);

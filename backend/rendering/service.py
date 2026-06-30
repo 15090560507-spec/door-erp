@@ -10,6 +10,8 @@ from .database import render_db
 from .providers import ProviderError, RenderProviderRequest, get_provider
 from .storage import RENDER_FILES_DIR, public_file_url, save_bytes
 
+OUTPUT_IMAGE_COUNT = 1
+
 
 async def save_upload_info(file: UploadFile, role: str, subdir: str = "temp", category: str = "", asset_id: str = "") -> dict:
     content = await file.read()
@@ -88,7 +90,7 @@ async def run_render_task(
         "modelConfigId": model_config_id,
         "prompt": prompt,
         "size": size or config.get("defaultSize", "original"),
-        "count": _clamp_count(count),
+        "count": OUTPUT_IMAGE_COUNT,
         "selectedAssetIds": selected_asset_ids,
         "files": [line_info] + ([style_info] if style_info else []) + temp_infos,
     })
@@ -97,7 +99,7 @@ async def run_render_task(
         config=config,
         prompt=prompt,
         size=size or config.get("defaultSize", "original"),
-        count=_clamp_count(count),
+        count=OUTPUT_IMAGE_COUNT,
         line_art=line_info,
         style_reference=style_info,
         assets=library_assets,
@@ -109,7 +111,7 @@ async def run_render_task(
         updated = render_db.update_task(task["id"], {
             "status": "completed",
             "images": images,
-            "raw": response.get("raw"),
+            "raw": _success_raw_summary(response.get("raw")),
             "finishedAt": datetime.now().isoformat(),
         })
         return updated or task
@@ -126,7 +128,7 @@ async def run_render_task(
 
 def _persist_results(task_id: str, images: list[dict]) -> list[dict]:
     results = []
-    for index, image in enumerate(images):
+    for index, image in enumerate((images or [])[:OUTPUT_IMAGE_COUNT]):
         image_type = image.get("type")
         src = image.get("src", "")
         file_path = ""
@@ -178,9 +180,12 @@ def _guess_mime(path: str) -> str:
 
 
 def _clamp_count(count: int) -> int:
-    try:
-        value = int(count)
-    except Exception:
-        value = 1
-    return min(max(value, 1), 4)
+    return OUTPUT_IMAGE_COUNT
 
+
+def _success_raw_summary(raw) -> dict:
+    if isinstance(raw, dict):
+        return {"omitted": True, "keys": list(raw.keys())[:20]}
+    if isinstance(raw, list):
+        return {"omitted": True, "items": len(raw)}
+    return {"omitted": True}
