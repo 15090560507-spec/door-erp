@@ -179,8 +179,14 @@ def extract_http_error(exc, url: str = "") -> ProviderError:
     safe_url = _safe_url(url)
     if safe_url:
         message = f"{message}；实际调用地址: {safe_url}"
-    status_code = exc.code if 400 <= int(exc.code) < 500 else 502
+    status_code = _proxy_status_code(int(exc.code))
     return ProviderError(_sanitize(message), status_code=status_code, error_type="upstream_http_error", raw=_sanitize(body)[:1200])
+
+
+def _proxy_status_code(upstream_status: int) -> int:
+    if upstream_status in {401, 403}:
+        return 502
+    return upstream_status if 400 <= upstream_status < 500 else 502
 
 
 def _safe_url(url: str) -> str:
