@@ -130,7 +130,7 @@ class RenderDatabase:
 
         return self.model_configs.update(mutate)
 
-    def list_assets(self, category: str = "", q: str = "", favorite: bool | None = None) -> list[dict]:
+    def list_assets(self, category: str = "", q: str = "", favorite: bool | None = None, limit: int = 60, offset: int = 0) -> list[dict]:
         query = q.strip().lower()
         items = [item for item in self.assets.load() if item.get("active", True)]
         if category:
@@ -142,7 +142,10 @@ class RenderDatabase:
                 item for item in items
                 if query in " ".join([item.get("name", ""), item.get("category", ""), " ".join(item.get("tags", [])), item.get("remark", "")]).lower()
             ]
-        return sorted(items, key=lambda item: item.get("updatedAt", ""), reverse=True)
+        sorted_items = sorted(items, key=lambda item: item.get("updatedAt", ""), reverse=True)
+        safe_offset = max(0, int(offset or 0))
+        safe_limit = min(200, max(1, int(limit or 60)))
+        return sorted_items[safe_offset:safe_offset + safe_limit]
 
     def get_asset(self, asset_id: str) -> dict | None:
         for item in self.assets.load():

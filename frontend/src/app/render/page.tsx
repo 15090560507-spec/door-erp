@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import {
   RENDER_CATEGORIES,
   createRenderModelConfig,
@@ -18,6 +18,8 @@ import {
 } from "@/lib/renderApi";
 
 const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
+const ASSET_PAGE_SIZE = 24;
+const TASK_LIST_LIMIT = 20;
 
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
@@ -41,6 +43,9 @@ export default function RenderPage() {
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
+  const [assetOffset, setAssetOffset] = useState(0);
+  const [assetHasMore, setAssetHasMore] = useState(false);
+  const [assetLoading, setAssetLoading] = useState(false);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [lineArt, setLineArt] = useState<File | null>(null);
   const [styleReference, setStyleReference] = useState<File | null>(null);
@@ -59,13 +64,11 @@ export default function RenderPage() {
   }, []);
 
   async function refreshAll() {
-    const [nextConfigs, nextAssets, nextTasks] = await Promise.all([
+    const [nextConfigs, nextTasks] = await Promise.all([
       listRenderModelConfigs(true),
-      listRenderAssets(),
-      listRenderTasks(),
+      listRenderTasks(TASK_LIST_LIMIT),
     ]);
     setConfigs(nextConfigs);
-    setAssets(nextAssets);
     setTasks(nextTasks);
     const nextSelectedConfigId = selectedConfigId || nextConfigs.find((item) => item.enabled)?.id || "";
     setSelectedConfigId(nextSelectedConfigId);
@@ -81,10 +84,39 @@ export default function RenderPage() {
       if (refreshed) return refreshed;
       return nextTasks[0];
     });
+    window.setTimeout(() => {
+      void loadAssets({ reset: true });
+    }, 0);
   }
 
-  async function refreshAssets() {
-    setAssets(await listRenderAssets({ category: category || undefined, q: search || undefined }));
+  async function loadAssets(options: { reset?: boolean; categoryValue?: string; searchValue?: string } = {}) {
+    const reset = Boolean(options.reset);
+    const nextCategory = options.categoryValue ?? category;
+    const nextSearch = options.searchValue ?? search;
+    const nextOffset = reset ? 0 : assetOffset;
+    setAssetLoading(true);
+    try {
+      const nextAssets = await listRenderAssets({
+        category: nextCategory || undefined,
+        q: nextSearch || undefined,
+        limit: ASSET_PAGE_SIZE,
+        offset: nextOffset,
+      });
+      setAssets((current) => reset ? nextAssets : [...current, ...nextAssets]);
+      setAssetOffset(nextOffset + nextAssets.length);
+      setAssetHasMore(nextAssets.length === ASSET_PAGE_SIZE);
+    } finally {
+      setAssetLoading(false);
+    }
+  }
+
+  async function handleCategoryChange(value: string) {
+    setCategory(value);
+    await loadAssets({ reset: true, categoryValue: value });
+  }
+
+  async function handleSearchBlur() {
+    await loadAssets({ reset: true });
   }
 
   async function saveConfig() {
@@ -184,15 +216,6 @@ export default function RenderPage() {
     }
   }
 
-  const filteredAssets = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return assets.filter((item) => {
-      if (category && item.category !== category) return false;
-      if (!q) return true;
-      return [item.name, item.category, item.remark, ...(item.tags || [])].join(" ").toLowerCase().includes(q);
-    });
-  }, [assets, category, search]);
-
   return (
     <div className="space-y-4">
       <header className="flex items-start justify-between gap-4">
@@ -264,29 +287,37 @@ export default function RenderPage() {
             <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次专用配件在下方临时上传。</p>
           </div>
           <div className="flex-1" />
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+          <select value={category} onChange={(event) => void handleCategoryChange(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
             <option value="">全部分类</option>
             {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={refreshAssets} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={handleSearchBlur} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
           <label className="cursor-pointer rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white">
             上传素材
             <input type="file" accept="image/*" onChange={uploadAsset} className="hidden" />
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-          {filteredAssets.map((asset) => (
+          {assets.map((asset) => (
             <div key={asset.id} className={`rounded-xl border p-2 ${selectedAssetIds.includes(asset.id) ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
               <button type="button" onClick={() => setSelectedAssetIds((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} className="block w-full">
-                <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} className="h-full w-full object-contain" /></div>
+                <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /></div>
                 <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
                 <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
               </button>
               <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
             </div>
           ))}
-          {!filteredAssets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+          {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
+          {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
         </div>
+        {assetHasMore && (
+          <div className="mt-3 flex justify-center">
+            <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
+              {assetLoading ? "加载中..." : "加载更多素材"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">

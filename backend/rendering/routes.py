@@ -45,8 +45,8 @@ def delete_model_config(config_id: str):
 
 
 @render_router.get("/api/render/assets")
-def list_assets(category: str = "", q: str = "", favorite: bool | None = None):
-    return {"assets": render_db.list_assets(category=category, q=q, favorite=favorite)}
+def list_assets(category: str = "", q: str = "", favorite: bool | None = None, limit: int = 60, offset: int = 0):
+    return {"assets": render_db.list_assets(category=category, q=q, favorite=favorite, limit=limit, offset=offset)}
 
 
 @render_router.post("/api/render/assets")

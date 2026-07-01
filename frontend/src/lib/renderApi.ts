@@ -105,7 +105,7 @@ export async function updateRenderModelConfig(id: string, input: Partial<ModelCo
   return data.config;
 }
 
-export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean }): Promise<RenderAsset[]> {
+export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean; limit?: number; offset?: number }): Promise<RenderAsset[]> {
   const { data } = await api.get<{ assets: RenderAsset[] }>("/render/assets", { params });
   return data.assets || [];
 }
