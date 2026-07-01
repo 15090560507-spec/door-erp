@@ -33,6 +33,7 @@ export interface QuoteItem {
   productName: string;
   width: number | null;
   height: number | null;
+  quantity?: number | null;
   openDirection: string;
   unit: string;
   unitPrice: number;
@@ -52,6 +53,7 @@ export interface QuoteItemResponse {
   productName: string;
   width: number | null;
   height: number | null;
+  quantity?: number | null;
   openDirection: string;
   unit: string;
   unitPrice: number;
@@ -148,6 +150,7 @@ export function createEmptyQuoteItem(): QuoteItem {
     productName: "",
     width: null,
     height: null,
+    quantity: null,
     openDirection: "",
     unit: "",
     unitPrice: 0,

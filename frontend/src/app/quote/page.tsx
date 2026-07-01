@@ -15,6 +15,7 @@ import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const QUOTE_ROW_COUNT = 8;
+type QuotePricingMode = "outerArea" | "framePlusTrim";
 
 function num(value: unknown): number {
   const parsed = Number(value || 0);
@@ -37,7 +38,10 @@ function calcAreas(params: DoorFormData) {
   const trimWidth = (params.has_outer ? num(params.trim_front_in) : 0) + (params.has_inner ? num(params.trim_back_in) : 0);
   const outerWidth = frameWidth + trimWidth * 2;
   const outerHeight = frameHeight + trimWidth;
-  return { frameWidth, frameHeight, outerWidth, outerHeight };
+  const frameArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
+  const outerArea = outerWidth && outerHeight ? outerWidth * outerHeight * 0.000001 : 0;
+  const trimArea = Math.max(0, outerArea - frameArea);
+  return { frameWidth, frameHeight, outerWidth, outerHeight, frameArea, outerArea, trimArea };
 }
 
 function rowFromAccessory(accessory: Accessory, productName = accessory.name, width: number | null = null, height: number | null = null, openDirection = ""): QuoteItem {
@@ -46,6 +50,7 @@ function rowFromAccessory(accessory: Accessory, productName = accessory.name, wi
     productName,
     width,
     height,
+    quantity: null,
     openDirection,
     unit: accessory.unit || "",
     unitPrice: accessory.unitPrice ?? 0,
@@ -84,9 +89,9 @@ function findHingePrice(accessories: Accessory[], hinge: string, doorType: strin
   return matches.find((item) => item.name.includes(needsDouble ? "对开" : "单门")) || matches[0];
 }
 
-function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]): QuoteItem[] {
+function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], pricingMode: QuotePricingMode, trimUnitPrice: number): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
-  const { frameWidth, frameHeight, outerWidth, outerHeight } = calcAreas(params);
+  const { frameWidth, frameHeight, outerWidth, outerHeight, trimArea } = calcAreas(params);
   const material = findPriceItem(accessories, "制作材料", params.zzcl);
   const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
   const lock = findPriceItem(accessories, "锁体", params.st_val);
@@ -96,12 +101,26 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]):
   const rows: QuoteItem[] = [{
     accessoryId: style?.id ?? null,
     productName: [params.zzcl, `${params.zmks || ""}+${params.fmks || ""}`].filter(Boolean).join(" "),
-    width: frameWidth || null,
-    height: frameHeight || null,
+    width: (pricingMode === "outerArea" ? outerWidth : frameWidth) || null,
+    height: (pricingMode === "outerArea" ? outerHeight : frameHeight) || null,
+    quantity: null,
     openDirection: direction,
     unit: "m2",
     unitPrice: mainUnitPrice,
   }];
+
+  if (pricingMode === "framePlusTrim" && trimArea > 0) {
+    rows.push({
+      accessoryId: null,
+      productName: "门套面积",
+      width: null,
+      height: null,
+      quantity: Number(trimArea.toFixed(4)),
+      openDirection: direction,
+      unit: "m2",
+      unitPrice: trimUnitPrice,
+    });
+  }
 
   const packingRow = packing && num(packing.unitPrice) > 0
     ? rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction)
@@ -197,6 +216,8 @@ export default function QuotePage() {
   const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [quotePricingMode, setQuotePricingMode] = useState<QuotePricingMode>("outerArea");
+  const [trimUnitPrice, setTrimUnitPrice] = useState("");
 
   // Modal state
   const [accessoryOpen, setAccessoryOpen] = useState(false);
@@ -330,6 +351,7 @@ export default function QuotePage() {
           productName: mainItem.productName || "",
           width: mainItem.width ?? fallbackWidth,
           height: mainItem.height ?? fallbackHeight,
+          quantity: null,
           openDirection: normalizeOpenDirection(rawDir),
           unit: mainItem.unit || "m2",
           unitPrice: mainItem.unitPrice ?? 0,
@@ -338,6 +360,7 @@ export default function QuotePage() {
           ...createEmptyQuoteItem(),
           width: fallbackWidth,
           height: fallbackHeight,
+          quantity: null,
           openDirection: globalDir,
         };
 
@@ -373,7 +396,7 @@ export default function QuotePage() {
     setStatus(statusParts.join("，"));
   }
 
-  async function handleApplyTaskQuote(taskId: string) {
+  async function handleApplyTaskQuote(taskId: string, mode = quotePricingMode, trimPrice = trimUnitPrice) {
     setSelectedTaskId(taskId);
     if (!taskId) return;
     setStatus("正在读取图纸项目...");
@@ -384,12 +407,34 @@ export default function QuotePage() {
       setCustomerName(params.dhdw || task.customer || "");
       setProjectName(params.gdmc || task.project || "");
       setQuoteDate((params.dhrq || new Date().toISOString().slice(0, 10)).replace(/\./g, "-"));
-      setItems(buildQuoteRowsFromTask(params, allAccessories));
+      setItems(buildQuoteRowsFromTask(params, allAccessories, mode, num(trimPrice)));
       setLastQuoteId(null);
       setStatus("已根据图纸项目生成报价明细");
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string };
       setStatus(err?.userMessage || err?.message || "图纸项目报价生成失败");
+    }
+  }
+
+  async function handlePricingModeChange(nextMode: QuotePricingMode) {
+    setQuotePricingMode(nextMode);
+    if (selectedTaskId) {
+      await handleApplyTaskQuote(selectedTaskId, nextMode, trimUnitPrice);
+    }
+  }
+
+  async function handleTrimUnitPriceChange(value: string) {
+    setTrimUnitPrice(value);
+    if (selectedTaskId && quotePricingMode === "framePlusTrim") {
+      try {
+        const task = await getTask(selectedTaskId);
+        const allAccessories = await getAccessories();
+        setItems(buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", num(value)));
+        setLastQuoteId(null);
+      } catch (error: unknown) {
+        const err = error as { userMessage?: string; message?: string };
+        setStatus(err?.userMessage || err?.message || "门套单价更新失败");
+      }
     }
   }
 
@@ -408,6 +453,7 @@ export default function QuotePage() {
               productName: item.productName || "",
               width: item.width ?? null,
               height: item.height ?? null,
+              quantity: item.quantity ?? null,
               openDirection: item.openDirection || "",
               unit: item.unit || "m2",
               unitPrice: item.unitPrice ?? 0,
@@ -493,6 +539,42 @@ export default function QuotePage() {
                 ))}
               </select>
             </label>
+
+            <div className="mb-4 rounded-xl border border-[#E5E5EA]/60 bg-[#F8F8FA] p-3">
+              <div className="mb-2 text-[12px] font-medium text-[#8E8E93]">报价模式</div>
+              <div className="flex flex-wrap items-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePricingModeChange("outerArea")}
+                  className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
+                    quotePricingMode === "outerArea" ? "bg-[#007AFF] text-white" : "bg-white text-[#1C1C1E] border border-[#E5E5EA]/60"
+                  }`}
+                >
+                  外围面积 × 单价
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePricingModeChange("framePlusTrim")}
+                  className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
+                    quotePricingMode === "framePlusTrim" ? "bg-[#007AFF] text-white" : "bg-white text-[#1C1C1E] border border-[#E5E5EA]/60"
+                  }`}
+                >
+                  门框面积 × 单价 + 门套面积 × 单价
+                </button>
+                {quotePricingMode === "framePlusTrim" && (
+                  <label className="min-w-[150px]">
+                    <span className="block text-[12px] font-medium text-[#8E8E93]">门套单价</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={trimUnitPrice}
+                      onChange={(e) => handleTrimUnitPriceChange(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[#E5E5EA]/60 px-3 py-2 text-[13px] focus:border-[#007AFF] focus:outline-none"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
 
             {/* Customer/Project/Date fields */}
             <div className="grid grid-cols-3 gap-3 mb-4">

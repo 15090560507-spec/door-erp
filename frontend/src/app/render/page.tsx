@@ -68,7 +68,13 @@ export default function RenderPage() {
     setAssets(nextAssets);
     setTasks(nextTasks);
     setSelectedConfigId((current) => current || nextConfigs.find((item) => item.enabled)?.id || "");
-    setActiveTask((current) => current || nextTasks[0] || null);
+    setActiveTask((current) => {
+      if (!nextTasks.length) return null;
+      if (!current) return nextTasks[0];
+      const refreshed = nextTasks.find((task) => task.id === current.id);
+      if (refreshed) return refreshed;
+      return nextTasks[0];
+    });
   }
 
   async function refreshAssets() {
@@ -129,6 +135,7 @@ export default function RenderPage() {
     if (!prompt.trim()) return setMessage("请填写提示词");
     setLoading(true);
     setMessage("正在提交渲染任务...");
+    const submittedAt = Date.now();
     try {
       const task = await createRenderTask({
         modelConfigId: selectedConfigId,
@@ -146,9 +153,20 @@ export default function RenderPage() {
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
       const text = err.userMessage || err.message || "效果渲染失败";
+      const latestTasks = await listRenderTasks();
+      setTasks(latestTasks);
+      const freshTask = latestTasks.find((task) => {
+        const createdAt = new Date(task.createdAt).getTime();
+        return Number.isFinite(createdAt) && createdAt >= submittedAt - 5000;
+      });
+      const recoverableTask = freshTask && freshTask.status !== "failed" ? freshTask : null;
+      if (recoverableTask) {
+        setActiveTask(recoverableTask);
+        setMessage(recoverableTask.status === "completed" ? "效果图生成完成" : "任务仍在生成中，请稍后刷新");
+        return;
+      }
       if (err.task) {
         setActiveTask(err.task);
-        setTasks(await listRenderTasks());
       }
       setMessage(text);
       setErrorDialog({ title: "效果渲染失败", message: text, raw: err.raw || err.task?.upstreamRawError || "" });

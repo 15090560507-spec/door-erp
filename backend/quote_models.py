@@ -52,6 +52,7 @@ class QuoteItemRequest(BaseModel):
     productName: str
     width: Optional[float] = None
     height: Optional[float] = None
+    quantity: Optional[float] = None
     openDirection: str = ""
     unit: str = "m2"
     unitPrice: float = 0.0
@@ -73,6 +74,7 @@ class QuoteItemResponse(BaseModel):
     productName: str
     width: Optional[float] = None
     height: Optional[float] = None
+    quantity: Optional[float] = None
     openDirection: str = ""
     unit: str = "m2"
     unitPrice: float = 0.0

@@ -84,6 +84,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">高</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[80px]">开启方向</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">单位</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[80px]">数量</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[90px]">单价</th>
           </tr>
         </thead>
@@ -161,6 +162,17 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   onChange={(e) => updateItem(index, "unit", e.target.value)}
                   list="unitOptions"
                   className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors"
+                />
+              </td>
+              {/* 数量 */}
+              <td className="py-1.5 px-2">
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={item.quantity ?? ""}
+                  onChange={(e) => updateItem(index, "quantity", e.target.value ? Number(e.target.value) : null)}
+                  placeholder="自动"
+                  className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors placeholder:text-[#C7C7CC]"
                 />
               </td>
               {/* 单价 */}

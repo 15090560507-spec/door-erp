@@ -23,6 +23,12 @@ function isAreaUnit(unit: string) {
 
 function quoteQuantity(item: QuoteItem) {
   if (!item.productName.trim()) return "";
+  if (item.quantity !== null && item.quantity !== undefined) {
+    const explicit = Number(item.quantity);
+    if (Number.isFinite(explicit) && explicit > 0) {
+      return isAreaUnit(item.unit) ? explicit.toFixed(4) : String(explicit);
+    }
+  }
   if (!isAreaUnit(item.unit)) return "1";
   const width = Number(item.width || 0);
   const height = Number(item.height || 0);

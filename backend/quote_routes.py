@@ -94,6 +94,7 @@ def _normalize_analysis(data: dict) -> dict:
             "productName": str(item.get("productName") or item.get("name") or ""),
             "width": _number_or_none(item.get("width")),
             "height": _number_or_none(item.get("height")),
+            "quantity": _number_or_none(item.get("quantity")),
             "openDirection": str(item.get("openDirection") or ""),
             "unit": str(item.get("unit") or "m2"),
             "unitPrice": _number_or_none(item.get("unitPrice")),
@@ -444,11 +445,17 @@ def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
         width = item.get("width") or ""
         height = item.get("height") or ""
         unit_price = item.get("unitPrice") or ""
+        explicit_qty = item.get("quantity")
         qty = ""
         amount = ""
         unit = item.get("unit") or ""
         is_area_unit = "m2" in str(unit).lower() or "㎡" in str(unit) or "m²" in str(unit)
-        if item.get("productName") and not is_area_unit:
+        if explicit_qty not in (None, ""):
+            q = float(explicit_qty)
+            qty = f"{q:.4f}" if is_area_unit else str(q)
+            if unit_price:
+                amount = str(round(q * float(unit_price)))
+        elif item.get("productName") and not is_area_unit:
             qty = "1"
             if unit_price:
                 amount = str(round(float(unit_price)))

@@ -31,6 +31,12 @@ def _is_area_unit(unit: str) -> bool:
 def _quote_quantity(item: dict) -> float:
     if not (item.get("productName") or item.get("product_name") or "").strip():
         return 0
+    explicit_qty = item.get("quantity")
+    if explicit_qty is not None and explicit_qty != "":
+        try:
+            return float(explicit_qty)
+        except (TypeError, ValueError):
+            pass
     if not _is_area_unit(item.get("unit") or ""):
         return 1
     width = float(item.get("width") or 0)
@@ -126,6 +132,8 @@ def generate_excel(quote: dict, output_path: str):
         ws[f"E{row}"] = item.get("height")
         ws[f"F{row}"] = (item.get("openDirection") or item.get("open_direction", "")) if index == 0 else ""
         ws[f"G{row}"] = item.get("unit") or "m2"
+        if item.get("quantity") is not None:
+            ws[f"H{row}"] = item.get("quantity")
         ws[f"I{row}"] = item.get("unitPrice") or item.get("unit_price", 0)
 
     total = sum(_quote_amount(item) for item in items)

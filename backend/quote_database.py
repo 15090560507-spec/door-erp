@@ -247,6 +247,7 @@ class QuoteDatabaseManager:
                     "productName": item.get("productName", "").strip(),
                     "width": item.get("width"),
                     "height": item.get("height"),
+                    "quantity": item.get("quantity"),
                     "openDirection": item.get("openDirection", ""),
                     "unit": item.get("unit", ""),
                     "unitPrice": item.get("unitPrice", 0),
