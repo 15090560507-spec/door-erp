@@ -103,9 +103,9 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]):
     unitPrice: mainUnitPrice,
   }];
 
-  if (packing && num(packing.unitPrice) > 0) {
-    rows.push(rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction));
-  }
+  const packingRow = packing && num(packing.unitPrice) > 0
+    ? rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction)
+    : null;
 
   const hinge = findHingePrice(accessories, params.sel_hys || "", params.door_type || "");
   if (hinge && num(hinge.unitPrice) > 0) rows.push(rowFromAccessory(hinge, hinge.name, null, null, direction));
@@ -122,6 +122,14 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]):
   if ((params.qc_shape || "").includes("弧") || (params.sel_qc || "").includes("弧")) {
     const arcWindow = findPriceItem(accessories, "配件", "圆弧气窗");
     if (arcWindow) rows.push(rowFromAccessory(arcWindow, arcWindow.name, null, null, direction));
+  }
+
+  if (packingRow) {
+    if (rows.length >= QUOTE_ROW_COUNT) {
+      rows[QUOTE_ROW_COUNT - 1] = packingRow;
+    } else {
+      rows.push(packingRow);
+    }
   }
 
   return normalizeQuoteRows(padQuoteRows(rows));
