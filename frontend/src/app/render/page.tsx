@@ -67,7 +67,13 @@ export default function RenderPage() {
     setConfigs(nextConfigs);
     setAssets(nextAssets);
     setTasks(nextTasks);
-    setSelectedConfigId((current) => current || nextConfigs.find((item) => item.enabled)?.id || "");
+    const nextSelectedConfigId = selectedConfigId || nextConfigs.find((item) => item.enabled)?.id || "";
+    setSelectedConfigId(nextSelectedConfigId);
+    const config = nextConfigs.find((item) => item.id === nextSelectedConfigId);
+    if (config) {
+      setEditingConfigId(config.id);
+      setConfigForm(formFromConfig(config));
+    }
     setActiveTask((current) => {
       if (!nextTasks.length) return null;
       if (!current) return nextTasks[0];
@@ -91,25 +97,21 @@ export default function RenderPage() {
     const nextConfigs = await listRenderModelConfigs(true);
     setConfigs(nextConfigs);
     setSelectedConfigId(saved.id);
-    setEditingConfigId("");
-    setConfigForm(EMPTY_CONFIG);
-    setMessage("模型配置已保存");
+    setEditingConfigId(saved.id);
+    setConfigForm(formFromConfig(saved));
+    setMessage(`模型配置已保存：${saved.model}`);
   }
 
   function editConfig(config: RenderModelConfig) {
+    setSelectedConfigId(config.id);
     setEditingConfigId(config.id);
-    setConfigForm({
-      name: config.name,
-      provider: config.provider,
-      baseUrl: config.baseUrl,
-      apiKey: "",
-      model: config.model,
-      endpoint: config.endpoint,
-      apiType: config.apiType,
-      defaultSize: config.defaultSize,
-      timeoutSeconds: config.timeoutSeconds,
-      enabled: config.enabled,
-    });
+    setConfigForm(formFromConfig(config));
+  }
+
+  function handleSelectConfig(configId: string) {
+    setSelectedConfigId(configId);
+    const config = configs.find((item) => item.id === configId);
+    if (config) editConfig(config);
   }
 
   async function uploadAsset(event: ChangeEvent<HTMLInputElement>) {
@@ -130,6 +132,13 @@ export default function RenderPage() {
 
   async function submitTask() {
     if (!selectedConfigId) return setMessage("请先选择模型配置");
+    const activeConfig = configs.find((item) => item.id === selectedConfigId);
+    if (activeConfig && editingConfigId === selectedConfigId && isConfigFormDirty(activeConfig, configForm)) {
+      return setErrorDialog({
+        title: "模型配置未保存",
+        message: `当前提交仍会使用已保存配置：${activeConfig.provider} / ${activeConfig.apiType} / ${activeConfig.model}。请先点击“更新配置”保存表单里的修改。`,
+      });
+    }
     if (!lineArt) return setMessage("请上传线稿图");
     if (!styleReference) return setMessage("请上传参考款式图");
     if (!prompt.trim()) return setMessage("请填写提示词");
@@ -217,7 +226,7 @@ export default function RenderPage() {
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-[#1C1C1E]">模型配置</h2>
-          <select value={selectedConfigId} onChange={(event) => setSelectedConfigId(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+          <select value={selectedConfigId} onChange={(event) => handleSelectConfig(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
             <option value="">选择模型配置</option>
             {configs.filter((item) => item.enabled).map((config) => <option key={config.id} value={config.id}>{config.name}</option>)}
           </select>
@@ -326,7 +335,8 @@ export default function RenderPage() {
             {tasks.map((task) => (
               <button key={task.id} type="button" onClick={() => setActiveTask(task)} className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
                 <span className="font-medium">{task.status}</span>
-                <span className="ml-2">{new Date(task.createdAt).toLocaleString()}</span>
+                <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
+                <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
               </button>
             ))}
           </div>
@@ -357,6 +367,60 @@ function Input({ label, value, onChange, type = "text", placeholder = "" }: { la
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: [string, string][] }) {
   return <label><span className="text-[12px] font-medium text-[#8E8E93]">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">{options.map(([optionValue, labelText]) => <option key={optionValue} value={optionValue}>{labelText}</option>)}</select></label>;
+}
+
+function formFromConfig(config: RenderModelConfig): ModelConfigInput {
+  return {
+    name: config.name,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    apiKey: "",
+    model: config.model,
+    endpoint: config.endpoint,
+    apiType: config.apiType,
+    defaultSize: config.defaultSize,
+    timeoutSeconds: config.timeoutSeconds,
+    enabled: config.enabled,
+  };
+}
+
+function formatRenderTime(value: string): string {
+  if (!value) return "";
+  const normalized = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function renderTaskModelText(task: RenderTask, configs: RenderModelConfig[]): string {
+  const snapshot = task.modelConfigSnapshot || {};
+  const fallbackConfig = configs.find((item) => item.id === task.modelConfigId);
+  const source = Object.keys(snapshot).length ? snapshot : fallbackConfig || {};
+  return [source.name, source.provider, source.apiType, source.model].filter(Boolean).join(" / ") || task.modelConfigId;
+}
+
+function isConfigFormDirty(config: RenderModelConfig, form: ModelConfigInput): boolean {
+  return (
+    config.name !== form.name ||
+    config.provider !== form.provider ||
+    config.baseUrl !== form.baseUrl ||
+    config.model !== form.model ||
+    config.endpoint !== form.endpoint ||
+    config.apiType !== form.apiType ||
+    config.defaultSize !== form.defaultSize ||
+    Number(config.timeoutSeconds) !== Number(form.timeoutSeconds) ||
+    Boolean(config.enabled) !== Boolean(form.enabled) ||
+    Boolean(form.apiKey)
+  );
 }
 
 function clampCount(value: unknown): number {

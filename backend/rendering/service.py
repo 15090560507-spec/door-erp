@@ -1,12 +1,12 @@
 import base64
 import os
 import urllib.request
-from datetime import datetime
 from typing import Iterable
 
 from fastapi import HTTPException, UploadFile
 
 from .database import render_db
+from .database import utc_now_iso
 from .providers import ProviderError, RenderProviderRequest, get_provider
 from .storage import RENDER_FILES_DIR, public_file_url, save_bytes
 
@@ -88,13 +88,14 @@ async def run_render_task(
 
     task = render_db.create_task({
         "modelConfigId": model_config_id,
+        "modelConfigSnapshot": _config_snapshot(config),
         "prompt": prompt,
         "size": size or config.get("defaultSize", "original"),
         "count": OUTPUT_IMAGE_COUNT,
         "selectedAssetIds": selected_asset_ids,
         "files": [line_info] + ([style_info] if style_info else []) + temp_infos,
     })
-    render_db.update_task(task["id"], {"status": "running", "startedAt": datetime.now().isoformat()})
+    render_db.update_task(task["id"], {"status": "running", "startedAt": utc_now_iso()})
     provider_request = RenderProviderRequest(
         config=config,
         prompt=prompt,
@@ -112,7 +113,7 @@ async def run_render_task(
             "status": "completed",
             "images": images,
             "raw": _success_raw_summary(response.get("raw")),
-            "finishedAt": datetime.now().isoformat(),
+            "finishedAt": utc_now_iso(),
         })
         return updated or task
     except ProviderError as exc:
@@ -121,7 +122,7 @@ async def run_render_task(
             "errorType": exc.error_type,
             "errorMessage": exc.message,
             "upstreamRawError": exc.raw,
-            "finishedAt": datetime.now().isoformat(),
+            "finishedAt": utc_now_iso(),
         })
         raise HTTPException(status_code=exc.status_code, detail={"task": updated, "errorType": exc.error_type, "message": exc.message, "raw": exc.raw}) from exc
 
@@ -181,6 +182,17 @@ def _guess_mime(path: str) -> str:
 
 def _clamp_count(count: int) -> int:
     return OUTPUT_IMAGE_COUNT
+
+
+def _config_snapshot(config: dict) -> dict:
+    return {
+        "name": config.get("name", ""),
+        "provider": config.get("provider", ""),
+        "baseUrl": config.get("baseUrl", ""),
+        "model": config.get("model", ""),
+        "endpoint": config.get("endpoint", ""),
+        "apiType": config.get("apiType", ""),
+    }
 
 
 def _success_raw_summary(raw) -> dict:

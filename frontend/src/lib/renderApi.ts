@@ -55,6 +55,14 @@ export interface RenderTask {
   id: string;
   status: "pending" | "running" | "completed" | "failed" | string;
   modelConfigId: string;
+  modelConfigSnapshot?: {
+    name?: string;
+    provider?: string;
+    baseUrl?: string;
+    model?: string;
+    endpoint?: string;
+    apiType?: string;
+  };
   prompt: string;
   size: string;
   count: number;

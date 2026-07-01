@@ -3,7 +3,7 @@ import os
 import tempfile
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from config import BACKUP_DIR, DATA_DIR
@@ -16,6 +16,10 @@ MODEL_CONFIGS_FILE = os.path.join(RENDER_DB_DIR, "model_configs.json")
 ASSETS_FILE = os.path.join(RENDER_DB_DIR, "assets.json")
 TASKS_FILE = os.path.join(RENDER_DB_DIR, "tasks.json")
 RENDER_BACKUP_DIR = os.path.join(BACKUP_DIR, "render")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class JsonTable:
@@ -85,7 +89,7 @@ class RenderDatabase:
         return None
 
     def create_model_config(self, data: dict) -> dict:
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
         item = {
             "id": uuid.uuid4().hex[:12],
             "name": data.get("name", "").strip(),
@@ -120,7 +124,7 @@ class RenderDatabase:
                     if key == "apiKey" and value == "":
                         continue
                     item[key] = _capabilities_dict(value) if key == "capabilities" else value
-                item["updatedAt"] = datetime.now().isoformat()
+                item["updatedAt"] = utc_now_iso()
                 return _public_config(item)
             return None
 
@@ -147,7 +151,7 @@ class RenderDatabase:
         return None
 
     def create_asset(self, data: dict) -> dict:
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
         item = {
             "id": uuid.uuid4().hex[:12],
             "name": data.get("name", "").strip() or data.get("originalName", "素材"),
@@ -173,7 +177,7 @@ class RenderDatabase:
                 for key in ["name", "category", "tags", "remark", "favorite"]:
                     if key in patch and patch[key] is not None:
                         item[key] = patch[key]
-                item["updatedAt"] = datetime.now().isoformat()
+                item["updatedAt"] = utc_now_iso()
                 return item
             return None
 
@@ -184,18 +188,19 @@ class RenderDatabase:
             for item in items:
                 if item.get("id") == asset_id:
                     item["active"] = False
-                    item["updatedAt"] = datetime.now().isoformat()
+                    item["updatedAt"] = utc_now_iso()
                     return True
             return False
 
         return self.assets.update(mutate)
 
     def create_task(self, data: dict) -> dict:
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
         item = {
             "id": uuid.uuid4().hex[:12],
             "status": "pending",
             "modelConfigId": data.get("modelConfigId"),
+            "modelConfigSnapshot": data.get("modelConfigSnapshot", {}),
             "prompt": data.get("prompt", ""),
             "size": data.get("size", "original"),
             "count": int(data.get("count", 1) or 1),
@@ -266,4 +271,3 @@ def _capabilities_dict(value) -> dict:
 
 
 render_db = RenderDatabase()
-
