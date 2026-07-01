@@ -132,7 +132,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                   <td className={`${itemCell} text-left`} colSpan={2}>{item?.productName || ""}</td>
                   <td className={itemCell}>{numberText(item?.width)}</td>
                   <td className={itemCell}>{numberText(item?.height)}</td>
-                  <td className={itemCell}>{item?.openDirection || ""}</td>
+                  <td className={itemCell}>{index === 0 ? item?.openDirection || "" : ""}</td>
                   <td className={itemCell}>{item?.unit || ""}</td>
                   <td className={itemCell}>{item ? quoteQuantity(item) : ""}</td>
                   <td className={itemCell}>{numberText(item?.unitPrice)}</td>

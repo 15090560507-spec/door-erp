@@ -27,6 +27,10 @@ function padQuoteRows(rows: QuoteItem[]): QuoteItem[] {
   return next;
 }
 
+function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
+  return rows.map((item, index) => index === 0 ? item : { ...item, openDirection: "" });
+}
+
 function calcAreas(params: DoorFormData) {
   const frameWidth = num(params.dw);
   const frameHeight = num(params.dh);
@@ -120,7 +124,7 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]):
     if (arcWindow) rows.push(rowFromAccessory(arcWindow, arcWindow.name, null, null, direction));
   }
 
-  return padQuoteRows(rows);
+  return normalizeQuoteRows(padQuoteRows(rows));
 }
 
 function chooseAccessoryMatch(name: string, matches: Accessory[]): Accessory | null {
@@ -210,6 +214,10 @@ export default function QuotePage() {
     return () => { alive = false; };
   }, []);
 
+  const handleItemsChange = useCallback((rows: QuoteItem[]) => {
+    setItems(normalizeQuoteRows(rows));
+  }, []);
+
   // Collect form data
   const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; noticeText: string; items: QuoteItem[] } => {
     return {
@@ -217,7 +225,7 @@ export default function QuotePage() {
       projectName: projectName.trim(),
       quoteDate,
       noticeText: noticeText.trim() || DEFAULT_QUOTE_NOTICE_TEXT,
-      items: items.filter((item) => item.productName.trim()),
+      items: normalizeQuoteRows(items).filter((item) => item.productName.trim()),
     };
   }, [customerName, projectName, quoteDate, noticeText, items]);
 
@@ -347,7 +355,7 @@ export default function QuotePage() {
 
     const rows = [mainRow, ...accessoryRows].slice(0, QUOTE_ROW_COUNT);
     while (rows.length < QUOTE_ROW_COUNT) rows.push(createEmptyQuoteItem());
-    setItems(rows);
+    setItems(normalizeQuoteRows(rows));
 
     const overflowCount = Math.max(0, accessoryRows.length - (QUOTE_ROW_COUNT - 1));
     const statusParts = ["AI 识别结果已回填"];
@@ -383,7 +391,7 @@ export default function QuotePage() {
     setProjectName(quote.projectName);
     setQuoteDate(quote.quoteDate);
     setNoticeText(quote.noticeText || DEFAULT_QUOTE_NOTICE_TEXT);
-    setItems(
+    setItems(normalizeQuoteRows(
       Array.from({ length: QUOTE_ROW_COUNT }, (_, index) => {
         const item = quote.items?.[index];
         return item
@@ -398,7 +406,7 @@ export default function QuotePage() {
             }
           : createEmptyQuoteItem();
       })
-    );
+    ));
     setLastQuoteId(quote.id);
     setStatus(`已载入报价单 #${quote.id}`);
   }
@@ -521,7 +529,7 @@ export default function QuotePage() {
             </label>
 
             {/* Items Table */}
-            <QuoteItemsTable items={items} onChange={setItems} />
+            <QuoteItemsTable items={items} onChange={handleItemsChange} />
           </div>
 
           {/* AI Analysis */}
@@ -535,7 +543,7 @@ export default function QuotePage() {
             projectName={projectName}
             quoteDate={quoteDate}
             noticeText={noticeText}
-            items={items}
+            items={normalizeQuoteRows(items)}
           />
 
           {/* Action Buttons */}

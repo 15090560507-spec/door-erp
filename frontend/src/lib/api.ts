@@ -165,7 +165,7 @@ export async function deleteTask(taskId: string) {
   return data;
 }
 
-const DROPDOWN_CACHE_KEY = "door_dropdown_options_cache_v3";
+const DROPDOWN_CACHE_KEY = "door_dropdown_options_cache_v4";
 
 export async function loadDropdownOptions(): Promise<Record<string, string[]>> {
   if (typeof window !== "undefined") {

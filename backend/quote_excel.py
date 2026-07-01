@@ -124,7 +124,7 @@ def generate_excel(quote: dict, output_path: str):
         ws[f"B{row}"] = item.get("productName") or item.get("product_name", "")
         ws[f"D{row}"] = item.get("width")
         ws[f"E{row}"] = item.get("height")
-        ws[f"F{row}"] = item.get("openDirection") or item.get("open_direction", "")
+        ws[f"F{row}"] = (item.get("openDirection") or item.get("open_direction", "")) if index == 0 else ""
         ws[f"G{row}"] = item.get("unit") or "m2"
         ws[f"I{row}"] = item.get("unitPrice") or item.get("unit_price", 0)
 
