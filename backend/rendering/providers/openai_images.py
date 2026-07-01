@@ -54,9 +54,10 @@ class OpenAIImagesProvider(BaseProvider):
                 "resolution": image_options["resolution"],
                 "n": str(request.count),
             }
-            files = [("image", request.line_art)]
+            image_field = _image_field_name(request.config, 1 + len(request.all_references))
+            files = [(image_field, request.line_art)]
             for item in request.all_references:
-                files.append(("image", item))
+                files.append((image_field, item))
             body, boundary = _multipart(fields, files)
             upstream = urllib.request.Request(
                 url,
@@ -82,6 +83,13 @@ class OpenAIImagesProvider(BaseProvider):
 def _normalize_model(model: str | None) -> str:
     value = (model or "").strip()
     return "gpt-image-2" if value in {"", "image2"} else value
+
+
+def _image_field_name(config: dict, image_count: int) -> str:
+    provider = (config.get("provider") or "").strip().lower()
+    if provider in {"image2", "image2_proxy", "proxy"} and image_count > 1:
+        return "image[]"
+    return "image"
 
 
 def _image2_options(size: str, line_art: dict | None = None) -> dict[str, str]:

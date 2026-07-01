@@ -155,6 +155,8 @@ def openai_join_url(base_url: str, endpoint: str) -> str:
         raise ProviderError("Base URL 必须是有效的 http/https 地址", status_code=400, error_type="config_error")
     lower_base_path = parsed.path.rstrip("/").lower()
     clean_path = path.lstrip("/")
+    if lower_base_path.endswith("/v1") and clean_path.startswith("v1/"):
+        clean_path = clean_path[3:]
     if clean_path.startswith("v1/") or lower_base_path.endswith("/v1"):
         return f"{base}/{clean_path}"
     if clean_path.startswith("images/"):
