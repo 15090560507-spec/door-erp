@@ -201,7 +201,7 @@ export default function RenderPage() {
     if (!selectedConfigId) return setMessage("请先选择模型配置");
     let submitConfigId = selectedConfigId;
     const activeConfig = configs.find((item) => item.id === submitConfigId);
-    if (activeConfig && editingConfigId === selectedConfigId && isConfigFormDirty(activeConfig, configForm)) {
+    if (activeConfig && editingConfigId === selectedConfigId) {
       const saved = await saveConfig({ silent: true });
       if (!saved) return;
       submitConfigId = saved.id;
@@ -287,7 +287,7 @@ export default function RenderPage() {
         <div className="mb-3 flex items-center justify-between">
           <button type="button" onClick={() => setModelConfigOpen((value) => !value)} className="text-left">
             <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{modelConfigOpen ? "▼" : "▶"} 模型配置</h2>
-            {selectedConfig && <p className="mt-1 text-[12px] text-[#8E8E93]">当前：{selectedConfig.provider} / {selectedConfig.apiType} / {selectedConfig.model} / API Key {selectedConfig.hasApiKey ? "已保存" : "未保存"}</p>}
+            {selectedConfig && <p className="mt-1 text-[12px] text-[#8E8E93]">当前：{selectedConfig.provider} / {selectedConfig.apiType} / {selectedConfig.model} / {selectedConfig.baseUrl || "未填写 Base URL"} / API Key {selectedConfig.hasApiKey ? "已保存" : "未保存"}</p>}
           </button>
           <div className="flex items-center gap-2">
             <select value={selectedConfigId} onChange={(event) => handleSelectConfig(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
@@ -670,21 +670,6 @@ function renderTaskModelText(task: RenderTask, configs: RenderModelConfig[]): st
   const fallbackConfig = configs.find((item) => item.id === task.modelConfigId);
   const source = Object.keys(snapshot).length ? snapshot : fallbackConfig || {};
   return [source.name, source.provider, source.apiType, source.model].filter(Boolean).join(" / ") || task.modelConfigId;
-}
-
-function isConfigFormDirty(config: RenderModelConfig, form: ModelConfigInput): boolean {
-  return (
-    config.name !== form.name ||
-    config.provider !== form.provider ||
-    config.baseUrl !== form.baseUrl ||
-    config.model !== form.model ||
-    config.endpoint !== form.endpoint ||
-    config.apiType !== form.apiType ||
-    config.defaultSize !== form.defaultSize ||
-    Number(config.timeoutSeconds) !== Number(form.timeoutSeconds) ||
-    Boolean(config.enabled) !== Boolean(form.enabled) ||
-    Boolean(form.apiKey)
-  );
 }
 
 function clampCount(value: unknown): number {
