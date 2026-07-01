@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, ClipboardEvent, useEffect, useState } from "react";
 import {
   RENDER_CATEGORIES,
   createRenderModelConfig,
@@ -20,6 +20,7 @@ import {
 const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
 const ASSET_PAGE_SIZE = 24;
 const TASK_LIST_LIMIT = 20;
+const DEFAULT_REFERENCE_GROUPS = ["款式", "拉手", "花件", "合页"];
 
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
@@ -34,6 +35,24 @@ const EMPTY_CONFIG: ModelConfigInput = {
   enabled: true,
 };
 
+interface ReferenceGroup {
+  id: string;
+  label: string;
+  category: string;
+  assetIds: string[];
+  files: File[];
+}
+
+function createDefaultReferenceGroups(): ReferenceGroup[] {
+  return DEFAULT_REFERENCE_GROUPS.map((category) => ({
+    id: `${category}-${Math.random().toString(36).slice(2, 8)}`,
+    label: category,
+    category,
+    assetIds: [],
+    files: [],
+  }));
+}
+
 export default function RenderPage() {
   const [configs, setConfigs] = useState<RenderModelConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState("");
@@ -41,15 +60,16 @@ export default function RenderPage() {
   const [editingConfigId, setEditingConfigId] = useState("");
   const [assets, setAssets] = useState<RenderAsset[]>([]);
   const [tasks, setTasks] = useState<RenderTask[]>([]);
+  const [modelConfigOpen, setModelConfigOpen] = useState(false);
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
   const [assetHasMore, setAssetHasMore] = useState(false);
   const [assetLoading, setAssetLoading] = useState(false);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [lineArt, setLineArt] = useState<File | null>(null);
   const [styleReference, setStyleReference] = useState<File | null>(null);
-  const [tempAssets, setTempAssets] = useState<File[]>([]);
+  const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [size, setSize] = useState("original");
   const [count, setCount] = useState(1);
@@ -58,6 +78,8 @@ export default function RenderPage() {
   const [errorDialog, setErrorDialog] = useState<{ title: string; message: string; raw?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const selectedConfig = configs.find((item) => item.id === selectedConfigId);
+  const selectedReferenceAssetCount = referenceGroups.reduce((sum, group) => sum + group.assetIds.length, 0);
+  const uploadedReferenceFileCount = referenceGroups.reduce((sum, group) => sum + group.files.length, 0);
 
   useEffect(() => {
     refreshAll();
@@ -119,9 +141,10 @@ export default function RenderPage() {
     await loadAssets({ reset: true });
   }
 
-  async function saveConfig() {
+  async function saveConfig(options: { silent?: boolean } = {}): Promise<RenderModelConfig | null> {
     if (!configForm.name.trim() || !configForm.baseUrl.trim() || !configForm.model.trim()) {
-      return setMessage("请填写配置名称、Base URL 和 Model");
+      setMessage("请填写配置名称、Base URL 和 Model");
+      return null;
     }
     const saved = editingConfigId
       ? await updateRenderModelConfig(editingConfigId, configForm)
@@ -131,7 +154,8 @@ export default function RenderPage() {
     setSelectedConfigId(saved.id);
     setEditingConfigId(saved.id);
     setConfigForm(formFromConfig(saved));
-    setMessage(`模型配置已保存：${saved.model}`);
+    if (!options.silent) setMessage(`模型配置已保存：${saved.model}`);
+    return saved;
   }
 
   function editConfig(config: RenderModelConfig) {
@@ -146,30 +170,41 @@ export default function RenderPage() {
     if (config) editConfig(config);
   }
 
-  async function uploadAsset(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    const name = window.prompt("素材名称", file.name.replace(/\.[^.]+$/, "")) || file.name;
-    const asset = await uploadRenderAsset({ file, name, category: category || "其他", favorite: true });
-    setAssets((current) => [asset, ...current]);
-    setMessage("素材已上传到个人素材库");
-  }
-
   async function removeAsset(assetId: string) {
     await deleteRenderAsset(assetId);
     setAssets((current) => current.filter((item) => item.id !== assetId));
-    setSelectedAssetIds((current) => current.filter((id) => id !== assetId));
+    setReferenceGroups((current) => current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== assetId) })));
+  }
+
+  function updateReferenceGroup(groupId: string, patch: Partial<ReferenceGroup>) {
+    setReferenceGroups((current) => current.map((group) => group.id === groupId ? { ...group, ...patch } : group));
+  }
+
+  function addReferenceGroup() {
+    setReferenceGroups((current) => [
+      ...current,
+      {
+        id: `ref-${Date.now()}`,
+        label: "",
+        category: "其他",
+        assetIds: [],
+        files: [],
+      },
+    ]);
+  }
+
+  function removeReferenceGroup(groupId: string) {
+    setReferenceGroups((current) => current.filter((group) => group.id !== groupId));
   }
 
   async function submitTask() {
     if (!selectedConfigId) return setMessage("请先选择模型配置");
-    const activeConfig = configs.find((item) => item.id === selectedConfigId);
+    let submitConfigId = selectedConfigId;
+    const activeConfig = configs.find((item) => item.id === submitConfigId);
     if (activeConfig && editingConfigId === selectedConfigId && isConfigFormDirty(activeConfig, configForm)) {
-      return setErrorDialog({
-        title: "模型配置未保存",
-        message: `当前提交仍会使用已保存配置：${activeConfig.provider} / ${activeConfig.apiType} / ${activeConfig.model}。请先点击“更新配置”保存表单里的修改。`,
-      });
+      const saved = await saveConfig({ silent: true });
+      if (!saved) return;
+      submitConfigId = saved.id;
     }
     if (!lineArt) return setMessage("请上传线稿图");
     if (!styleReference) return setMessage("请上传参考款式图");
@@ -177,16 +212,18 @@ export default function RenderPage() {
     setLoading(true);
     setMessage("正在提交渲染任务...");
     const submittedAt = Date.now();
+    const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
+    const taskTempAssets = referenceGroups.flatMap((group) => group.files);
     try {
       const task = await createRenderTask({
-        modelConfigId: selectedConfigId,
+        modelConfigId: submitConfigId,
         prompt,
         size,
         count: 1,
-        selectedAssetIds,
+        selectedAssetIds: taskAssetIds,
         lineArt,
         styleReference,
-        tempAssets,
+        tempAssets: taskTempAssets,
       });
       setActiveTask(task);
       setTasks(await listRenderTasks());
@@ -248,14 +285,19 @@ export default function RenderPage() {
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-[#1C1C1E]">模型配置</h2>
-          <select value={selectedConfigId} onChange={(event) => handleSelectConfig(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
-            <option value="">选择模型配置</option>
-            {configs.filter((item) => item.enabled).map((config) => <option key={config.id} value={config.id}>{config.name}</option>)}
-          </select>
+          <button type="button" onClick={() => setModelConfigOpen((value) => !value)} className="text-left">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{modelConfigOpen ? "▼" : "▶"} 模型配置</h2>
+            {selectedConfig && <p className="mt-1 text-[12px] text-[#8E8E93]">当前：{selectedConfig.provider} / {selectedConfig.apiType} / {selectedConfig.model} / API Key {selectedConfig.hasApiKey ? "已保存" : "未保存"}</p>}
+          </button>
+          <div className="flex items-center gap-2">
+            <select value={selectedConfigId} onChange={(event) => handleSelectConfig(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+              <option value="">选择模型配置</option>
+              {configs.filter((item) => item.enabled).map((config) => <option key={config.id} value={config.id}>{config.name}</option>)}
+            </select>
+            <button type="button" onClick={() => void saveConfig()} className="rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white">保存配置</button>
+          </div>
         </div>
-        {selectedConfig && <p className="mb-3 text-[12px] text-[#8E8E93]">当前：{selectedConfig.provider} / {selectedConfig.apiType} / {selectedConfig.model} / API Key {selectedConfig.hasApiKey ? "已保存" : "未保存"}</p>}
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+        {modelConfigOpen && <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
           <Input label="配置名称" value={configForm.name} onChange={(value) => setConfigForm({ ...configForm, name: value })} />
           <Select label="Provider" value={configForm.provider} onChange={(value) => setConfigForm({ ...configForm, provider: value })} options={[["image2_proxy", "Image2 中转站"], ["openai_compatible", "OpenAI 兼容"], ["volcengine_ark", "火山方舟"]]} />
           <Input label="Base URL" value={configForm.baseUrl} onChange={(value) => setConfigForm({ ...configForm, baseUrl: value })} />
@@ -264,15 +306,58 @@ export default function RenderPage() {
           <Input label="Endpoint" value={configForm.endpoint} onChange={(value) => setConfigForm({ ...configForm, endpoint: value })} />
           <Select label="API Type" value={configForm.apiType} onChange={(value) => setConfigForm({ ...configForm, apiType: value })} options={[["openai_images_edits", "OpenAI Images Edits"], ["openai_images_generations", "OpenAI Images Generations"], ["ark_images_generations", "Ark Images Generations"]]} />
           <div className="flex items-end gap-2">
-            <button type="button" onClick={saveConfig} className="h-9 flex-1 rounded-lg bg-[#007AFF] px-3 text-[13px] font-medium text-white">{editingConfigId ? "更新配置" : "新增配置"}</button>
+            <button type="button" onClick={() => void saveConfig()} className="h-9 flex-1 rounded-lg bg-[#007AFF] px-3 text-[13px] font-medium text-white">{editingConfigId ? "保存配置" : "新增配置"}</button>
             {editingConfigId && <button type="button" onClick={() => { setEditingConfigId(""); setConfigForm(EMPTY_CONFIG); }} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px]">取消</button>}
           </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        </div>}
+        {modelConfigOpen && <div className="mt-3 flex flex-wrap gap-2">
           {configs.map((config) => (
             <button key={config.id} type="button" onClick={() => editConfig(config)} className="rounded-full bg-[#F2F2F7] px-3 py-1 text-[12px] text-[#3C3C43]">{config.name || "未命名"}{config.enabled ? "" : "（停用）"}</button>
           ))}
+        </div>}
+      </section>
+
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => setAssetLibraryOpen((value) => !value)} className="text-left">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 个人素材库</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次渲染要用的参考图在下方配件模型区选择。</p>
+          </button>
+          <div className="flex-1" />
+          {assetLibraryOpen && (
+            <>
+              <select value={category} onChange={(event) => void handleCategoryChange(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
+                <option value="">全部分类</option>
+                {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={handleSearchBlur} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
+              <LibraryUploadButton category={category} onUploaded={(asset) => { setAssets((current) => [asset, ...current]); setMessage("素材已上传到个人素材库"); }} />
+            </>
+          )}
         </div>
+        {assetLibraryOpen && (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              {assets.map((asset) => (
+                <div key={asset.id} className="rounded-xl border border-[#E5E5EA] p-2">
+                  <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /></div>
+                  <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
+                  <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
+                  <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
+                </div>
+              ))}
+              {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
+              {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+            </div>
+            {assetHasMore && (
+              <div className="mt-3 flex justify-center">
+                <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
+                  {assetLoading ? "加载中..." : "加载更多素材"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -281,43 +366,44 @@ export default function RenderPage() {
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
-        <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">个人素材库</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次专用配件在下方临时上传。</p>
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">参考配件模型</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">每一组都可以从个人素材库选择，也可以粘贴或上传本次专用参考图。</p>
           </div>
-          <div className="flex-1" />
-          <select value={category} onChange={(event) => void handleCategoryChange(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
-            <option value="">全部分类</option>
-            {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={handleSearchBlur} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
-          <label className="cursor-pointer rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white">
-            上传素材
-            <input type="file" accept="image/*" onChange={uploadAsset} className="hidden" />
-          </label>
+          <button type="button" onClick={addReferenceGroup} className="rounded-lg bg-[#F2F2F7] px-3 py-2 text-[13px] font-medium text-[#1C1C1E]">+ 增加参考项</button>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-          {assets.map((asset) => (
-            <div key={asset.id} className={`rounded-xl border p-2 ${selectedAssetIds.includes(asset.id) ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
-              <button type="button" onClick={() => setSelectedAssetIds((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])} className="block w-full">
-                <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /></div>
-                <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
-                <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
-              </button>
-              <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
-            </div>
-          ))}
-          {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
-          {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+        <div className="space-y-3">
+          {referenceGroups.map((group) => {
+            const libraryOptions = assets.filter((asset) => !group.category || asset.category === group.category);
+            return (
+              <div key={group.id} className="rounded-xl border border-[#E5E5EA] p-3">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[160px_160px_1fr_auto]">
+                  <Input label="参考项" value={group.label} onChange={(value) => updateReferenceGroup(group.id, { label: value })} />
+                  <Select label="分类" value={group.category} onChange={(value) => updateReferenceGroup(group.id, { category: value, assetIds: [] })} options={RENDER_CATEGORIES.map((item) => [item, item])} />
+                  <label>
+                    <span className="text-[12px] font-medium text-[#8E8E93]">从个人素材库选择</span>
+                    <select
+                      multiple
+                      value={group.assetIds}
+                      onChange={(event) => updateReferenceGroup(group.id, { assetIds: Array.from(event.target.selectedOptions).map((option) => option.value) })}
+                      className="mt-1 h-20 w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]"
+                    >
+                      {libraryOptions.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex items-end">
+                    <button type="button" onClick={() => removeReferenceGroup(group.id)} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px] text-[#FF3B30]">删除</button>
+                  </div>
+                </div>
+                <MultiImageUploadBox
+                  files={group.files}
+                  onChange={(files) => updateReferenceGroup(group.id, { files })}
+                />
+              </div>
+            );
+          })}
         </div>
-        {assetHasMore && (
-          <div className="mt-3 flex justify-center">
-            <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
-              {assetLoading ? "加载中..." : "加载更多素材"}
-            </button>
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
@@ -333,11 +419,7 @@ export default function RenderPage() {
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="cursor-pointer rounded-lg bg-[#F2F2F7] px-3 py-2 text-[13px] font-medium">
-            临时上传本次配件
-            <input type="file" accept="image/*" multiple onChange={(event) => setTempAssets(Array.from(event.target.files || []))} className="hidden" />
-          </label>
-          <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedAssetIds.length} 个，临时配件 {tempAssets.length} 个</span>
+          <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
           <div className="flex-1" />
           <button type="button" onClick={submitTask} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">{loading ? "生成中..." : "提交渲染任务"}</button>
         </div>
@@ -378,18 +460,169 @@ export default function RenderPage() {
 }
 
 function UploadBox({ title, file, onPick, required }: { title: string; file: File | null; onPick: (file: File | null) => void; required?: boolean }) {
+  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
+    const [pastedFile] = imageFilesFromClipboard(event);
+    if (!pastedFile) return;
+    event.preventDefault();
+    onPick(pastedFile);
+  }
+
   return (
     <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{title}{required ? " *" : ""}</h2>
         {file && <button type="button" onClick={() => onPick(null)} className="text-[12px] text-[#FF3B30]">清空</button>}
       </div>
-      <label className="flex min-h-[240px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7]">
-        <input type="file" accept="image/*" onChange={(event) => onPick(event.target.files?.[0] || null)} className="hidden" />
-        <span className="text-center text-[13px] text-[#8E8E93]">{file ? file.name : `点击上传${title}`}</span>
+      <label
+        tabIndex={0}
+        onPaste={handlePaste}
+        className="flex min-h-[240px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7] p-3 outline-none focus:border-[#007AFF]"
+      >
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            onPick(event.target.files?.[0] || null);
+            event.currentTarget.value = "";
+          }}
+          className="hidden"
+        />
+        {file ? (
+          <div className="w-full text-center">
+            <FilePreviewImage file={file} className="mx-auto max-h-[220px] max-w-full rounded-lg object-contain" />
+            <p className="mt-2 truncate text-[12px] text-[#3C3C43]">{file.name}</p>
+            <p className="mt-1 text-[11px] text-[#8E8E93]">点击可重新上传，也可以 Ctrl+V 粘贴替换</p>
+          </div>
+        ) : (
+          <span className="text-center text-[13px] text-[#8E8E93]">点击上传{title}，或 Ctrl+V 粘贴图片</span>
+        )}
       </label>
     </section>
   );
+}
+
+function MultiImageUploadBox({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
+  function appendFiles(nextFiles: File[]) {
+    if (!nextFiles.length) return;
+    onChange([...files, ...nextFiles]);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
+    const pastedFiles = imageFilesFromClipboard(event);
+    if (!pastedFiles.length) return;
+    event.preventDefault();
+    appendFiles(pastedFiles);
+  }
+
+  return (
+    <div className="mt-3">
+      <label
+        tabIndex={0}
+        onPaste={handlePaste}
+        className="block cursor-pointer rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7] p-3 outline-none focus:border-[#007AFF]"
+      >
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(event) => {
+            appendFiles(imageFilesFromList(event.target.files));
+            event.currentTarget.value = "";
+          }}
+          className="hidden"
+        />
+        <span className="block text-[12px] font-medium text-[#3C3C43]">上传或粘贴本组参考图</span>
+        <span className="mt-1 block text-[11px] text-[#8E8E93]">支持多张图片，Ctrl+V 可直接粘贴</span>
+      </label>
+      {files.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          {files.map((file, index) => (
+            <div key={`${file.name}-${file.lastModified}-${index}`} className="rounded-lg border border-[#E5E5EA] bg-white p-2">
+              <FilePreviewImage file={file} className="h-24 w-full rounded-md object-contain" />
+              <p className="mt-1 truncate text-[11px] text-[#3C3C43]">{file.name}</p>
+              <button type="button" onClick={() => onChange(files.filter((_, fileIndex) => fileIndex !== index))} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LibraryUploadButton({ category, onUploaded }: { category: string; onUploaded: (asset: RenderAsset) => void }) {
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadFiles(files: File[]) {
+    if (!files.length || uploading) return;
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const asset = await uploadRenderAsset({
+          file,
+          name: file.name.replace(/\.[^.]+$/, "") || file.name,
+          category: category || "其他",
+          favorite: true,
+        });
+        onUploaded(asset);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
+    const files = imageFilesFromClipboard(event);
+    if (!files.length) return;
+    event.preventDefault();
+    void uploadFiles(files);
+  }
+
+  return (
+    <label
+      tabIndex={0}
+      onPaste={handlePaste}
+      className="cursor-pointer rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+    >
+      {uploading ? "上传中..." : "上传素材"}
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        disabled={uploading}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+          void uploadFiles(imageFilesFromList(event.target.files));
+          event.currentTarget.value = "";
+        }}
+        className="hidden"
+      />
+    </label>
+  );
+}
+
+function FilePreviewImage({ file, className }: { file: File; className: string }) {
+  const [src, setSrc] = useState("");
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  if (!src) return null;
+  return <img src={src} alt={file.name} className={className} />;
+}
+
+function imageFilesFromList(fileList: FileList | null): File[] {
+  return Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+}
+
+function imageFilesFromClipboard(event: ClipboardEvent): File[] {
+  const files = imageFilesFromList(event.clipboardData?.files || null);
+  if (files.length) return files;
+  return Array.from(event.clipboardData?.items || [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
 }
 
 function Input({ label, value, onChange, type = "text", placeholder = "" }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
