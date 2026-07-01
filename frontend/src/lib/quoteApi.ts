@@ -5,7 +5,6 @@ import type {
   QuoteResponse,
   QuoteListResponse,
   AiConfig,
-  AnalysisResult,
   DrawingAnalysisResponse,
 } from "./quoteTypes";
 
@@ -25,6 +24,10 @@ export async function createAccessory(item: {
   unit?: string;
   unitPrice?: number;
   remark?: string;
+  priceType?: string;
+  priceMode?: string;
+  frontStyle?: string;
+  backStyle?: string;
 }): Promise<{ id: number }> {
   const { data } = await api.post<{ id: number }>("/accessories", item);
   return data;
@@ -48,9 +51,22 @@ export async function importAccessories(
     unit?: string;
     unitPrice?: number;
     remark?: string;
+    priceType?: string;
+    priceMode?: string;
+    frontStyle?: string;
+    backStyle?: string;
   }>
 ): Promise<{ imported: number }> {
   const { data } = await api.post<{ imported: number }>("/accessories/import", { accessories: items });
+  return data;
+}
+
+export async function importAccessoriesXlsx(file: File): Promise<{ imported: number; parsed: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<{ imported: number; parsed: number }>("/accessories/import-xlsx", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return data;
 }
 

@@ -11,9 +11,12 @@ import re
 import time
 import urllib.error
 import urllib.request
+from io import BytesIO
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
+from openpyxl import load_workbook
+from config import DATA_DIR
 from quote_models import (
     AccessoryCreate, AccessoryImport,
     QuoteCreate,
@@ -124,6 +127,181 @@ def _prepare_ai_image(image_bytes: bytes, content_type: str) -> tuple[bytes, str
     return image_bytes, content_type
 
 
+def _parse_price(value) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value))
+    return float(match.group(0)) if match else 0.0
+
+
+def _clean_cell(value) -> str:
+    return str(value or "").strip()
+
+
+def _strip_note(value: str) -> str:
+    return re.sub(r"[（(].*?[）)]", "", value).strip()
+
+
+def _append_option(options: dict, key: str, value: str):
+    value = _clean_cell(value)
+    if not value:
+        return
+    existing = options.setdefault(key, [])
+    if value not in existing:
+        existing.append(value)
+
+
+def _sync_dropdown_options_from_price_items(items: list[dict]):
+    path = os.path.join(DATA_DIR, "dropdown_options.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            options = json.load(f)
+    except Exception:
+        options = {}
+
+    for item in items:
+        category = item.get("category", "")
+        if category == "制作材料":
+            _append_option(options, "MATERIALS", item.get("name", ""))
+        elif category == "款式组合":
+            _append_option(options, "DOOR_STYLES", item.get("frontStyle", ""))
+            _append_option(options, "DOOR_STYLES", item.get("backStyle", ""))
+        elif category == "锁体":
+            _append_option(options, "LOCKS", item.get("name", ""))
+        elif category == "合页":
+            _append_option(options, "HINGES", _strip_note(item.get("name", "")))
+        elif category == "包装":
+            _append_option(options, "BZ_OPTIONS", item.get("name", ""))
+        elif category == "配件" and "指纹锁" in item.get("name", ""):
+            _append_option(options, "FINGERPRINT_LOCKS", item.get("name", ""))
+
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(options, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+
+def _parse_accessory_price_xlsx(content: bytes) -> list[dict]:
+    try:
+        workbook = load_workbook(BytesIO(content), data_only=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Excel 文件读取失败: {exc}") from exc
+
+    sheet = workbook.worksheets[0]
+    items: list[dict] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_item(item: dict):
+        name = _clean_cell(item.get("name"))
+        if not name:
+            return
+        item["name"] = name
+        key = (
+            _clean_cell(item.get("category")),
+            name,
+            _clean_cell(item.get("frontStyle")),
+            _clean_cell(item.get("backStyle")),
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        items.append(item)
+
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        values = list(row) + [None] * 13
+
+        material = _clean_cell(values[0])
+        if material:
+            add_item({
+                "name": material,
+                "category": "制作材料",
+                "keywords": material,
+                "unit": "m2",
+                "unitPrice": _parse_price(values[1]),
+                "remark": "面积单价加价",
+                "priceType": "material",
+                "priceMode": "area_add",
+            })
+
+        front_style = _clean_cell(values[2])
+        back_style = _clean_cell(values[3])
+        if front_style and back_style and values[4] not in (None, "") and front_style != "正面" and back_style != "反面":
+            add_item({
+                "name": f"{front_style}+{back_style}",
+                "category": "款式组合",
+                "keywords": f"{front_style} {back_style}",
+                "unit": "m2",
+                "unitPrice": _parse_price(values[4]),
+                "remark": "面积基础单价",
+                "priceType": "style_combo",
+                "priceMode": "area_base",
+                "frontStyle": front_style,
+                "backStyle": back_style,
+            })
+
+        lock_body = _clean_cell(values[5])
+        if lock_body:
+            add_item({
+                "name": lock_body,
+                "category": "锁体",
+                "keywords": lock_body,
+                "unit": "m2",
+                "unitPrice": _parse_price(values[6]),
+                "remark": "面积单价加价",
+                "priceType": "lock_body",
+                "priceMode": "area_add",
+            })
+
+        hinge = _clean_cell(values[7])
+        if hinge:
+            add_item({
+                "name": hinge,
+                "category": "合页",
+                "keywords": f"{hinge} {_strip_note(hinge)}",
+                "unit": "套",
+                "unitPrice": _parse_price(values[8]),
+                "remark": "单独计价",
+                "priceType": "hardware",
+                "priceMode": "piece",
+            })
+
+        accessory = _clean_cell(values[9])
+        if accessory:
+            price = 580.0 if accessory.upper().startswith("Q3") else _parse_price(values[10])
+            add_item({
+                "name": accessory,
+                "category": "配件",
+                "keywords": accessory,
+                "unit": "套",
+                "unitPrice": price,
+                "remark": "单独计价",
+                "priceType": "hardware",
+                "priceMode": "piece",
+            })
+
+        packing = _clean_cell(values[11])
+        if packing:
+            add_item({
+                "name": packing,
+                "category": "包装",
+                "keywords": packing,
+                "unit": "m2",
+                "unitPrice": _parse_price(values[12]),
+                "remark": "按外围面积计价",
+                "priceType": "packing",
+                "priceMode": "outer_area_add",
+            })
+
+    return items
+
+
 # ===================== 配件管理 =====================
 
 @quote_router.get("/api/accessories")
@@ -162,6 +340,21 @@ def import_accessories(data: AccessoryImport):
     items = [item.model_dump() for item in data.accessories]
     count = accessory_db.import_batch(items)
     return {"imported": count}
+
+
+@quote_router.post("/api/accessories/import-xlsx", status_code=201)
+async def import_accessories_xlsx(file: UploadFile = File(...)):
+    """Import the door price workbook into the accessory/price library."""
+    filename = file.filename or ""
+    if not filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="请上传 .xlsx 或 .xlsm 文件")
+    content = await file.read()
+    items = _parse_accessory_price_xlsx(content)
+    if not items:
+        raise HTTPException(status_code=400, detail="Excel 中没有识别到可导入的价格数据")
+    count = accessory_db.import_batch(items)
+    _sync_dropdown_options_from_price_items(items)
+    return {"imported": count, "parsed": len(items)}
 
 
 @quote_router.delete("/api/accessories/{accessory_id}")
@@ -249,7 +442,13 @@ def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
         unit_price = item.get("unitPrice") or ""
         qty = ""
         amount = ""
-        if width and height:
+        unit = item.get("unit") or ""
+        is_area_unit = "m2" in str(unit).lower() or "㎡" in str(unit) or "m²" in str(unit)
+        if item.get("productName") and not is_area_unit:
+            qty = "1"
+            if unit_price:
+                amount = str(round(float(unit_price)))
+        elif width and height:
             q = float(width) * float(height) * 0.000001
             qty = f"{q:.4f}"
             if unit_price:

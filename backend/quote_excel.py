@@ -23,7 +23,16 @@ TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
 DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
 
 
+def _is_area_unit(unit: str) -> bool:
+    normalized = (unit or "").lower()
+    return "m2" in normalized or "㎡" in normalized or "m²" in normalized
+
+
 def _quote_quantity(item: dict) -> float:
+    if not (item.get("productName") or item.get("product_name") or "").strip():
+        return 0
+    if not _is_area_unit(item.get("unit") or ""):
+        return 1
     width = float(item.get("width") or 0)
     height = float(item.get("height") or 0)
     if not width or not height:
@@ -106,7 +115,7 @@ def generate_excel(quote: dict, output_path: str):
         ws[f"G{row}"] = None
         ws[f"I{row}"] = None
         ws[f"A{row}"] = f'=IF(B{row}<>"",COUNTA($B$9:B{row}),"")'
-        ws[f"H{row}"] = f'=IF(OR(D{row}="",E{row}=""),"",D{row}*E{row}*0.000001)'
+        ws[f"H{row}"] = f'=IF(B{row}="","",IF(OR(G{row}="m2",G{row}="㎡",G{row}="m²"),IF(OR(D{row}="",E{row}=""),"",D{row}*E{row}*0.000001),1))'
         ws[f"J{row}"] = f'=IF(OR(H{row}="",I{row}=""),"",ROUND(H{row}*I{row},0))'
 
     # Fill items

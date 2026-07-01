@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Accessory, QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
 import { createQuote, getAccessories } from "@/lib/quoteApi";
+import { getTask, getTasks } from "@/lib/api";
+import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
 import QuotePreview from "@/components/QuotePreview";
 import AccessoryModal from "@/components/AccessoryModal";
@@ -13,6 +15,113 @@ import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const QUOTE_ROW_COUNT = 8;
+
+function num(value: unknown): number {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function padQuoteRows(rows: QuoteItem[]): QuoteItem[] {
+  const next = rows.slice(0, QUOTE_ROW_COUNT);
+  while (next.length < QUOTE_ROW_COUNT) next.push(createEmptyQuoteItem());
+  return next;
+}
+
+function calcAreas(params: DoorFormData) {
+  const frameWidth = num(params.dw);
+  const frameHeight = num(params.dh);
+  const trimWidth = (params.has_outer ? num(params.trim_front_in) : 0) + (params.has_inner ? num(params.trim_back_in) : 0);
+  const outerWidth = frameWidth + trimWidth * 2;
+  const outerHeight = frameHeight + trimWidth;
+  return { frameWidth, frameHeight, outerWidth, outerHeight };
+}
+
+function rowFromAccessory(accessory: Accessory, productName = accessory.name, width: number | null = null, height: number | null = null, openDirection = ""): QuoteItem {
+  return {
+    accessoryId: accessory.id,
+    productName,
+    width,
+    height,
+    openDirection,
+    unit: accessory.unit || "",
+    unitPrice: accessory.unitPrice ?? 0,
+  };
+}
+
+function findPriceItem(accessories: Accessory[], category: string, name?: string): Accessory | null {
+  const query = String(name || "").trim();
+  if (!query) return null;
+  const scoped = accessories.filter((item) => item.category === category);
+  return (
+    scoped.find((item) => item.name.trim() === query) ||
+    scoped.find((item) => item.name.includes(query) || query.includes(item.name.trim())) ||
+    null
+  );
+}
+
+function findStyleCombo(accessories: Accessory[], frontStyle: string, backStyle: string): Accessory | null {
+  const front = frontStyle.trim();
+  const back = backStyle.trim();
+  if (!front || !back) return null;
+  const scoped = accessories.filter((item) => item.category === "款式组合");
+  return (
+    scoped.find((item) => item.frontStyle === front && item.backStyle === back) ||
+    scoped.find((item) => item.name.includes(front) && item.name.includes(back)) ||
+    null
+  );
+}
+
+function findHingePrice(accessories: Accessory[], hinge: string, doorType: string): Accessory | null {
+  const query = hinge.trim();
+  if (!query) return null;
+  const matches = accessories.filter((item) => item.category === "合页" && (item.name.includes(query) || item.keywords?.includes(query)));
+  if (!matches.length) return null;
+  const needsDouble = ["对开门", "两定两开", "四开门", "折叠四开门"].some((name) => doorType.includes(name));
+  return matches.find((item) => item.name.includes(needsDouble ? "对开" : "单门")) || matches[0];
+}
+
+function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[]): QuoteItem[] {
+  const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
+  const { frameWidth, frameHeight, outerWidth, outerHeight } = calcAreas(params);
+  const material = findPriceItem(accessories, "制作材料", params.zzcl);
+  const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
+  const lock = findPriceItem(accessories, "锁体", params.st_val);
+  const packing = findPriceItem(accessories, "包装", params.sel_bz);
+  const mainUnitPrice = num(style?.unitPrice) + num(material?.unitPrice) + num(lock?.unitPrice);
+
+  const rows: QuoteItem[] = [{
+    accessoryId: style?.id ?? null,
+    productName: [params.zzcl, `${params.zmks || ""}+${params.fmks || ""}`].filter(Boolean).join(" "),
+    width: frameWidth || null,
+    height: frameHeight || null,
+    openDirection: direction,
+    unit: "m2",
+    unitPrice: mainUnitPrice,
+  }];
+
+  if (packing && num(packing.unitPrice) > 0) {
+    rows.push(rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction));
+  }
+
+  const hinge = findHingePrice(accessories, params.sel_hys || "", params.door_type || "");
+  if (hinge && num(hinge.unitPrice) > 0) rows.push(rowFromAccessory(hinge, hinge.name, null, null, direction));
+
+  const fingerprint = findPriceItem(accessories, "配件", params.fingerprint_lock);
+  if (fingerprint && params.fingerprint_lock && params.fingerprint_lock !== "无") rows.push(rowFromAccessory(fingerprint, fingerprint.name, null, null, direction));
+
+  const handleNames = Array.from(new Set([params.zmls, params.fmls].filter((name) => name && name !== "标配拉手")));
+  handleNames.forEach((handleName) => {
+    const match = findPriceItem(accessories, "配件", handleName);
+    if (match) rows.push(rowFromAccessory(match, match.name, null, null, direction));
+  });
+
+  if ((params.qc_shape || "").includes("弧") || (params.sel_qc || "").includes("弧")) {
+    const arcWindow = findPriceItem(accessories, "配件", "圆弧气窗");
+    if (arcWindow) rows.push(rowFromAccessory(arcWindow, arcWindow.name, null, null, direction));
+  }
+
+  return padQuoteRows(rows);
+}
 
 function chooseAccessoryMatch(name: string, matches: Accessory[]): Accessory | null {
   const query = name.trim();
@@ -74,6 +183,8 @@ export default function QuotePage() {
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
   const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
+  const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
 
   // Modal state
   const [accessoryOpen, setAccessoryOpen] = useState(false);
@@ -86,6 +197,18 @@ export default function QuotePage() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingType, setExportingType] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getTasks({ limit: 100, offset: 0 })
+      .then((res) => {
+        if (alive) setDrawingTasks(res.tasks || []);
+      })
+      .catch((error) => {
+        console.warn("load drawing tasks failed:", error);
+      });
+    return () => { alive = false; };
+  }, []);
 
   // Collect form data
   const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; noticeText: string; items: QuoteItem[] } => {
@@ -234,6 +357,26 @@ export default function QuotePage() {
     setStatus(statusParts.join("，"));
   }
 
+  async function handleApplyTaskQuote(taskId: string) {
+    setSelectedTaskId(taskId);
+    if (!taskId) return;
+    setStatus("正在读取图纸项目...");
+    try {
+      const task = await getTask(taskId);
+      const params = task.params;
+      const allAccessories = await getAccessories();
+      setCustomerName(params.dhdw || task.customer || "");
+      setProjectName(params.gdmc || task.project || "");
+      setQuoteDate((params.dhrq || new Date().toISOString().slice(0, 10)).replace(/\./g, "-"));
+      setItems(buildQuoteRowsFromTask(params, allAccessories));
+      setLastQuoteId(null);
+      setStatus("已根据图纸项目生成报价明细");
+    } catch (error: unknown) {
+      const err = error as { userMessage?: string; message?: string };
+      setStatus(err?.userMessage || err?.message || "图纸项目报价生成失败");
+    }
+  }
+
   // Load quote from history
   function handleLoadQuote(quote: QuoteResponse) {
     setCustomerName(quote.customerName);
@@ -318,6 +461,22 @@ export default function QuotePage() {
           {/* Quote Form Header */}
           <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-6">
             <h2 className="text-[15px] font-semibold text-[#1C1C1E] mb-4">报价明细</h2>
+
+            <label className="block mb-4">
+              <span className="text-[12px] font-medium text-[#8E8E93]">关联图纸项目</span>
+              <select
+                value={selectedTaskId}
+                onChange={(e) => handleApplyTaskQuote(e.target.value)}
+                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"
+              >
+                <option value="">选择图纸项目后自动报价</option>
+                {drawingTasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.customer || "未填客户"} / {task.project || "未填项目"} / {task.door_type || ""} / {task.size || ""}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             {/* Customer/Project/Date fields */}
             <div className="grid grid-cols-3 gap-3 mb-4">

@@ -16,7 +16,14 @@ function numberText(value: number | null | undefined, digits?: number) {
   return digits === undefined ? String(value) : Number(value).toFixed(digits);
 }
 
+function isAreaUnit(unit: string) {
+  const normalized = (unit || "").toLowerCase();
+  return normalized.includes("m2") || normalized.includes("㎡") || normalized.includes("m²");
+}
+
 function quoteQuantity(item: QuoteItem) {
+  if (!item.productName.trim()) return "";
+  if (!isAreaUnit(item.unit)) return "1";
   const width = Number(item.width || 0);
   const height = Number(item.height || 0);
   if (!width || !height) return "";

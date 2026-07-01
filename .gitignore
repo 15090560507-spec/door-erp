@@ -33,6 +33,7 @@ deploy/nginx/certs/
 # users_database.json 需要随 git 部署到云端，确保默认账户可用
 data/*.json
 !data/users_database.json
+!data/accessories_database.json
 data/backups/
 data/images/
 data/render/

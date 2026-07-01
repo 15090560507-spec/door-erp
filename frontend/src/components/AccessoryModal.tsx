@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createAccessory, deleteAccessory, getAccessories, exportAccessories, importAccessories } from "@/lib/quoteApi";
+import { createAccessory, deleteAccessory, getAccessories, exportAccessories, importAccessories, importAccessoriesXlsx } from "@/lib/quoteApi";
 import type { Accessory } from "@/lib/quoteTypes";
 import { UNIT_OPTIONS } from "@/lib/quoteTypes";
 
@@ -109,6 +109,14 @@ export default function AccessoryModal({ open, onClose }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      if (/\.(xlsx|xlsm)$/i.test(file.name)) {
+        const result = await importAccessoriesXlsx(file);
+        setStatus(`成功导入/更新 ${result.imported} 条价格库数据`);
+        setSearch("");
+        await load();
+        e.target.value = "";
+        return;
+      }
       const text = await file.text();
       const json = JSON.parse(text);
       const items = Array.isArray(json) ? json : json.accessories;
@@ -173,7 +181,7 @@ export default function AccessoryModal({ open, onClose }: Props) {
             <button onClick={handleExport} type="button" className="px-3 py-2 text-[12px] font-medium rounded-lg border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors whitespace-nowrap">导出</button>
             <label className="px-3 py-2 text-[12px] font-medium rounded-lg border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors cursor-pointer whitespace-nowrap">
               导入
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              <input type="file" accept=".json,.xlsx,.xlsm" onChange={handleImport} className="hidden" />
             </label>
           </div>
 

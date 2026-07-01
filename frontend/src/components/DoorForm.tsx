@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES, DOOR_PANEL_STYLES,
+  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -142,6 +142,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const setField = (key: keyof DoorFormData, value: string | number | boolean) => {
     onChange({ ...data, [key]: value });
   };
+  const frameWidth = Number(data.dw || 0);
+  const frameHeight = Number(data.dh || 0);
+  const trimWidth = (data.has_outer ? Number(data.trim_front_in || 0) : 0) + (data.has_inner ? Number(data.trim_back_in || 0) : 0);
+  const outerWidth = frameWidth + trimWidth * 2;
+  const outerHeight = frameHeight + trimWidth;
+  const frameArea = frameWidth > 0 && frameHeight > 0 ? frameWidth * frameHeight / 1000000 : 0;
+  const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
+  const trimArea = Math.max(0, outerArea - frameArea);
   const panelStyle = data.door_panel_style || "无造型";
   const hasChildPanel = ["子母门", "两定两开", "四开门", "折叠四开门"].includes(data.door_type);
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
@@ -297,8 +305,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="制作材料" required value={data.zzcl} options={o("MATERIALS", MATERIALS)} onChange={(v) => set("zzcl", v)} />
             <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
-            <Input label="正面款式" value={data.zmks} onChange={(v) => set("zmks", v)} />
-            <Input label="反面款式" value={data.fmks} onChange={(v) => set("fmks", v)} />
+            <Combobox label="正面款式" value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
+            <Combobox label="反面款式" value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
             <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
             <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
           </div>
@@ -527,6 +535,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Combobox label="内包套款式" required value={data.trim_style_inner} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_inner", v)} />
             </div>
           )}
+          <div className="mt-3 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3 text-[13px] text-[#3A3A3C] space-y-1.5">
+            <div>门框规格：{frameWidth || 0} x {frameHeight || 0} = {frameArea.toFixed(3)} m2</div>
+            <div>外围规格：{outerWidth || 0} x {outerHeight || 0} = {outerArea.toFixed(3)} m2</div>
+            <div>包套面积：{trimArea.toFixed(3)} m2</div>
+          </div>
         </Card>
 
         <Card title="车间生产批注">

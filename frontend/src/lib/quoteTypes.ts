@@ -7,6 +7,10 @@ export interface Accessory {
   unit: string;
   unitPrice: number;
   remark: string;
+  priceType?: string;
+  priceMode?: string;
+  frontStyle?: string;
+  backStyle?: string;
   active: number;
 }
 
@@ -18,6 +22,10 @@ export interface AccessoryCreate {
   unit?: string;
   unitPrice?: number;
   remark?: string;
+  priceType?: string;
+  priceMode?: string;
+  frontStyle?: string;
+  backStyle?: string;
 }
 
 export interface QuoteItem {

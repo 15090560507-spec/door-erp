@@ -17,6 +17,26 @@ from config import (
 from database import backup_file_before_replace
 
 
+ACCESSORY_EXTRA_FIELDS = ("priceType", "priceMode", "frontStyle", "backStyle")
+
+
+def _normalize_accessory(data: Dict, accessory_id: int) -> Dict:
+    accessory = {
+        "id": accessory_id,
+        "name": data.get("name", ""),
+        "category": data.get("category", ""),
+        "model": data.get("model", ""),
+        "keywords": data.get("keywords", ""),
+        "unit": data.get("unit", ""),
+        "unitPrice": float(data.get("unitPrice", 0) or 0),
+        "remark": data.get("remark", ""),
+        "active": 1,
+    }
+    for field in ACCESSORY_EXTRA_FIELDS:
+        accessory[field] = data.get(field, "")
+    return accessory
+
+
 # ===================== 配件数据库管理 =====================
 class AccessoryDatabaseManager:
     """管理 data/accessories_database.json - 门业配件/材料清单"""
@@ -55,6 +75,10 @@ class AccessoryDatabaseManager:
                     it.get("category", ""),
                     it.get("model", ""),
                     it.get("keywords", ""),
+                    it.get("priceType", ""),
+                    it.get("priceMode", ""),
+                    it.get("frontStyle", ""),
+                    it.get("backStyle", ""),
                 ]).lower()
                 if q in haystack:
                     results.append(it)
@@ -72,17 +96,7 @@ class AccessoryDatabaseManager:
         with self._lock:
             items = self._load_unlocked()
             max_id = max((it.get("id", 0) for it in items), default=0)
-            accessory = {
-                "id": max_id + 1,
-                "name": data.get("name", ""),
-                "category": data.get("category", ""),
-                "model": data.get("model", ""),
-                "keywords": data.get("keywords", ""),
-                "unit": data.get("unit", ""),
-                "unitPrice": float(data.get("unitPrice", 0)),
-                "remark": data.get("remark", ""),
-                "active": 1,
-            }
+            accessory = _normalize_accessory(data, max_id + 1)
             items.append(accessory)
             self._atomic_save(items)
             return accessory
@@ -108,19 +122,24 @@ class AccessoryDatabaseManager:
             max_id = max((it.get("id", 0) for it in existing), default=0)
             count = 0
             for data in items:
-                max_id += 1
-                accessory = {
-                    "id": max_id,
-                    "name": data.get("name", ""),
-                    "category": data.get("category", ""),
-                    "model": data.get("model", ""),
-                    "keywords": data.get("keywords", ""),
-                    "unit": data.get("unit", ""),
-                    "unitPrice": float(data.get("unitPrice", 0)),
-                    "remark": data.get("remark", ""),
-                    "active": 1,
-                }
-                existing.append(accessory)
+                name = str(data.get("name", "")).strip()
+                category = str(data.get("category", "")).strip()
+                if not name:
+                    continue
+                matched = next(
+                    (
+                        it for it in existing
+                        if it.get("active", 0) == 1
+                        and str(it.get("name", "")).strip() == name
+                        and str(it.get("category", "")).strip() == category
+                    ),
+                    None,
+                )
+                if matched:
+                    matched.update(_normalize_accessory(data, matched.get("id", 0)))
+                else:
+                    max_id += 1
+                    existing.append(_normalize_accessory(data, max_id))
                 count += 1
             self._atomic_save(existing)
             return count

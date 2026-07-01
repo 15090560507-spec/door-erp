@@ -17,6 +17,10 @@ class AccessoryCreate(BaseModel):
     unit: str = "m2"
     unitPrice: float = 0.0
     remark: str = ""
+    priceType: str = ""
+    priceMode: str = ""
+    frontStyle: str = ""
+    backStyle: str = ""
 
 
 class AccessoryResponse(BaseModel):
@@ -29,6 +33,10 @@ class AccessoryResponse(BaseModel):
     unit: str = "m2"
     unitPrice: float = 0.0
     remark: str = ""
+    priceType: str = ""
+    priceMode: str = ""
+    frontStyle: str = ""
+    backStyle: str = ""
     active: int = 1
 
 
