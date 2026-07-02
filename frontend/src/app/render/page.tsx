@@ -152,6 +152,7 @@ export default function RenderPage() {
       setMessage("请填写配置名称、Base URL 和 Model");
       return null;
     }
+    const apiKeyDraft = configForm.apiKey || "";
     const saved = editingConfigId
       ? await updateRenderModelConfig(editingConfigId, configForm)
       : await createRenderModelConfig(configForm);
@@ -159,8 +160,8 @@ export default function RenderPage() {
     setConfigs(nextConfigs);
     setSelectedConfigId(saved.id);
     setEditingConfigId(saved.id);
-    setConfigForm(formFromConfig(saved));
-    if (!options.silent) setMessage(`模型配置已保存：${saved.model}`);
+    setConfigForm({ ...formFromConfig(saved), apiKey: apiKeyDraft });
+    if (!options.silent) setMessage(`模型配置已保存：${saved.model}，API Key ${apiKeyDraft || saved.hasApiKey ? "已保存" : "未填写"}`);
     return saved;
   }
 
@@ -274,11 +275,16 @@ export default function RenderPage() {
   }
 
   async function removeTask(taskId: string) {
-    await deleteRenderTask(taskId);
-    const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
-    setTasks(nextTasks);
-    setActiveTask((current) => current?.id === taskId ? (nextTasks[0] || null) : current);
-    setMessage("历史记录已删除");
+    try {
+      await deleteRenderTask(taskId);
+      const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+      setTasks(nextTasks);
+      setActiveTask((current) => current?.id === taskId ? (nextTasks[0] || null) : current);
+      setMessage("历史记录已删除");
+    } catch (error: unknown) {
+      const err = error as { userMessage?: string; message?: string };
+      setMessage(err.userMessage || err.message || "历史记录删除失败");
+    }
   }
 
   return (
@@ -338,7 +344,7 @@ export default function RenderPage() {
           <Input label="配置名称" value={configForm.name} onChange={(value) => setConfigForm({ ...configForm, name: value })} />
           <Select label="Provider" value={configForm.provider} onChange={(value) => setConfigForm({ ...configForm, provider: value })} options={[["image2_proxy", "Image2 中转站"], ["openai_compatible", "OpenAI 兼容"], ["volcengine_ark", "火山方舟"]]} />
           <Input label="Base URL" value={configForm.baseUrl} onChange={(value) => setConfigForm({ ...configForm, baseUrl: value })} />
-          <Input label="API Key" type="password" value={configForm.apiKey || ""} onChange={(value) => setConfigForm({ ...configForm, apiKey: value })} placeholder={editingConfigId ? "留空则不修改" : ""} />
+          <Input label="API Key" type="password" value={configForm.apiKey || ""} onChange={(value) => setConfigForm({ ...configForm, apiKey: value })} placeholder={editingConfigId && selectedConfig?.hasApiKey ? "API Key 已保存，留空则不修改" : ""} />
           <Input label="Model" value={configForm.model} onChange={(value) => setConfigForm({ ...configForm, model: value })} />
           <Input label="Endpoint" value={configForm.endpoint} onChange={(value) => setConfigForm({ ...configForm, endpoint: value })} />
           <Select label="API Type" value={configForm.apiType} onChange={(value) => setConfigForm({ ...configForm, apiType: value })} options={[["openai_images_edits", "OpenAI Images Edits"], ["openai_images_generations", "OpenAI Images Generations"], ["ark_images_generations", "Ark Images Generations"]]} />
@@ -489,13 +495,16 @@ export default function RenderPage() {
           <div className="space-y-2">
             {tasks.map((task) => (
               <div key={task.id} className={`rounded-lg px-3 py-2 text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
-                <button type="button" onClick={() => setActiveTask(task)} className="block w-full text-left">
-                  <span className="font-medium">{task.status}</span>
-                  <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
-                  <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
-                  {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
-                </button>
-                <button type="button" onClick={() => removeTask(task.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
+                <div className="flex items-start gap-2">
+                  <button type="button" onClick={() => setActiveTask(task)} className="min-w-0 flex-1 cursor-pointer text-left">
+                    <span className="font-medium">{task.status}</span>
+                    <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
+                    <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
+                    {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
+                  </button>
+                  <button type="button" onClick={() => setActiveTask(task)} className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[#007AFF]">查看</button>
+                  <button type="button" onClick={() => removeTask(task.id)} className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[#FF3B30]">删除</button>
+                </div>
               </div>
             ))}
           </div>

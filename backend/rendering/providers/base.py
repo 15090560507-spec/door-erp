@@ -179,6 +179,11 @@ def extract_http_error(exc, url: str = "") -> ProviderError:
     safe_url = _safe_url(url)
     if safe_url:
         message = f"{message}；实际调用地址: {safe_url}"
+    if "No available compatible accounts" in message:
+        message = (
+            f"{message}。这表示中转站当前没有可用的兼容图片账号/渠道，通常需要在中转站后台检查："
+            "该模型是否支持图片编辑、渠道是否启用、账号余额/额度是否充足、模型名称和接口类型是否匹配。"
+        )
     status_code = _proxy_status_code(int(exc.code))
     return ProviderError(_sanitize(message), status_code=status_code, error_type="upstream_http_error", raw=_sanitize(body)[:1200])
 
