@@ -6,6 +6,8 @@ import {
   createRenderModelConfig,
   createRenderTask,
   deleteRenderAsset,
+  deleteRenderModelConfig,
+  deleteRenderTask,
   listRenderAssets,
   listRenderModelConfigs,
   listRenderTasks,
@@ -77,6 +79,7 @@ export default function RenderPage() {
   const [message, setMessage] = useState("");
   const [errorDialog, setErrorDialog] = useState<{ title: string; message: string; raw?: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitConfigText, setSubmitConfigText] = useState("");
   const selectedConfig = configs.find((item) => item.id === selectedConfigId);
   const selectedReferenceAssetCount = referenceGroups.reduce((sum, group) => sum + group.assetIds.length, 0);
   const uploadedReferenceFileCount = referenceGroups.reduce((sum, group) => sum + group.files.length, 0);
@@ -92,7 +95,7 @@ export default function RenderPage() {
     ]);
     setConfigs(nextConfigs);
     setTasks(nextTasks);
-    const nextSelectedConfigId = selectedConfigId || nextConfigs.find((item) => item.enabled)?.id || "";
+    const nextSelectedConfigId = selectedConfigId || pickDefaultConfig(nextConfigs)?.id || "";
     setSelectedConfigId(nextSelectedConfigId);
     const config = nextConfigs.find((item) => item.id === nextSelectedConfigId);
     if (config) {
@@ -106,10 +109,13 @@ export default function RenderPage() {
       if (refreshed) return refreshed;
       return nextTasks[0];
     });
-    window.setTimeout(() => {
-      void loadAssets({ reset: true });
-    }, 0);
   }
+
+  useEffect(() => {
+    if (assetLibraryOpen && !assets.length && !assetLoading) {
+      void loadAssets({ reset: true });
+    }
+  }, [assetLibraryOpen]);
 
   async function loadAssets(options: { reset?: boolean; categoryValue?: string; searchValue?: string } = {}) {
     const reset = Boolean(options.reset);
@@ -198,25 +204,26 @@ export default function RenderPage() {
   }
 
   async function submitTask() {
-    if (!selectedConfigId) return setMessage("请先选择模型配置");
-    let submitConfigId = selectedConfigId;
-    const activeConfig = configs.find((item) => item.id === submitConfigId);
-    if (activeConfig && editingConfigId === selectedConfigId) {
-      const saved = await saveConfig({ silent: true });
-      if (!saved) return;
-      submitConfigId = saved.id;
-    }
     if (!lineArt) return setMessage("请上传线稿图");
     if (!styleReference) return setMessage("请上传参考款式图");
     if (!prompt.trim()) return setMessage("请填写提示词");
     setLoading(true);
-    setMessage("正在提交渲染任务...");
+    setSubmitConfigText("正在保存当前模型配置...");
+    setMessage("正在保存当前模型配置...");
     const submittedAt = Date.now();
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
     const taskTempAssets = referenceGroups.flatMap((group) => group.files);
     try {
+      const saved = await saveConfig({ silent: true });
+      if (!saved) {
+        setLoading(false);
+        return;
+      }
+      const submitSummary = renderConfigSummary(saved);
+      setSubmitConfigText(submitSummary);
+      setMessage(`正在提交渲染任务：${submitSummary}`);
       const task = await createRenderTask({
-        modelConfigId: submitConfigId,
+        modelConfigId: saved.id,
         prompt,
         size,
         count: 1,
@@ -253,6 +260,27 @@ export default function RenderPage() {
     }
   }
 
+  async function removeConfig(configId: string) {
+    await deleteRenderModelConfig(configId);
+    const nextConfigs = await listRenderModelConfigs(true);
+    setConfigs(nextConfigs);
+    if (selectedConfigId === configId || editingConfigId === configId) {
+      const nextConfig = pickDefaultConfig(nextConfigs);
+      setSelectedConfigId(nextConfig?.id || "");
+      setEditingConfigId(nextConfig?.id || "");
+      setConfigForm(nextConfig ? formFromConfig(nextConfig) : EMPTY_CONFIG);
+    }
+    setMessage("模型配置已停用");
+  }
+
+  async function removeTask(taskId: string) {
+    await deleteRenderTask(taskId);
+    const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+    setTasks(nextTasks);
+    setActiveTask((current) => current?.id === taskId ? (nextTasks[0] || null) : current);
+    setMessage("历史记录已删除");
+  }
+
   return (
     <div className="space-y-4">
       <header className="flex items-start justify-between gap-4">
@@ -279,6 +307,15 @@ export default function RenderPage() {
             <div className="mt-4 flex justify-end">
               <button type="button" onClick={() => setErrorDialog(null)} className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white">知道了</button>
             </div>
+          </div>
+        </div>
+      )}
+      {loading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/65 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-[#E5E5EA] bg-white p-5 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#007AFF] border-t-transparent" />
+            <h2 className="text-[16px] font-semibold text-[#1C1C1E]">正在提交渲染任务</h2>
+            <p className="mt-2 text-[12px] leading-5 text-[#8E8E93]">{submitConfigText || "正在保存模型配置并上传图片..."}</p>
           </div>
         </div>
       )}
@@ -312,7 +349,12 @@ export default function RenderPage() {
         </div>}
         {modelConfigOpen && <div className="mt-3 flex flex-wrap gap-2">
           {configs.map((config) => (
-            <button key={config.id} type="button" onClick={() => editConfig(config)} className="rounded-full bg-[#F2F2F7] px-3 py-1 text-[12px] text-[#3C3C43]">{config.name || "未命名"}{config.enabled ? "" : "（停用）"}</button>
+            <span key={config.id} className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[12px] text-[#3C3C43]">
+              <button type="button" onClick={() => editConfig(config)} className="max-w-[260px] truncate">
+                {config.name || "未命名"} / {config.baseUrl || "未填 Base URL"} / {config.endpoint || ""} / {config.model || ""}{config.enabled ? "" : "（停用）"}
+              </button>
+              {config.enabled && <button type="button" onClick={() => removeConfig(config.id)} className="rounded-full px-1 text-[#FF3B30] hover:bg-white">停用</button>}
+            </span>
           ))}
         </div>}
       </section>
@@ -446,11 +488,15 @@ export default function RenderPage() {
           <h2 className="mb-3 text-[15px] font-semibold text-[#1C1C1E]">历史记录</h2>
           <div className="space-y-2">
             {tasks.map((task) => (
-              <button key={task.id} type="button" onClick={() => setActiveTask(task)} className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
-                <span className="font-medium">{task.status}</span>
-                <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
-                <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
-              </button>
+              <div key={task.id} className={`rounded-lg px-3 py-2 text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
+                <button type="button" onClick={() => setActiveTask(task)} className="block w-full text-left">
+                  <span className="font-medium">{task.status}</span>
+                  <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
+                  <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
+                  {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
+                </button>
+                <button type="button" onClick={() => removeTask(task.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
+              </div>
             ))}
           </div>
         </div>
@@ -648,6 +694,12 @@ function formFromConfig(config: RenderModelConfig): ModelConfigInput {
   };
 }
 
+function pickDefaultConfig(configs: RenderModelConfig[]): RenderModelConfig | undefined {
+  return [...configs]
+    .filter((item) => item.enabled)
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
+}
+
 function formatRenderTime(value: string): string {
   if (!value) return "";
   const normalized = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
@@ -669,7 +721,11 @@ function renderTaskModelText(task: RenderTask, configs: RenderModelConfig[]): st
   const snapshot = task.modelConfigSnapshot || {};
   const fallbackConfig = configs.find((item) => item.id === task.modelConfigId);
   const source = Object.keys(snapshot).length ? snapshot : fallbackConfig || {};
-  return [source.name, source.provider, source.apiType, source.model].filter(Boolean).join(" / ") || task.modelConfigId;
+  return renderConfigSummary(source) || task.modelConfigId;
+}
+
+function renderConfigSummary(config: Partial<RenderModelConfig> | NonNullable<RenderTask["modelConfigSnapshot"]>): string {
+  return [config.name, config.provider, config.apiType, config.baseUrl, config.endpoint, config.model].filter(Boolean).join(" / ");
 }
 
 function clampCount(value: unknown): number {

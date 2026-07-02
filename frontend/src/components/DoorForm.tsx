@@ -144,9 +144,19 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   };
   const frameWidth = Number(data.dw || 0);
   const frameHeight = Number(data.dh || 0);
-  const trimWidth = (data.has_outer ? Number(data.trim_front_in || 0) : 0) + (data.has_inner ? Number(data.trim_back_in || 0) : 0);
-  const outerWidth = frameWidth + trimWidth * 2;
-  const outerHeight = frameHeight + trimWidth;
+  const frontOuterSideWidth = data.has_outer
+    ? Number(data.trim_front_in || 0)
+    : data.has_outer_portal
+      ? Number(data.outer_portal_pillar_width || 0)
+      : 0;
+  const frontOuterTopHeight = data.has_outer
+    ? Number(data.trim_front_in || 0)
+    : data.has_outer_portal
+      ? Number(data.outer_portal_header_height || 0)
+      : 0;
+  const innerTrimWidth = data.has_inner ? Number(data.trim_back_in || 0) : 0;
+  const outerWidth = frameWidth + (frontOuterSideWidth + innerTrimWidth) * 2;
+  const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
   const frameArea = frameWidth > 0 && frameHeight > 0 ? frameWidth * frameHeight / 1000000 : 0;
   const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
   const trimArea = Math.max(0, outerArea - frameArea);
@@ -305,8 +315,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="制作材料" required value={data.zzcl} options={o("MATERIALS", MATERIALS)} onChange={(v) => set("zzcl", v)} />
             <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
-            <Combobox label="正面款式" value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
-            <Combobox label="反面款式" value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
+            <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
+            <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
             <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
             <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
           </div>
@@ -518,7 +528,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="包套与附加件">
           <div className="flex gap-4 mb-3">
-            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => set("has_outer", v)} />
+            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => onChange({ ...data, has_outer: v, has_outer_portal: v ? false : data.has_outer_portal })} />
+            <Checkbox label="外门头门柱" checked={data.has_outer_portal} onChange={(v) => onChange({ ...data, has_outer_portal: v, has_outer: v ? false : data.has_outer })} />
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
           </div>
           {data.has_outer && (
@@ -526,6 +537,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Input label="外包套宽" required value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
               <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
               <Combobox label="外包套款式" required value={data.trim_style_outer} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_outer", v)} />
+            </div>
+          )}
+          {data.has_outer_portal && (
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="门柱宽度" required value={data.outer_portal_pillar_width} type="number" onChange={(v) => set("outer_portal_pillar_width", Number(v))} />
+              <Input label="门头高度" required value={data.outer_portal_header_height} type="number" onChange={(v) => set("outer_portal_header_height", Number(v))} />
+              <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
             </div>
           )}
           {data.has_inner && (

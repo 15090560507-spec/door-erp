@@ -236,6 +236,14 @@ class RenderDatabase:
                 return dict(item)
         return None
 
+    def delete_task(self, task_id: str) -> bool:
+        def mutate(items):
+            original_len = len(items)
+            items[:] = [item for item in items if item.get("id") != task_id]
+            return len(items) != original_len
+
+        return self.tasks.update(mutate)
+
     def list_tasks(self, limit: int = 30) -> list[dict]:
         items = self.tasks.load()
         return sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)[:limit]

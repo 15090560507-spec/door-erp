@@ -158,6 +158,7 @@ def draw_door_in_frame(
         fw_top = p['fw_top_back'] if is_back else p['fw_top_front']
         th = p['th_back'] if is_back else p['th_front']
     trim_w = p['trim_back'] if is_back else p['trim_front']
+    trim_top_w = p.get('trim_back_top' if is_back else 'trim_front_top', trim_w)
     overlap_key = 'overlap_back' if is_back else 'overlap_front'
     overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
 
@@ -421,6 +422,7 @@ def draw_door_in_frame(
 
     if trim_w > 0:
         W = trim_w
+        WT = trim_top_w or trim_w
         O = overlap
         mm_offset = mm_height if has_mm else 0
         ix1, iy1 = O, 0
@@ -428,8 +430,8 @@ def draw_door_in_frame(
         ix3, iy3 = dw - O, total_h - O + mm_offset
         ix4, iy4 = dw - O, 0
         ox1, oy1 = O - W, 0
-        ox2, oy2 = O - W, total_h - O + W + mm_offset
-        ox3, oy3 = dw - O + W, total_h - O + W + mm_offset
+        ox2, oy2 = O - W, total_h - O + WT + mm_offset
+        ox3, oy3 = dw - O + W, total_h - O + WT + mm_offset
         ox4, oy4 = dw - O + W, 0
 
         if is_arch_qc:
@@ -437,7 +439,7 @@ def draw_door_in_frame(
             _frame_left, _frame_right, trim_base_arch, trim_base_delta = arch_extended_shape(frame_inner_arch, 0, dw, fw_top)
             if trim_base_arch:
                 trim_left_inner, trim_right_inner = draw_arch_extended_to_x(trim_base_arch, ix1, ix4, 'A-DOOR-TRIM', trim_base_delta - O)
-                trim_left_outer, trim_right_outer = draw_arch_extended_to_x(trim_base_arch, ox1, ox4, 'A-DOOR-TRIM', trim_base_delta - O + W)
+                trim_left_outer, trim_right_outer = draw_arch_extended_to_x(trim_base_arch, ox1, ox4, 'A-DOOR-TRIM', trim_base_delta - O + WT)
                 drawer.draw_poly([off((ox1, oy1)), off((ox1, trim_left_outer[1])), off(trim_left_outer), off(trim_left_inner), off((ix1, iy1))], 'A-DOOR-TRIM')
                 drawer.draw_poly([off((ix4, iy4)), off(trim_right_inner), off(trim_right_outer), off((ox4, trim_right_outer[1])), off((ox4, oy4))], 'A-DOOR-TRIM')
                 drawer.draw_line(off(trim_left_outer), off(trim_left_inner), 'A-DOOR-TRIM')
@@ -458,7 +460,7 @@ def draw_door_in_frame(
         trim_style = p.get('trim_style_outer', '') if not is_back else p.get('trim_style_inner', '')
         if trim_style:
             # 包套上边高度 = total_h - O + W + mm_offset
-            outer_top_y = total_h - O + W + mm_offset
+            outer_top_y = total_h - O + WT + mm_offset
             inner_top_y = total_h - O + mm_offset
             style_trim_arch = None
             style_trim_delta = 0

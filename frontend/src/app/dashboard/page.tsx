@@ -179,6 +179,8 @@ export default function DashboardPage() {
     if (!data.sl.trim()) missing.push("数量(樘)");
     if (!data.zzcl.trim()) missing.push("制作材料");
     if (!data.ys.trim()) missing.push("颜色");
+    if (!data.zmks.trim()) missing.push("正面款式");
+    if (!data.fmks.trim()) missing.push("反面款式");
     if (!data.sel_hys.trim()) missing.push("合页样式");
     if (!data.fingerprint_lock.trim()) missing.push("指纹锁");
     if (data.use_light_size) {
@@ -191,6 +193,10 @@ export default function DashboardPage() {
     if (data.has_outer) {
       if (!data.trim_front_in || data.trim_front_in <= 0) missing.push("外包套宽");
       if (!data.trim_style_outer.trim()) missing.push("外包套款式");
+    }
+    if (data.has_outer_portal) {
+      if (!data.outer_portal_pillar_width || data.outer_portal_pillar_width <= 0) missing.push("门柱宽度");
+      if (!data.outer_portal_header_height || data.outer_portal_header_height <= 0) missing.push("门头高度");
     }
     if (data.has_inner) {
       if (!data.trim_back_in || data.trim_back_in <= 0) missing.push("内包套宽");

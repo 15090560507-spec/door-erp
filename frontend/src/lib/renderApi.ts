@@ -105,6 +105,10 @@ export async function updateRenderModelConfig(id: string, input: Partial<ModelCo
   return data.config;
 }
 
+export async function deleteRenderModelConfig(id: string): Promise<void> {
+  await api.delete(`/render/model-configs/${id}`);
+}
+
 export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean; limit?: number; offset?: number }): Promise<RenderAsset[]> {
   const { data } = await api.get<{ assets: RenderAsset[] }>("/render/assets", { params });
   return data.assets || [];
@@ -168,6 +172,10 @@ export async function createRenderTask(input: {
 export async function listRenderTasks(limit = 30): Promise<RenderTask[]> {
   const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", { params: { limit } });
   return data.tasks || [];
+}
+
+export async function deleteRenderTask(id: string): Promise<void> {
+  await api.delete(`/render/tasks/${id}`);
 }
 
 function normalizeRenderError(error: unknown): Error & { userMessage?: string; task?: RenderTask; raw?: string } {

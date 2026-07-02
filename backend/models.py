@@ -16,8 +16,8 @@ class CADRequest(BaseModel):
     dhrq: str = ""                      # 交期日期 "YYYY.MM.DD"
     zzcl: str = "0.8的不锈钢镀铜"        # 制作材料
     ys: str = "2号色"                   # 颜色
-    zmks: str = "按图"                  # 正面款式
-    fmks: str = "按图"                  # 反面款式
+    zmks: str = ""                      # 正面款式
+    fmks: str = ""                      # 反面款式
     mshd: int = 80                      # 门扇厚度
     qh: str = ""                        # 墙厚
     sel_bz: str = "全包"                # 包装方式
@@ -48,11 +48,14 @@ class CADRequest(BaseModel):
     sel_hys: str = ""                   # 合页样式
     hysl: str = "3个/扇"                # 合页数量
     has_outer: bool = True              # 外包套
+    has_outer_portal: bool = False      # 外门头门柱（与外包套互斥）
     has_inner: bool = False             # 内包套
     overlap: int = 20                   # 压框
     overlap_front: int = 20             # 正面包套压框
     overlap_back: int = 20              # 反面包套压框
     trim_front_in: int = 160            # 外包套宽
+    outer_portal_pillar_width: int = 160 # 外门柱宽度
+    outer_portal_header_height: int = 220 # 外门头高度
     trim_back_in: int = 140             # 内包套宽
     sel_qc: str = "无"                  # 气窗
     qc_shape: str = "矩形气窗"          # 气窗形状

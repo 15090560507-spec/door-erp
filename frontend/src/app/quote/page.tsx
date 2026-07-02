@@ -35,9 +35,19 @@ function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
 function calcAreas(params: DoorFormData) {
   const frameWidth = num(params.dw);
   const frameHeight = num(params.dh);
-  const trimWidth = (params.has_outer ? num(params.trim_front_in) : 0) + (params.has_inner ? num(params.trim_back_in) : 0);
-  const outerWidth = frameWidth + trimWidth * 2;
-  const outerHeight = frameHeight + trimWidth;
+  const frontOuterSideWidth = params.has_outer
+    ? num(params.trim_front_in)
+    : params.has_outer_portal
+      ? num(params.outer_portal_pillar_width)
+      : 0;
+  const frontOuterTopHeight = params.has_outer
+    ? num(params.trim_front_in)
+    : params.has_outer_portal
+      ? num(params.outer_portal_header_height)
+      : 0;
+  const innerTrimWidth = params.has_inner ? num(params.trim_back_in) : 0;
+  const outerWidth = frameWidth + (frontOuterSideWidth + innerTrimWidth) * 2;
+  const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
   const frameArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
   const outerArea = outerWidth && outerHeight ? outerWidth * outerHeight * 0.000001 : 0;
   const trimArea = Math.max(0, outerArea - frameArea);
@@ -89,6 +99,23 @@ function findHingePrice(accessories: Accessory[], hinge: string, doorType: strin
   return matches.find((item) => item.name.includes(needsDouble ? "对开" : "单门")) || matches[0];
 }
 
+function buildHingeQuoteRow(accessories: Accessory[], hinge: string, doorType: string, direction: string): QuoteItem | null {
+  const query = hinge.trim();
+  if (!query) return null;
+  const needsDouble = ["对开门", "子母门", "两定两开", "四开门", "折叠四开门"].some((name) => doorType.includes(name));
+  if (query.includes("暗合页")) {
+    return {
+      ...createEmptyQuoteItem(),
+      productName: `暗合页（${needsDouble ? 6 : 3}只）`,
+      openDirection: direction,
+      unit: "套",
+      unitPrice: needsDouble ? 1000 : 500,
+    };
+  }
+  const hingeItem = findHingePrice(accessories, query, doorType);
+  return hingeItem && num(hingeItem.unitPrice) > 0 ? rowFromAccessory(hingeItem, hingeItem.name, null, null, direction) : null;
+}
+
 function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], pricingMode: QuotePricingMode, trimUnitPrice: number): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
   const { frameWidth, frameHeight, outerWidth, outerHeight, trimArea } = calcAreas(params);
@@ -126,8 +153,8 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
     ? rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction)
     : null;
 
-  const hinge = findHingePrice(accessories, params.sel_hys || "", params.door_type || "");
-  if (hinge && num(hinge.unitPrice) > 0) rows.push(rowFromAccessory(hinge, hinge.name, null, null, direction));
+  const hingeRow = buildHingeQuoteRow(accessories, params.sel_hys || "", params.door_type || "", direction);
+  if (hingeRow) rows.push(hingeRow);
 
   const fingerprint = findPriceItem(accessories, "配件", params.fingerprint_lock);
   if (fingerprint && params.fingerprint_lock && params.fingerprint_lock !== "无") rows.push(rowFromAccessory(fingerprint, fingerprint.name, null, null, direction));
@@ -610,6 +637,22 @@ export default function QuotePage() {
             </div>
             <label className="block mb-4">
               <span className="text-[12px] font-medium text-[#8E8E93]">报价说明</span>
+              <span className="ml-2 inline-flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setNoticeText("本报价不含税工厂结算价，含木箱。")}
+                  className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
+                >
+                  含木箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNoticeText("本报价不含税工厂结算价，不含木箱。")}
+                  className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
+                >
+                  不含木箱
+                </button>
+              </span>
               <input
                 type="text"
                 value={noticeText}

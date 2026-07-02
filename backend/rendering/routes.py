@@ -132,6 +132,13 @@ def get_render_task(task_id: str):
     return {"task": task}
 
 
+@render_router.delete("/api/render/tasks/{task_id}")
+def delete_render_task(task_id: str):
+    if not render_db.delete_task(task_id):
+        raise HTTPException(status_code=404, detail="渲染任务不存在")
+    return {"ok": True}
+
+
 @render_router.get("/api/render/files/{path:path}")
 def get_render_file(path: str):
     return FileResponse(file_response_path(path))

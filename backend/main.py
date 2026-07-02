@@ -99,6 +99,10 @@ def build_cad_params(req: CADRequest):
     if req.has_outer:
         outer_w = req.trim_front_in
         frame_notes.append(f"外门套宽/压墙/压框={outer_w}/{outer_w - overlap_front}/{overlap_front}mm")
+    elif req.has_outer_portal:
+        pillar_w = req.outer_portal_pillar_width
+        header_h = req.outer_portal_header_height
+        frame_notes.append(f"外门头门柱：门柱宽/门头高/压框={pillar_w}/{header_h}/{overlap_front}mm")
 
     if req.has_inner:
         inner_w = req.trim_back_in
@@ -284,6 +288,7 @@ def build_cad_params(req: CADRequest):
 
     # --- check_map ---
     out_mark = "√" if req.has_outer else ""
+    outer_portal_mark = "√" if req.has_outer_portal else ""
     in_mark = "√" if req.has_inner else ""
     nk_mark = "√" if req.sel_nk == "内开" else ""
     wk_mark = "√" if req.sel_nk == "外开" else ""
@@ -309,6 +314,7 @@ def build_cad_params(req: CADRequest):
         "bz": req.sel_bz, "hys": req.sel_hys,
         "mm": "有" if req.has_mm else "无",
         "OUTER": out_mark, "INNER": in_mark,
+        "OUTER_PORTAL": outer_portal_mark,
         "NK": nk_mark, "WK": wk_mark,
         "KX_RIGHT": kxr_mark, "KX_LEFT": kxl_mark,
         "LZ_YES": lz_y, "LZ_NO": lz_n,
@@ -320,7 +326,8 @@ def build_cad_params(req: CADRequest):
     }
 
     # --- draw_params ---
-    trim_f = req.trim_front_in if req.has_outer else 0
+    trim_f = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else 0)
+    trim_f_top = req.trim_front_in if req.has_outer else (req.outer_portal_header_height if req.has_outer_portal else 0)
     trim_b = req.trim_back_in if req.has_inner else 0
 
     draw_params = {
@@ -331,7 +338,8 @@ def build_cad_params(req: CADRequest):
         "th_front": thf, "th_back": thb,
         "has_dj": is_hanging_threshold,
         "dj_height": req.dj_height,
-        "trim_front": trim_f, "trim_back": trim_b,
+        "trim_front": trim_f, "trim_front_top": trim_f_top, "trim_back": trim_b, "trim_back_top": trim_b,
+        "has_outer_portal": req.has_outer_portal,
         "overlap": req.overlap,
         "overlap_front": overlap_front,
         "overlap_back": overlap_back,

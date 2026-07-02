@@ -63,11 +63,14 @@ export interface DoorFormData {
   sel_hys: string;
   hysl: string;
   has_outer: boolean;
+  has_outer_portal: boolean;
   has_inner: boolean;
   overlap: number;
   overlap_front: number;
   overlap_back: number;
   trim_front_in: number;
+  outer_portal_pillar_width: number;
+  outer_portal_header_height: number;
   trim_back_in: number;
   sel_qc: string;
   qc_shape: string;
@@ -201,12 +204,12 @@ export const FINGERPRINT_LOCKS = ["", "无", "安志杰AF-12", "Q3指纹锁", "T
 export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
-export const DOOR_STYLES = ["按图", "平板"];
+export const DOOR_STYLES = ["平板"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
-  zmks: "按图", fmks: "按图",
+  zmks: "", fmks: "",
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0,
@@ -230,7 +233,8 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,
   integrated_glass_height: 500,
   has_mm: false, mm_height: 200,
-  has_outer: true, trim_front_in: 160,
+  has_outer: true, has_outer_portal: false, trim_front_in: 160,
+  outer_portal_pillar_width: 160, outer_portal_header_height: 220,
   has_inner: false, trim_back_in: 140,
   dw: 900, dh: 2100, overlap: 20, overlap_front: 20, overlap_back: 20,
   fw_left_str: "55/85", fw_right_str: "55/62", fw_top_str: "55/75",
