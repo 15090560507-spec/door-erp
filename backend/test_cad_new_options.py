@@ -497,7 +497,16 @@ def test_dimension_spacing_and_trim_width_text():
     doc = ezdxf.read(io.StringIO(buffer.getvalue()))
     dims = list(doc.modelspace().query("DIMENSION"))
     dim_texts = [entity.dxf.text for entity in dims]
-    check("trim width dimension has no leading blank", "160" in dim_texts and " 160" not in dim_texts, dim_texts)
+    trim_width_dims = [
+        entity for entity in dims
+        if abs(float(entity.dxf.angle)) < 0.01
+        and abs(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)) - 160) < 0.01
+    ]
+    check(
+        "trim width dimension uses dynamic measured text",
+        any(entity.dxf.text == "<>" for entity in trim_width_dims) and " 160" not in dim_texts,
+        dim_texts,
+    )
 
     front_horizontal_y = sorted(
         round(float(entity.dxf.defpoint2.y), 2)
@@ -520,6 +529,45 @@ def test_dimension_spacing_and_trim_width_text():
         front_vertical_x == [570.0, 810.0, 950.0],
         front_vertical_x,
     )
+
+
+def test_outer_portal_draws_separate_rectangles_and_header_dimension():
+    req = CADRequest(
+        has_outer=False,
+        has_outer_portal=True,
+        has_inner=False,
+        outer_portal_pillar_width=180,
+        outer_portal_header_height=260,
+        trim_style_outer="03款包套",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("outer portal CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    front_trim_polys = []
+    for entity in doc.modelspace().query("LWPOLYLINE"):
+        if entity.dxf.layer != "A-DOOR-TRIM":
+            continue
+        x1, x2, y1, y2 = poly_bounds(entity)
+        if x2 < 1000 and y2 > 1000:
+            front_trim_polys.append(entity)
+
+    check(
+        "outer portal uses two pillars and one header rectangle",
+        len(front_trim_polys) == 3 and all(entity.closed and len(list(entity.get_points("xy"))) == 4 for entity in front_trim_polys),
+        [poly_bounds(entity) for entity in front_trim_polys],
+    )
+
+    header_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if abs(float(entity.dxf.angle) - 90) < 0.01
+        and abs(abs(float(entity.dxf.defpoint3.y) - float(entity.dxf.defpoint2.y)) - 260) < 0.01
+    ]
+    check("outer portal header height dimension is dynamic", any(entity.dxf.text == "<>" for entity in header_dims), [entity.dxf.text for entity in header_dims])
 
 
 def test_middle_door_dimension_text_and_transom_light_height():
@@ -1072,6 +1120,7 @@ if __name__ == "__main__":
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
     test_dimension_spacing_and_trim_width_text()
+    test_outer_portal_draws_separate_rectangles_and_header_dimension()
     test_middle_door_dimension_text_and_transom_light_height()
     test_transom_pillar_lintel_label_and_view_gap()
     test_light_width_uses_pillar_inner_edges()

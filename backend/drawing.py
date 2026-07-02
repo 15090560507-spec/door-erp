@@ -159,6 +159,7 @@ def draw_door_in_frame(
         th = p['th_back'] if is_back else p['th_front']
     trim_w = p['trim_back'] if is_back else p['trim_front']
     trim_top_w = p.get('trim_back_top' if is_back else 'trim_front_top', trim_w)
+    has_outer_portal = bool(p.get('has_outer_portal', False)) and not is_back
     overlap_key = 'overlap_back' if is_back else 'overlap_front'
     overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
 
@@ -434,7 +435,12 @@ def draw_door_in_frame(
         ox3, oy3 = dw - O + W, total_h - O + WT + mm_offset
         ox4, oy4 = dw - O + W, 0
 
-        if is_arch_qc:
+        if has_outer_portal:
+            # 外门头门柱不是连续包套：两侧门柱和上部门头分别为独立矩形。
+            drawer.draw_poly([off((ox1, oy1)), off((ix1, iy1)), off((ix2, iy2)), off((ox1, iy2))], 'A-DOOR-TRIM')
+            drawer.draw_poly([off((ix4, iy4)), off((ox4, oy4)), off((ox4, iy3)), off((ix3, iy3))], 'A-DOOR-TRIM')
+            drawer.draw_poly([off((ox1, iy2)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, iy3))], 'A-DOOR-TRIM')
+        elif is_arch_qc:
             frame_inner_arch = arch_geometry(left_width, dw - right_width, total_h - qc_h, total_h - fw_top)
             _frame_left, _frame_right, trim_base_arch, trim_base_delta = arch_extended_shape(frame_inner_arch, 0, dw, fw_top)
             if trim_base_arch:
@@ -458,7 +464,7 @@ def draw_door_in_frame(
 
         # ===================== 包边款式偏移线 =====================
         trim_style = p.get('trim_style_outer', '') if not is_back else p.get('trim_style_inner', '')
-        if trim_style:
+        if trim_style and not has_outer_portal:
             # 包套上边高度 = total_h - O + W + mm_offset
             outer_top_y = total_h - O + WT + mm_offset
             inner_top_y = total_h - O + mm_offset
@@ -769,7 +775,7 @@ def draw_door_in_frame(
     dims_h = []
     if trim_w > 0:
         dims_h.append(("含包套总宽", outer_left, outer_right, -400, True, "含包套总宽 <>"))
-        dims_h.append(("门套宽", ox1, ix1, -200, True, f"{trim_w}"))
+        dims_h.append(("门套宽", ox1, ix1, -200, not has_outer_portal, None))
 
     should_mark_light = p.get("mark_light_size", False) or use_light_size
     should_draw_light_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
@@ -792,6 +798,13 @@ def draw_door_in_frame(
 
     if has_mm and mm_height > 0 and trim_w > 0:
         dims_v.append(("门楣高度", total_h - O + mm_height, total_h - O, 300, True, f"{mm_height}"))
+
+    if has_outer_portal and trim_top_w > 0:
+        portal_header_bottom = total_h - overlap + (mm_height if has_mm else 0)
+        portal_header_top = portal_header_bottom + trim_top_w
+        if qc_h <= 0 and not integrated_layout:
+            dims_v.append(("门高", 0, dh, 200, True, None))
+        dims_v.append(("门头高度", portal_header_bottom, portal_header_top, 200, True, None))
 
     if integrated_layout:
         seal_dim_bottom = integrated_layout["seal_bottom"] if is_back else integrated_layout["seal_dim_bottom"]
