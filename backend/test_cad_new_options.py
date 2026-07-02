@@ -569,6 +569,21 @@ def test_outer_portal_draws_separate_rectangles_and_header_dimension():
     ]
     check("outer portal header height dimension is dynamic", any(entity.dxf.text == "<>" for entity in header_dims), [entity.dxf.text for entity in header_dims])
 
+    pillar_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if abs(float(entity.dxf.angle)) < 0.01
+        and abs(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)) - 180) < 0.01
+    ]
+    check("outer portal pillar width dimension is dynamic", any(entity.dxf.text == "<>" for entity in pillar_dims), [entity.dxf.text for entity in pillar_dims])
+
+    front_door_height_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if abs(float(entity.dxf.angle) - 90) < 0.01
+        and float(entity.dxf.defpoint2.x) < 1500
+        and abs(abs(float(entity.dxf.defpoint3.y) - float(entity.dxf.defpoint2.y)) - req.dh) < 0.01
+    ]
+    check("outer portal front view has one door height dimension", len(front_door_height_dims) == 1, [entity.dxf.text for entity in front_door_height_dims])
+
 
 def test_middle_door_dimension_text_and_transom_light_height():
     middle_req = CADRequest(door_type="\u6298\u53e0\u56db\u5f00\u95e8")
