@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (cached) {
             setUser(cached);
           } else {
-            setUser({ uid: verified.uid, password: "", role: verified.role, name: verified.name, default_module: verified.default_module });
+            setUser({ uid: verified.uid, role: verified.role, name: verified.name, default_module: verified.default_module });
           }
           const m = S.getModule();
           if (m) setModule(m);

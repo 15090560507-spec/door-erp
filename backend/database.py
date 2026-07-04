@@ -443,6 +443,8 @@ class UserDatabaseManager:
         return user_info
 
     def add_or_update_user(self, uid: str, pwd: str, role: str, name: str):
+        if uid == "admin":
+            raise ValueError("内置 admin 账号不能通过普通创建接口覆盖")
         users = self.load_all_users()
         module_map = {
             "超级管理员": "后台管理",

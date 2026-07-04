@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /** 需要登录才能访问的路由前缀 */
-const PROTECTED_PATHS = ["/dashboard", "/admin", "/quote"];
+const PROTECTED_PATHS = ["/dashboard", "/admin", "/quote", "/render"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -22,5 +22,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/quote/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/quote/:path*", "/render/:path*"],
 };

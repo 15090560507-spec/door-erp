@@ -160,7 +160,7 @@ export default function RenderPage() {
     setConfigs(nextConfigs);
     setSelectedConfigId(saved.id);
     setEditingConfigId(saved.id);
-    setConfigForm({ ...formFromConfig(saved), apiKey: apiKeyDraft });
+    setConfigForm({ ...formFromConfig(saved), apiKey: "" });
     if (!options.silent) setMessage(`模型配置已保存：${saved.model}，API Key ${apiKeyDraft || saved.hasApiKey ? "已保存" : "未填写"}`);
     return saved;
   }

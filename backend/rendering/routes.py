@@ -1,12 +1,13 @@
 import json
 import logging
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from .database import render_db
 from .models import RenderAssetUpdate, RenderModelConfigCreate, RenderModelConfigUpdate
 from .service import create_asset_from_upload, file_response_path, run_render_task
+from auth import get_current_user, require_super_admin
 
 
 render_router = APIRouter()
@@ -14,22 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 @render_router.get("/api/render/health")
-def render_health():
+def render_health(current_user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
 @render_router.get("/api/render/model-configs")
-def list_model_configs(includeDisabled: bool = False):
+def list_model_configs(includeDisabled: bool = False, current_user: dict = Depends(require_super_admin)):
     return {"configs": render_db.list_model_configs(include_disabled=includeDisabled)}
 
 
 @render_router.post("/api/render/model-configs")
-def create_model_config(data: RenderModelConfigCreate):
+def create_model_config(data: RenderModelConfigCreate, current_user: dict = Depends(require_super_admin)):
     return {"config": render_db.create_model_config(data.model_dump())}
 
 
 @render_router.put("/api/render/model-configs/{config_id}")
-def update_model_config(config_id: str, data: RenderModelConfigUpdate):
+def update_model_config(config_id: str, data: RenderModelConfigUpdate, current_user: dict = Depends(require_super_admin)):
     updated = render_db.update_model_config(config_id, data.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(status_code=404, detail="模型配置不存在")
@@ -37,7 +38,7 @@ def update_model_config(config_id: str, data: RenderModelConfigUpdate):
 
 
 @render_router.delete("/api/render/model-configs/{config_id}")
-def delete_model_config(config_id: str):
+def delete_model_config(config_id: str, current_user: dict = Depends(require_super_admin)):
     updated = render_db.update_model_config(config_id, {"enabled": False})
     if not updated:
         raise HTTPException(status_code=404, detail="模型配置不存在")
@@ -45,7 +46,7 @@ def delete_model_config(config_id: str):
 
 
 @render_router.get("/api/render/assets")
-def list_assets(category: str = "", q: str = "", favorite: bool | None = None, limit: int = 60, offset: int = 0):
+def list_assets(category: str = "", q: str = "", favorite: bool | None = None, limit: int = 60, offset: int = 0, current_user: dict = Depends(get_current_user)):
     return {"assets": render_db.list_assets(category=category, q=q, favorite=favorite, limit=limit, offset=offset)}
 
 
@@ -57,6 +58,7 @@ async def upload_asset(
     tags: str = Form("[]"),
     remark: str = Form(""),
     favorite: bool = Form(False),
+    current_user: dict = Depends(get_current_user),
 ):
     return {"asset": await create_asset_from_upload(file, name, category, _parse_string_list(tags), remark, favorite)}
 
@@ -67,6 +69,7 @@ async def upload_assets_batch(
     category: str = Form("其他"),
     tags: str = Form("[]"),
     favorite: bool = Form(False),
+    current_user: dict = Depends(get_current_user),
 ):
     created = []
     for file in files:
@@ -75,7 +78,7 @@ async def upload_assets_batch(
 
 
 @render_router.put("/api/render/assets/{asset_id}")
-def update_asset(asset_id: str, data: RenderAssetUpdate):
+def update_asset(asset_id: str, data: RenderAssetUpdate, current_user: dict = Depends(get_current_user)):
     updated = render_db.update_asset(asset_id, data.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(status_code=404, detail="素材不存在")
@@ -83,7 +86,7 @@ def update_asset(asset_id: str, data: RenderAssetUpdate):
 
 
 @render_router.delete("/api/render/assets/{asset_id}")
-def delete_asset(asset_id: str):
+def delete_asset(asset_id: str, current_user: dict = Depends(get_current_user)):
     if not render_db.delete_asset(asset_id):
         raise HTTPException(status_code=404, detail="素材不存在")
     return {"ok": True}
@@ -99,6 +102,7 @@ async def create_render_task(
     size: str = Form("original"),
     count: int = Form(1),
     selectedAssetIds: str = Form("[]"),
+    current_user: dict = Depends(get_current_user),
 ):
     try:
         task = await run_render_task(
@@ -120,12 +124,12 @@ async def create_render_task(
 
 
 @render_router.get("/api/render/tasks")
-def list_render_tasks(limit: int = 30):
+def list_render_tasks(limit: int = 30, current_user: dict = Depends(get_current_user)):
     return {"tasks": render_db.list_tasks(limit=limit)}
 
 
 @render_router.get("/api/render/tasks/{task_id}")
-def get_render_task(task_id: str):
+def get_render_task(task_id: str, current_user: dict = Depends(get_current_user)):
     task = render_db.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="渲染任务不存在")
@@ -133,14 +137,14 @@ def get_render_task(task_id: str):
 
 
 @render_router.delete("/api/render/tasks/{task_id}")
-def delete_render_task(task_id: str):
+def delete_render_task(task_id: str, current_user: dict = Depends(get_current_user)):
     if not render_db.delete_task(task_id):
         raise HTTPException(status_code=404, detail="渲染任务不存在")
     return {"ok": True}
 
 
 @render_router.get("/api/render/files/{path:path}")
-def get_render_file(path: str):
+def get_render_file(path: str, current_user: dict = Depends(get_current_user)):
     return FileResponse(file_response_path(path))
 
 

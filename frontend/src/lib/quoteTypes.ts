@@ -78,7 +78,8 @@ export interface QuoteListResponse {
 export interface AiConfig {
   baseUrl: string;
   endpointPath: string;
-  apiKey: string;
+  apiKey?: string;
+  hasApiKey: boolean;
   model: string;
   prompt: string;
   updatedAt: string;

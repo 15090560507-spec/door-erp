@@ -113,7 +113,7 @@ class AiConfigResponse(BaseModel):
     id: int = 1
     baseUrl: str = ""
     endpointPath: str = "/chat/completions"
-    apiKey: str = ""
+    hasApiKey: bool = False
     model: str = ""
     prompt: str = ""
     updatedAt: str = ""

@@ -44,7 +44,7 @@ def section(title):
 
 # ==================== 准备 ====================
 print(f"Test data dir: {os.environ['DATA_DIR']}")
-print(f"JWT_SECRET first 8 chars: {cfg.JWT_SECRET[:8]}...")
+print("JWT_SECRET configured for tests")
 user_db = UserDatabaseManager()
 
 # ==================== 1. Token 创建与验证 ====================
@@ -123,7 +123,7 @@ check("get_current_user has uid", result.get("uid") == "admin")
 check("get_current_user has role", "role" in result)
 check("get_current_user has name", "name" in result)
 check("get_current_user has default_module", "default_module" in result)
-check("get_current_user NO password field", "password" in result and result["password"].startswith("pbkdf2:"))
+check("get_current_user has NO password", "password" not in result)
 
 # Missing header
 try:

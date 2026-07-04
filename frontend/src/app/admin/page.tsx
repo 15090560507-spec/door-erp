@@ -200,7 +200,6 @@ export default function AdminPage() {
                     <Th>姓名</Th>
                     <Th>角色</Th>
                     <Th>默认模块</Th>
-                    <Th>密码</Th>
                     <Th className="text-right">操作</Th>
                   </tr>
                 </thead>
@@ -215,11 +214,6 @@ export default function AdminPage() {
                         </span>
                       </Td>
                       <Td className="text-[#8E8E93]">{info.default_module}</Td>
-                      <Td>
-                        <span className="font-mono text-[#8E8E93] tracking-wider">
-                          {"•".repeat(Math.min(info.password.length, 8))}
-                        </span>
-                      </Td>
                       <Td>
                         <div className="flex items-center justify-end gap-2">
                           <button

@@ -1232,7 +1232,6 @@ function AdminPanel() {
                 <AdminTh>姓名</AdminTh>
                 <AdminTh>角色</AdminTh>
                 <AdminTh>默认模块</AdminTh>
-                <AdminTh>密码</AdminTh>
                 <AdminTh className="text-right">操作</AdminTh>
               </tr>
             </thead>
@@ -1247,11 +1246,6 @@ function AdminPanel() {
                     </span>
                   </AdminTd>
                   <AdminTd className="text-[#8E8E93]">{info.default_module}</AdminTd>
-                  <AdminTd>
-                    <span className="font-mono text-[#8E8E93] tracking-wider">
-                      {"•".repeat(Math.min(info.password.length, 8))}
-                    </span>
-                  </AdminTd>
                   <AdminTd>
                     <div className="flex items-center justify-end gap-2">
                       <button

@@ -1,7 +1,6 @@
 // ===================== 用户 =====================
 export interface UserInfo {
   uid: string;
-  password: string;
   role: string;
   name: string;
   default_module: string;

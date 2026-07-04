@@ -17,7 +17,17 @@ import uvicorn
 
 from config import DATA_DIR, JWT_SECRET
 from database import UserDatabaseManager, TaskDatabaseManager, hash_password
-from auth import create_token, verify_token, get_current_user
+from auth import (
+    ENTRY_ROLES,
+    TASK_ROLES,
+    create_token,
+    get_current_user,
+    public_user_info,
+    public_users_map,
+    require_roles,
+    require_super_admin,
+    verify_token,
+)
 from models import (
     CADRequest,
     LoginRequest, LoginResponse,
@@ -406,7 +416,7 @@ def build_cad_params(req: CADRequest):
 
 # ===================== API: CAD 图纸生成 =====================
 @app.post("/api/generate_cad")
-def generate_cad(req: CADRequest):
+def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)):
     """
     接收表单数据，调用 ezdxf 读取 template.dxf 生成图纸，
     并以 .dxf 文件流形式返回。
@@ -450,7 +460,7 @@ def generate_cad(req: CADRequest):
 
 # ===================== API: 用户登录 =====================
 @app.post("/api/generate_cad_preview")
-def generate_cad_preview(req: CADRequest):
+def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_current_user)):
     """
     Reuse the CAD export path and render the generated DXF as an SVG preview.
     """
@@ -486,7 +496,7 @@ def login(req: LoginRequest):
         return LoginResponse(
             success=True,
             message="登录成功",
-            user=user_info,
+            user=public_user_info(user_info),
             token=token,
         )
     else:
@@ -495,23 +505,25 @@ def login(req: LoginRequest):
 
 # ===================== API: 用户管理 =====================
 @app.get("/api/users")
-def list_users():
+def list_users(current_user: Dict = Depends(require_super_admin)):
     """获取所有用户列表"""
     users = user_db.load_all_users()
-    return {"users": users, "total": len(users)}
+    return {"users": public_users_map(users), "total": len(users)}
 
 
 @app.post("/api/users")
-def create_user(req: UserCreateRequest):
+def create_user(req: UserCreateRequest, current_user: Dict = Depends(require_super_admin)):
     """创建或更新用户"""
     if not req.uid or not req.name or not req.pwd:
         raise HTTPException(status_code=400, detail="请填写完整账号信息。")
+    if req.uid == "admin":
+        raise HTTPException(status_code=400, detail="内置 admin 账号不能通过普通创建接口覆盖")
     user_db.add_or_update_user(req.uid, req.pwd, req.role, req.name)
     return {"success": True, "message": f"成功保存账号: {req.uid}"}
 
 
 @app.delete("/api/users/{uid}")
-def delete_user(uid: str):
+def delete_user(uid: str, current_user: Dict = Depends(require_super_admin)):
     """删除用户（admin 不可删）"""
     if uid == "admin":
         raise HTTPException(status_code=400, detail="系统内置管理员不可删除")
@@ -520,7 +532,7 @@ def delete_user(uid: str):
 
 
 @app.put("/api/users/{uid}/reset-password")
-def reset_password(uid: str, req: ResetPasswordRequest):
+def reset_password(uid: str, req: ResetPasswordRequest, current_user: Dict = Depends(require_super_admin)):
     """重置用户密码"""
     users = user_db.load_all_users()
     if uid not in users:
@@ -535,7 +547,8 @@ def reset_password(uid: str, req: ResetPasswordRequest):
 def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YYYY.MM.DD"),
                status: Optional[str] = Query(None, description="按状态筛选"),
                limit: int = Query(50, ge=1, le=200, description="每页条数"),
-               offset: int = Query(0, ge=0, description="偏移量")):
+               offset: int = Query(0, ge=0, description="偏移量"),
+               current_user: Dict = Depends(get_current_user)):
     """获取任务列表，支持按日期/状态筛选 + 分页（不返回 Base64 图片数据以优化性能）"""
     all_tasks = task_db.load_all_tasks()
     filtered = []
@@ -555,7 +568,7 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
 
 
 @app.get("/api/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: str):
+def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
     """获取单个任务详情"""
     task = task_db.get_task(task_id)
     if not task:
@@ -564,7 +577,7 @@ def get_task(task_id: str):
 
 
 @app.post("/api/tasks", response_model=TaskResponse)
-def create_task(req: TaskCreateRequest):
+def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_roles(*ENTRY_ROLES))):
     """创建新任务（录入员提交订单）"""
     task_id = str(uuid.uuid4())[:8]
     new_task = {
@@ -606,7 +619,7 @@ def _build_history(old_params: Dict, new_params: Dict, user_name: str) -> Dict:
 
 
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse)
-def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depends(get_current_user)):
+def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depends(require_roles(*TASK_ROLES))):
     """更新任务（状态流转、上传图纸、提交审核意见等）"""
     existing = task_db.get_task(task_id)
     if not existing:
@@ -640,7 +653,7 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
 
 
 @app.delete("/api/tasks/{task_id}")
-def delete_task(task_id: str):
+def delete_task(task_id: str, current_user: Dict = Depends(require_super_admin)):
     """删除任务"""
     existing = task_db.get_task(task_id)
     if not existing:
@@ -654,7 +667,7 @@ def delete_task(task_id: str):
 
 # ===================== 后台管理 =====================
 @app.get("/api/admin/tasks")
-def admin_list_all_tasks():
+def admin_list_all_tasks(current_user: Dict = Depends(require_super_admin)):
     """管理员上帝视角：返回全部订单数据（纯文本，不含 Base64 图片）"""
     all_tasks = task_db.load_all_tasks()
     stripped = []
@@ -754,10 +767,8 @@ def get_dropdown_options(current_user: dict = Depends(get_current_user)):
 
 
 @app.put("/api/admin/dropdown-options")
-def update_dropdown_options(data: dict, current_user: dict = Depends(get_current_user)):
+def update_dropdown_options(data: dict, current_user: dict = Depends(require_super_admin)):
     """更新某个下拉选项列表（data: {KEY: [...]}）"""
-    if current_user.get("role") != "超级管理员":
-        raise HTTPException(status_code=403, detail="仅超级管理员可操作")
     current = _load_dropdown_options()
     for key, values in data.items():
         if isinstance(values, list):

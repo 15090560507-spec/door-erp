@@ -14,6 +14,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
     baseUrl: "",
     endpointPath: "/chat/completions",
     apiKey: "",
+    hasApiKey: false,
     model: "",
     prompt: "",
     updatedAt: "",
@@ -26,7 +27,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
     (async () => {
       try {
         const data = await getAiConfig();
-        setConfig(data);
+        setConfig({ ...data, apiKey: "" });
       } catch {
         // keep local defaults
       }
@@ -44,7 +45,7 @@ export default function AiConfigModal({ open, onClose }: Props) {
         model: config.model,
         prompt: config.prompt,
       });
-      setConfig(updated);
+      setConfig({ ...updated, apiKey: "" });
       setStatus("AI 配置已保存");
       setTimeout(() => onClose(), 800);
     } catch (err: unknown) {
@@ -108,9 +109,9 @@ export default function AiConfigModal({ open, onClose }: Props) {
             <span className="text-[12px] font-medium text-[#8E8E93]">API Key</span>
             <input
               type="password"
-              value={config.apiKey}
+              value={config.apiKey || ""}
               onChange={(event) => setConfig({ ...config, apiKey: event.target.value })}
-              placeholder="粘贴你的 API Key"
+              placeholder={config.hasApiKey ? "API Key 已保存，留空则不修改" : "粘贴你的 API Key"}
               className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
             />
           </label>

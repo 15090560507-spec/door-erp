@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { Accessory, QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
 import { createQuote, getAccessories } from "@/lib/quoteApi";
-import { getTask, getTasks } from "@/lib/api";
+import { api, getTask, getTasks } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
 import QuotePreview from "@/components/QuotePreview";
@@ -13,9 +13,21 @@ import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const QUOTE_ROW_COUNT = 8;
 type QuotePricingMode = "outerArea" | "framePlusTrim";
+
+async function downloadQuoteFile(quoteId: number, ext: "xlsx" | "jpg" | "pdf", filename: string) {
+  const { data } = await api.get<Blob>(`/quotes/${quoteId}/export.${ext}`, { responseType: "blob" });
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function num(value: unknown): number {
   const parsed = Number(value || 0);
@@ -313,15 +325,7 @@ export default function QuotePage() {
     setExporting(true);
     setExportingType("xlsx");
     try {
-      const res = await fetch(`${API_BASE}/quotes/${lastQuoteId}/export.xlsx`);
-      if (!res.ok) throw new Error("导出失败");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `报价单_${lastQuoteId}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadQuoteFile(lastQuoteId, "xlsx", `报价单_${lastQuoteId}.xlsx`);
       setStatus("Excel 下载中...");
     } catch {
       setStatus("Excel 导出失败");
@@ -338,15 +342,7 @@ export default function QuotePage() {
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
-      const res = await fetch(`${API_BASE}/quotes/${lastQuoteId}/export.jpg`);
-      if (!res.ok) throw new Error("导出失败");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `报价单_${lastQuoteId}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadQuoteFile(lastQuoteId, "jpg", `报价单_${lastQuoteId}.jpg`);
       setStatus("JPG 已下载");
     } catch {
       setStatus("JPG 导出失败");
@@ -356,10 +352,20 @@ export default function QuotePage() {
     }
   }
 
-  // Print: open PDF endpoint in new window (backend returns HTML with auto-print)
-  function handlePrint() {
+  async function handlePrint() {
     if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
-    window.open(`${API_BASE}/quotes/${lastQuoteId}/export.pdf`, "_blank");
+    setExporting(true);
+    setExportingType("pdf");
+    setStatus("正在生成 PDF...");
+    try {
+      await downloadQuoteFile(lastQuoteId, "pdf", `报价单_${lastQuoteId}.pdf`);
+      setStatus("PDF 已下载");
+    } catch {
+      setStatus("PDF 导出失败");
+    } finally {
+      setExporting(false);
+      setExportingType("");
+    }
   }
 
   // Apply AI analysis results

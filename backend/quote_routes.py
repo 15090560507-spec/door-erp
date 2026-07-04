@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from io import BytesIO
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.background import BackgroundTask
 from openpyxl import load_workbook
@@ -25,6 +25,7 @@ from quote_models import (
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
 from quote_excel import generate_excel
 from quote_template_renderer import render_quote_template_artifacts
+from auth import ENTRY_ROLES, get_current_user, require_roles, require_super_admin
 
 quote_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -38,6 +39,13 @@ AI_MODEL_ALIASES = {
 accessory_db = AccessoryDatabaseManager()
 quote_db = QuoteDatabaseManager()
 ai_config_db = AiConfigManager()
+
+
+def _public_ai_config(config: dict) -> dict:
+    public = dict(config or {})
+    api_key = (public.pop("apiKey", "") or "").strip()
+    public["hasApiKey"] = bool(api_key)
+    return public
 
 
 def _cleanup_dir(path: str):
@@ -310,7 +318,7 @@ def _parse_accessory_price_xlsx(content: bytes) -> list[dict]:
 # ===================== 配件管理 =====================
 
 @quote_router.get("/api/accessories")
-def list_accessories(q: str = Query(None, description="搜索关键词")):
+def list_accessories(q: str = Query(None, description="搜索关键词"), current_user: dict = Depends(get_current_user)):
     """获取配件列表，支持按名称/类别/型号/关键词搜索"""
     if q:
         accessories = accessory_db.search(q)
@@ -320,7 +328,7 @@ def list_accessories(q: str = Query(None, description="搜索关键词")):
 
 
 @quote_router.post("/api/accessories", status_code=201)
-def create_accessory(data: AccessoryCreate):
+def create_accessory(data: AccessoryCreate, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """新增配件"""
     if not data.name.strip():
         raise HTTPException(status_code=400, detail="配件名称不能为空")
@@ -333,14 +341,14 @@ def create_accessory(data: AccessoryCreate):
 
 # NOTE: export/import 路由必须放在 /{accessory_id} 之前，避免 FastAPI 路由冲突
 @quote_router.get("/api/accessories/export")
-def export_accessories():
+def export_accessories(current_user: dict = Depends(get_current_user)):
     """导出所有有效配件为 JSON"""
     accessories = accessory_db.get_all()
     return {"accessories": accessories}
 
 
 @quote_router.post("/api/accessories/import", status_code=201)
-def import_accessories(data: AccessoryImport):
+def import_accessories(data: AccessoryImport, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """批量导入配件"""
     items = [item.model_dump() for item in data.accessories]
     count = accessory_db.import_batch(items)
@@ -348,7 +356,7 @@ def import_accessories(data: AccessoryImport):
 
 
 @quote_router.post("/api/accessories/import-xlsx", status_code=201)
-async def import_accessories_xlsx(file: UploadFile = File(...)):
+async def import_accessories_xlsx(file: UploadFile = File(...), current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """Import the door price workbook into the accessory/price library."""
     filename = file.filename or ""
     if not filename.lower().endswith((".xlsx", ".xlsm")):
@@ -363,7 +371,7 @@ async def import_accessories_xlsx(file: UploadFile = File(...)):
 
 
 @quote_router.delete("/api/accessories/{accessory_id}")
-def delete_accessory(accessory_id: int):
+def delete_accessory(accessory_id: int, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """软删除配件（将 active 置为 0）"""
     try:
         accessory_db.soft_delete(accessory_id)
@@ -375,14 +383,14 @@ def delete_accessory(accessory_id: int):
 # ===================== 报价单管理 =====================
 
 @quote_router.get("/api/quotes")
-def list_quotes():
+def list_quotes(current_user: dict = Depends(get_current_user)):
     """获取报价单列表（最新 50 条，不含 items 明细以优化性能）"""
     quotes = quote_db.get_all(limit=50)
     return {"quotes": quotes}
 
 
 @quote_router.post("/api/quotes", status_code=201)
-def create_quote(data: QuoteCreate):
+def create_quote(data: QuoteCreate, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """创建报价单"""
     try:
         quote = quote_db.create(data.model_dump())
@@ -392,7 +400,7 @@ def create_quote(data: QuoteCreate):
 
 
 @quote_router.get("/api/quotes/{quote_id}")
-def get_quote(quote_id: int):
+def get_quote(quote_id: int, current_user: dict = Depends(get_current_user)):
     """获取单个报价单详情（含 items）"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
@@ -401,7 +409,7 @@ def get_quote(quote_id: int):
 
 
 @quote_router.delete("/api/quotes/{quote_id}")
-def delete_quote(quote_id: int):
+def delete_quote(quote_id: int, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
     """删除报价单"""
     try:
         quote_db.delete(quote_id)
@@ -413,7 +421,7 @@ def delete_quote(quote_id: int):
 # ===================== 报价单导出 =====================
 
 @quote_router.get("/api/quotes/{quote_id}/export.xlsx")
-def export_quote_xlsx(quote_id: int):
+def export_quote_xlsx(quote_id: int, current_user: dict = Depends(get_current_user)):
     """导出报价单为 Excel"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
@@ -517,7 +525,7 @@ def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
 
 
 @quote_router.get("/api/quotes/{quote_id}/preview.html")
-def quote_preview_html(quote_id: int):
+def quote_preview_html(quote_id: int, current_user: dict = Depends(get_current_user)):
     """返回报价单预览 HTML，由 Playwright 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
@@ -537,7 +545,7 @@ def quote_preview_html(quote_id: int):
 
 
 @quote_router.get("/api/quotes/{quote_id}/export.jpg")
-def export_quote_jpg(quote_id: int):
+def export_quote_jpg(quote_id: int, current_user: dict = Depends(get_current_user)):
     """导出报价单 JPG，使用高还原 HTML/CSS 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
@@ -559,7 +567,7 @@ def export_quote_jpg(quote_id: int):
 
 
 @quote_router.get("/api/quotes/{quote_id}/export.pdf")
-def export_quote_pdf(quote_id: int):
+def export_quote_pdf(quote_id: int, current_user: dict = Depends(get_current_user)):
     """导出报价单 PDF，使用高还原 HTML/CSS 模板渲染。"""
     quote = quote_db.get_by_id(quote_id)
     if not quote:
@@ -583,14 +591,14 @@ def export_quote_pdf(quote_id: int):
 # ===================== AI 配置管理 =====================
 
 @quote_router.get("/api/ai-config")
-def get_ai_config():
+def get_ai_config(current_user: dict = Depends(require_super_admin)):
     """获取 AI 识别配置"""
     config = ai_config_db.get()
-    return {"config": config}
+    return {"config": _public_ai_config(config)}
 
 
 @quote_router.post("/api/drawings/analyze")
-async def analyze_drawing(file: UploadFile = File(...)):
+async def analyze_drawing(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     """调用兼容 OpenAI chat/completions 的视觉模型识别报价图纸。"""
     content_type = file.content_type or ""
     if content_type not in {"image/jpeg", "image/png"}:
@@ -683,15 +691,18 @@ async def analyze_drawing(file: UploadFile = File(...)):
 
 
 @quote_router.post("/api/ai-config")
-def update_ai_config(data: AiConfigUpdate):
+def update_ai_config(data: AiConfigUpdate, current_user: dict = Depends(require_super_admin)):
     """更新 AI 识别配置"""
-    config = ai_config_db.update(data.model_dump())
-    return {"config": config}
+    patch = data.model_dump()
+    if not (patch.get("apiKey") or "").strip():
+        patch.pop("apiKey", None)
+    config = ai_config_db.update(patch)
+    return {"config": _public_ai_config(config)}
 
 
 # ===================== 图纸分析（占位） =====================
 
 @quote_router.post("/api/drawings/analyze-placeholder-disabled")
-def analyze_drawing_placeholder():
+def analyze_drawing_placeholder(current_user: dict = Depends(get_current_user)):
     """AI 分析图纸（功能开发中）"""
     return {"message": "AI analysis coming soon"}

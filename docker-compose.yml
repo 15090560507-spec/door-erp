@@ -7,14 +7,16 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: door-backend
-    ports:
-      - "8000:8000"
+    env_file:
+      - .env
+    expose:
+      - "8000"
     environment:
       - DATA_DIR=/app/data
       - TEMPLATE_PATH=/app/template.dxf
-      - JWT_SECRET=door-erp-jwt-secret-2026-xizhou
-      - ADMIN_PASSWORD=admin888
-      - CORS_ORIGINS=http://localhost:3000,http://124.223.87.161:3000,http://124.223.87.161:8000,http://124.223.87.161,https://124.223.87.161
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://124.223.87.161,https://124.223.87.161}
     volumes:
       # 数据持久化：JSON 数据库文件映射到宿主机 ./data 目录，防止重启丢失
       - ./data:/app/data
@@ -29,8 +31,8 @@ services:
         NEXT_PUBLIC_API_URL: /api
         INTERNAL_API_URL: http://backend:8000
     container_name: door-frontend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:8000
