@@ -1,12 +1,12 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from .database import render_db
 from .models import RenderAssetUpdate, RenderModelConfigCreate, RenderModelConfigUpdate
-from .service import create_asset_from_upload, file_response_path, run_render_task
+from .service import create_asset_from_upload, create_render_task_request, execute_render_task, file_response_path
 from auth import get_current_user
 
 
@@ -94,6 +94,7 @@ def delete_asset(asset_id: str, current_user: dict = Depends(get_current_user)):
 
 @render_router.post("/api/render/tasks")
 async def create_render_task(
+    background_tasks: BackgroundTasks,
     lineArt: UploadFile = File(...),
     styleReference: UploadFile | None = File(None),
     tempAssets: list[UploadFile] | None = File(None),
@@ -105,7 +106,7 @@ async def create_render_task(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        task = await run_render_task(
+        task, provider_request = await create_render_task_request(
             model_config_id=modelConfigId,
             prompt=prompt,
             size=size,
@@ -115,6 +116,7 @@ async def create_render_task(
             style_reference=styleReference,
             temp_assets=tempAssets or [],
         )
+        background_tasks.add_task(execute_render_task, task["id"], provider_request)
     except HTTPException:
         raise
     except Exception as exc:
