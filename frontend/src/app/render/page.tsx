@@ -80,6 +80,7 @@ export default function RenderPage() {
   const [errorDialog, setErrorDialog] = useState<{ title: string; message: string; raw?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitConfigText, setSubmitConfigText] = useState("");
+  const [submitWatchSince, setSubmitWatchSince] = useState<number | null>(null);
   const selectedConfig = configs.find((item) => item.id === selectedConfigId);
   const selectedReferenceAssetCount = referenceGroups.reduce((sum, group) => sum + group.assetIds.length, 0);
   const uploadedReferenceFileCount = referenceGroups.reduce((sum, group) => sum + group.files.length, 0);
@@ -212,6 +213,7 @@ export default function RenderPage() {
     setSubmitConfigText("正在保存当前模型配置...");
     setMessage("正在保存当前模型配置...");
     const submittedAt = Date.now();
+    setSubmitWatchSince(submittedAt);
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
     const taskTempAssets = referenceGroups.flatMap((group) => group.files);
     try {
@@ -241,6 +243,7 @@ export default function RenderPage() {
         if (recovered) {
           setActiveTask(recovered);
           setMessage(renderTaskStatusMessage(recovered));
+          if (!isLiveRenderStatus(recovered.status)) setSubmitWatchSince(null);
         } else {
           setMessage("任务已提交，后端仍在生成中，请稍后点刷新查看结果");
         }
@@ -249,6 +252,7 @@ export default function RenderPage() {
       setActiveTask(task);
       setTasks(await listRenderTasks());
       setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
+      if (!isLiveRenderStatus(task.status)) setSubmitWatchSince(null);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
       const text = err.userMessage || err.message || "效果渲染失败";
@@ -256,6 +260,7 @@ export default function RenderPage() {
       if (recovered && recovered.status !== "failed") {
         setActiveTask(recovered);
         setMessage(renderTaskStatusMessage(recovered));
+        if (!isLiveRenderStatus(recovered.status)) setSubmitWatchSince(null);
         return;
       }
       if (err.task) {
@@ -280,6 +285,39 @@ export default function RenderPage() {
       }
     }
   }
+
+  useEffect(() => {
+    if (!submitWatchSince) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+        if (stopped) return;
+        setTasks(nextTasks);
+        const recentTask = findRecentRenderTask(nextTasks, submitWatchSince);
+        if (!recentTask) {
+          if (Date.now() - submitWatchSince > 10 * 60 * 1000) {
+            setSubmitWatchSince(null);
+            setMessage("任务提交后暂未找到历史记录，请手动刷新确认");
+          }
+          return;
+        }
+        setActiveTask(recentTask);
+        setMessage(renderTaskStatusMessage(recentTask));
+        if (!isLiveRenderStatus(recentTask.status)) {
+          setSubmitWatchSince(null);
+        }
+      } catch {
+        // Submit recovery is best-effort; manual refresh still works.
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [submitWatchSince]);
 
   useEffect(() => {
     if (!activeTask || !isLiveRenderStatus(activeTask.status)) return;
@@ -790,6 +828,15 @@ function renderTaskStatusMessage(task: RenderTask): string {
   if (task.status === "completed") return "效果图生成完成";
   if (task.status === "failed") return task.errorMessage || "效果渲染失败";
   return "任务已提交，后端正在生成中，完成后会自动刷新结果";
+}
+
+function findRecentRenderTask(tasks: RenderTask[], sinceMs: number): RenderTask | null {
+  return [...tasks]
+    .filter((task) => {
+      const createdAt = new Date(task.createdAt).getTime();
+      return Number.isFinite(createdAt) && createdAt >= sinceMs - 5000;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null;
 }
 
 function wait(ms: number): Promise<null> {
