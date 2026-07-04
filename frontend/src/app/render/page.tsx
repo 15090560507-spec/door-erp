@@ -160,7 +160,7 @@ export default function RenderPage() {
     setConfigs(nextConfigs);
     setSelectedConfigId(saved.id);
     setEditingConfigId(saved.id);
-    setConfigForm({ ...formFromConfig(saved), apiKey: "" });
+    setConfigForm({ ...formFromConfig(saved), apiKey: apiKeyDraft });
     if (!options.silent) setMessage(`模型配置已保存：${saved.model}，API Key ${apiKeyDraft || saved.hasApiKey ? "已保存" : "未填写"}`);
     return saved;
   }
@@ -223,32 +223,39 @@ export default function RenderPage() {
       const submitSummary = renderConfigSummary(saved);
       setSubmitConfigText(submitSummary);
       setMessage(`正在提交渲染任务：${submitSummary}`);
-      const task = await createRenderTask({
-        modelConfigId: saved.id,
-        prompt,
-        size,
-        count: 1,
-        selectedAssetIds: taskAssetIds,
-        lineArt,
-        styleReference,
-        tempAssets: taskTempAssets,
-      });
+      const task = await Promise.race([
+        createRenderTask({
+          modelConfigId: saved.id,
+          prompt,
+          size,
+          count: 1,
+          selectedAssetIds: taskAssetIds,
+          lineArt,
+          styleReference,
+          tempAssets: taskTempAssets,
+        }),
+        wait(45000).then(() => null),
+      ]);
+      if (!task) {
+        const recovered = await recoverRecentTask(submittedAt);
+        if (recovered) {
+          setActiveTask(recovered);
+          setMessage(renderTaskStatusMessage(recovered));
+        } else {
+          setMessage("任务已提交，后端仍在生成中，请稍后点刷新查看结果");
+        }
+        return;
+      }
       setActiveTask(task);
       setTasks(await listRenderTasks());
       setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
       const text = err.userMessage || err.message || "效果渲染失败";
-      const latestTasks = await listRenderTasks();
-      setTasks(latestTasks);
-      const freshTask = latestTasks.find((task) => {
-        const createdAt = new Date(task.createdAt).getTime();
-        return Number.isFinite(createdAt) && createdAt >= submittedAt - 5000;
-      });
-      const recoverableTask = freshTask && freshTask.status !== "failed" ? freshTask : null;
-      if (recoverableTask) {
-        setActiveTask(recoverableTask);
-        setMessage(recoverableTask.status === "completed" ? "效果图生成完成" : "任务仍在生成中，请稍后刷新");
+      const recovered = await recoverRecentTask(submittedAt);
+      if (recovered && recovered.status !== "failed") {
+        setActiveTask(recovered);
+        setMessage(renderTaskStatusMessage(recovered));
         return;
       }
       if (err.task) {
@@ -259,7 +266,45 @@ export default function RenderPage() {
     } finally {
       setLoading(false);
     }
+
+    async function recoverRecentTask(sinceMs: number): Promise<RenderTask | null> {
+      try {
+        const latestTasks = await listRenderTasks(TASK_LIST_LIMIT);
+        setTasks(latestTasks);
+        return latestTasks.find((item) => {
+          const createdAt = new Date(item.createdAt).getTime();
+          return Number.isFinite(createdAt) && createdAt >= sinceMs - 5000;
+        }) || null;
+      } catch {
+        return null;
+      }
+    }
   }
+
+  useEffect(() => {
+    if (!activeTask || !isLiveRenderStatus(activeTask.status)) return;
+    let stopped = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+        if (stopped) return;
+        setTasks(nextTasks);
+        const refreshed = nextTasks.find((task) => task.id === activeTask.id);
+        if (refreshed) {
+          setActiveTask(refreshed);
+          if (!isLiveRenderStatus(refreshed.status)) {
+            setMessage(renderTaskStatusMessage(refreshed));
+          }
+        }
+      } catch {
+        // Polling is best-effort; manual refresh still works.
+      }
+    }, 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTask?.id, activeTask?.status]);
 
   async function removeConfig(configId: string) {
     await deleteRenderModelConfig(configId);
@@ -735,6 +780,20 @@ function renderTaskModelText(task: RenderTask, configs: RenderModelConfig[]): st
 
 function renderConfigSummary(config: Partial<RenderModelConfig> | NonNullable<RenderTask["modelConfigSnapshot"]>): string {
   return [config.name, config.provider, config.apiType, config.baseUrl, config.endpoint, config.model].filter(Boolean).join(" / ");
+}
+
+function isLiveRenderStatus(status: string): boolean {
+  return ["pending", "running"].includes(String(status || "").toLowerCase());
+}
+
+function renderTaskStatusMessage(task: RenderTask): string {
+  if (task.status === "completed") return "效果图生成完成";
+  if (task.status === "failed") return task.errorMessage || "效果渲染失败";
+  return "任务已提交，后端正在生成中，完成后会自动刷新结果";
+}
+
+function wait(ms: number): Promise<null> {
+  return new Promise((resolve) => window.setTimeout(() => resolve(null), ms));
 }
 
 function clampCount(value: unknown): number {
