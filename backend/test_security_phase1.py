@@ -65,7 +65,7 @@ def main():
         resp = client.post(
             "/api/render/model-configs",
             json={
-                "name": "普通用户不应创建",
+                "name": "security-render-config",
                 "provider": "image2_proxy",
                 "baseUrl": "https://example.test",
                 "apiKey": "sk-nope",
@@ -75,7 +75,10 @@ def main():
             },
             headers=regular,
         )
-        check("普通用户不能修改图片模型配置", resp.status_code == 403, resp.text)
+        render_config_id = (resp.json().get("config") or {}).get("id") if resp.status_code == 200 else ""
+        check("普通用户能保存图片模型配置", resp.status_code == 200 and bool(render_config_id), resp.text)
+        if render_config_id:
+            client.delete(f"/api/render/model-configs/{render_config_id}", headers=regular)
 
         resp = client.post("/api/login", json={"uid": normal_uid, "pwd": "security123"})
         login_data = resp.json()

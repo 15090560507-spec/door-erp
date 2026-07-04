@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from .database import render_db
 from .models import RenderAssetUpdate, RenderModelConfigCreate, RenderModelConfigUpdate
 from .service import create_asset_from_upload, file_response_path, run_render_task
-from auth import get_current_user, require_super_admin
+from auth import get_current_user
 
 
 render_router = APIRouter()
@@ -20,17 +20,17 @@ def render_health(current_user: dict = Depends(get_current_user)):
 
 
 @render_router.get("/api/render/model-configs")
-def list_model_configs(includeDisabled: bool = False, current_user: dict = Depends(require_super_admin)):
+def list_model_configs(includeDisabled: bool = False, current_user: dict = Depends(get_current_user)):
     return {"configs": render_db.list_model_configs(include_disabled=includeDisabled)}
 
 
 @render_router.post("/api/render/model-configs")
-def create_model_config(data: RenderModelConfigCreate, current_user: dict = Depends(require_super_admin)):
+def create_model_config(data: RenderModelConfigCreate, current_user: dict = Depends(get_current_user)):
     return {"config": render_db.create_model_config(data.model_dump())}
 
 
 @render_router.put("/api/render/model-configs/{config_id}")
-def update_model_config(config_id: str, data: RenderModelConfigUpdate, current_user: dict = Depends(require_super_admin)):
+def update_model_config(config_id: str, data: RenderModelConfigUpdate, current_user: dict = Depends(get_current_user)):
     updated = render_db.update_model_config(config_id, data.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(status_code=404, detail="模型配置不存在")
@@ -38,7 +38,7 @@ def update_model_config(config_id: str, data: RenderModelConfigUpdate, current_u
 
 
 @render_router.delete("/api/render/model-configs/{config_id}")
-def delete_model_config(config_id: str, current_user: dict = Depends(require_super_admin)):
+def delete_model_config(config_id: str, current_user: dict = Depends(get_current_user)):
     updated = render_db.update_model_config(config_id, {"enabled": False})
     if not updated:
         raise HTTPException(status_code=404, detail="模型配置不存在")
