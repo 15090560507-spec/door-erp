@@ -23,6 +23,19 @@ const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门�
 const ASSET_PAGE_SIZE = 24;
 const TASK_LIST_LIMIT = 20;
 const DEFAULT_REFERENCE_GROUPS = ["款式", "拉手", "花件", "合页"];
+const ASSET_PROMPT_USAGE: Record<string, string> = {
+  款式: "款式素材用于整体门型风格、比例、颜色倾向和主视觉参考。",
+  花件: "花件素材只用于花件图案、雕花细节和对应装饰位置参考。",
+  拉手: "拉手素材只用于拉手款式、材质、比例和安装位置参考。",
+  锁具: "锁具素材只用于锁具外观、颜色和安装位置参考。",
+  合页: "合页素材只用于合页外观、颜色和位置参考。",
+  颜色: "颜色素材用于整体色彩、金属漆面和表面观感参考。",
+  纹理: "纹理素材用于门板表面材质、拉丝、木纹或铜纹细节参考。",
+  玻璃: "玻璃素材用于玻璃颜色、透明度、纹理和反光效果参考。",
+  门头: "门头素材用于门头造型、比例和顶部装饰参考。",
+  包套: "包套素材用于包套造型、线条层次和外框效果参考。",
+  其他: "其他素材仅用于对应部件的局部细节参考。",
+};
 
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
@@ -55,6 +68,30 @@ function createDefaultReferenceGroups(): ReferenceGroup[] {
   }));
 }
 
+function getSelectedReferenceCategories(referenceGroups: ReferenceGroup[], assets: RenderAsset[]) {
+  const categories = new Set<string>();
+  for (const group of referenceGroups) {
+    if (group.files.length && group.category) categories.add(group.category);
+    for (const assetId of group.assetIds) {
+      const asset = assets.find((item) => item.id === assetId);
+      categories.add(asset?.category || group.category || "其他");
+    }
+  }
+  return Array.from(categories).filter(Boolean);
+}
+
+function buildReferencePromptGuidance(categories: string[]) {
+  if (!categories.length) return "";
+  const lines = categories.map((category) => ASSET_PROMPT_USAGE[category] || `${category}素材只作为对应部件的局部参考。`);
+  return `本次参考素材使用规则：${lines.join(" ")}`;
+}
+
+function buildRenderPrompt(prompt: string, guidance: string) {
+  const basePrompt = prompt.trim();
+  if (!guidance) return basePrompt;
+  return `${basePrompt}\n\n${guidance}`;
+}
+
 export default function RenderPage() {
   const [configs, setConfigs] = useState<RenderModelConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState("");
@@ -63,6 +100,7 @@ export default function RenderPage() {
   const [assets, setAssets] = useState<RenderAsset[]>([]);
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [modelConfigOpen, setModelConfigOpen] = useState(false);
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(true);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
@@ -86,6 +124,8 @@ export default function RenderPage() {
   const selectedReferenceFiles = referenceGroups.flatMap((group) => group.files);
   const selectedReferenceAssetCount = selectedReferenceAssetIds.length;
   const uploadedReferenceFileCount = selectedReferenceFiles.length;
+  const selectedReferenceCategories = getSelectedReferenceCategories(referenceGroups, assets);
+  const referencePromptGuidance = buildReferencePromptGuidance(selectedReferenceCategories);
 
   useEffect(() => {
     refreshAll();
@@ -244,7 +284,7 @@ export default function RenderPage() {
       const task = await Promise.race([
         createRenderTask({
           modelConfigId: saved.id,
-          prompt,
+          prompt: buildRenderPrompt(prompt, referencePromptGuidance),
           size,
           count: 1,
           selectedAssetIds: taskAssetIds,
@@ -498,31 +538,105 @@ export default function RenderPage() {
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <div>
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">本次参考素材</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">从个人素材库选择，或上传本次专用参考图；选中的内容会统一放到下方。</p>
-          </div>
+          <button type="button" onClick={() => setAssetLibraryOpen((value) => !value)} className="text-left">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 素材库</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">从个人素材库选择，或上传本次专用参考图；选中的内容会统一放到下方本次素材栏。</p>
+          </button>
           <div className="flex-1" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onBlur={handleSearchBlur}
-            placeholder="搜索素材"
-            className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
-          />
-          <CompactImageUpload files={selectedReferenceFiles} onChange={addReferenceFiles} />
-          <LibraryUploadButton
-            category={category}
-            onUploaded={(asset) => {
-              setAssets((current) => [asset, ...current]);
-              setMessage("素材已上传到个人素材库");
-            }}
-          />
+          {assetLibraryOpen && (
+            <>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onBlur={handleSearchBlur}
+                placeholder="搜索素材"
+                className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
+              />
+              <CompactImageUpload files={selectedReferenceFiles} onChange={addReferenceFiles} />
+              <LibraryUploadButton
+                category={category}
+                onUploaded={(asset) => {
+                  setAssets((current) => [asset, ...current]);
+                  setMessage("素材已上传到个人素材库");
+                }}
+              />
+            </>
+          )}
         </div>
 
-        {(selectedReferenceAssetIds.length > 0 || selectedReferenceFiles.length > 0) && (
-          <div className="mb-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
-            <div className="mb-2 text-[12px] font-medium text-[#3C3C43]">已选参考</div>
+        {assetLibraryOpen && (
+          <>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
+              <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCategoryChange("")}
+                  className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+                >
+                  全部分类
+                </button>
+                {RENDER_CATEGORIES.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => void handleCategoryChange(item)}
+                    className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {assets.map((asset) => {
+                  const selected = selectedReferenceAssetIds.includes(asset.id);
+                  return (
+                    <div key={asset.id} className={`grid grid-cols-[120px_1fr] gap-3 rounded-xl border p-2 ${selected ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
+                        className="aspect-square rounded-lg bg-[#F2F2F7]"
+                      >
+                        <img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
+                      </button>
+                      <div className="min-w-0">
+                        <p className="truncate text-left text-[13px] font-medium text-[#1C1C1E]">{asset.name}</p>
+                        <p className="mt-1 truncate text-left text-[12px] text-[#8E8E93]">{asset.category}</p>
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleReferenceAsset(asset)}
+                            className={`flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium ${selected ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#1C1C1E]"}`}
+                          >
+                            {selected ? "已选" : "选择"}
+                          </button>
+                          <button type="button" onClick={() => removeAsset(asset.id)} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px] text-[#FF3B30]">删除</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
+                {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+              </div>
+            </div>
+
+            {assetHasMore && (
+              <div className="mt-3 flex justify-center">
+                <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
+                  {assetLoading ? "加载中..." : "加载更多素材"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="mt-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="text-[13px] font-semibold text-[#1C1C1E]">本次素材</div>
+            <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
+          </div>
+          {(selectedReferenceAssetIds.length > 0 || selectedReferenceFiles.length > 0) ? (
             <div className="flex flex-wrap gap-2">
               {selectedReferenceAssetIds.map((assetId) => {
                 const asset = assets.find((item) => item.id === assetId);
@@ -533,7 +647,7 @@ export default function RenderPage() {
                       onClick={() => asset && setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
                       className="max-w-[180px] truncate"
                     >
-                      {asset?.name || assetId}
+                      {asset?.category ? `${asset.category}：` : ""}{asset?.name || assetId}
                     </button>
                     <button type="button" onClick={() => removeReferenceAsset(assetId)} className="text-[#FF3B30]">×</button>
                   </span>
@@ -548,69 +662,13 @@ export default function RenderPage() {
                 />
               ))}
             </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
-          <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
-            <button
-              type="button"
-              onClick={() => void handleCategoryChange("")}
-              className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-            >
-              全部分类
-            </button>
-            {RENDER_CATEGORIES.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => void handleCategoryChange(item)}
-                className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-            {assets.map((asset) => {
-              const selected = selectedReferenceAssetIds.includes(asset.id);
-              return (
-                <div key={asset.id} className={`rounded-xl border p-2 ${selected ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
-                    className="aspect-square w-full rounded-lg bg-[#F2F2F7]"
-                  >
-                    <img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
-                  </button>
-                  <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
-                  <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleReferenceAsset(asset)}
-                      className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-medium ${selected ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#1C1C1E]"}`}
-                    >
-                      {selected ? "已选" : "选择"}
-                    </button>
-                    <button type="button" onClick={() => removeAsset(asset.id)} className="rounded-lg bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#FF3B30]">删除</button>
-                  </div>
-                </div>
-              );
-            })}
-            {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
-            {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
-          </div>
+          ) : (
+            <p className="text-[12px] text-[#8E8E93]">还没有选择素材。可以在上方素材库点“选择”，或用“上传图”添加本次专用参考图。</p>
+          )}
+          {referencePromptGuidance && (
+            <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[12px] leading-5 text-[#3C3C43]">{referencePromptGuidance}</p>
+          )}
         </div>
-
-        {assetHasMore && (
-          <div className="mt-3 flex justify-center">
-            <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
-              {assetLoading ? "加载中..." : "加载更多素材"}
-            </button>
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
