@@ -63,7 +63,6 @@ export default function RenderPage() {
   const [assets, setAssets] = useState<RenderAsset[]>([]);
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [modelConfigOpen, setModelConfigOpen] = useState(false);
-  const [assetLibraryOpen, setAssetLibraryOpen] = useState(true);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
@@ -83,8 +82,10 @@ export default function RenderPage() {
   const [submitConfigText, setSubmitConfigText] = useState("");
   const [submitWatchSince, setSubmitWatchSince] = useState<number | null>(null);
   const selectedConfig = configs.find((item) => item.id === selectedConfigId);
-  const selectedReferenceAssetCount = referenceGroups.reduce((sum, group) => sum + group.assetIds.length, 0);
-  const uploadedReferenceFileCount = referenceGroups.reduce((sum, group) => sum + group.files.length, 0);
+  const selectedReferenceAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
+  const selectedReferenceFiles = referenceGroups.flatMap((group) => group.files);
+  const selectedReferenceAssetCount = selectedReferenceAssetIds.length;
+  const uploadedReferenceFileCount = selectedReferenceFiles.length;
 
   useEffect(() => {
     refreshAll();
@@ -114,10 +115,10 @@ export default function RenderPage() {
   }
 
   useEffect(() => {
-    if (assetLibraryOpen && !assets.length && !assetLoading) {
+    if (!assets.length && !assetLoading) {
       void loadAssets({ reset: true });
     }
-  }, [assetLibraryOpen]);
+  }, []);
 
   async function loadAssets(options: { reset?: boolean; categoryValue?: string; searchValue?: string } = {}) {
     const reset = Boolean(options.reset);
@@ -185,25 +186,39 @@ export default function RenderPage() {
     setReferenceGroups((current) => current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== assetId) })));
   }
 
-  function updateReferenceGroup(groupId: string, patch: Partial<ReferenceGroup>) {
-    setReferenceGroups((current) => current.map((group) => group.id === groupId ? { ...group, ...patch } : group));
+  function toggleReferenceAsset(asset: RenderAsset) {
+    setReferenceGroups((current) => {
+      const exists = current.some((group) => group.assetIds.includes(asset.id));
+      if (exists) {
+        return current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== asset.id) }));
+      }
+      const targetIndex = Math.max(0, current.findIndex((group) => group.category === asset.category));
+      const next = current.length ? [...current] : createDefaultReferenceGroups();
+      const index = targetIndex >= 0 ? targetIndex : 0;
+      next[index] = { ...next[index], assetIds: [...next[index].assetIds, asset.id] };
+      return next;
+    });
   }
 
-  function addReferenceGroup() {
-    setReferenceGroups((current) => [
-      ...current,
-      {
-        id: `ref-${Date.now()}`,
-        label: "",
-        category: "其他",
-        assetIds: [],
-        files: [],
-      },
-    ]);
+  function removeReferenceAsset(assetId: string) {
+    setReferenceGroups((current) => current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== assetId) })));
   }
 
-  function removeReferenceGroup(groupId: string) {
-    setReferenceGroups((current) => current.filter((group) => group.id !== groupId));
+  function addReferenceFiles(files: File[]) {
+    if (!files.length) return;
+    setReferenceGroups((current) => {
+      const next = current.length ? [...current] : createDefaultReferenceGroups();
+      const index = Math.max(0, next.findIndex((group) => group.category === (category || "款式")));
+      next[index] = { ...next[index], files: [...next[index].files, ...files] };
+      return next;
+    });
+  }
+
+  function removeReferenceFile(targetFile: File) {
+    setReferenceGroups((current) => current.map((group) => ({
+      ...group,
+      files: group.files.filter((file) => file !== targetFile),
+    })));
   }
 
   async function submitTask() {
@@ -476,143 +491,126 @@ export default function RenderPage() {
         </div>}
       </section>
 
-      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-left">
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">个人素材库</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次渲染要用的参考图在下方配件模型区选择。</p>
-          </div>
-          <div className="flex-1" />
-          {assetLibraryOpen && (
-            <>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={handleSearchBlur} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
-              <LibraryUploadButton category={category} onUploaded={(asset) => { setAssets((current) => [asset, ...current]); setMessage("素材已上传到个人素材库"); }} />
-            </>
-          )}
-        </div>
-        {assetLibraryOpen && (
-          <>
-            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
-              <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
-                <button
-                  type="button"
-                  onClick={() => void handleCategoryChange("")}
-                  className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-                >
-                  全部分类
-                </button>
-                {RENDER_CATEGORIES.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => void handleCategoryChange(item)}
-                    className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-                {assets.map((asset) => (
-                  <div key={asset.id} className="rounded-xl border border-[#E5E5EA] p-2">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
-                      className="aspect-square w-full rounded-lg bg-[#F2F2F7]"
-                    >
-                      <img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
-                    </button>
-                    <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
-                    <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
-                    <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
-                  </div>
-                ))}
-                {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
-                {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
-              </div>
-            </div>
-            {assetHasMore && (
-              <div className="mt-3 flex justify-center">
-                <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
-                  {assetLoading ? "加载中..." : "加载更多素材"}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
         <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <div>
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">参考配件模型</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">每一组都可以从个人素材库选择，也可以粘贴或上传本次专用参考图。</p>
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">本次参考素材</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">从个人素材库选择，或上传本次专用参考图；选中的内容会统一放到下方。</p>
           </div>
-          <button type="button" onClick={addReferenceGroup} className="rounded-lg bg-[#F2F2F7] px-3 py-2 text-[13px] font-medium text-[#1C1C1E]">+ 增加参考项</button>
+          <div className="flex-1" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onBlur={handleSearchBlur}
+            placeholder="搜索素材"
+            className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
+          />
+          <CompactImageUpload files={selectedReferenceFiles} onChange={addReferenceFiles} />
+          <LibraryUploadButton
+            category={category}
+            onUploaded={(asset) => {
+              setAssets((current) => [asset, ...current]);
+              setMessage("素材已上传到个人素材库");
+            }}
+          />
         </div>
-        <div className="space-y-3">
-          {referenceGroups.map((group) => {
-            const libraryOptions = assets.filter((asset) => !group.category || asset.category === group.category);
-            return (
-              <div key={group.id} className="rounded-xl border border-[#E5E5EA] p-2">
-                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[110px_130px_1fr_96px_auto]">
-                  <input
-                    value={group.label}
-                    onChange={(event) => updateReferenceGroup(group.id, { label: event.target.value })}
-                    className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
-                    placeholder="参考项"
-                  />
-                  <select
-                    value={group.category}
-                    onChange={(event) => updateReferenceGroup(group.id, { category: event.target.value, assetIds: [] })}
-                    className="h-9 rounded-lg border border-[#E5E5EA] bg-white px-3 text-[13px]"
+
+        {(selectedReferenceAssetIds.length > 0 || selectedReferenceFiles.length > 0) && (
+          <div className="mb-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
+            <div className="mb-2 text-[12px] font-medium text-[#3C3C43]">已选参考</div>
+            <div className="flex flex-wrap gap-2">
+              {selectedReferenceAssetIds.map((assetId) => {
+                const asset = assets.find((item) => item.id === assetId);
+                return (
+                  <span key={assetId} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-[#3C3C43]">
+                    <button
+                      type="button"
+                      onClick={() => asset && setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
+                      className="max-w-[180px] truncate"
+                    >
+                      {asset?.name || assetId}
+                    </button>
+                    <button type="button" onClick={() => removeReferenceAsset(assetId)} className="text-[#FF3B30]">×</button>
+                  </span>
+                );
+              })}
+              {selectedReferenceFiles.map((file, index) => (
+                <TempFileChip
+                  key={`${file.name}-${file.lastModified}-${index}`}
+                  file={file}
+                  onPreview={(src, title) => setPreviewImage({ src, title })}
+                  onRemove={() => removeReferenceFile(file)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
+          <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
+            <button
+              type="button"
+              onClick={() => void handleCategoryChange("")}
+              className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+            >
+              全部分类
+            </button>
+            {RENDER_CATEGORIES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => void handleCategoryChange(item)}
+                className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+            {assets.map((asset) => {
+              const selected = selectedReferenceAssetIds.includes(asset.id);
+              return (
+                <div key={asset.id} className={`rounded-xl border p-2 ${selected ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
+                    className="aspect-square w-full rounded-lg bg-[#F2F2F7]"
                   >
-                    {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                  <select
-                    multiple
-                    value={group.assetIds}
-                    onChange={(event) => updateReferenceGroup(group.id, { assetIds: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-                    className="h-9 rounded-lg border border-[#E5E5EA] bg-white px-3 text-[13px]"
-                  >
-                    {libraryOptions.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                  </select>
-                  <CompactImageUpload
-                    files={group.files}
-                    onChange={(files) => updateReferenceGroup(group.id, { files })}
-                  />
-                  <button type="button" onClick={() => removeReferenceGroup(group.id)} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px] text-[#FF3B30]">删除</button>
-                </div>
-                {(group.assetIds.length > 0 || group.files.length > 0) && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {group.assetIds.map((assetId) => {
-                      const asset = assets.find((item) => item.id === assetId);
-                      return (
-                        <span key={assetId} className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#3C3C43]">
-                          {asset?.name || assetId}
-                          <button type="button" onClick={() => updateReferenceGroup(group.id, { assetIds: group.assetIds.filter((id) => id !== assetId) })} className="text-[#FF3B30]">×</button>
-                        </span>
-                      );
-                    })}
-                    {group.files.map((file, index) => (
-                      <TempFileChip
-                        key={`${file.name}-${file.lastModified}-${index}`}
-                        file={file}
-                        onPreview={(src, title) => setPreviewImage({ src, title })}
-                        onRemove={() => updateReferenceGroup(group.id, { files: group.files.filter((_, fileIndex) => fileIndex !== index) })}
-                      />
-                    ))}
+                    <img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
+                  </button>
+                  <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
+                  <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleReferenceAsset(asset)}
+                      className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-medium ${selected ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#1C1C1E]"}`}
+                    >
+                      {selected ? "已选" : "选择"}
+                    </button>
+                    <button type="button" onClick={() => removeAsset(asset.id)} className="rounded-lg bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#FF3B30]">删除</button>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
+            {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
+            {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+          </div>
         </div>
+
+        {assetHasMore && (
+          <div className="mt-3 flex justify-center">
+            <button type="button" onClick={() => void loadAssets()} disabled={assetLoading} className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50">
+              {assetLoading ? "加载中..." : "加载更多素材"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
@@ -719,58 +717,10 @@ function UploadBox({ title, file, onPick, onPreview, required }: { title: string
   );
 }
 
-function MultiImageUploadBox({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
-  function appendFiles(nextFiles: File[]) {
-    if (!nextFiles.length) return;
-    onChange([...files, ...nextFiles]);
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
-    const pastedFiles = imageFilesFromClipboard(event);
-    if (!pastedFiles.length) return;
-    event.preventDefault();
-    appendFiles(pastedFiles);
-  }
-
-  return (
-    <div className="mt-3">
-      <label
-        tabIndex={0}
-        onPaste={handlePaste}
-        className="block cursor-pointer rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7] p-3 outline-none focus:border-[#007AFF]"
-      >
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(event) => {
-            appendFiles(imageFilesFromList(event.target.files));
-            event.currentTarget.value = "";
-          }}
-          className="hidden"
-        />
-        <span className="block text-[12px] font-medium text-[#3C3C43]">上传或粘贴本组参考图</span>
-        <span className="mt-1 block text-[11px] text-[#8E8E93]">支持多张图片，Ctrl+V 可直接粘贴</span>
-      </label>
-      {files.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-          {files.map((file, index) => (
-            <div key={`${file.name}-${file.lastModified}-${index}`} className="rounded-lg border border-[#E5E5EA] bg-white p-2">
-              <FilePreviewImage file={file} className="h-24 w-full rounded-md object-contain" />
-              <p className="mt-1 truncate text-[11px] text-[#3C3C43]">{file.name}</p>
-              <button type="button" onClick={() => onChange(files.filter((_, fileIndex) => fileIndex !== index))} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CompactImageUpload({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
   function appendFiles(nextFiles: File[]) {
     if (!nextFiles.length) return;
-    onChange([...files, ...nextFiles]);
+    onChange(nextFiles);
   }
 
   function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
