@@ -162,7 +162,7 @@ export async function createRenderTask(input: {
   if (input.styleReference) formData.append("styleReference", input.styleReference);
   input.tempAssets.forEach((file) => formData.append("tempAssets", file));
   try {
-    const { data } = await api.post<{ task: RenderTask }>("/render/tasks", formData, { timeout: 600000 });
+    const { data } = await api.post<{ task: RenderTask }>("/render/tasks", formData, { timeout: 30000 });
     return data.task;
   } catch (error: unknown) {
     throw normalizeRenderError(error);

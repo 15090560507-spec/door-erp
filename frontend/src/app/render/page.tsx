@@ -63,7 +63,7 @@ export default function RenderPage() {
   const [assets, setAssets] = useState<RenderAsset[]>([]);
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [modelConfigOpen, setModelConfigOpen] = useState(false);
-  const [assetLibraryOpen, setAssetLibraryOpen] = useState(false);
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(true);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
@@ -78,6 +78,7 @@ export default function RenderPage() {
   const [activeTask, setActiveTask] = useState<RenderTask | null>(null);
   const [message, setMessage] = useState("");
   const [errorDialog, setErrorDialog] = useState<{ title: string; message: string; raw?: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ src: string; title: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitConfigText, setSubmitConfigText] = useState("");
   const [submitWatchSince, setSubmitWatchSince] = useState<number | null>(null);
@@ -236,7 +237,7 @@ export default function RenderPage() {
           styleReference,
           tempAssets: taskTempAssets,
         }),
-        wait(45000).then(() => null),
+        wait(8000).then(() => null),
       ]);
       if (!task) {
         const recovered = await recoverRecentTask(submittedAt);
@@ -266,6 +267,7 @@ export default function RenderPage() {
       if (err.task) {
         setActiveTask(err.task);
       }
+      setSubmitWatchSince(null);
       setMessage(text);
       setErrorDialog({ title: "效果渲染失败", message: text, raw: err.raw || err.task?.upstreamRawError || "" });
     } finally {
@@ -320,7 +322,7 @@ export default function RenderPage() {
   }, [submitWatchSince]);
 
   useEffect(() => {
-    if (!activeTask || !isLiveRenderStatus(activeTask.status)) return;
+    if (submitWatchSince || !activeTask || !isLiveRenderStatus(activeTask.status)) return;
     let stopped = false;
     const timer = window.setInterval(async () => {
       try {
@@ -342,7 +344,7 @@ export default function RenderPage() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [activeTask?.id, activeTask?.status]);
+  }, [activeTask?.id, activeTask?.status, submitWatchSince]);
 
   async function removeConfig(configId: string) {
     await deleteRenderModelConfig(configId);
@@ -399,9 +401,35 @@ export default function RenderPage() {
           </div>
         </div>
       )}
+      {previewImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5" onClick={() => setPreviewImage(null)}>
+          <div className="relative max-h-full max-w-[92vw]" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewImage(null)}
+              className="absolute -right-3 -top-3 z-10 h-8 w-8 rounded-full bg-white text-[18px] leading-8 text-[#1C1C1E] shadow"
+              aria-label="关闭预览"
+            >
+              ×
+            </button>
+            <img src={previewImage.src} alt={previewImage.title} className="max-h-[88vh] max-w-full rounded-xl bg-white object-contain shadow-2xl" />
+          </div>
+        </div>
+      )}
       {loading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/65 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-md rounded-2xl border border-[#E5E5EA] bg-white p-5 text-center shadow-xl">
+          <div className="relative w-full max-w-md rounded-2xl border border-[#E5E5EA] bg-white p-5 text-center shadow-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(false);
+                setMessage("任务已提交，后台生成中，完成后会自动刷新结果");
+              }}
+              className="absolute right-3 top-3 h-7 w-7 rounded-full text-[18px] leading-7 text-[#8E8E93] hover:bg-[#F2F2F7]"
+              aria-label="关闭提交提示"
+            >
+              ×
+            </button>
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#007AFF] border-t-transparent" />
             <h2 className="text-[16px] font-semibold text-[#1C1C1E]">正在提交渲染任务</h2>
             <p className="mt-2 text-[12px] leading-5 text-[#8E8E93]">{submitConfigText || "正在保存模型配置并上传图片..."}</p>
@@ -450,17 +478,13 @@ export default function RenderPage() {
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setAssetLibraryOpen((value) => !value)} className="text-left">
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 个人素材库</h2>
+          <div className="text-left">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">个人素材库</h2>
             <p className="mt-1 text-[12px] text-[#8E8E93]">常用配件永久保存；本次渲染要用的参考图在下方配件模型区选择。</p>
-          </button>
+          </div>
           <div className="flex-1" />
           {assetLibraryOpen && (
             <>
-              <select value={category} onChange={(event) => void handleCategoryChange(event.target.value)} className="rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]">
-                <option value="">全部分类</option>
-                {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
               <input value={search} onChange={(event) => setSearch(event.target.value)} onBlur={handleSearchBlur} placeholder="搜索素材" className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
               <LibraryUploadButton category={category} onUploaded={(asset) => { setAssets((current) => [asset, ...current]); setMessage("素材已上传到个人素材库"); }} />
             </>
@@ -468,17 +492,44 @@ export default function RenderPage() {
         </div>
         {assetLibraryOpen && (
           <>
-            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-              {assets.map((asset) => (
-                <div key={asset.id} className="rounded-xl border border-[#E5E5EA] p-2">
-                  <div className="aspect-square rounded-lg bg-[#F2F2F7]"><img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /></div>
-                  <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
-                  <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
-                  <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
-                </div>
-              ))}
-              {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
-              {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
+              <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCategoryChange("")}
+                  className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+                >
+                  全部分类
+                </button>
+                {RENDER_CATEGORIES.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => void handleCategoryChange(item)}
+                    className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+                {assets.map((asset) => (
+                  <div key={asset.id} className="rounded-xl border border-[#E5E5EA] p-2">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
+                      className="aspect-square w-full rounded-lg bg-[#F2F2F7]"
+                    >
+                      <img src={asset.thumbnailUrl || asset.url} alt={asset.name} loading="lazy" decoding="async" className="h-full w-full object-contain" />
+                    </button>
+                    <p className="mt-2 truncate text-left text-[12px] font-medium text-[#1C1C1E]">{asset.name}</p>
+                    <p className="truncate text-left text-[11px] text-[#8E8E93]">{asset.category}</p>
+                    <button type="button" onClick={() => removeAsset(asset.id)} className="mt-1 text-[11px] text-[#FF3B30]">删除</button>
+                  </div>
+                ))}
+                {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
+                {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
+              </div>
             </div>
             {assetHasMore && (
               <div className="mt-3 flex justify-center">
@@ -492,8 +543,8 @@ export default function RenderPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} required />
-        <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} required />
+        <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+        <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
       </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
@@ -508,29 +559,56 @@ export default function RenderPage() {
           {referenceGroups.map((group) => {
             const libraryOptions = assets.filter((asset) => !group.category || asset.category === group.category);
             return (
-              <div key={group.id} className="rounded-xl border border-[#E5E5EA] p-3">
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[160px_160px_1fr_auto]">
-                  <Input label="参考项" value={group.label} onChange={(value) => updateReferenceGroup(group.id, { label: value })} />
-                  <Select label="分类" value={group.category} onChange={(value) => updateReferenceGroup(group.id, { category: value, assetIds: [] })} options={RENDER_CATEGORIES.map((item) => [item, item])} />
-                  <label>
-                    <span className="text-[12px] font-medium text-[#8E8E93]">从个人素材库选择</span>
-                    <select
-                      multiple
-                      value={group.assetIds}
-                      onChange={(event) => updateReferenceGroup(group.id, { assetIds: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-                      className="mt-1 h-20 w-full rounded-lg border border-[#E5E5EA] bg-white px-3 py-2 text-[13px]"
-                    >
-                      {libraryOptions.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                    </select>
-                  </label>
-                  <div className="flex items-end">
-                    <button type="button" onClick={() => removeReferenceGroup(group.id)} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px] text-[#FF3B30]">删除</button>
-                  </div>
+              <div key={group.id} className="rounded-xl border border-[#E5E5EA] p-2">
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[110px_130px_1fr_96px_auto]">
+                  <input
+                    value={group.label}
+                    onChange={(event) => updateReferenceGroup(group.id, { label: event.target.value })}
+                    className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
+                    placeholder="参考项"
+                  />
+                  <select
+                    value={group.category}
+                    onChange={(event) => updateReferenceGroup(group.id, { category: event.target.value, assetIds: [] })}
+                    className="h-9 rounded-lg border border-[#E5E5EA] bg-white px-3 text-[13px]"
+                  >
+                    {RENDER_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <select
+                    multiple
+                    value={group.assetIds}
+                    onChange={(event) => updateReferenceGroup(group.id, { assetIds: Array.from(event.target.selectedOptions).map((option) => option.value) })}
+                    className="h-9 rounded-lg border border-[#E5E5EA] bg-white px-3 text-[13px]"
+                  >
+                    {libraryOptions.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                  </select>
+                  <CompactImageUpload
+                    files={group.files}
+                    onChange={(files) => updateReferenceGroup(group.id, { files })}
+                  />
+                  <button type="button" onClick={() => removeReferenceGroup(group.id)} className="h-9 rounded-lg bg-[#F2F2F7] px-3 text-[13px] text-[#FF3B30]">删除</button>
                 </div>
-                <MultiImageUploadBox
-                  files={group.files}
-                  onChange={(files) => updateReferenceGroup(group.id, { files })}
-                />
+                {(group.assetIds.length > 0 || group.files.length > 0) && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {group.assetIds.map((assetId) => {
+                      const asset = assets.find((item) => item.id === assetId);
+                      return (
+                        <span key={assetId} className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#3C3C43]">
+                          {asset?.name || assetId}
+                          <button type="button" onClick={() => updateReferenceGroup(group.id, { assetIds: group.assetIds.filter((id) => id !== assetId) })} className="text-[#FF3B30]">×</button>
+                        </span>
+                      );
+                    })}
+                    {group.files.map((file, index) => (
+                      <TempFileChip
+                        key={`${file.name}-${file.lastModified}-${index}`}
+                        file={file}
+                        onPreview={(src, title) => setPreviewImage({ src, title })}
+                        onRemove={() => updateReferenceGroup(group.id, { files: group.files.filter((_, fileIndex) => fileIndex !== index) })}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -566,7 +644,9 @@ export default function RenderPage() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {(activeTask?.images || []).slice(0, 1).map((image) => (
               <div key={image.id} className="rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] p-2">
-                <img src={image.src} alt="效果图" className="max-h-[520px] w-full object-contain" />
+                <button type="button" onClick={() => setPreviewImage({ src: image.src, title: "效果图" })} className="block w-full">
+                  <img src={image.src} alt="效果图" className="max-h-[520px] w-full object-contain" />
+                </button>
                 <a href={image.src} download className="mt-2 inline-block rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-[#007AFF]">下载</a>
               </div>
             ))}
@@ -597,7 +677,7 @@ export default function RenderPage() {
   );
 }
 
-function UploadBox({ title, file, onPick, required }: { title: string; file: File | null; onPick: (file: File | null) => void; required?: boolean }) {
+function UploadBox({ title, file, onPick, onPreview, required }: { title: string; file: File | null; onPick: (file: File | null) => void; onPreview: (src: string, title: string) => void; required?: boolean }) {
   function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
     const [pastedFile] = imageFilesFromClipboard(event);
     if (!pastedFile) return;
@@ -627,7 +707,7 @@ function UploadBox({ title, file, onPick, required }: { title: string; file: Fil
         />
         {file ? (
           <div className="w-full text-center">
-            <FilePreviewImage file={file} className="mx-auto max-h-[220px] max-w-full rounded-lg object-contain" />
+            <FilePreviewImage file={file} className="mx-auto max-h-[220px] max-w-full rounded-lg object-contain" onPreview={onPreview} />
             <p className="mt-2 truncate text-[12px] text-[#3C3C43]">{file.name}</p>
             <p className="mt-1 text-[11px] text-[#8E8E93]">点击可重新上传，也可以 Ctrl+V 粘贴替换</p>
           </div>
@@ -687,6 +767,60 @@ function MultiImageUploadBox({ files, onChange }: { files: File[]; onChange: (fi
   );
 }
 
+function CompactImageUpload({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
+  function appendFiles(nextFiles: File[]) {
+    if (!nextFiles.length) return;
+    onChange([...files, ...nextFiles]);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
+    const pastedFiles = imageFilesFromClipboard(event);
+    if (!pastedFiles.length) return;
+    event.preventDefault();
+    appendFiles(pastedFiles);
+  }
+
+  return (
+    <label
+      tabIndex={0}
+      onPaste={handlePaste}
+      className="flex h-9 cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#C7C7CC] bg-[#F2F2F7] px-2 text-[12px] font-medium text-[#3C3C43] outline-none focus:border-[#007AFF]"
+      title="上传或 Ctrl+V 粘贴本组参考图"
+    >
+      上传图{files.length ? ` ${files.length}` : ""}
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(event) => {
+          appendFiles(imageFilesFromList(event.target.files));
+          event.currentTarget.value = "";
+        }}
+        className="hidden"
+      />
+    </label>
+  );
+}
+
+function TempFileChip({ file, onPreview, onRemove }: { file: File; onPreview: (src: string, title: string) => void; onRemove: () => void }) {
+  const [src, setSrc] = useState("");
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#3C3C43]">
+      <button type="button" onClick={() => src && onPreview(src, file.name)} className="max-w-[180px] truncate">
+        {file.name}
+      </button>
+      <button type="button" onClick={onRemove} className="text-[#FF3B30]">×</button>
+    </span>
+  );
+}
+
 function LibraryUploadButton({ category, onUploaded }: { category: string; onUploaded: (asset: RenderAsset) => void }) {
   const [uploading, setUploading] = useState(false);
 
@@ -737,7 +871,7 @@ function LibraryUploadButton({ category, onUploaded }: { category: string; onUpl
   );
 }
 
-function FilePreviewImage({ file, className }: { file: File; className: string }) {
+function FilePreviewImage({ file, className, onPreview }: { file: File; className: string; onPreview?: (src: string, title: string) => void }) {
   const [src, setSrc] = useState("");
 
   useEffect(() => {
@@ -747,6 +881,13 @@ function FilePreviewImage({ file, className }: { file: File; className: string }
   }, [file]);
 
   if (!src) return null;
+  if (onPreview) {
+    return (
+      <button type="button" onClick={(event) => { event.preventDefault(); onPreview(src, file.name); }} className="inline-block max-w-full">
+        <img src={src} alt={file.name} className={className} />
+      </button>
+    );
+  }
   return <img src={src} alt={file.name} className={className} />;
 }
 
