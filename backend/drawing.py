@@ -93,6 +93,9 @@ class EzdxfDrawer:
     def draw_poly(self, points, layer, closed=True):
         self.ms.add_lwpolyline(points, close=closed, dxfattribs={'layer': layer})
 
+    def draw_bulged_poly(self, points, layer, closed=True):
+        self.ms.add_lwpolyline(points, format='xyseb', close=closed, dxfattribs={'layer': layer})
+
     def draw_line(self, p1, p2, layer, linetype=None):
         attribs = {'layer': layer}
         if linetype:
@@ -622,10 +625,10 @@ def draw_door_in_frame(
     panel_arch_geom = None
     if is_arch_door:
         panel_arch_geom = arch_geometry(
-            ref_left + left_gap,
-            dw - ref_right - right_gap,
-            arch_spring_height - top_gap,
-            dh - panel_ref_fw_top - top_gap,
+            ref_left,
+            dw - ref_right,
+            arch_spring_height,
+            dh - panel_ref_fw_top,
         )
 
     def draw_panel_body_rect(x1: float, x2: float):
@@ -633,20 +636,23 @@ def draw_door_in_frame(
         if right - left < 1:
             return
         if panel_arch_geom:
-            top_left = arc_top_point_at_x(panel_arch_geom, left)
-            top_right = arc_top_point_at_x(panel_arch_geom, right)
+            radius_delta = -top_gap
+            top_left = arc_top_point_at_x(panel_arch_geom, left, radius_delta)
+            top_right = arc_top_point_at_x(panel_arch_geom, right, radius_delta)
             if top_left and top_right:
-                arc_points = []
-                segments = max(6, min(32, int((right - left) / 80)))
-                for index in range(segments + 1):
-                    x = right - (right - left) * index / segments
-                    pt = arc_top_point_at_x(panel_arch_geom, x)
-                    if pt:
-                        arc_points.append(pt)
-                drawer.draw_poly(
-                    [off((left, panel_y_bot)), off((right, panel_y_bot)), off(top_right)]
-                    + [off(point) for point in arc_points[1:-1]]
-                    + [off(top_left)],
+                start_angle = arc_angle_for_point(panel_arch_geom, top_right)
+                end_angle = arc_angle_for_point(panel_arch_geom, top_left)
+                included = (end_angle - start_angle) % 360
+                if included > 180:
+                    included = 360 - included
+                bulge = math.tan(math.radians(included) / 4)
+                drawer.draw_bulged_poly(
+                    [
+                        (*off((left, panel_y_bot)), 0, 0, 0),
+                        (*off((right, panel_y_bot)), 0, 0, 0),
+                        (*off(top_right), 0, 0, bulge),
+                        (*off(top_left), 0, 0, 0),
+                    ],
                     'A-DOOR-PANEL',
                     closed=True,
                 )

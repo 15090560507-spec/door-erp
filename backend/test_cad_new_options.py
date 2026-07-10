@@ -908,9 +908,11 @@ def test_new_defaults_fingerprint_and_transom_shape():
         check("arched door draws trim arcs", len(door_trim_arcs) >= 4, len(door_trim_arcs))
         arch_panel_polys = [
             entity for entity in door_doc.modelspace().query("LWPOLYLINE")
-            if entity.dxf.layer == "A-DOOR-PANEL" and len(list(entity.get_points("xy"))) > 8
+            if entity.dxf.layer == "A-DOOR-PANEL"
+            and len(list(entity.get_points("xyseb"))) == 4
+            and any(abs(point[4]) > 0.001 for point in entity.get_points("xyseb"))
         ]
-        check("arched door panel top is arched polyline", len(arch_panel_polys) >= 2, len(arch_panel_polys))
+        check("arched door panel top uses a real bulged arc segment", len(arch_panel_polys) >= 2, len(arch_panel_polys))
         door_dim_texts = [entity.dxf.text for entity in door_doc.modelspace().query("DIMENSION")]
         check("arched door spring height dimension is drawn", "2400" in door_dim_texts, door_dim_texts)
 

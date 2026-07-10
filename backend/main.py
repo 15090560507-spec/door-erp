@@ -67,6 +67,19 @@ app.include_router(render_router)
 user_db = UserDatabaseManager()
 task_db = TaskDatabaseManager()
 
+
+def normalize_task_date(value: Optional[str]) -> str:
+    """Normalize task dates so filters accept YYYY-MM-DD, YYYY/MM/DD, and YYYY.MM.DD."""
+    if not value:
+        return ""
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return datetime.datetime.strptime(text, fmt).strftime("%Y.%m.%d")
+        except ValueError:
+            continue
+    return text.replace("-", ".").replace("/", ".")
+
 # 确保 data 目录存在
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -557,8 +570,9 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
     all_tasks = task_db.load_all_tasks()
     filtered = []
     status_set = set(s.strip() for s in status.split(",")) if status else None
+    normalized_date = normalize_task_date(date)
     for t in all_tasks:
-        if date and t.get("date") != date:
+        if normalized_date and normalize_task_date(t.get("date")) != normalized_date:
             continue
         if status_set and t.get("status") not in status_set:
             continue
