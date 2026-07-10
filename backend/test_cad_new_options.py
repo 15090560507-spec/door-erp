@@ -885,6 +885,35 @@ def test_new_defaults_fingerprint_and_transom_shape():
     arch_dim_texts = [entity.dxf.text for entity in arch_doc.modelspace().query("DIMENSION")]
     check("arched transom door-height dimension omits label", "\u95e8\u9ad8 <>" not in arch_dim_texts, arch_dim_texts)
 
+    arch_door_req = CADRequest(
+        dh=2880,
+        fw_top_str="55/70",
+        sel_qc="\u65e0",
+        is_arch_door=True,
+        arch_spring_height=2400,
+        has_outer=True,
+        trim_front_in=160,
+        trim_style_outer="\u0030\u0031\u6b3e\u5305\u5957",
+    )
+    door_info, door_checks, door_draw_params = build_cad_params(arch_door_req)
+    check("arched door flag passes to drawing", door_draw_params["is_arch_door"] is True, door_draw_params)
+    check("arched door spring height passes to drawing", door_draw_params["arch_spring_height"] == 2400, door_draw_params)
+    door_msg, door_buffer = run_integrated_system(door_info, door_checks, door_draw_params)
+    check("arched door CAD generation returns buffer", door_buffer is not None, door_msg)
+    if door_buffer:
+        door_doc = ezdxf.read(io.StringIO(door_buffer.getvalue()))
+        door_frame_arcs = [entity for entity in door_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-FRAME"]
+        door_trim_arcs = [entity for entity in door_doc.modelspace().query("ARC") if entity.dxf.layer == "A-DOOR-TRIM"]
+        check("arched door draws frame arcs", len(door_frame_arcs) >= 4, len(door_frame_arcs))
+        check("arched door draws trim arcs", len(door_trim_arcs) >= 4, len(door_trim_arcs))
+        arch_panel_polys = [
+            entity for entity in door_doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-PANEL" and len(list(entity.get_points("xy"))) > 8
+        ]
+        check("arched door panel top is arched polyline", len(arch_panel_polys) >= 2, len(arch_panel_polys))
+        door_dim_texts = [entity.dxf.text for entity in door_doc.modelspace().query("DIMENSION")]
+        check("arched door spring height dimension is drawn", "2400" in door_dim_texts, door_dim_texts)
+
 
 def test_integrated_door_sections_and_dimensions():
     req = CADRequest(

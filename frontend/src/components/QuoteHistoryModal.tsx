@@ -13,11 +13,13 @@ interface Props {
 export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
   const [quotes, setQuotes] = useState<QuoteResponse[]>([]);
   const [status, setStatus] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const load = useCallback(async () => {
     try {
       const data = await getQuotes();
       setQuotes(data.quotes || []);
+      setSelectedIds((prev) => prev.filter((id) => (data.quotes || []).some((quote) => quote.id === id)));
     } catch {
       // silently fail
     }
@@ -49,6 +51,24 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
     }
   }
 
+  async function handleBatchDelete() {
+    if (selectedIds.length === 0) {
+      setStatus("请先选择要删除的报价单");
+      return;
+    }
+    if (!confirm(`确定删除选中的 ${selectedIds.length} 条报价单？删除后不可恢复。`)) return;
+    try {
+      await Promise.all(selectedIds.map((id) => deleteQuote(id)));
+      setStatus(`已删除 ${selectedIds.length} 条报价单`);
+      setSelectedIds([]);
+      await load();
+    } catch (err: any) {
+      setStatus(err?.userMessage || err?.message || "批量删除失败");
+    }
+  }
+
+  const allSelected = quotes.length > 0 && selectedIds.length === quotes.length;
+
   if (!open) return null;
 
   return (
@@ -60,7 +80,17 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5EA]/60">
           <h3 className="text-[16px] font-semibold text-[#1C1C1E]">最近报价</h3>
-          <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">&times;</button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBatchDelete}
+              disabled={selectedIds.length === 0}
+              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-[#FF3B30]/10 text-[#FF3B30] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              批量删除
+            </button>
+            <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">&times;</button>
+          </div>
         </div>
 
         {/* Body */}
@@ -73,11 +103,28 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
             <p className="text-[13px] text-[#8E8E93] text-center py-8">暂无报价记录</p>
           ) : (
             <div className="space-y-1">
+              <label className="flex items-center gap-2 px-3 py-2 text-[12px] text-[#8E8E93] border-b border-[#F2F2F7]">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) => setSelectedIds(e.target.checked ? quotes.map((quote) => quote.id) : [])}
+                />
+                全选当前列表
+              </label>
               {quotes.map((quote) => (
                 <div
                   key={quote.id}
                   className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-[#F2F2F7]/50 transition-colors group"
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(quote.id)}
+                    onChange={(e) => {
+                      setSelectedIds((prev) => e.target.checked ? [...prev, quote.id] : prev.filter((id) => id !== quote.id));
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mr-2"
+                  />
                   <button
                     type="button"
                     className="flex-1 text-left min-w-0"

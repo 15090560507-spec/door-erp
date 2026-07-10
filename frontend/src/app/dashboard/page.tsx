@@ -190,6 +190,10 @@ export default function DashboardPage() {
       if (!data.dw || data.dw <= 0) missing.push("洞口总宽(W)");
       if (!data.dh || data.dh <= 0) missing.push("洞口总高(H)");
     }
+    if (data.is_arch_door) {
+      if (!data.arch_spring_height || data.arch_spring_height <= 0) missing.push("起弧高度");
+      if (data.dh && data.arch_spring_height >= data.dh) missing.push("起弧高度需小于洞口总高");
+    }
     if (data.has_outer) {
       if (!data.trim_front_in || data.trim_front_in <= 0) missing.push("外包套宽");
       if (!data.trim_style_outer.trim()) missing.push("外包套款式");
@@ -340,6 +344,18 @@ export default function DashboardPage() {
     } catch { flash("操作失败", "error"); }
   };
 
+  const handleDeleteTask = async (task: TaskItem) => {
+    if (!window.confirm(`确认删除 ${task.customer || task.id} 的表单吗？删除后不可恢复。`)) return;
+    try {
+      await deleteTask(task.id);
+      flash("表单已删除", "success");
+      fetchTasks(filterDate, filterStatus, page);
+      fetchStatusCounts(filterDate);
+    } catch (error: any) {
+      flash(error?.userMessage || "删除失败", "error");
+    }
+  };
+
   // ===================== 通用背景 =====================
   if (module === "后台管理") {
     return <AdminPanel />;
@@ -428,24 +444,36 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* 客户沟通记录 */}
-          {(activeTask.ref_text || (activeTask.ref_images && activeTask.ref_images.length > 0)) && (
-            <details className="mb-4 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden">
-              <summary className="px-5 py-3 font-medium text-[#007AFF] cursor-pointer select-none">
-                查看前端客户沟通记录与参考图
-              </summary>
-              <div className="px-5 pb-4">
-                {activeTask.ref_text && <p className="text-[#8E8E93] text-sm mb-3">{activeTask.ref_text}</p>}
-                {activeTask.ref_images && activeTask.ref_images.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {activeTask.ref_images.map((img: string, idx: number) => (
-                      <Thumbnail key={idx} b64={img} width={150} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
+          {/* 客户沟通记录与参考图：任务进入绘制后也允许继续补充/删除 */}
+          <details className="mb-4 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden" open={module === "图纸绘制"}>
+            <summary className="px-5 py-3 font-medium text-[#007AFF] cursor-pointer select-none">
+              沟通记录与参考图（可修改）
+            </summary>
+            <div className="px-5 pb-4 space-y-3">
+              <textarea
+                value={refText}
+                onChange={(e) => setRefText(e.target.value)}
+                placeholder="补充或修改沟通要求"
+                rows={3}
+                className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none resize-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
+              />
+              <ClipboardUpload onImages={setRefImages} images={refImages} />
+              {refImages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {refImages.map((img: string, idx: number) => (
+                    <div key={idx} className="relative group">
+                      <Thumbnail b64={img} width={150} />
+                      <button
+                        onClick={() => setRefImages(refImages.filter((_, i) => i !== idx))}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >x</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[12px] text-[#8E8E93]">修改后点击上方“保存修改”。</p>
+            </div>
+          </details>
 
           {/* 驳回意见 */}
           {activeTask.status === "待修改" && activeTask.review_feedback && (
@@ -705,6 +733,76 @@ export default function DashboardPage() {
                   onRefresh={handleGeneratePreview}
                 />
               </div>
+
+              <div className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-4">
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <h4 className="text-lg font-semibold text-[#1C1C1E] mr-auto">已录入表单</h4>
+                  <input
+                    type="date"
+                    value={filterDate ? filterDate.replace(/\./g, "-") : ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFilterDate(v ? v.replace(/-/g, ".") : "");
+                    }}
+                    className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                  />
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                  >
+                    <option value="">全部状态</option>
+                    <option value="待绘制">待绘制</option>
+                    <option value="待初审">待初审</option>
+                    <option value="待终审">待终审</option>
+                    <option value="待修改">待修改</option>
+                    <option value="已通过">已通过</option>
+                  </select>
+                  {(filterDate || filterStatus) && (
+                    <button
+                      onClick={() => { setFilterDate(""); setFilterStatus(""); }}
+                      className="px-3 py-1.5 text-xs text-[#007AFF] font-medium hover:underline"
+                    >
+                      清除筛选
+                    </button>
+                  )}
+                </div>
+                {loading ? (
+                  <TaskListSkeleton count={3} />
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-6 text-[#8E8E93] text-sm">暂无表单</div>
+                ) : (
+                  <>
+                    {tasks.map((t) => (
+                      <TaskCard
+                        key={t.id}
+                        task={t}
+                        onClick={(task) => setActiveTaskId(task.id)}
+                        onDelete={handleDeleteTask}
+                      />
+                    ))}
+                    {total > PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-2 mt-4 text-sm">
+                        <button
+                          disabled={page === 0}
+                          onClick={() => { setPage(page - 1); fetchTasks(filterDate, filterStatus, page - 1); }}
+                          className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                        >
+                          ← 上一页
+                        </button>
+                        <span className="text-[#8E8E93] px-2">{page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
+                        <button
+                          disabled={(page + 1) * PAGE_SIZE >= total}
+                          onClick={() => { setPage(page + 1); fetchTasks(filterDate, filterStatus, page + 1); }}
+                          className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
+                        >
+                          下一页 →
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -823,10 +921,7 @@ export default function DashboardPage() {
                       onClick={(task) => {
                         setActiveTaskId(task.id);
                       }}
-                      onDelete={module === "图纸绘制" ? async (task) => {
-                        await deleteTask(task.id);
-                        fetchTasks(filterDate, filterStatus, page);
-                      } : undefined}
+                      onDelete={["汇总看板", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
                     />
                   ))}
                   {total > PAGE_SIZE && (
@@ -1088,6 +1183,8 @@ function MiniInput({ label, value, onChange, placeholder }: {
 
 /** 后台管理面板 */
 function AdminPanel() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "超级管理员";
   const [users, setUsers] = useState<Record<string, UserInfo>>({});
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
@@ -1112,6 +1209,7 @@ function AdminPanel() {
   };
 
   const fetchUsers = async () => {
+    if (!isSuperAdmin) return;
     try {
       const res = await getUsers();
       setUsers(res.users);
@@ -1128,9 +1226,9 @@ function AdminPanel() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    if (isSuperAdmin) fetchUsers();
     fetchTasks();
-  }, []);
+  }, [isSuperAdmin]);
 
   const handleSave = async () => {
     if (!uid || !name || !pwd) return;
@@ -1188,6 +1286,7 @@ function AdminPanel() {
       )}
 
       {/* ========== 账号管理 ========== */}
+      {isSuperAdmin ? (
       <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden mb-8">
         <div className="px-6 py-5 border-b border-[#F2F2F7]">
           <h2 className="text-[20px] font-semibold text-[#1C1C1E]">账号管理</h2>
@@ -1272,6 +1371,12 @@ function AdminPanel() {
           </table>
         </div>
       </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 mb-8">
+          <h2 className="text-[20px] font-semibold text-[#1C1C1E]">后台任务总览</h2>
+          <p className="text-[#8E8E93] text-sm mt-1">当前账号可查看订单数据；账号新增、删除、重置密码和下拉配置仅超级管理员可操作。</p>
+        </div>
+      )}
 
       {/* 重置密码弹窗 */}
       {resetUid && (
@@ -1306,7 +1411,7 @@ function AdminPanel() {
       )}
 
       {/* ========== 下拉选项管理 ========== */}
-      <DropdownOptionsManager />
+      {isSuperAdmin && <DropdownOptionsManager />}
 
       {/* ========== 订单数据总览 ========== */}
       <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">

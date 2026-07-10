@@ -254,6 +254,8 @@ def build_cad_params(req: CADRequest):
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
         "QC_SHAPE": req.qc_shape,
+        "IS_ARCH_DOOR": req.is_arch_door,
+        "ARCH_SPRING_HEIGHT": req.arch_spring_height,
         "IS_INTEGRATED_DOOR": req.is_integrated_door,
         "INTEGRATED_PANEL_HEIGHT": req.integrated_panel_height,
         "INTEGRATED_PRESS_TOP_RAIL": req.integrated_press_top_rail,
@@ -360,6 +362,8 @@ def build_cad_params(req: CADRequest):
         "has_pillar": req.has_pillar,
         "kx": req.sel_kx, "nk": req.sel_nk,
         "qc": req.sel_qc, "qc_height": qc_height_val, "qc_shape": req.qc_shape,
+        "is_arch_door": req.is_arch_door,
+        "arch_spring_height": req.arch_spring_height,
         "is_integrated_door": req.is_integrated_door,
         "integrated_panel_height": req.integrated_panel_height,
         "integrated_press_top_rail": req.integrated_press_top_rail,
@@ -653,7 +657,7 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
 
 
 @app.delete("/api/tasks/{task_id}")
-def delete_task(task_id: str, current_user: Dict = Depends(require_super_admin)):
+def delete_task(task_id: str, current_user: Dict = Depends(require_roles(*TASK_ROLES))):
     """删除任务"""
     existing = task_db.get_task(task_id)
     if not existing:
@@ -667,8 +671,8 @@ def delete_task(task_id: str, current_user: Dict = Depends(require_super_admin))
 
 # ===================== 后台管理 =====================
 @app.get("/api/admin/tasks")
-def admin_list_all_tasks(current_user: Dict = Depends(require_super_admin)):
-    """管理员上帝视角：返回全部订单数据（纯文本，不含 Base64 图片）"""
+def admin_list_all_tasks(current_user: Dict = Depends(require_roles(*TASK_ROLES))):
+    """后台任务总览：返回订单数据（纯文本，不含 Base64 图片）。"""
     all_tasks = task_db.load_all_tasks()
     stripped = []
     for t in all_tasks:

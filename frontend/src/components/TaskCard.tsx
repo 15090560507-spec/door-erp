@@ -37,7 +37,7 @@ export default function TaskCard({ task, onClick, onDelete }: Props) {
           onClick={(e) => { e.stopPropagation(); onDelete(task); }}
           className="px-3 rounded-xl bg-[#FFF0F0] text-[#FF3B30] border border-[#FFD1D1]
             font-medium text-sm transition-all duration-200 hover:bg-[#FF3B30] hover:text-white
-            flex-shrink-0 opacity-0 group-hover:opacity-100"
+            flex-shrink-0"
         >
           删除
         </button>

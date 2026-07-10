@@ -35,8 +35,11 @@ export default function AdminPage() {
     { value: "总工", label: "总工" },
     { value: "超级管理员", label: "超级管理员" },
   ];
+  const isSuperAdmin = user?.role === "超级管理员";
+  const canOpenAdmin = ["超级管理员", "录入员", "绘图员"].includes(user?.role || "");
 
   const fetchUsers = async () => {
+    if (!isSuperAdmin) return;
     try {
       const res = await getUsers();
       setUsers(res.users);
@@ -53,11 +56,11 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (!authLoading && user?.role === "超级管理员") {
-      fetchUsers();
+    if (!authLoading && canOpenAdmin) {
+      if (isSuperAdmin) fetchUsers();
       fetchTasks();
     }
-  }, [authLoading, user]);
+  }, [authLoading, canOpenAdmin, isSuperAdmin]);
 
   // 未登录或非管理员
   if (authLoading) {
@@ -73,13 +76,13 @@ export default function AdminPage() {
     return null;
   }
 
-  if (user.role !== "超级管理员") {
+  if (!canOpenAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7]">
         <div className="text-center">
           <p className="text-2xl mb-2">🔒</p>
           <p className="text-[#1C1C1E] font-semibold text-lg">无访问权限</p>
-          <p className="text-[#8E8E93] text-sm mt-1">仅超级管理员可访问后台管理</p>
+          <p className="text-[#8E8E93] text-sm mt-1">当前账号不能访问后台管理</p>
           <button
             onClick={() => router.push("/dashboard")}
             className="mt-4 px-5 py-2 rounded-lg bg-[#007AFF] text-white font-medium text-sm hover:opacity-90 transition-all"
@@ -154,6 +157,7 @@ export default function AdminPage() {
         )}
 
         {/* ========== 账号管理 ========== */}
+        {isSuperAdmin ? (
         <section className="mb-10">
           <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
             {/* 卡片头部 */}
@@ -275,9 +279,17 @@ export default function AdminPage() {
             </div>
           )}
         </section>
+        ) : (
+          <section className="mb-10">
+            <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5">
+              <h2 className="text-[20px] font-semibold text-[#1C1C1E]">后台任务总览</h2>
+              <p className="text-[#8E8E93] text-sm mt-1">当前账号可查看订单数据；账号新增、删除、重置密码和下拉配置仅超级管理员可操作。</p>
+            </div>
+          </section>
+        )}
 
         {/* ========== 下拉选项管理 ========== */}
-        <DropdownOptionsManager />
+        {isSuperAdmin && <DropdownOptionsManager />}
 
         {/* ========== 数据总览 ========== */}
         <section>

@@ -15,7 +15,7 @@ from database import UserDatabaseManager
 user_db = UserDatabaseManager()
 
 SUPER_ADMIN_ROLE = "超级管理员"
-ENTRY_ROLES = {SUPER_ADMIN_ROLE, "录入员"}
+ENTRY_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员"}
 TASK_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员", "初审员", "总工"}
 
 

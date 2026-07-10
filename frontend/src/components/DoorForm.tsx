@@ -363,8 +363,12 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
             <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => onChange({ ...data, has_pillar: v, pillar_width_str: v && (!data.pillar_width_str || data.pillar_width_str === "55/70") ? "55/85" : data.pillar_width_str })} />
             <Checkbox label="连体门" checked={data.is_integrated_door} onChange={(v) => set("is_integrated_door", v)} />
+            <Checkbox label="圆弧门" checked={data.is_arch_door} onChange={(v) => set("is_arch_door", v)} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
+            {data.is_arch_door && (
+              <Input label="起弧高度" value={data.arch_spring_height} type="number" onChange={(v) => set("arch_spring_height", Number(v))} />
+            )}
             {data.sel_qc !== "无" && (
               <>
                 <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />

@@ -205,6 +205,9 @@ def draw_door_in_frame(
     integrated_glass_height = float(p.get('integrated_glass_height', 500) or 0)
     qc_h = qc_height if qc_choice in ["玻璃", "封闭"] else 0
     is_arch_qc = qc_h > 0 and qc_shape == "弧形气窗"
+    is_arch_door = bool(p.get('is_arch_door', False)) and qc_h <= 0 and not is_integrated_door
+    arch_spring_height = float(p.get('arch_spring_height', dh - 400) or dh - 400)
+    arch_spring_height = max(1, min(arch_spring_height, dh - fw_top - 1))
     top_extra_h = integrated_panel_height + integrated_glass_height if is_integrated_door else qc_h
     total_h = dh + top_extra_h
     has_mm = p.get('has_mm', False)
@@ -348,6 +351,13 @@ def draw_door_in_frame(
     def draw_arch_span(left_x: float, right_x: float, spring_y: float, apex_y: float, layer: str):
         draw_arch_geom(arch_geometry(left_x, right_x, spring_y, apex_y), layer)
 
+    def frame_top_arch():
+        if is_arch_qc:
+            return arch_geometry(left_width, dw - right_width, total_h - qc_h, total_h - fw_top)
+        if is_arch_door:
+            return arch_geometry(left_width, dw - right_width, arch_spring_height, total_h - fw_top)
+        return None
+
     def fmt_dim(value: float) -> str:
         return str(int(value)) if abs(value - int(value)) < 0.01 else f"{value:g}"
 
@@ -389,14 +399,28 @@ def draw_door_in_frame(
             left_outer_top, right_outer_top, _effective_geom, _effective_delta = arch_extended_shape(arch_frame, 0, dw, fw_top)
             drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, inner_spring_y)), off(left_outer_top), off((0, left_outer_top[1]))], 'A-DOOR-FRAME')
             drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, right_outer_top[1])), off(right_outer_top), off((dw - right_width, inner_spring_y))], 'A-DOOR-FRAME')
+    elif is_arch_door:
+        arch_frame = frame_top_arch()
+        if arch_frame:
+            left_outer_top, right_outer_top, _effective_geom, _effective_delta = arch_extended_shape(arch_frame, 0, dw, fw_top)
+            drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, arch_spring_height)), off(left_outer_top), off((0, left_outer_top[1]))], 'A-DOOR-FRAME')
+            drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, right_outer_top[1])), off(right_outer_top), off((dw - right_width, arch_spring_height))], 'A-DOOR-FRAME')
     else:
         drawer.draw_poly([off((0, 0)), off((left_width, 0)), off((left_width, total_h)), off((0, total_h))], 'A-DOOR-FRAME')
         drawer.draw_poly([off((dw - right_width, 0)), off((dw, 0)), off((dw, total_h)), off((dw - right_width, total_h))], 'A-DOOR-FRAME')
 
     top_frame_bottom = total_h - fw_top
 
-    if not is_arch_qc:
+    if not is_arch_qc and not is_arch_door:
         drawer.draw_poly([off((left_width, top_frame_bottom)), off((dw - right_width, top_frame_bottom)), off((dw - right_width, total_h)), off((left_width, total_h))], 'A-DOOR-FRAME')
+    elif is_arch_door:
+        arch_frame = frame_top_arch()
+        if arch_frame:
+            draw_arch_geom(arch_frame, 'A-DOOR-FRAME')
+            left_outer_top, right_outer_top = draw_arch_extended_to_x(arch_frame, 0, dw, 'A-DOOR-FRAME', fw_top)
+            if left_outer_top and right_outer_top:
+                drawer.draw_line(off(left_outer_top), off((left_width, arch_spring_height)), 'A-DOOR-FRAME')
+                drawer.draw_line(off((dw - right_width, arch_spring_height)), off(right_outer_top), 'A-DOOR-FRAME')
 
     if qc_h > 0:
         mid_frame_top = total_h - qc_h
@@ -440,8 +464,8 @@ def draw_door_in_frame(
             drawer.draw_poly([off((ox1, oy1)), off((ix1, iy1)), off((ix2, iy2)), off((ox1, iy2))], 'A-DOOR-TRIM')
             drawer.draw_poly([off((ix4, iy4)), off((ox4, oy4)), off((ox4, iy3)), off((ix3, iy3))], 'A-DOOR-TRIM')
             drawer.draw_poly([off((ox1, iy2)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, iy3))], 'A-DOOR-TRIM')
-        elif is_arch_qc:
-            frame_inner_arch = arch_geometry(left_width, dw - right_width, total_h - qc_h, total_h - fw_top)
+        elif is_arch_qc or is_arch_door:
+            frame_inner_arch = frame_top_arch()
             _frame_left, _frame_right, trim_base_arch, trim_base_delta = arch_extended_shape(frame_inner_arch, 0, dw, fw_top)
             if trim_base_arch:
                 trim_left_inner, trim_right_inner = draw_arch_extended_to_x(trim_base_arch, ix1, ix4, 'A-DOOR-TRIM', trim_base_delta - O)
@@ -470,13 +494,13 @@ def draw_door_in_frame(
             inner_top_y = total_h - O + mm_offset
             style_trim_arch = None
             style_trim_delta = 0
-            if is_arch_qc:
-                frame_inner_arch = arch_geometry(left_width, dw - right_width, total_h - qc_h, total_h - fw_top)
+            if is_arch_qc or is_arch_door:
+                frame_inner_arch = frame_top_arch()
                 _frame_left, _frame_right, style_trim_arch, style_trim_delta = arch_extended_shape(frame_inner_arch, 0, dw, fw_top)
 
             # 三边偏移多段线（左→上→右，底部对齐 y=0，不闭合）
             def draw_outer_offset(D):
-                if is_arch_qc and style_trim_arch:
+                if (is_arch_qc or is_arch_door) and style_trim_arch:
                     radius_delta = style_trim_delta + W - O - D
                     left_x = O - W + D
                     right_x = dw - O + W - D
@@ -494,7 +518,7 @@ def draw_door_in_frame(
                 )
 
             def draw_inner_offset(D):
-                if is_arch_qc and style_trim_arch:
+                if (is_arch_qc or is_arch_door) and style_trim_arch:
                     radius_delta = style_trim_delta - O + D
                     left_x = O - D
                     right_x = dw - O + D
@@ -560,6 +584,8 @@ def draw_door_in_frame(
         panel_y_top = integrated_layout["press_bottom"] - top_gap
     elif qc_h > 0:
         panel_y_top = total_h - qc_h - panel_ref_fw_top - top_gap
+    elif is_arch_door:
+        panel_y_top = arch_spring_height - top_gap
     else:
         panel_y_top = dh - panel_ref_fw_top - top_gap
     if p.get("has_dj"):
@@ -593,10 +619,38 @@ def draw_door_in_frame(
     panel_positions = []
     pillar_inner_light_edges = None
 
+    panel_arch_geom = None
+    if is_arch_door:
+        panel_arch_geom = arch_geometry(
+            ref_left + left_gap,
+            dw - ref_right - right_gap,
+            arch_spring_height - top_gap,
+            dh - panel_ref_fw_top - top_gap,
+        )
+
     def draw_panel_body_rect(x1: float, x2: float):
         left, right = sorted((x1, x2))
         if right - left < 1:
             return
+        if panel_arch_geom:
+            top_left = arc_top_point_at_x(panel_arch_geom, left)
+            top_right = arc_top_point_at_x(panel_arch_geom, right)
+            if top_left and top_right:
+                arc_points = []
+                segments = max(6, min(32, int((right - left) / 80)))
+                for index in range(segments + 1):
+                    x = right - (right - left) * index / segments
+                    pt = arc_top_point_at_x(panel_arch_geom, x)
+                    if pt:
+                        arc_points.append(pt)
+                drawer.draw_poly(
+                    [off((left, panel_y_bot)), off((right, panel_y_bot)), off(top_right)]
+                    + [off(point) for point in arc_points[1:-1]]
+                    + [off(top_left)],
+                    'A-DOOR-PANEL',
+                    closed=True,
+                )
+                return
         drawer.draw_poly([
             off((left, panel_y_bot)),
             off((right, panel_y_bot)),
@@ -817,6 +871,9 @@ def draw_door_in_frame(
         mid_frame_top = total_h - qc_h
         dims_v.append(("气窗上部高度", mid_frame_top, total_h, 200, True, None))
         dims_v.append(("门高", 0, dh, 200, True, None))
+
+    if is_arch_door:
+        dims_v.append(("起弧高度", 0, arch_spring_height, 200, True, fmt_dim(arch_spring_height)))
 
     if should_mark_light and should_draw_light_view:
         light_text_h = f"见光高 {light_h}" if use_light_size and light_h > 0 else "见光高 <>"

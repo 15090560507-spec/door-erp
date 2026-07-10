@@ -59,6 +59,8 @@ class CADRequest(BaseModel):
     trim_back_in: int = 140             # 内包套宽
     sel_qc: str = "无"                  # 气窗
     qc_shape: str = "矩形气窗"          # 气窗形状
+    is_arch_door: bool = False          # 圆弧门
+    arch_spring_height: int = 1800      # 起弧高度
     is_integrated_door: bool = False    # 连体门
     integrated_panel_height: int = 300  # 连体门中间封板高度
     integrated_press_top_rail: int = 20 # 封板压框尺寸

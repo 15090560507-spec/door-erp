@@ -73,6 +73,8 @@ export interface DoorFormData {
   trim_back_in: number;
   sel_qc: string;
   qc_shape: string;
+  is_arch_door: boolean;
+  arch_spring_height: number;
   is_integrated_door: boolean;
   integrated_panel_height: number;
   integrated_press_top_rail: number;
@@ -228,6 +230,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",
   sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400,
+  is_arch_door: false, arch_spring_height: 1800,
   is_integrated_door: false, integrated_panel_height: 300,
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,
   integrated_glass_height: 500,
