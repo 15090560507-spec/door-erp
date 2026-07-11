@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, PANEL_FILL_OPTIONS,
+  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -161,6 +161,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
   const trimArea = Math.max(0, outerArea - frameArea);
   const panelStyle = data.door_panel_style || "无造型";
+  const panelPreset = data.panel_preset || "";
   const hasChildPanel = ["子母门", "两定两开", "四开门", "折叠四开门"].includes(data.door_type);
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
   const usesOffsetX = (style: string) => ["两列式布局", "H型布局", "H+型布局"].includes(style);
@@ -168,6 +169,49 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const usesHPanel = (style: string) => ["H型布局", "H+型布局"].includes(style);
   const usesHPlusPanel = (style: string) => style === "H+型布局";
   const usesDiscPanel = (style: string) => style === "圆盘造型";
+  const panelPresetSummary: Record<string, string> = {
+    "紫荆花款": "正面：A区紫荆花150mm + B区竖条；反面：中间B区竖条100mm。",
+    "钱币款": "正面：A区钱币款150mm + B区竖条；反面：中间B区竖条100mm。",
+    "竖条款": "正面：A区空白150mm + B区竖条；反面：中间B区竖条100mm。",
+    "流星雨款": "正面：A区流星雨150mm + B区斜实虚；反面：中间B区竖条100mm。",
+    "四方纳福款": "正面：A区四方纳福150mm + B区正实虚；反面：中间B区竖条100mm。",
+  };
+  const applyPanelPreset = (preset: string) => {
+    const frontFillA: Record<string, string> = {
+      "紫荆花款": "紫荆花",
+      "钱币款": "钱币款",
+      "竖条款": "",
+      "流星雨款": "流星雨",
+      "四方纳福款": "四方纳福",
+    };
+    const frontFillB: Record<string, string> = {
+      "紫荆花款": "竖条",
+      "钱币款": "竖条",
+      "竖条款": "竖条",
+      "流星雨款": "斜实虚",
+      "四方纳福款": "正实虚",
+    };
+    if (!preset) {
+      onChange({ ...data, panel_preset: "" });
+      return;
+    }
+    onChange({
+      ...data,
+      panel_preset: preset,
+      door_panel_style: "两列式布局",
+      panel_lock_offset_x: 150,
+      panel_fill_a: frontFillA[preset] || "",
+      panel_fill_b: frontFillB[preset] || "",
+      panel_fill_c: "",
+      back_door_panel_style: "三列式布局",
+      back_panel_three_col_a: 0,
+      back_panel_three_col_b: 100,
+      back_panel_three_col_c: 0,
+      back_panel_fill_a: "",
+      back_panel_fill_b: "竖条",
+      back_panel_fill_c: "",
+    });
+  };
   const applyFrameDefaults = (next: DoorFormData): DoorFormData => {
     if (next.door_type === "单门") {
       const rightOpen = next.sel_kx !== "左开";
@@ -471,64 +515,78 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
             门板设置
             <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
-              {panelStyle}
+              {panelPreset || panelStyle}
             </span>
           </summary>
           <div className="grid grid-cols-2 gap-3 mt-4">
-            {renderPanelControls({
-              title: "正面门板",
-              styleKey: "door_panel_style",
-              style: panelStyle,
-              styleOptions: DOOR_PANEL_STYLES,
-              lockKey: "panel_lock_offset_x",
-              hingeKey: "panel_hinge_offset_y",
-              middleKey: "panel_middle_offset_z",
-              plusAKey: "panel_plus_offset_a",
-              plusBKey: "panel_plus_offset_b",
-              threeAKey: "panel_three_col_a",
-              threeBKey: "panel_three_col_b",
-              threeCKey: "panel_three_col_c",
-              fillAKey: "panel_fill_a",
-              fillBKey: "panel_fill_b",
-              fillCKey: "panel_fill_c",
-              discRadiusKey: "panel_disc_radius",
-            })}
-            {renderPanelControls({
-              title: "反面门板",
-              styleKey: "back_door_panel_style",
-              style: data.back_door_panel_style || "无造型",
-              styleOptions: DOOR_PANEL_STYLES,
-              lockKey: "back_panel_lock_offset_x",
-              hingeKey: "back_panel_hinge_offset_y",
-              middleKey: "back_panel_middle_offset_z",
-              plusAKey: "back_panel_plus_offset_a",
-              plusBKey: "back_panel_plus_offset_b",
-              threeAKey: "back_panel_three_col_a",
-              threeBKey: "back_panel_three_col_b",
-              threeCKey: "back_panel_three_col_c",
-              fillAKey: "back_panel_fill_a",
-              fillBKey: "back_panel_fill_b",
-              fillCKey: "back_panel_fill_c",
-              discRadiusKey: "back_panel_disc_radius",
-            })}
-            {hasChildPanel && renderPanelControls({
-              title: "子门门板",
-              styleKey: "child_door_panel_style",
-              style: data.child_door_panel_style || "",
-              styleOptions: childPanelStyles,
-              lockKey: "child_panel_lock_offset_x",
-              hingeKey: "child_panel_hinge_offset_y",
-              middleKey: "child_panel_middle_offset_z",
-              plusAKey: "child_panel_plus_offset_a",
-              plusBKey: "child_panel_plus_offset_b",
-              threeAKey: "child_panel_three_col_a",
-              threeBKey: "child_panel_three_col_b",
-              threeCKey: "child_panel_three_col_c",
-              fillAKey: "child_panel_fill_a",
-              fillBKey: "child_panel_fill_b",
-              fillCKey: "child_panel_fill_c",
-              discRadiusKey: "child_panel_disc_radius",
-            })}
+            <Select
+              label="固定款式"
+              value={panelPreset}
+              options={DOOR_PANEL_PRESETS}
+              onChange={applyPanelPreset}
+            />
+            {panelPreset ? (
+              <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3 text-sm text-[#3A3A3C]">
+                {panelPresetSummary[panelPreset] || "已按固定款式自动套用门板设置。"}
+              </div>
+            ) : (
+              <>
+                {renderPanelControls({
+                  title: "正面门板",
+                  styleKey: "door_panel_style",
+                  style: panelStyle,
+                  styleOptions: DOOR_PANEL_STYLES,
+                  lockKey: "panel_lock_offset_x",
+                  hingeKey: "panel_hinge_offset_y",
+                  middleKey: "panel_middle_offset_z",
+                  plusAKey: "panel_plus_offset_a",
+                  plusBKey: "panel_plus_offset_b",
+                  threeAKey: "panel_three_col_a",
+                  threeBKey: "panel_three_col_b",
+                  threeCKey: "panel_three_col_c",
+                  fillAKey: "panel_fill_a",
+                  fillBKey: "panel_fill_b",
+                  fillCKey: "panel_fill_c",
+                  discRadiusKey: "panel_disc_radius",
+                })}
+                {renderPanelControls({
+                  title: "反面门板",
+                  styleKey: "back_door_panel_style",
+                  style: data.back_door_panel_style || "无造型",
+                  styleOptions: DOOR_PANEL_STYLES,
+                  lockKey: "back_panel_lock_offset_x",
+                  hingeKey: "back_panel_hinge_offset_y",
+                  middleKey: "back_panel_middle_offset_z",
+                  plusAKey: "back_panel_plus_offset_a",
+                  plusBKey: "back_panel_plus_offset_b",
+                  threeAKey: "back_panel_three_col_a",
+                  threeBKey: "back_panel_three_col_b",
+                  threeCKey: "back_panel_three_col_c",
+                  fillAKey: "back_panel_fill_a",
+                  fillBKey: "back_panel_fill_b",
+                  fillCKey: "back_panel_fill_c",
+                  discRadiusKey: "back_panel_disc_radius",
+                })}
+                {hasChildPanel && renderPanelControls({
+                  title: "子门门板",
+                  styleKey: "child_door_panel_style",
+                  style: data.child_door_panel_style || "",
+                  styleOptions: childPanelStyles,
+                  lockKey: "child_panel_lock_offset_x",
+                  hingeKey: "child_panel_hinge_offset_y",
+                  middleKey: "child_panel_middle_offset_z",
+                  plusAKey: "child_panel_plus_offset_a",
+                  plusBKey: "child_panel_plus_offset_b",
+                  threeAKey: "child_panel_three_col_a",
+                  threeBKey: "child_panel_three_col_b",
+                  threeCKey: "child_panel_three_col_c",
+                  fillAKey: "child_panel_fill_a",
+                  fillBKey: "child_panel_fill_b",
+                  fillCKey: "child_panel_fill_c",
+                  discRadiusKey: "child_panel_disc_radius",
+                })}
+              </>
+            )}
           </div>
         </details>
 

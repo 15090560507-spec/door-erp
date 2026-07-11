@@ -89,6 +89,7 @@ export interface DoorFormData {
   trim_style_outer: string;
   trim_style_inner: string;
   lock_side_offset?: number;
+  panel_preset: string;
   door_panel_style: string;
   back_door_panel_style: string;
   child_door_panel_style: string;
@@ -216,6 +217,7 @@ export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_STYLES = ["平板"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
+export const DOOR_PANEL_PRESETS = ["", "紫荆花款", "钱币款", "竖条款", "流星雨款", "四方纳福款"];
 export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
@@ -223,7 +225,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   zmks: "", fmks: "",
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
-  sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0,
+  sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
   door_panel_style: "无造型", back_door_panel_style: "无造型", child_door_panel_style: "",
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,

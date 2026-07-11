@@ -419,7 +419,8 @@ def test_pillar_handle_title_and_three_column_panel():
 
 def test_panel_hatch_presets_and_masks():
     req = CADRequest(
-        zmks="\u7d2b\u8346\u82b1\u6b3e",
+        panel_preset="\u7d2b\u8346\u82b1\u6b3e",
+        panel_fill_a="\u94b1\u5e01\u6b3e",
         fmks="",
         zmls="\u6807\u914d\u62c9\u624b",
         fingerprint_lock="\u5b89\u5fd7\u6770AF-12",
@@ -437,6 +438,7 @@ def test_panel_hatch_presets_and_masks():
     ]
     patterns = [entity.dxf.pattern_name for entity in panel_hatches]
     check("zijinghua preset adds template hatch", "ZIJINGHUA" in patterns, patterns)
+    check("fixed panel preset overrides stale custom fill", "QIANBI" not in patterns, patterns)
     check("preset adds vertical stripe hatch", "ANSI31" in patterns, patterns)
     wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT") if entity.dxf.layer == "A-DOOR-MASK"]
     check("hardware mask wipeouts are generated above hatches", len(wipeouts) >= 2, len(wipeouts))

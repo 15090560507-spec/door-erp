@@ -75,6 +75,7 @@ class CADRequest(BaseModel):
     trim_style_outer: str = ""          # 外包套款式 斜包套/阶梯包套/工字形包套/01款包套/02款包套
     trim_style_inner: str = ""          # 内包套款式
     lock_side_offset: int = 0           # 兼容旧数据：旧锁边偏移量 (mm)
+    panel_preset: str = ""              # 门板固定款式预设
     door_panel_style: str = "无造型"     # 门板样式
     back_door_panel_style: str = "无造型"  # 反面门板样式
     child_door_panel_style: str = ""    # 子门/边扇门板样式，空=不单独绘制
