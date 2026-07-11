@@ -391,10 +391,11 @@ def test_pillar_handle_title_and_three_column_panel():
     ]
     wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT")]
     check(
-        "panel drawing does not use cover masks or hidden dashed edges",
-        not hidden_lines and not wipeouts,
+        "panel drawing does not use hidden dashed edges",
+        not hidden_lines,
         f"hidden={len(hidden_lines)}, wipeouts={len(wipeouts)}",
     )
+    check("hardware masks are isolated on mask layer", all(entity.dxf.layer == "A-DOOR-MASK" for entity in wipeouts), [entity.dxf.layer for entity in wipeouts])
     layer_names = [layer.dxf.name for layer in doc.layers]
     check("panel helper geometry layer is removed", "A-DOOR-PANEL-GEOM" not in doc.layers, layer_names)
     check("hidden dashed panel layer is removed", "A-DOOR-HIDDEN" not in doc.layers, layer_names)
@@ -414,6 +415,31 @@ def test_pillar_handle_title_and_three_column_panel():
         if entity.dxf.layer == "A-DOOR-PANEL"
     ]
     check("three-column panel style still draws required panel lines", len(panel_lines) >= 4, f"line count: {len(panel_lines)}")
+
+
+def test_panel_hatch_presets_and_masks():
+    req = CADRequest(
+        zmks="\u7d2b\u8346\u82b1\u6b3e",
+        fmks="",
+        zmls="\u6807\u914d\u62c9\u624b",
+        fingerprint_lock="\u5b89\u5fd7\u6770AF-12",
+        sel_hys="\u6697\u5408\u9875",
+    )
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("panel hatch preset CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    panel_hatches = [
+        entity for entity in doc.modelspace().query("HATCH")
+        if entity.dxf.layer == "A-DOOR-HATCH"
+    ]
+    patterns = [entity.dxf.pattern_name for entity in panel_hatches]
+    check("zijinghua preset adds template hatch", "ZIJINGHUA" in patterns, patterns)
+    check("preset adds vertical stripe hatch", "ANSI31" in patterns, patterns)
+    wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT") if entity.dxf.layer == "A-DOOR-MASK"]
+    check("hardware mask wipeouts are generated above hatches", len(wipeouts) >= 2, len(wipeouts))
 
 
 def test_frame_defaults_and_single_back_mirror():
@@ -1162,6 +1188,7 @@ if __name__ == "__main__":
     test_door_panel_style_lines()
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()
+    test_panel_hatch_presets_and_masks()
     test_double_door_sized_handles_draw_on_front_only()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()

@@ -100,6 +100,9 @@ export interface DoorFormData {
   panel_three_col_a: number;
   panel_three_col_b: number;
   panel_three_col_c: number;
+  panel_fill_a: string;
+  panel_fill_b: string;
+  panel_fill_c: string;
   panel_disc_radius: number;
   back_panel_lock_offset_x: number;
   back_panel_hinge_offset_y: number;
@@ -109,6 +112,9 @@ export interface DoorFormData {
   back_panel_three_col_a: number;
   back_panel_three_col_b: number;
   back_panel_three_col_c: number;
+  back_panel_fill_a: string;
+  back_panel_fill_b: string;
+  back_panel_fill_c: string;
   back_panel_disc_radius: number;
   child_panel_lock_offset_x: number;
   child_panel_hinge_offset_y: number;
@@ -118,6 +124,9 @@ export interface DoorFormData {
   child_panel_three_col_a: number;
   child_panel_three_col_b: number;
   child_panel_three_col_c: number;
+  child_panel_fill_a: string;
+  child_panel_fill_b: string;
+  child_panel_fill_c: string;
   child_panel_disc_radius: number;
   left_gap: number;
   right_gap: number;
@@ -207,6 +216,7 @@ export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_STYLES = ["平板"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
+export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
@@ -217,13 +227,16 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   door_panel_style: "无造型", back_door_panel_style: "无造型", child_door_panel_style: "",
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
-  panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100, panel_disc_radius: 120,
+  panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
+  panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120,
   back_panel_lock_offset_x: 180, back_panel_hinge_offset_y: 100,
   back_panel_middle_offset_z: 180, back_panel_plus_offset_a: 350, back_panel_plus_offset_b: 100,
-  back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100, back_panel_disc_radius: 120,
+  back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100,
+  back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120,
   child_panel_lock_offset_x: 180, child_panel_hinge_offset_y: 100,
   child_panel_middle_offset_z: 180, child_panel_plus_offset_a: 350, child_panel_plus_offset_b: 100,
-  child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100, child_panel_disc_radius: 120,
+  child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
+  child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: new Date().toISOString().slice(0, 10),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,

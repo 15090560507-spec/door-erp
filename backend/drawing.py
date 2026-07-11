@@ -36,6 +36,97 @@ def _get_cached_template() -> Optional[str]:
     return _template_text
 
 
+HATCH_SAMPLE_LABELS = {
+    "紫荆花": ("紫荆花",),
+    "钱币款": ("钱币款", "钱币"),
+    "流星雨": ("流星雨",),
+    "四方纳福": ("四方纳福",),
+    "竖条": ("竖条", "2039"),
+    "斜实虚": ("斜实虚", "斜 实+虚"),
+    "正实虚": ("正实虚", "正 实+虚"),
+}
+
+HATCH_FALLBACKS = {
+    "紫荆花": {"pattern_name": "ZIJINGHUA", "scale": 0.75, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "钱币款": {"pattern_name": "QIANBI", "scale": 0.5, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "流星雨": {"pattern_name": "LIUXINGYU", "scale": 1.198, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "四方纳福": {"pattern_name": "EARTH", "scale": 7, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "竖条": {"pattern_name": "ANSI31", "scale": 15, "angle": 45, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "斜实虚": {"pattern_name": "ANSI33", "scale": 6, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "正实虚": {"pattern_name": "ANSI33", "scale": 6, "angle": 315, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+}
+
+
+def _hatch_points(entity) -> list[tuple[float, float]]:
+    points = []
+    for path in entity.paths:
+        if hasattr(path, "vertices"):
+            points.extend((float(v[0]), float(v[1])) for v in path.vertices)
+        elif hasattr(path, "edges"):
+            for edge in path.edges:
+                if hasattr(edge, "start"):
+                    points.append((float(edge.start[0]), float(edge.start[1])))
+                if hasattr(edge, "end"):
+                    points.append((float(edge.end[0]), float(edge.end[1])))
+                if hasattr(edge, "center"):
+                    points.append((float(edge.center[0]), float(edge.center[1])))
+    return points
+
+
+def _hatch_center(entity) -> Optional[tuple[float, float]]:
+    points = _hatch_points(entity)
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+
+
+def _hatch_sample(entity) -> Dict[str, Any]:
+    return {
+        "pattern_name": getattr(entity.dxf, "pattern_name", "ANSI31"),
+        "scale": float(getattr(entity.dxf, "pattern_scale", 1) or 1),
+        "angle": float(getattr(entity.dxf, "pattern_angle", 0) or 0),
+        "color": int(getattr(entity.dxf, "color", 9) or 9),
+        "solid_fill": int(getattr(entity.dxf, "solid_fill", 0) or 0),
+        "hatch_style": int(getattr(entity.dxf, "hatch_style", 1) or 1),
+        "pattern_type": int(getattr(entity.dxf, "pattern_type", 1) or 1),
+    }
+
+
+def _build_hatch_library(doc) -> Dict[str, Dict[str, Any]]:
+    library = {key: dict(value) for key, value in HATCH_FALLBACKS.items()}
+    modelspace = doc.modelspace()
+    labels = []
+    for entity in modelspace:
+        if entity.dxftype() not in ("TEXT", "MTEXT"):
+            continue
+        try:
+            text = entity.plain_text() if entity.dxftype() == "MTEXT" else entity.dxf.text
+        except Exception:
+            continue
+        text = str(text).strip()
+        if not text:
+            continue
+        insert = entity.dxf.insert
+        labels.append((text, float(insert.x), float(insert.y)))
+
+    hatches = []
+    for entity in modelspace.query("HATCH"):
+        center = _hatch_center(entity)
+        if center:
+            hatches.append((entity, center[0], center[1]))
+
+    for canonical, aliases in HATCH_SAMPLE_LABELS.items():
+        label = next((item for item in labels if any(alias in item[0] for alias in aliases)), None)
+        if not label or not hatches:
+            continue
+        _text, x, y = label
+        nearest = min(hatches, key=lambda item: (item[1] - x) ** 2 + (item[2] - y) ** 2)
+        library[canonical] = _hatch_sample(nearest[0])
+    return library
+
+
 # ===================== 数据扣减计算 =====================
 class DimensionCalculator:
     def __init__(self, params: Dict[str, Any]):
@@ -95,6 +186,30 @@ class EzdxfDrawer:
 
     def draw_bulged_poly(self, points, layer, closed=True):
         self.ms.add_lwpolyline(points, format='xyseb', close=closed, dxfattribs={'layer': layer})
+
+    def draw_wipeout_rect(self, x1, y1, x2, y2, layer="A-DOOR-MASK"):
+        wipeout = self.ms.add_wipeout([(x1, y1), (x2, y1), (x2, y2), (x1, y2)])
+        wipeout.dxf.layer = layer
+
+    def draw_hatch_rect(self, x1, y1, x2, y2, sample, layer="A-DOOR-HATCH", mirror=False):
+        if not sample or x2 - x1 <= 1 or y2 - y1 <= 1:
+            return
+        hatch = self.ms.add_hatch(dxfattribs={'layer': layer, 'color': sample.get('color', 9)})
+        if sample.get('solid_fill'):
+            hatch.set_solid_fill(color=sample.get('color', 9), style=sample.get('hatch_style', 1))
+        else:
+            angle = float(sample.get('angle', 0) or 0)
+            if mirror:
+                angle = (180 - angle) % 360
+            hatch.set_pattern_fill(
+                sample.get('pattern_name', 'ANSI31'),
+                color=sample.get('color', 9),
+                angle=angle,
+                scale=sample.get('scale', 1),
+                style=sample.get('hatch_style', 1),
+                pattern_type=sample.get('pattern_type', 1),
+            )
+        hatch.paths.add_polyline_path([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], is_closed=True)
 
     def draw_line(self, p1, p2, layer, linetype=None):
         attribs = {'layer': layer}
@@ -956,6 +1071,25 @@ def draw_door_in_frame(
     back_panel_style = p.get('back_door_panel_style') or "无造型"
     child_panel_style = p.get('child_door_panel_style') or ""
     panel_style_default = back_panel_style if is_back else front_panel_style
+    hatch_library = _build_hatch_library(drawer.doc)
+
+    front_fill_presets = {
+        "紫荆花": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("紫荆花", "竖条", "")},
+        "钱币": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("钱币款", "竖条", "")},
+        "竖条": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("", "竖条", "")},
+        "流星雨": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("流星雨", "斜实虚", "")},
+        "四方纳福": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("四方纳福", "正实虚", "")},
+    }
+
+    def detect_panel_preset(text: str) -> Optional[Dict[str, Any]]:
+        text = text or ""
+        for key, preset in front_fill_presets.items():
+            if key in text:
+                return preset
+        return None
+
+    front_preset = detect_panel_preset(str(p.get("zmks", "")))
+    back_preset = detect_panel_preset(str(p.get("fmks", ""))) or front_preset
 
     def panel_settings(group: str, style: str) -> Dict[str, float | str]:
         prefix = "" if group == "front" else f"{group}_panel_"
@@ -969,6 +1103,9 @@ def draw_door_in_frame(
             "three_col_a": float(p.get(f"{prefix}three_col_a", p.get("panel_three_col_a", 180)) or 0),
             "three_col_b": float(p.get(f"{prefix}three_col_b", p.get("panel_three_col_b", 0)) or 0),
             "three_col_c": float(p.get(f"{prefix}three_col_c", p.get("panel_three_col_c", 100)) or 0),
+            "fill_a": str(p.get(f"{prefix}fill_a", p.get("panel_fill_a", "")) or ""),
+            "fill_b": str(p.get(f"{prefix}fill_b", p.get("panel_fill_b", "")) or ""),
+            "fill_c": str(p.get(f"{prefix}fill_c", p.get("panel_fill_c", "")) or ""),
             "disc_radius": float(p.get(f"{prefix}disc_radius", p.get("panel_disc_radius", 120)) or 0),
         }
 
@@ -999,12 +1136,20 @@ def draw_door_in_frame(
     def panel_settings_for(index: int) -> Dict[str, float | str]:
         if is_child_panel(index):
             return panel_settings("child", child_panel_style)
-        return panel_settings("back" if is_back else "front", panel_style_default)
+        group = "back" if is_back else "front"
+        preset = back_preset if is_back else front_preset
+        return apply_panel_preset(panel_settings(group, panel_style_default), preset, group)
 
     def resolve_three_col_widths(panel_width: float, settings: Dict[str, float | str]):
         a = settings["three_col_a"] if settings["three_col_a"] > 0 else None
         b = settings["three_col_b"] if settings["three_col_b"] > 0 else None
         c = settings["three_col_c"] if settings["three_col_c"] > 0 else None
+        if b and not a and not c:
+            a = (panel_width - b) / 2
+            c = panel_width - b - a
+        elif a and not b and not c:
+            b = panel_width - a
+            c = 0
         if a and c:
             b = panel_width - a - c
         elif a and b:
@@ -1020,6 +1165,40 @@ def draw_door_in_frame(
         if abs((a + b + c) - panel_width) > 1:
             return None
         return a, b, c
+
+    def apply_panel_preset(settings: Dict[str, float | str], preset: Optional[Dict[str, Any]], view_group: str) -> Dict[str, float | str]:
+        if not preset:
+            return settings
+        next_settings = dict(settings)
+        has_explicit_fill = any(str(next_settings.get(key, "")).strip() for key in ("fill_a", "fill_b", "fill_c"))
+        if view_group == "back":
+            if not has_explicit_fill:
+                next_settings.update({
+                    "style": "三列式布局",
+                    "three_col_a": 0,
+                    "three_col_b": 100,
+                    "three_col_c": 0,
+                    "fill_a": "",
+                    "fill_b": "竖条",
+                    "fill_c": "",
+                })
+        elif not has_explicit_fill:
+            next_settings.update({
+                "style": preset["style"],
+                "lock_offset_x": preset["lock_offset_x"],
+                "fill_a": preset["fills"][0],
+                "fill_b": preset["fills"][1],
+                "fill_c": preset["fills"][2],
+            })
+        return next_settings
+
+    def draw_fill_rect(x1: float, x2: float, fill_name: str, mirror: bool = False):
+        fill_name = (fill_name or "").strip()
+        if not fill_name or fill_name == "无":
+            return
+        left, right = sorted((x1, x2))
+        sample = hatch_library.get(fill_name)
+        drawer.draw_hatch_rect(*off((left, panel_y_bot)), *off((right, panel_y_top)), sample, mirror=mirror)
 
     if panel_positions:
         for idx, (px1, px2) in enumerate(panel_positions):
@@ -1042,6 +1221,9 @@ def draw_door_in_frame(
                 lock_line_x = lock_edge + direction * a_width
                 hinge_line_x = hinge_edge - direction * c_width
                 if px1 < lock_line_x < px2 and px1 < hinge_line_x < px2 and abs(lock_line_x - hinge_line_x) > 1:
+                    draw_fill_rect(lock_edge, lock_line_x, str(settings.get("fill_a", "")))
+                    draw_fill_rect(lock_line_x, hinge_line_x, str(settings.get("fill_b", "")))
+                    draw_fill_rect(hinge_line_x, hinge_edge, str(settings.get("fill_c", "")))
                     draw_panel_rect(lock_edge, lock_line_x)
                     draw_panel_rect(lock_line_x, hinge_line_x)
                     draw_panel_rect(hinge_line_x, hinge_edge)
@@ -1073,6 +1255,9 @@ def draw_door_in_frame(
             draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
 
             if panel_style == "两列式布局":
+                is_left_leaf = (px1 + px2) / 2 < dw / 2
+                draw_fill_rect(lock_edge, lock_line_x, str(settings.get("fill_a", "")))
+                draw_fill_rect(lock_line_x, hinge_edge, str(settings.get("fill_b", "")), mirror=is_left_leaf and str(settings.get("fill_b", "")) == "斜实虚")
                 draw_panel_rect(lock_edge, lock_line_x)
                 draw_panel_rect(lock_line_x, hinge_edge)
                 continue
@@ -1200,6 +1385,37 @@ def draw_door_in_frame(
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
     non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手"}
     current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
+
+    def draw_mask(cx: float, cy: float, width: float, height: float):
+        drawer.draw_wipeout_rect(
+            *off((cx - width / 2, cy - height / 2)),
+            *off((cx + width / 2, cy + height / 2)),
+        )
+
+    if current_handle in ("标配拉手", "A1022", "A635", "分体拉手") and not current_sized_handle:
+        mask_targets = handle_targets(60)
+        if current_handle == "分体拉手" and is_back and door_type == "对开门" and len(panel_positions) >= 2:
+            if door_open_dir == "右开":
+                left_x1, left_x2 = panel_positions[0]
+                mask_targets = [(left_x2 - 60, -1, "ZBPLS")]
+            else:
+                right_x1, right_x2 = panel_positions[1]
+                mask_targets = [(right_x1 + 60, 1, "YBPLS")]
+        for hx, _toward_hinge, _hblock in mask_targets:
+            draw_mask(hx, panel_y_bot + 1000, 160, 360)
+
+    if current_handle == "背包拉手" and not current_sized_handle:
+        for hx, _toward_hinge, _hblock in backpack_handle_targets(60):
+            draw_mask(hx, 1050, 180, 320)
+
+    if handle_size and current_sized_handle:
+        handle_w, handle_h = handle_size
+        for hx, _toward_hinge, _hblock in sized_handle_targets(110):
+            draw_mask(hx, 1200, handle_w + 50, handle_h + 50)
+
+    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
+        for hx, _toward_hinge, _hblock in handle_targets(60, primary_only=True):
+            draw_mask(hx, 1050, 180, 280)
 
     if current_handle == "标配拉手" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
@@ -1378,6 +1594,8 @@ def run_integrated_system(
         hinge_name = CONFIG.HINGE_TYPES.get(sel_hys, "hlt")
         drawer = EzdxfDrawer(doc, ms, hinge_name, progress_callback)
         drawer.batch_add_layers({
+            "A-DOOR-HATCH": 9,
+            "A-DOOR-MASK": 7,
             "A-DOOR-FRAME": 4,
             "A-DOOR-PANEL": 2,
             "A-DOOR-TRIM": 1,

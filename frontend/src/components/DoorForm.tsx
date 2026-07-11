@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES,
+  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, PANEL_FILL_OPTIONS,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -198,6 +198,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey,
     threeBKey,
     threeCKey,
+    fillAKey,
+    fillBKey,
+    fillCKey,
     discRadiusKey,
   }: {
     title: string;
@@ -212,6 +215,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey: keyof DoorFormData;
     threeBKey: keyof DoorFormData;
     threeCKey: keyof DoorFormData;
+    fillAKey: keyof DoorFormData;
+    fillBKey: keyof DoorFormData;
+    fillCKey: keyof DoorFormData;
     discRadiusKey: keyof DoorFormData;
   }) => (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
@@ -250,6 +256,30 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               type="number"
               onChange={(v) => setField(threeCKey, Number(v))}
             />
+          </>
+        )}
+        {(style === "两列式布局" || style === "三列式布局") && (
+          <>
+            <Select
+              label={`${title}A区填充`}
+              value={(data[fillAKey] as string) || ""}
+              options={PANEL_FILL_OPTIONS}
+              onChange={(v) => setField(fillAKey, v)}
+            />
+            <Select
+              label={`${title}B区填充`}
+              value={(data[fillBKey] as string) || ""}
+              options={PANEL_FILL_OPTIONS}
+              onChange={(v) => setField(fillBKey, v)}
+            />
+            {style === "三列式布局" && (
+              <Select
+                label={`${title}C区填充`}
+                value={(data[fillCKey] as string) || ""}
+                options={PANEL_FILL_OPTIONS}
+                onChange={(v) => setField(fillCKey, v)}
+              />
+            )}
           </>
         )}
         {usesHPanel(style) && (
@@ -458,6 +488,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "panel_three_col_a",
               threeBKey: "panel_three_col_b",
               threeCKey: "panel_three_col_c",
+              fillAKey: "panel_fill_a",
+              fillBKey: "panel_fill_b",
+              fillCKey: "panel_fill_c",
               discRadiusKey: "panel_disc_radius",
             })}
             {renderPanelControls({
@@ -473,6 +506,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "back_panel_three_col_a",
               threeBKey: "back_panel_three_col_b",
               threeCKey: "back_panel_three_col_c",
+              fillAKey: "back_panel_fill_a",
+              fillBKey: "back_panel_fill_b",
+              fillCKey: "back_panel_fill_c",
               discRadiusKey: "back_panel_disc_radius",
             })}
             {hasChildPanel && renderPanelControls({
@@ -488,6 +524,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               threeAKey: "child_panel_three_col_a",
               threeBKey: "child_panel_three_col_b",
               threeCKey: "child_panel_three_col_c",
+              fillAKey: "child_panel_fill_a",
+              fillBKey: "child_panel_fill_b",
+              fillCKey: "child_panel_fill_c",
               discRadiusKey: "child_panel_disc_radius",
             })}
           </div>
