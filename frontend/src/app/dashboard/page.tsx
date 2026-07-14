@@ -17,10 +17,10 @@ import ClipboardUpload from "@/components/ClipboardUpload";
 import { Thumbnail } from "@/components/ImageModal";
 import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
+import { isLocalToday, localDateCompact } from "@/lib/dateTime";
 
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
-  const now = new Date();
-  const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const date = localDateCompact();
   const customer = (data.dhdw || "未命名").trim().replace(/[\\/:*?"<>|\s]+/g, "");
   return `${customer || "未命名"}${date}.dxf`;
 }
@@ -816,13 +816,13 @@ export default function DashboardPage() {
                     <>
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                       <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
-                      <StatCard label="今日新增" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E5F9E5] text-[#248A3D]" />
+                      <StatCard label="今日新增" count={tasks.filter(t => isLocalToday(t.date)).length} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
                   {module === "图纸初审" && (
                     <>
                       <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="今日提交" count={tasks.filter(t => t.date === new Date().toISOString().slice(0,10).replace(/-/g,".")).length} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="今日提交" count={tasks.filter(t => isLocalToday(t.date)).length} color="bg-[#E8E8ED] text-[#48484A]" />
                     </>
                   )}
                   {module === "图纸终审" && (

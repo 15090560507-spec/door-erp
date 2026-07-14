@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict
 from urllib.parse import quote
 
@@ -66,6 +67,13 @@ app.include_router(render_router)
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
 task_db = TaskDatabaseManager()
+
+
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def shanghai_now() -> datetime.datetime:
+    return datetime.datetime.now(SHANGHAI_TZ)
 
 
 def normalize_task_date(value: Optional[str]) -> str:
@@ -476,7 +484,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     bytes_io = io.BytesIO(dxf_bytes)
 
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
-    ts = datetime.datetime.now().strftime("%Y%m%d")
+    ts = shanghai_now().strftime("%Y%m%d")
     safe_customer = "".join(
         ch for ch in (req.dhdw or "未命名").strip()
         if ch not in '\\/:*?"<>|' and not ch.isspace()
@@ -622,7 +630,7 @@ def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_rol
     task_id = str(uuid.uuid4())[:8]
     new_task = {
         "id": task_id,
-        "date": req.params.get("dhrq", datetime.date.today().strftime("%Y.%m.%d")),
+        "date": req.params.get("dhrq", shanghai_now().strftime("%Y.%m.%d")),
         "status": "待绘制",
         "customer": req.params.get("dhdw", ""),
         "project": req.params.get("gdmc", ""),
@@ -653,7 +661,7 @@ def _build_history(old_params: Dict, new_params: Dict, user_name: str) -> Dict:
             changes.append({"field": key, "old": str(old_val), "new": str(new_val)})
     return {
         "modified_by": user_name,
-        "modified_at": datetime.datetime.now().strftime("%Y.%m.%d %H:%M:%S"),
+        "modified_at": shanghai_now().strftime("%Y.%m.%d %H:%M:%S"),
         "changes": changes,
     }
 

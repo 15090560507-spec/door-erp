@@ -1,7 +1,7 @@
 import os
 import shutil
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import BinaryIO
 
@@ -80,10 +80,9 @@ def read_bytes(path: str) -> bytes:
 
 
 def temp_expiry(days: int = 7) -> str:
-    return (datetime.now() + timedelta(days=days)).isoformat()
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat().replace("+00:00", "Z")
 
 
 def _safe_ext(filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     return ext if ext in {".png", ".jpg", ".jpeg", ".webp"} else ".png"
-

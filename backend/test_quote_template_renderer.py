@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 
+from openpyxl import load_workbook
 from starlette.datastructures import Headers, UploadFile
 from PIL import Image
 
@@ -302,12 +303,68 @@ def test_ai_analysis_parses_openai_compatible_response():
         quote_routes.urllib.request.urlopen = original_urlopen
 
 
+def test_optional_project_and_adaptive_excel_layout():
+    section("5. Optional Project And Adaptive Excel Layout")
+    import quote_excel
+    from quote_database import QuoteDatabaseManager
+
+    tmpdir = tempfile.mkdtemp(prefix="quote_excel_layout_")
+    try:
+        manager = QuoteDatabaseManager(
+            file_path=os.path.join(tmpdir, "quotes.json"),
+            backup_dir=os.path.join(tmpdir, "backups"),
+        )
+        created = manager.create({
+            "customerName": "长客户名称测试",
+            "projectName": "",
+            "quoteDate": "2026-07-14",
+            "noticeText": "本报价说明内容较长，需要在固定A4范围内自动换行并调整行高。",
+            "items": [{
+                "productName": "0.8厚不锈钢双面造型门含门框门板及多项制作材料说明，包含正反面款式、锁体、门套和生产备注内容",
+                "width": 1290,
+                "height": 2340,
+                "openDirection": "左外开",
+                "unit": "m2",
+                "unitPrice": 1350,
+            }],
+        })
+        check("quote accepts an empty project name", created["projectName"] == "", str(created))
+        check(
+            "quote timestamp is timezone-aware UTC",
+            created["createdAt"].endswith("Z"),
+            created["createdAt"],
+        )
+
+        output_path = os.path.join(tmpdir, "quote.xlsx")
+        quote_excel.generate_excel(created, output_path)
+        workbook = load_workbook(output_path)
+        sheet = workbook["Sheet1 (2)"] if "Sheet1 (2)" in workbook.sheetnames else workbook.worksheets[0]
+        check("long product text wraps", sheet["B9"].alignment.wrap_text is True, str(sheet["B9"].alignment))
+        check("long product row grows", float(sheet.row_dimensions[9].height or 0) > 25, str(sheet.row_dimensions[9].height))
+        check(
+            "product column grows within A4-safe limit",
+            31.525 < float(sheet.column_dimensions["C"].width or 0) <= 37.525,
+            str(sheet.column_dimensions["C"].width),
+        )
+        check("dynamic text uses Song font", sheet["B9"].font.name == "宋体", str(sheet["B9"].font.name))
+        normalized_print_area = str(sheet.print_area).replace("$", "")
+        check("quote print area remains A1:J24", "A1:J24" in normalized_print_area, str(sheet.print_area))
+        check(
+            "Shanghai business clock uses UTC+8",
+            backend_main.shanghai_now().utcoffset().total_seconds() == 8 * 60 * 60,
+            str(backend_main.shanghai_now()),
+        )
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     try:
         test_renderer_module_contract()
         test_quote_html_contains_uppercase_amount_and_editable_notice()
         test_export_routes_use_template_renderer()
         test_ai_analysis_parses_openai_compatible_response()
+        test_optional_project_and_adaptive_excel_layout()
         section("Results")
         print(f"  PASS: {PASSED}")
         print(f"  FAIL: {FAILED}")

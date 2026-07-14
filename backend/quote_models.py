@@ -61,7 +61,7 @@ class QuoteItemRequest(BaseModel):
 class QuoteCreate(BaseModel):
     """创建报价单"""
     customerName: str
-    projectName: str
+    projectName: str = ""
     quoteDate: str
     noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     items: List[QuoteItemRequest]
@@ -85,7 +85,7 @@ class QuoteResponse(BaseModel):
     """报价单响应"""
     id: int
     customerName: str
-    projectName: str
+    projectName: str = ""
     quoteDate: str
     noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     createdAt: str = ""

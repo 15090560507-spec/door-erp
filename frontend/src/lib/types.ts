@@ -1,3 +1,5 @@
+import { localDateYmd } from "./dateTime";
+
 // ===================== 用户 =====================
 export interface UserInfo {
   uid: string;
@@ -240,7 +242,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
   child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
   ddh: "", sl: "1 樘", hhxd: "D",
-  dhrq: new Date().toISOString().slice(0, 10),
+  dhrq: localDateYmd(),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",

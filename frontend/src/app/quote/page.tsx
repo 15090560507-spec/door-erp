@@ -12,6 +12,7 @@ import AccessoryModal from "@/components/AccessoryModal";
 import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
+import { localDateYmd } from "@/lib/dateTime";
 
 const QUOTE_ROW_COUNT = 8;
 type QuotePricingMode = "outerArea" | "framePlusTrim";
@@ -250,7 +251,7 @@ export default function QuotePage() {
   // Form state
   const [customerName, setCustomerName] = useState("");
   const [projectName, setProjectName] = useState("");
-  const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
+  const [quoteDate, setQuoteDate] = useState(localDateYmd);
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
   const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
@@ -301,7 +302,6 @@ export default function QuotePage() {
   async function handleSave() {
     const form = collectForm();
     if (!form.customerName) { setStatus("请填写客户名称"); return; }
-    if (!form.projectName) { setStatus("请填写项目名称"); return; }
     if (!form.quoteDate) { setStatus("请选择日期"); return; }
     if (!form.items.length) { setStatus("至少填写一条品名型号"); return; }
 
@@ -439,7 +439,7 @@ export default function QuotePage() {
       const allAccessories = await getAccessories();
       setCustomerName(params.dhdw || task.customer || "");
       setProjectName(params.gdmc || task.project || "");
-      setQuoteDate((params.dhrq || new Date().toISOString().slice(0, 10)).replace(/\./g, "-"));
+      setQuoteDate((params.dhrq || localDateYmd()).replace(/\./g, "-"));
       setItems(buildQuoteRowsFromTask(params, allAccessories, mode, num(trimPrice)));
       setLastQuoteId(null);
       setStatus("已根据图纸项目生成报价明细");
@@ -501,7 +501,7 @@ export default function QuotePage() {
   function handleClear() {
     setCustomerName("");
     setProjectName("");
-    setQuoteDate(new Date().toISOString().slice(0, 10));
+    setQuoteDate(localDateYmd());
     setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
     setItems(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
     setLastQuoteId(null);

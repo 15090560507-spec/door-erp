@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from config import (
@@ -210,8 +210,6 @@ class QuoteDatabaseManager:
         # 验证
         if not quote_data.get("customerName", "").strip():
             raise ValueError("customerName 为必填字段")
-        if not quote_data.get("projectName", "").strip():
-            raise ValueError("projectName 为必填字段")
         if not quote_data.get("quoteDate", "").strip():
             raise ValueError("quoteDate 为必填字段")
 
@@ -229,11 +227,11 @@ class QuoteDatabaseManager:
             quotes = self._load_unlocked()
             max_id = max((q.get("id", 0) for q in quotes), default=0)
 
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             quote = {
                 "id": max_id + 1,
                 "customerName": quote_data["customerName"].strip(),
-                "projectName": quote_data["projectName"].strip(),
+                "projectName": str(quote_data.get("projectName") or "").strip(),
                 "quoteDate": quote_data["quoteDate"].strip(),
                 "noticeText": quote_data.get("noticeText", "").strip() or "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002",
                 "createdAt": now,
@@ -349,7 +347,7 @@ class AiConfigManager:
         with self._lock:
             config = self._load()
             config.update(data)
-            config["updatedAt"] = datetime.now().isoformat()
+            config["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             self._save(config)
             return dict(config)
 

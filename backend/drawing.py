@@ -9,6 +9,7 @@ import tempfile
 from typing import Any, Dict, Tuple, Optional, Callable, Union
 
 import ezdxf
+from ezdxf.disassemble import recursive_decompose
 
 from config import CONFIG, TEMPLATE_PATH
 from utils import parse_dim_str, parse_gap_str
@@ -92,6 +93,15 @@ def _hatch_bounds(entity) -> Optional[tuple[float, float, float, float]]:
 
 
 def _hatch_sample(entity) -> Dict[str, Any]:
+    pattern_lines = []
+    if entity.pattern is not None:
+        for line in entity.pattern.lines:
+            pattern_lines.append((
+                float(line.angle),
+                (float(line.base_point.x), float(line.base_point.y)),
+                (float(line.offset.x), float(line.offset.y)),
+                tuple(float(value) for value in line.dash_length_items),
+            ))
     return {
         "pattern_name": getattr(entity.dxf, "pattern_name", "ANSI31"),
         "scale": float(getattr(entity.dxf, "pattern_scale", 1) or 1),
@@ -100,7 +110,41 @@ def _hatch_sample(entity) -> Dict[str, Any]:
         "solid_fill": int(getattr(entity.dxf, "solid_fill", 0) or 0),
         "hatch_style": int(getattr(entity.dxf, "hatch_style", 1) or 1),
         "pattern_type": int(getattr(entity.dxf, "pattern_type", 1) or 1),
+        "pattern_lines": pattern_lines,
     }
+
+
+def _polygon_area(points: list[tuple[float, float]]) -> float:
+    return abs(sum(
+        points[index][0] * points[(index + 1) % len(points)][1]
+        - points[(index + 1) % len(points)][0] * points[index][1]
+        for index in range(len(points))
+    )) / 2
+
+
+def _convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    unique = sorted(set((round(float(x), 6), round(float(y), 6)) for x, y in points))
+    if len(unique) <= 2:
+        return unique
+
+    def cross(origin, first, second):
+        return (
+            (first[0] - origin[0]) * (second[1] - origin[1])
+            - (first[1] - origin[1]) * (second[0] - origin[0])
+        )
+
+    lower = []
+    for point in unique:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+
+    upper = []
+    for point in reversed(unique):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    return lower[:-1] + upper[:-1]
 
 
 def _build_hatch_library(doc) -> Dict[str, Dict[str, Any]]:
@@ -183,6 +227,8 @@ class EzdxfDrawer:
         self.hinge_block_name = hinge_block_name
         self.progress_callback = progress_callback or (lambda x: None)
         self.doc.header["$DIMASSOC"] = 2
+        self.doc.header["$FILLMODE"] = 1
+        self.doc.header["$REGENMODE"] = 1
         if "HIDDEN" not in self.doc.linetypes:
             self.doc.linetypes.add("HIDDEN", pattern=[0.0, 8.0, -4.0], description="Hidden")
         if self.hinge_block_name not in self.doc.blocks:
@@ -204,8 +250,58 @@ class EzdxfDrawer:
         self.ms.add_lwpolyline(points, format='xyseb', close=closed, dxfattribs={'layer': layer})
 
     def draw_wipeout_rect(self, x1, y1, x2, y2, layer="A-DOOR-MASK"):
-        wipeout = self.ms.add_wipeout([(x1, y1), (x2, y1), (x2, y2), (x1, y2)])
+        self.draw_wipeout_polygon([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], layer=layer)
+
+    def draw_wipeout_polygon(self, points, layer="A-DOOR-MASK"):
+        if len(points) < 3:
+            return
+        wipeout = self.ms.add_wipeout(points)
         wipeout.dxf.layer = layer
+
+    def block_local_mask_points(self, block_name: str) -> Optional[list[tuple[float, float]]]:
+        if block_name not in self.doc.blocks:
+            return None
+
+        all_points: list[tuple[float, float]] = []
+        closed_candidates: list[list[tuple[float, float]]] = []
+        for entity in recursive_decompose(self.doc.blocks[block_name]):
+            if entity.dxftype() not in ("LINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE", "LWPOLYLINE", "POLYLINE"):
+                continue
+            try:
+                path = ezdxf.path.make_path(entity)
+                points = [(float(point.x), float(point.y)) for point in path.flattening(distance=2, segments=12)]
+            except Exception:
+                continue
+            if len(points) > 1 and points[0] == points[-1]:
+                points.pop()
+            if not points:
+                continue
+            all_points.extend(points)
+            if path.is_closed and len(points) >= 3 and _polygon_area(points) > 1:
+                closed_candidates.append(points)
+
+        if not all_points:
+            return None
+
+        min_x = min(point[0] for point in all_points)
+        max_x = max(point[0] for point in all_points)
+        min_y = min(point[1] for point in all_points)
+        max_y = max(point[1] for point in all_points)
+        for candidate in sorted(closed_candidates, key=_polygon_area, reverse=True):
+            candidate_min_x = min(point[0] for point in candidate)
+            candidate_max_x = max(point[0] for point in candidate)
+            candidate_min_y = min(point[1] for point in candidate)
+            candidate_max_y = max(point[1] for point in candidate)
+            if (
+                candidate_min_x <= min_x + 1
+                and candidate_max_x >= max_x - 1
+                and candidate_min_y <= min_y + 1
+                and candidate_max_y >= max_y - 1
+            ):
+                return candidate
+
+        hull = _convex_hull(all_points)
+        return hull if len(hull) >= 3 else None
 
     def block_local_bbox(self, block_name: str) -> Optional[tuple[float, float, float, float]]:
         if block_name not in self.doc.blocks:
@@ -260,22 +356,25 @@ class EzdxfDrawer:
         yscale=1,
         rotation=0,
     ) -> bool:
-        bbox = self.block_local_bbox(block_name)
-        if not bbox:
+        local_points = self.block_local_mask_points(block_name)
+        if not local_points:
+            bbox = self.block_local_bbox(block_name)
+            if not bbox:
+                return False
+            x1, y1, x2, y2 = bbox
+            local_points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        if len(local_points) < 3:
             return False
-        x1, y1, x2, y2 = bbox
         angle = math.radians(rotation)
         cos_a = math.cos(angle)
         sin_a = math.sin(angle)
         base_x, base_y = insert_point
         points = []
-        for x, y in ((x1, y1), (x2, y1), (x2, y2), (x1, y2)):
+        for x, y in local_points:
             sx = x * xscale
             sy = y * yscale
             points.append((base_x + sx * cos_a - sy * sin_a, base_y + sx * sin_a + sy * cos_a))
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        self.draw_wipeout_rect(min(xs), min(ys), max(xs), max(ys), layer=layer)
+        self.draw_wipeout_polygon(points, layer=layer)
         return True
 
     def draw_hatch_rect(self, x1, y1, x2, y2, sample, layer="A-DOOR-HATCH", mirror=False):
@@ -296,7 +395,21 @@ class EzdxfDrawer:
                 style=sample.get('hatch_style', 1),
                 pattern_type=sample.get('pattern_type', 1),
             )
+            pattern_lines = sample.get('pattern_lines') or []
+            if pattern_lines:
+                if mirror:
+                    pattern_lines = [
+                        (
+                            (180 - line_angle) % 360,
+                            (-base_point[0], base_point[1]),
+                            (-offset[0], offset[1]),
+                            dash_items,
+                        )
+                        for line_angle, base_point, offset, dash_items in pattern_lines
+                    ]
+                hatch.set_pattern_definition(pattern_lines)
         hatch.paths.add_polyline_path([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], is_closed=True)
+        hatch.set_seed_points([((x1 + x2) / 2, (y1 + y2) / 2)])
 
     def draw_line(self, p1, p2, layer, linetype=None):
         attribs = {'layer': layer}

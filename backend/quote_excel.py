@@ -4,9 +4,12 @@
 使用 LibreOffice + poppler-utils 将 Excel A1:J24 精确渲染为 JPG
 """
 import os
+import math
 import subprocess
 import shutil
 import tempfile
+import unicodedata
+from copy import copy
 from pathlib import Path
 from openpyxl import load_workbook
 from PIL import Image
@@ -21,6 +24,84 @@ def _resolve_project_root(module_file: str = __file__) -> Path:
 
 TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
 DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
+
+
+def _display_width(value) -> int:
+    text = "" if value is None else str(value)
+    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F", "A") else 1 for char in text)
+
+
+def _column_width(ws, column: str) -> float:
+    return float(ws.column_dimensions[column].width or 13)
+
+
+def _line_count(value, capacity: float) -> int:
+    text = "" if value is None else str(value)
+    if not text:
+        return 1
+    usable = max(1, int(capacity))
+    return max(1, sum(max(1, math.ceil(_display_width(line) / usable)) for line in text.splitlines() or [""]))
+
+
+def _set_song_font(cell) -> None:
+    font = copy(cell.font)
+    font.name = "宋体"
+    font.charset = 134
+    cell.font = font
+
+
+def _enable_wrap(cell) -> None:
+    alignment = copy(cell.alignment)
+    alignment.wrap_text = True
+    alignment.vertical = "center"
+    cell.alignment = alignment
+
+
+def _fit_row(ws, row: int, value, capacity: float, minimum: float, line_height: float = 18) -> None:
+    ws.row_dimensions[row].height = max(minimum, _line_count(value, capacity) * line_height + 5)
+
+
+def _fit_row_group(ws, rows: range, value, capacity: float, minimum_total: float, line_height: float = 18) -> None:
+    total = max(minimum_total, _line_count(value, capacity) * line_height + 5)
+    each = total / len(rows)
+    for row in rows:
+        ws.row_dimensions[row].height = each
+
+
+def _apply_dynamic_layout(ws, quote: dict, items: list[dict]) -> None:
+    product_width = max((_display_width(item.get("productName") or item.get("product_name") or "") for item in items), default=0)
+    current_product_capacity = _column_width(ws, "B") + _column_width(ws, "C")
+    if product_width > current_product_capacity:
+        target_capacity = min(current_product_capacity + 6, max(current_product_capacity, product_width))
+        ws.column_dimensions["C"].width = _column_width(ws, "C") + (target_capacity - current_product_capacity)
+
+    product_capacity = _column_width(ws, "B") + _column_width(ws, "C")
+    for row in range(9, 17):
+        cell = ws[f"B{row}"]
+        _enable_wrap(cell)
+        _fit_row(ws, row, cell.value, product_capacity, 25, line_height=19)
+
+    customer_capacity = sum(_column_width(ws, column) for column in ("C", "D", "E", "F"))
+    for row, value in ((3, quote.get("customerName", "")), (4, quote.get("projectName", ""))):
+        _enable_wrap(ws[f"C{row}"])
+        _fit_row(ws, row, value, customer_capacity, 20.25, line_height=18)
+
+    full_capacity = sum(_column_width(ws, column) for column in "ABCDEFGHIJ")
+    _enable_wrap(ws["A19"])
+    _fit_row(ws, 19, ws["A19"].value, full_capacity, 34, line_height=18)
+    _enable_wrap(ws["A20"])
+    _fit_row_group(ws, range(20, 23), ws["A20"].value, full_capacity, 66, line_height=19)
+    for row, minimum in ((23, 105), (24, 81)):
+        _enable_wrap(ws[f"A{row}"])
+        _fit_row(ws, row, ws[f"A{row}"].value, full_capacity, minimum, line_height=19)
+
+    _enable_wrap(ws["F18"])
+    amount_capacity = sum(_column_width(ws, column) for column in "FGHIJ")
+    _fit_row(ws, 18, ws["F18"].value, amount_capacity, 20.25, line_height=18)
+
+    for row in ws.iter_rows(min_row=1, max_row=24, min_col=1, max_col=10):
+        for cell in row:
+            _set_song_font(cell)
 
 
 def _is_area_unit(unit: str) -> bool:
@@ -143,8 +224,12 @@ def generate_excel(quote: dict, output_path: str):
     ws["F18"] = _to_chinese_amount(total)
     ws["A19"] = quote.get("noticeText") or DEFAULT_NOTICE_TEXT
 
+    _apply_dynamic_layout(ws, quote, items)
+
     ws.print_area = "A1:J24"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
 
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True

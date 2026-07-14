@@ -12,7 +12,7 @@ sys.path.insert(0, BACKEND_DIR)
 
 from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
 from models import CADRequest
-from drawing import run_integrated_system
+from drawing import EzdxfDrawer, _build_hatch_library, run_integrated_system
 from cad_preview import render_dxf_svg
 
 
@@ -440,8 +440,74 @@ def test_panel_hatch_presets_and_masks():
     check("zijinghua preset adds template hatch", "ZIJINGHUA" in patterns, patterns)
     check("fixed panel preset overrides stale custom fill", "QIANBI" not in patterns, patterns)
     check("preset adds vertical stripe hatch", "ANSI31" in patterns, patterns)
+    pattern_line_counts = {
+        entity.dxf.pattern_name: len(entity.pattern.lines)
+        for entity in panel_hatches
+    }
+    check(
+        "custom hatch keeps complete template definition",
+        pattern_line_counts.get("ZIJINGHUA", 0) > 1000,
+        str(pattern_line_counts),
+    )
+    check(
+        "ANSI31 keeps a valid pattern definition",
+        pattern_line_counts.get("ANSI31", 0) >= 1,
+        str(pattern_line_counts),
+    )
     wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT") if entity.dxf.layer == "A-DOOR-MASK"]
     check("hardware mask wipeouts are generated above hatches", len(wipeouts) >= 2, len(wipeouts))
+
+    polygon_doc = ezdxf.new("R2018")
+    polygon_block = polygon_doc.blocks.new("POLYGON_MASK_TEST")
+    polygon_block.add_lwpolyline(
+        [(0, 0), (40, 0), (60, 20), (40, 40), (0, 40), (-20, 20)],
+        close=True,
+    )
+    polygon_ms = polygon_doc.modelspace()
+    polygon_drawer = EzdxfDrawer(polygon_doc, polygon_ms, "HINGE_TEST")
+    mask_created = polygon_drawer.draw_wipeout_for_block("POLYGON_MASK_TEST", (100, 100))
+    polygon_wipeout = next(iter(polygon_ms.query("WIPEOUT")), None)
+    polygon_vertices = polygon_wipeout.boundary_path_wcs() if polygon_wipeout is not None else []
+    check(
+        "hardware mask follows a non-rectangular closed block outline",
+        mask_created and len(polygon_vertices) > 4,
+        str([(round(point.x, 2), round(point.y, 2)) for point in polygon_vertices]),
+    )
+
+
+def test_all_panel_hatch_definitions_survive_roundtrip():
+    template_path = os.path.join(os.path.dirname(BACKEND_DIR), "template.dxf")
+    template_doc = ezdxf.readfile(template_path)
+    library = _build_hatch_library(template_doc)
+    expected = {
+        "\u7d2b\u8346\u82b1": ("ZIJINGHUA", 1000),
+        "\u94b1\u5e01\u6b3e": ("QIANBI", 10),
+        "\u6d41\u661f\u96e8": ("LIUXINGYU", 10),
+        "\u56db\u65b9\u7eb3\u798f": ("EARTH", 2),
+        "\u7ad6\u6761": ("ANSI31", 1),
+        "\u659c\u5b9e\u865a": ("ANSI33", 2),
+        "\u6b63\u5b9e\u865a": ("ANSI33", 2),
+    }
+
+    output_doc = ezdxf.new("R2018")
+    output_ms = output_doc.modelspace()
+    drawer = EzdxfDrawer(output_doc, output_ms, "HINGE_TEST")
+    for index, sample_name in enumerate(expected):
+        drawer.draw_hatch_rect(index * 120, 0, index * 120 + 100, 200, library[sample_name])
+
+    stream = io.StringIO()
+    output_doc.write(stream)
+    roundtrip_doc = ezdxf.read(io.StringIO(stream.getvalue()))
+    hatches = list(roundtrip_doc.modelspace().query("HATCH"))
+    for hatch, (sample_name, (pattern_name, minimum_lines)) in zip(hatches, expected.items()):
+        line_count = len(hatch.pattern.lines) if hatch.pattern is not None else 0
+        check(
+            f"hatch {sample_name} survives DXF roundtrip",
+            hatch.dxf.pattern_name == pattern_name and line_count >= minimum_lines,
+            f"pattern={hatch.dxf.pattern_name}, lines={line_count}",
+        )
+    check("DXF keeps fill display enabled", roundtrip_doc.header.get("$FILLMODE") == 1)
+    check("DXF requests regeneration", roundtrip_doc.header.get("$REGENMODE") == 1)
 
 
 def test_frame_defaults_and_single_back_mirror():
@@ -1191,6 +1257,7 @@ if __name__ == "__main__":
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()
     test_panel_hatch_presets_and_masks()
+    test_all_panel_hatch_definitions_survive_roundtrip()
     test_double_door_sized_handles_draw_on_front_only()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()

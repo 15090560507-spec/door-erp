@@ -10,6 +10,7 @@ import {
   importAccessoriesXlsx,
 } from "@/lib/quoteApi";
 import type { Accessory } from "@/lib/quoteTypes";
+import { localDateYmd } from "@/lib/dateTime";
 
 interface Props {
   open: boolean;
@@ -141,7 +142,7 @@ export default function AccessoryModal({ open, onClose }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `配件价格库_${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `配件价格库_${localDateYmd()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setStatus(`已导出 ${data.length} 条`);

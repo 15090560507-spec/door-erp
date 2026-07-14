@@ -134,7 +134,7 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                       #{quote.id} {quote.customerName}
                     </span>
                     <span className="ml-2 text-[11px] text-[#8E8E93]">
-                      {quote.projectName} / {quote.quoteDate}
+                      {[quote.projectName, quote.quoteDate].filter(Boolean).join(" / ")}
                     </span>
                   </button>
                   <button
