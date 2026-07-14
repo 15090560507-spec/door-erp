@@ -319,14 +319,22 @@ def test_optional_project_and_adaptive_excel_layout():
             "projectName": "",
             "quoteDate": "2026-07-14",
             "noticeText": "本报价说明内容较长，需要在固定A4范围内自动换行并调整行高。",
-            "items": [{
-                "productName": "0.8厚不锈钢双面造型门含门框门板及多项制作材料说明，包含正反面款式、锁体、门套和生产备注内容",
-                "width": 1290,
-                "height": 2340,
-                "openDirection": "左外开",
-                "unit": "m2",
-                "unitPrice": 1350,
-            }],
+            "items": [
+                {
+                    "productName": "0.8厚不锈钢双面造型门含门框门板及多项制作材料说明，包含正反面款式、锁体、门套和生产备注内容",
+                    "width": 1290,
+                    "height": 2340,
+                    "openDirection": "左外开",
+                    "unit": "m2",
+                    "unitPrice": 1350,
+                },
+                {
+                    "productName": "测试配件",
+                    "unit": "套",
+                    "quantity": 17.2344,
+                    "unitPrice": 100,
+                },
+            ],
         })
         check("quote accepts an empty project name", created["projectName"] == "", str(created))
         check(
@@ -346,6 +354,19 @@ def test_optional_project_and_adaptive_excel_layout():
             31.525 < float(sheet.column_dimensions["C"].width or 0) <= 37.525,
             str(sheet.column_dimensions["C"].width),
         )
+        check("area quantity remains a formula", str(sheet["H9"].value).startswith("=IF("), str(sheet["H9"].value))
+        check("explicit quantity remains editable", sheet["H10"].value == 17.2344, str(sheet["H10"].value))
+        check("quantity column is wide enough", float(sheet.column_dimensions["H"].width or 0) >= 11.5, str(sheet.column_dimensions["H"].width))
+        check("quantity format avoids hash overflow", sheet["H10"].number_format == "0.####", sheet["H10"].number_format)
+        check("detail amount is formula driven", sheet["J9"].value == '=IF(OR(H9="",I9=""),"",ROUND(H9*I9,0))', str(sheet["J9"].value))
+        check("quote total is formula driven", sheet["J17"].value == "=SUM(J9:J16)", str(sheet["J17"].value))
+        uppercase_formula = str(sheet["F18"].value)
+        check(
+            "uppercase amount references total with DBNum2",
+            uppercase_formula.startswith("=IF(") and "J17" in uppercase_formula and "ROUND" in uppercase_formula and "DBNum2" in uppercase_formula,
+            uppercase_formula,
+        )
+        check("workbook calculation mode is automatic", workbook.calculation.calcMode == "auto", str(workbook.calculation.calcMode))
         check("dynamic text uses Song font", sheet["B9"].font.name == "宋体", str(sheet["B9"].font.name))
         normalized_print_area = str(sheet.print_area).replace("$", "")
         check("quote print area remains A1:J24", "A1:J24" in normalized_print_area, str(sheet.print_area))

@@ -43,6 +43,12 @@ def _line_count(value, capacity: float) -> int:
     return max(1, sum(max(1, math.ceil(_display_width(line) / usable)) for line in text.splitlines() or [""]))
 
 
+def _merged_text_capacity(ws, columns: str, utilization: float = 0.72) -> float:
+    """Estimate usable text width inside merged cells with Chinese content."""
+    raw_width = sum(_column_width(ws, column) for column in columns)
+    return max(1, raw_width * utilization)
+
+
 def _set_song_font(cell) -> None:
     font = copy(cell.font)
     font.name = "宋体"
@@ -75,11 +81,18 @@ def _apply_dynamic_layout(ws, quote: dict, items: list[dict]) -> None:
         target_capacity = min(current_product_capacity + 6, max(current_product_capacity, product_width))
         ws.column_dimensions["C"].width = _column_width(ws, "C") + (target_capacity - current_product_capacity)
 
-    product_capacity = _column_width(ws, "B") + _column_width(ws, "C")
+    product_capacity = _merged_text_capacity(ws, "BC")
     for row in range(9, 17):
         cell = ws[f"B{row}"]
         _enable_wrap(cell)
-        _fit_row(ws, row, cell.value, product_capacity, 25, line_height=19)
+        _fit_row(ws, row, cell.value, product_capacity, 25, line_height=22)
+
+    ws.column_dimensions["H"].width = max(_column_width(ws, "H"), 11.5)
+    ws.column_dimensions["I"].width = max(_column_width(ws, "I"), 9.5)
+    for row in range(9, 17):
+        ws[f"H{row}"].number_format = "0.####"
+        ws[f"J{row}"].number_format = "0"
+    ws["J17"].number_format = "0"
 
     customer_capacity = sum(_column_width(ws, column) for column in ("C", "D", "E", "F"))
     for row, value in ((3, quote.get("customerName", "")), (4, quote.get("projectName", ""))):
@@ -217,11 +230,8 @@ def generate_excel(quote: dict, output_path: str):
             ws[f"H{row}"] = item.get("quantity")
         ws[f"I{row}"] = item.get("unitPrice") or item.get("unit_price", 0)
 
-    total = sum(_quote_amount(item) for item in items)
-    ws["J17"] = total
-    ws["F18"] = '=IF(J17=0,"",TEXT(J17,"[dbnum2]人民币0元整"))'
-
-    ws["F18"] = _to_chinese_amount(total)
+    ws["J17"] = "=SUM(J9:J16)"
+    ws["F18"] = '=IF(J17=0,"","人民币"&TEXT(ROUND(J17,0),"[DBNum2]")&"元整")'
     ws["A19"] = quote.get("noticeText") or DEFAULT_NOTICE_TEXT
 
     _apply_dynamic_layout(ws, quote, items)
@@ -233,6 +243,7 @@ def generate_excel(quote: dict, output_path: str):
 
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
+    wb.calculation.calcMode = "auto"
     wb.save(output_path)
 
 
