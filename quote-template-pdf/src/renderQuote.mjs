@@ -131,9 +131,6 @@ function renderItemRows(groups) {
   let sequence = 0;
   let itemCount = 0;
   groups.forEach((group, groupIndex) => {
-    if (groups.length > 1) {
-      rows.push(`<tr class="group-row"><td colspan="10">${escapeHtml(group.groupName)}</td></tr>`);
-    }
     group.items.forEach((item, itemIndex) => {
       const hasProduct = Boolean((item.productName || "").trim());
       if (hasProduct) sequence += 1;

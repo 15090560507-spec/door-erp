@@ -1,5 +1,7 @@
 import io
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -119,13 +121,43 @@ class MultiDoorQuoteTests(unittest.TestCase):
         workbook = load_workbook(output_path, data_only=False)
         sheet = workbook["Sheet1 (2)"] if "Sheet1 (2)" in workbook.sheetnames else workbook.worksheets[0]
 
-        self.assertEqual(sheet["A9"].value, "入户门")
-        self.assertEqual(sheet["J12"].value, "=SUM(J10,J11)")
-        self.assertEqual(sheet["A13"].value, "厨房门")
-        self.assertEqual(sheet["J15"].value, "=SUM(J14)")
-        self.assertEqual(sheet["J17"].value, "=SUM(J12,J15)")
+        values = [
+            sheet.cell(row, column).value
+            for row in range(9, 17)
+            for column in range(1, 11)
+        ]
+        self.assertNotIn("入户门", values)
+        self.assertNotIn("厨房门", values)
+        self.assertEqual(sheet["A11"].value, "入户门小计")
+        self.assertEqual(sheet["J11"].value, "=SUM(J9,J10)")
+        self.assertEqual(sheet["A13"].value, "厨房门小计")
+        self.assertEqual(sheet["J13"].value, "=SUM(J12)")
+        self.assertEqual(sheet["J17"].value, "=SUM(J11,J13)")
         self.assertIn("J17", sheet["F18"].value)
         self.assertIn("A1:J24", str(sheet.print_area).replace("$", ""))
+
+    def test_multi_door_html_hides_group_titles_but_keeps_subtotals(self):
+        quote_path = self.root / "quote.json"
+        quote_path.write_text(json.dumps(_multi_door_quote(), ensure_ascii=False), encoding="utf-8")
+        repo_root = Path(BACKEND_DIR).parent
+        script = """
+import { buildQuoteHtml } from './quote-template-pdf/src/renderQuote.mjs';
+const html = await buildQuoteHtml(process.argv[1]);
+process.stdout.write(html);
+"""
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", script, str(quote_path)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('<tr class="group-row">', result.stdout)
+        self.assertIn("入户门小计", result.stdout)
+        self.assertIn("厨房门小计", result.stdout)
 
     def test_quote_memory_upserts_name_category_unit_and_price(self):
         manager = AccessoryDatabaseManager(

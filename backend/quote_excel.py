@@ -12,7 +12,6 @@ import unicodedata
 from copy import copy
 from pathlib import Path
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
 from PIL import Image
 
 
@@ -250,8 +249,6 @@ def generate_excel(quote: dict, output_path: str):
     items: list[dict] = []
     for group_index, group in enumerate(groups):
         group_items = list(group.get("items") or [])
-        if len(groups) > 1:
-            display_rows.append(("group", group, group_index))
         for item in group_items:
             display_rows.append(("item", item, group_index))
             items.append(item)
@@ -281,15 +278,6 @@ def generate_excel(quote: dict, output_path: str):
             _copy_row_format(ws, 16, row)
         for column in range(1, 11):
             ws.cell(row, column).value = None
-
-        if row_type == "group":
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=10)
-            ws[f"A{row}"] = payload.get("groupName") or f"第{marker + 1}樘门"
-            ws[f"A{row}"].fill = PatternFill("solid", fgColor="F2F2F7")
-            font = copy(ws[f"A{row}"].font)
-            font.bold = True
-            ws[f"A{row}"].font = font
-            continue
 
         if row_type == "subtotal":
             _copy_row_format(ws, total_row, row)

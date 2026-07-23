@@ -142,13 +142,6 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               let sequence = 0;
               return groups.flatMap((group, groupIndex) => {
                 const rows = [];
-                if (groups.length > 1) {
-                  rows.push(
-                    <tr className="h-[26px] bg-[#F2F2F7]" key={`group-${groupIndex}`}>
-                      <td className={`${cell} text-left font-bold`} colSpan={10}>{group.groupName || `第${groupIndex + 1}樘门`}</td>
-                    </tr>
-                  );
-                }
                 group.items.forEach((item, itemIndex) => {
                   const hasProduct = Boolean(item.productName.trim());
                   if (hasProduct) sequence += 1;

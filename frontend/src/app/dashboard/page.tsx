@@ -808,8 +808,8 @@ export default function DashboardPage() {
           {module !== "图纸信息录入" && (
             <div>
               {/* 统计概览卡片 */}
-              {!filterDate && !filterStatus && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {(module === "任务总览" || (!filterDate && !filterStatus)) && (
+                <div className={`grid grid-cols-2 gap-3 mb-4 ${module === "任务总览" ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
                   {module === "图纸绘制" && (
                     <>
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
@@ -831,11 +831,41 @@ export default function DashboardPage() {
                   )}
                   {module === "任务总览" && (
                     <>
-                      <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
-                      <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
-                      <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
+                      <StatCard
+                        label="待绘制"
+                        count={statusCounts["待绘制"] ?? 0}
+                        color="bg-[#E8E8ED] text-[#48484A]"
+                        active={filterStatus === "待绘制"}
+                        onClick={() => setFilterStatus(filterStatus === "待绘制" ? "" : "待绘制")}
+                      />
+                      <StatCard
+                        label="待初审"
+                        count={statusCounts["待初审"] ?? 0}
+                        color="bg-[#FFF3E0] text-[#CC7A00]"
+                        active={filterStatus === "待初审"}
+                        onClick={() => setFilterStatus(filterStatus === "待初审" ? "" : "待初审")}
+                      />
+                      <StatCard
+                        label="待终审"
+                        count={statusCounts["待终审"] ?? 0}
+                        color="bg-[#FFF3E0] text-[#CC7A00]"
+                        active={filterStatus === "待终审"}
+                        onClick={() => setFilterStatus(filterStatus === "待终审" ? "" : "待终审")}
+                      />
+                      <StatCard
+                        label="待修改"
+                        count={statusCounts["待修改"] ?? 0}
+                        color="bg-[#FFEBEB] text-[#CC2F2A]"
+                        active={filterStatus === "待修改"}
+                        onClick={() => setFilterStatus(filterStatus === "待修改" ? "" : "待修改")}
+                      />
+                      <StatCard
+                        label="已通过"
+                        count={statusCounts["已通过"] ?? 0}
+                        color="bg-[#E5F9E5] text-[#248A3D]"
+                        active={filterStatus === "已通过"}
+                        onClick={() => setFilterStatus(filterStatus === "已通过" ? "" : "已通过")}
+                      />
                     </>
                   )}
                 </div>
@@ -953,12 +983,33 @@ export default function DashboardPage() {
 }
 
 /** 统计概览卡片 */
-function StatCard({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <div className={`rounded-xl p-4 ${color} bg-opacity-15`}>
+function StatCard({
+  label,
+  count,
+  color,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  color: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `min-h-[76px] w-full rounded-xl border p-4 text-left ${color} bg-opacity-15 transition-all ${
+    active ? "border-current ring-2 ring-current/20" : "border-transparent"
+  } ${onClick ? "cursor-pointer hover:border-current/40" : ""}`;
+  const content = (
+    <>
       <div className="text-[11px] font-medium opacity-70">{label}</div>
       <div className="text-2xl font-bold mt-0.5">{count}</div>
-    </div>
+    </>
+  );
+  if (!onClick) return <div className={className}>{content}</div>;
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} className={className}>
+      {content}
+    </button>
   );
 }
 

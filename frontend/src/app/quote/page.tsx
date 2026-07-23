@@ -19,6 +19,7 @@ import AccessoryModal from "@/components/AccessoryModal";
 import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
+import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { localDateYmd } from "@/lib/dateTime";
 
 async function downloadQuoteFile(quoteId: number, ext: "xlsx" | "jpg" | "pdf", filename: string) {
@@ -43,13 +44,26 @@ function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
   return rows.map((item, index) => index === 0 ? item : { ...item, openDirection: "" });
 }
 
+const DEFAULT_QUOTE_ROW_COUNT = 5;
+
+function withMinimumQuoteRows(rows: QuoteItem[], minimum = DEFAULT_QUOTE_ROW_COUNT): QuoteItem[] {
+  const normalized = normalizeQuoteRows(rows);
+  return [
+    ...normalized,
+    ...Array.from(
+      { length: Math.max(0, minimum - normalized.length) },
+      () => createEmptyQuoteItem(),
+    ),
+  ];
+}
+
 function createQuoteGroup(index = 0): QuoteDoorGroup {
   return {
     groupName: `第${index + 1}樘门`,
     taskId: "",
     pricingMode: "outerArea",
     trimUnitPrice: 0,
-    items: [createEmptyQuoteItem()],
+    items: withMinimumQuoteRows([]),
   };
 }
 
@@ -197,7 +211,7 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
     rows.push(packingRow);
   }
 
-  return normalizeQuoteRows(rows);
+  return withMinimumQuoteRows(rows);
 }
 
 function chooseAccessoryMatch(name: string, matches: Accessory[]): Accessory | null {
@@ -460,8 +474,8 @@ export default function QuotePage() {
       lookupFailedCount = accessoryRows.length;
     }
 
-    const rows = normalizeQuoteRows([mainRow, ...accessoryRows]);
-    updateDoorGroup(0, { items: rows.length ? rows : [createEmptyQuoteItem()] });
+    const rows = withMinimumQuoteRows([mainRow, ...accessoryRows]);
+    updateDoorGroup(0, { items: rows });
 
     const statusParts = ["AI 识别结果已回填"];
     if (result.accessories?.length) statusParts.push(`配件匹配 ${matchedCount}/${result.accessories.length}`);
@@ -559,7 +573,7 @@ export default function QuotePage() {
       taskId: group.taskId || "",
       pricingMode: group.pricingMode || "outerArea",
       trimUnitPrice: group.trimUnitPrice || 0,
-      items: normalizeQuoteRows((group.items || []).map((item) => ({
+      items: withMinimumQuoteRows((group.items || []).map((item) => ({
         accessoryId: item.accessoryId,
         category: item.category || "",
         productName: item.productName || "",
@@ -743,26 +757,19 @@ export default function QuotePage() {
                     </button>
                   </div>
 
-                  <label className="mb-3 block">
+                  <div className="mb-3">
                     <span className="text-[12px] font-medium text-[#8E8E93]">关联图纸项目</span>
-                    <select
+                    <TaskProjectCombobox
+                      tasks={drawingTasks}
                       value={group.taskId}
-                      onChange={(event) => handleApplyTaskQuote(
+                      onChange={(taskId) => handleApplyTaskQuote(
                         groupIndex,
-                        event.target.value,
+                        taskId,
                         group.pricingMode,
                         group.trimUnitPrice,
                       )}
-                      className="mt-1 w-full rounded-lg border border-[#E5E5EA]/60 bg-white px-3 py-2 text-[13px] focus:border-[#007AFF] focus:outline-none"
-                    >
-                      <option value="">选择图纸项目后自动报价</option>
-                      {drawingTasks.map((task) => (
-                        <option key={task.id} value={task.id}>
-                          {task.customer || "未填客户"} / {task.project || "未填项目"} / {task.door_type || ""} / {task.size || ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    />
+                  </div>
 
                   <div className="mb-3 bg-[#F8F8FA] p-3">
                     <div className="mb-2 text-[12px] font-medium text-[#8E8E93]">报价模式</div>

@@ -39,7 +39,7 @@ function clearAuthCookie() {
 
 const AuthContext = createContext<AuthCtx>({
   user: null,
-  module: "任务总览",
+  module: "图纸信息录入",
   loading: true,
   login: async () => false,
   logout: () => {},
@@ -48,7 +48,7 @@ const AuthContext = createContext<AuthCtx>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [module, setModule] = useState<ModuleName>("任务总览");
+  const [module, setModule] = useState<ModuleName>("图纸信息录入");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -120,10 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiLogin(uid, pwd);
       if (res.success && res.user && res.token) {
         setUser(res.user);
-        setModule("任务总览");
+        setModule("图纸信息录入");
         S.setToken(res.token);
         S.setUser(res.user);
-        S.setModule("任务总览");
+        S.setModule("图纸信息录入");
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;

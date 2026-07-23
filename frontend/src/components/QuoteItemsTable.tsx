@@ -31,6 +31,9 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   function updateItem(index: number, field: keyof QuoteItem, value: string | number | null) {
     const next = items.map((item, i) => {
       if (i !== index) return item;
+      if (field === "productName" && !String(value || "").trim()) {
+        return createEmptyQuoteItem();
+      }
       const updated = { ...item, [field]: value };
       // Clear accessoryId when productName is manually changed
       if (field === "productName") updated.accessoryId = null;
