@@ -1,6 +1,6 @@
 "use client";
 
-import type { QuoteItem } from "@/lib/quoteTypes";
+import type { QuoteDoorGroup, QuoteItem } from "@/lib/quoteTypes";
 import { toChineseAmount } from "@/lib/toChineseAmount";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   projectName: string;
   quoteDate: string;
   noticeText: string;
-  items: QuoteItem[];
+  doorGroups: QuoteDoorGroup[];
 }
 
 function numberText(value: number | null | undefined, digits?: number) {
@@ -54,13 +54,21 @@ function quoteAmount(item: QuoteItem) {
   return String(Math.round(qty * unitPrice));
 }
 
-export default function QuotePreview({ customerName, projectName, quoteDate, noticeText, items }: Props) {
-  const rows = Array.from({ length: 8 }, (_, index) => items[index]);
-  const total = rows.reduce((sum, item) => {
-    if (!item) return sum;
+export default function QuotePreview({ customerName, projectName, quoteDate, noticeText, doorGroups }: Props) {
+  const groups = doorGroups.length ? doorGroups : [{
+    groupName: "第1樘门",
+    taskId: "",
+    pricingMode: "outerArea" as const,
+    trimUnitPrice: 0,
+    items: [],
+  }];
+  const itemCount = groups.reduce((count, group) => count + group.items.length, 0);
+  const emptyRows = Math.max(0, 8 - itemCount);
+  const groupTotals = groups.map((group) => group.items.reduce((sum, item) => {
     const amount = Number(quoteAmount(item));
     return Number.isFinite(amount) ? sum + amount : sum;
-  }, 0);
+  }, 0));
+  const total = groupTotals.reduce((sum, amount) => sum + amount, 0);
 
   const cell = "border border-black px-[4px] align-middle overflow-hidden";
   const head = `${cell} text-center font-bold text-[#00005e] whitespace-nowrap`;
@@ -130,22 +138,52 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               <td className={head}>高</td>
             </tr>
 
-            {rows.map((item, index) => {
-              const hasProduct = Boolean(item?.productName.trim());
-              return (
-                <tr className="h-[34px]" key={index}>
-                  <td className={itemCell}>{hasProduct ? index + 1 : ""}</td>
-                  <td className={`${itemCell} text-left`} colSpan={2}>{item?.productName || ""}</td>
-                  <td className={itemCell}>{numberText(item?.width)}</td>
-                  <td className={itemCell}>{numberText(item?.height)}</td>
-                  <td className={itemCell}>{index === 0 ? item?.openDirection || "" : ""}</td>
-                  <td className={itemCell}>{item?.unit || ""}</td>
-                  <td className={itemCell}>{item ? quoteQuantity(item) : ""}</td>
-                  <td className={itemCell}>{numberText(item?.unitPrice)}</td>
-                  <td className={itemCell}>{item ? quoteAmount(item) : ""}</td>
-                </tr>
-              );
-            })}
+            {(() => {
+              let sequence = 0;
+              return groups.flatMap((group, groupIndex) => {
+                const rows = [];
+                if (groups.length > 1) {
+                  rows.push(
+                    <tr className="h-[26px] bg-[#F2F2F7]" key={`group-${groupIndex}`}>
+                      <td className={`${cell} text-left font-bold`} colSpan={10}>{group.groupName || `第${groupIndex + 1}樘门`}</td>
+                    </tr>
+                  );
+                }
+                group.items.forEach((item, itemIndex) => {
+                  const hasProduct = Boolean(item.productName.trim());
+                  if (hasProduct) sequence += 1;
+                  rows.push(
+                    <tr className="min-h-[34px]" key={`item-${groupIndex}-${itemIndex}`}>
+                      <td className={itemCell}>{hasProduct ? sequence : ""}</td>
+                      <td className={`${itemCell} text-left break-words`} colSpan={2}>{item.productName}</td>
+                      <td className={itemCell}>{numberText(item.width)}</td>
+                      <td className={itemCell}>{numberText(item.height)}</td>
+                      <td className={itemCell}>{itemIndex === 0 ? item.openDirection : ""}</td>
+                      <td className={itemCell}>{item.unit}</td>
+                      <td className={itemCell}>{quoteQuantity(item)}</td>
+                      <td className={itemCell}>{numberText(item.unitPrice)}</td>
+                      <td className={itemCell}>{quoteAmount(item)}</td>
+                    </tr>
+                  );
+                });
+                if (groups.length > 1) {
+                  rows.push(
+                    <tr className="h-[26px] bg-[#E8F2FF]" key={`subtotal-${groupIndex}`}>
+                      <td className={`${cell} text-right font-bold`} colSpan={9}>{group.groupName || `第${groupIndex + 1}樘门`}小计</td>
+                      <td className={`${cell} text-center font-bold`}>{groupTotals[groupIndex]}</td>
+                    </tr>
+                  );
+                }
+                return rows;
+              });
+            })()}
+            {Array.from({ length: emptyRows }, (_, index) => (
+              <tr className="h-[34px]" key={`empty-${index}`}>
+                {Array.from({ length: 10 }, (__, cellIndex) => (
+                  <td className={itemCell} key={cellIndex} colSpan={cellIndex === 1 ? 2 : 1}></td>
+                )).filter((_, cellIndex) => cellIndex !== 2)}
+              </tr>
+            ))}
 
             <tr className="h-[28px] bg-[#00b0f0] text-[16px] font-bold">
               <td className={cell}>合计</td>

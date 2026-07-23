@@ -7,6 +7,7 @@ import type {
   AiConfig,
   DrawingAnalysisResponse,
 } from "./quoteTypes";
+import type { QuoteItem } from "./quoteTypes";
 
 // ===================== 配件 API =====================
 
@@ -67,6 +68,11 @@ export async function importAccessoriesXlsx(file: File): Promise<{ imported: num
   const { data } = await api.post<{ imported: number; parsed: number }>("/accessories/import-xlsx", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return data;
+}
+
+export async function rememberQuoteItems(items: QuoteItem[]): Promise<{ remembered: number }> {
+  const { data } = await api.post<{ remembered: number }>("/accessories/remember-quote", { items });
   return data;
 }
 

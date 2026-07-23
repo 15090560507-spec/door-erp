@@ -113,23 +113,53 @@ function toChineseAmount(value) {
   return `\u4eba\u6c11\u5e01${result}\u5143\u6574`;
 }
 
-function renderItemRows(items) {
-  const rows = [];
-  for (let index = 0; index < 8; index += 1) {
-    const item = items[index] || {};
-    const hasProduct = Boolean((item.productName || "").trim());
-    const seq = hasProduct ? String(index + 1) : "";
+function quoteGroups(quote) {
+  if (Array.isArray(quote.doorGroups) && quote.doorGroups.length) {
+    return quote.doorGroups.map((group, index) => ({
+      groupName: group.groupName || `第${index + 1}樘门`,
+      items: Array.isArray(group.items) ? group.items : [],
+    }));
+  }
+  return [{
+    groupName: "第1樘门",
+    items: Array.isArray(quote.items) ? quote.items : [],
+  }];
+}
 
+function renderItemRows(groups) {
+  const rows = [];
+  let sequence = 0;
+  let itemCount = 0;
+  groups.forEach((group, groupIndex) => {
+    if (groups.length > 1) {
+      rows.push(`<tr class="group-row"><td colspan="10">${escapeHtml(group.groupName)}</td></tr>`);
+    }
+    group.items.forEach((item, itemIndex) => {
+      const hasProduct = Boolean((item.productName || "").trim());
+      if (hasProduct) sequence += 1;
+      itemCount += 1;
+      rows.push(`<tr class="item-row">
+        <td class="item cell-center">${hasProduct ? sequence : ""}</td>
+        <td class="item product" colspan="2">${escapeHtml(item.productName || "")}</td>
+        <td class="item cell-center">${escapeHtml(numberText(item.width))}</td>
+        <td class="item cell-center">${escapeHtml(numberText(item.height))}</td>
+        <td class="item cell-center">${escapeHtml(itemIndex === 0 ? item.openDirection || "" : "")}</td>
+        <td class="item cell-center">${escapeHtml(item.unit || "")}</td>
+        <td class="item cell-center">${escapeHtml(quoteQuantity(item))}</td>
+        <td class="item cell-center">${escapeHtml(numberText(item.unitPrice))}</td>
+        <td class="item cell-center">${escapeHtml(quoteAmount(item))}</td>
+      </tr>`);
+    });
+    if (groups.length > 1) {
+      rows.push(`<tr class="group-subtotal">
+        <td colspan="9">${escapeHtml(group.groupName)}小计</td>
+        <td class="cell-center">${escapeHtml(totalAmount(group.items))}</td>
+      </tr>`);
+    }
+  });
+  for (let index = itemCount; index < 8; index += 1) {
     rows.push(`<tr class="item-row">
-      <td class="item cell-center">${escapeHtml(seq)}</td>
-      <td class="item product" colspan="2">${escapeHtml(item.productName || "")}</td>
-      <td class="item cell-center">${escapeHtml(numberText(item.width))}</td>
-      <td class="item cell-center">${escapeHtml(numberText(item.height))}</td>
-      <td class="item cell-center">${escapeHtml(index === 0 ? item.openDirection || "" : "")}</td>
-      <td class="item cell-center">${escapeHtml(item.unit || "")}</td>
-      <td class="item cell-center">${escapeHtml(quoteQuantity(item))}</td>
-      <td class="item cell-center">${escapeHtml(numberText(item.unitPrice))}</td>
-      <td class="item cell-center">${escapeHtml(quoteAmount(item))}</td>
+      <td></td><td colspan="2"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     </tr>`);
   }
 
@@ -137,7 +167,8 @@ function renderItemRows(items) {
 }
 
 function renderHtml(quote, cssText) {
-  const items = Array.isArray(quote.items) ? quote.items.slice(0, 8) : [];
+  const groups = quoteGroups(quote);
+  const items = groups.flatMap((group) => group.items);
   const total = totalAmount(items);
   const noticeText = quote.noticeText || DEFAULT_NOTICE_TEXT;
 
@@ -188,7 +219,7 @@ function renderHtml(quote, cssText) {
           <td class="head">宽</td>
           <td class="head">高</td>
         </tr>
-        ${renderItemRows(items)}
+        ${renderItemRows(groups)}
         <tr class="r17 total-row">
           <td class="total-label">合计</td>
           <td colspan="2"></td>

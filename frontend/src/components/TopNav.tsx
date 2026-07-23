@@ -3,16 +3,13 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { MODULE_OPTIONS } from "@/lib/types";
-import type { ModuleName } from "@/lib/types";
 
 export default function TopNav() {
   const { user, module, setModule, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  const canOpenAdmin = ["超级管理员", "录入员", "绘图员"].includes(user?.role || "");
-  const adminItems = [...MODULE_OPTIONS, { title: "后台管理", module: "后台管理" as ModuleName }];
-  const items = canOpenAdmin ? adminItems : MODULE_OPTIONS;
+  const items = MODULE_OPTIONS;
 
   return (
     <nav className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-[#E5E5EA]/60 shadow-sm">

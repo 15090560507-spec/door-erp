@@ -6,7 +6,7 @@ import {
   getTasks, getTask, createTask, updateTask, deleteTask,
   generateCad, generateCadPreview, downloadCadBlob,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
-  resetPassword as apiResetPassword, getAllTasks,
+  resetPassword as apiResetPassword,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry } from "@/lib/types";
@@ -77,9 +77,9 @@ export default function DashboardPage() {
       };
       if (status) {
         params.status = status;
-      } else if (m === "汇总看板") {
-        // 汇总看板：所有进行中的任务（不含已通过）
-        params.status = "待绘制,待初审,待终审,待修改";
+      } else if (m === "任务总览") {
+        // 任务总览：融合原汇总看板和后台管理，包含全部业务状态。
+        params.status = "待绘制,待初审,待终审,待修改,已通过";
       } else if (m === "图纸绘制") {
         // 绘图员需要看到新任务 + 被打回待修改的任务
         params.status = "待绘制,待修改";
@@ -357,10 +357,6 @@ export default function DashboardPage() {
   };
 
   // ===================== 通用背景 =====================
-  if (module === "后台管理") {
-    return <AdminPanel />;
-  }
-
   return (
     <div>
       {/* 居中 Toast 弹窗 — 点击任意处关闭 */}
@@ -664,6 +660,8 @@ export default function DashboardPage() {
       {/* ---------- 任务列表模式 ---------- */}
       {!activeTaskId && (
         <div>
+          {module === "任务总览" && <AdminSettingsPanel />}
+
           {/* 录入模块 */}
           {module === "图纸信息录入" && (
             <div>
@@ -831,12 +829,13 @@ export default function DashboardPage() {
                       <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
-                  {module === "汇总看板" && (
+                  {module === "任务总览" && (
                     <>
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                       <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
+                      <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
                 </div>
@@ -878,7 +877,7 @@ export default function DashboardPage() {
 
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-lg font-semibold text-[#1C1C1E]">
-                  {module === "汇总看板" && "全部进行中任务"}
+                  {module === "任务总览" && "全部任务"}
                   {module === "图纸绘制" && "待绘制 / 待修改任务"}
                   {module === "图纸初审" && "待初审任务"}
                   {module === "图纸终审" && "待终审 / 已通过任务"}
@@ -921,7 +920,7 @@ export default function DashboardPage() {
                       onClick={(task) => {
                         setActiveTaskId(task.id);
                       }}
-                      onDelete={["汇总看板", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
+                      onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
                     />
                   ))}
                   {total > PAGE_SIZE && (
@@ -1145,7 +1144,7 @@ function CadPreviewPanel({
   );
 }
 
-// ===================== 后台管理微型组件 =====================
+// ===================== 任务总览管理设置 =====================
 function AdminTh({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <th className={`px-5 py-3 text-left text-[11px] font-semibold text-[#8E8E93] uppercase tracking-wider ${className || ""}`}>
@@ -1155,14 +1154,6 @@ function AdminTh({ children, className }: { children: React.ReactNode; className
 }
 function AdminTd({ children, className }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-5 py-3 text-sm text-[#1C1C1E] ${className || ""}`}>{children}</td>;
-}
-function AdminKV({ label, value, isWide }: { label: string; value: string; isWide?: boolean }) {
-  return (
-    <div className={isWide ? "col-span-full" : ""}>
-      <span className="text-[#8E8E93]">{label}</span>
-      <p className="text-[#1C1C1E] font-medium mt-0.5 break-all">{value}</p>
-    </div>
-  );
 }
 function MiniInput({ label, value, onChange, placeholder }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
@@ -1181,8 +1172,8 @@ function MiniInput({ label, value, onChange, placeholder }: {
   );
 }
 
-/** 后台管理面板 */
-function AdminPanel() {
+/** 任务总览中的超级管理员设置 */
+function AdminSettingsPanel() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "超级管理员";
   const [users, setUsers] = useState<Record<string, UserInfo>>({});
@@ -1193,11 +1184,6 @@ function AdminPanel() {
   const [resetUid, setResetUid] = useState<string | null>(null);
   const [resetPwd, setResetPwd] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
-
-  // 订单数据总览
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [taskLoading, setTaskLoading] = useState(false);
-  const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
   const msgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { return () => { if (msgTimerRef.current) clearTimeout(msgTimerRef.current); }; }, []);
@@ -1216,18 +1202,8 @@ function AdminPanel() {
     } catch { flash("用户列表加载失败", "error"); }
   };
 
-  const fetchTasks = async () => {
-    setTaskLoading(true);
-    try {
-      const res = await getAllTasks();
-      setTasks(res.tasks);
-    } catch {}
-    setTaskLoading(false);
-  };
-
   useEffect(() => {
     if (isSuperAdmin) fetchUsers();
-    fetchTasks();
   }, [isSuperAdmin]);
 
   const handleSave = async () => {
@@ -1266,16 +1242,14 @@ function AdminPanel() {
     { value: "超级管理员", label: "超级管理员" },
   ];
 
-  const statusColor = (s: string) => {
-    if (s === "已通过") return "bg-[#E5FBE5] text-[#34C759]";
-    if (s === "待修改") return "bg-[#FFE5E5] text-[#FF3B30]";
-    if (s.includes("待")) return "bg-[#FFF3E0] text-[#FF9500]";
-    return "bg-[#F2F2F7] text-[#8E8E93]";
-  };
+  if (!isSuperAdmin) return null;
 
   return (
-    <div>
-      <h3 className="text-xl font-semibold text-[#1C1C1E] mb-4">系统后台管理</h3>
+    <details className="mb-6 overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm">
+      <summary className="cursor-pointer select-none px-5 py-4 text-[15px] font-semibold text-[#1C1C1E]">
+        管理设置（仅超级管理员）
+      </summary>
+      <div className="border-t border-[#F2F2F7] p-5">
 
       {msg && (
         <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${
@@ -1286,7 +1260,6 @@ function AdminPanel() {
       )}
 
       {/* ========== 账号管理 ========== */}
-      {isSuperAdmin ? (
       <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden mb-8">
         <div className="px-6 py-5 border-b border-[#F2F2F7]">
           <h2 className="text-[20px] font-semibold text-[#1C1C1E]">账号管理</h2>
@@ -1371,12 +1344,6 @@ function AdminPanel() {
           </table>
         </div>
       </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 mb-8">
-          <h2 className="text-[20px] font-semibold text-[#1C1C1E]">后台任务总览</h2>
-          <p className="text-[#8E8E93] text-sm mt-1">当前账号可查看订单数据；账号新增、删除、重置密码和下拉配置仅超级管理员可操作。</p>
-        </div>
-      )}
 
       {/* 重置密码弹窗 */}
       {resetUid && (
@@ -1411,108 +1378,8 @@ function AdminPanel() {
       )}
 
       {/* ========== 下拉选项管理 ========== */}
-      {isSuperAdmin && <DropdownOptionsManager />}
-
-      {/* ========== 订单数据总览 ========== */}
-      <div className="bg-white rounded-2xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-[#F2F2F7] flex items-center justify-between">
-          <div>
-            <h2 className="text-[20px] font-semibold text-[#1C1C1E]">订单数据总览</h2>
-            <p className="text-[#8E8E93] text-xs mt-0.5">
-              全部 {tasks.length} 条记录 — 纯文本上帝视角
-            </p>
-          </div>
-          <button
-            onClick={fetchTasks}
-            disabled={taskLoading}
-            className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-xs font-medium hover:border-[#007AFF] transition-all"
-          >
-            {taskLoading ? "刷新中..." : "刷新数据"}
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#F2F2F7] bg-[#FAFAFC]">
-                <AdminTh>ID</AdminTh>
-                <AdminTh>日期</AdminTh>
-                <AdminTh>客户</AdminTh>
-                <AdminTh>项目</AdminTh>
-                <AdminTh>门型</AdminTh>
-                <AdminTh>洞口尺寸</AdminTh>
-                <AdminTh>制单人</AdminTh>
-                <AdminTh>状态</AdminTh>
-                <AdminTh className="text-right">详情</AdminTh>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-[#8E8E93] text-sm">
-                    {taskLoading ? "加载中..." : "暂无订单数据"}
-                  </td>
-                </tr>
-              ) : (
-                tasks.map((t) => (
-                  <React.Fragment key={t.id}>
-                    <tr
-                      className="border-b border-[#F2F2F7] hover:bg-[#FAFAFC] transition-colors cursor-pointer"
-                      onClick={() => setExpandedTask(expandedTask === t.id ? null : t.id)}
-                    >
-                      <AdminTd><span className="font-mono text-xs text-[#8E8E93]">{t.id}</span></AdminTd>
-                      <AdminTd>{t.date}</AdminTd>
-                      <AdminTd className="font-medium text-[#1C1C1E]">{t.customer}</AdminTd>
-                      <AdminTd className="max-w-[140px] truncate">{t.project}</AdminTd>
-                      <AdminTd>{t.door_type}</AdminTd>
-                      <AdminTd className="font-mono text-xs">{t.size}</AdminTd>
-                      <AdminTd className="text-[#8E8E93]">{t.params?.hhxd || "-"}</AdminTd>
-                      <AdminTd>
-                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${statusColor(t.status)}`}>
-                          {t.status}
-                        </span>
-                      </AdminTd>
-                      <AdminTd>
-                        <div className="flex justify-end">
-                          <span className="text-xs text-[#007AFF] font-medium">
-                            {expandedTask === t.id ? "收起 ↑" : "展开 ↓"}
-                          </span>
-                        </div>
-                      </AdminTd>
-                    </tr>
-                    {expandedTask === t.id && (
-                      <tr className="bg-[#FAFAFC] border-b border-[#F2F2F7]">
-                        <td colSpan={9} className="px-6 py-4">
-                          <div className="grid grid-cols-3 md:grid-cols-5 gap-3 text-xs">
-                            <AdminKV label="订单号" value={t.params?.ddh || "-"} />
-                            <AdminKV label="材质" value={t.params?.zzcl || "-"} />
-                            <AdminKV label="颜色" value={t.params?.ys || "-"} />
-                            <AdminKV label="开向" value={`${t.params?.sel_kx || ""}${t.params?.sel_nk || ""}`} />
-                            <AdminKV label="数量" value={t.params?.sl || "-"} />
-                            <AdminKV label="下槛" value={t.params?.threshold_type || "-"} />
-                            <AdminKV label="拉手(正)" value={t.params?.zmls || "-"} />
-                            <AdminKV label="拉手(反)" value={t.params?.fmls || "-"} />
-                            <AdminKV label="合页" value={t.params?.sel_hys || "-"} />
-                            <AdminKV label="门扇厚" value={t.params?.mshd ? `${t.params.mshd}mm` : "-"} />
-                            <AdminKV label="气窗" value={t.params?.sel_qc || "无"} />
-                            <AdminKV label="门楣" value={t.params?.has_mm ? `${t.params.mm_height}mm` : "无"} />
-                            <AdminKV label="立柱" value={t.params?.has_pillar ? `有 (${t.params.pillar_width_str})` : "无"} />
-                            <AdminKV label="外包套" value={t.params?.has_outer ? `${t.params.trim_front_in}mm` : "无"} />
-                            <AdminKV label="内包套" value={t.params?.has_inner ? `${t.params.trim_back_in}mm` : "无"} />
-                            <AdminKV label="包装" value={t.params?.sel_bz || "-"} />
-                            <AdminKV label="沟通记录" value={t.ref_text || "无"} isWide />
-                            <AdminKV label="审核意见" value={t.review_feedback || "无"} isWide />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      <DropdownOptionsManager />
       </div>
-    </div>
+    </details>
   );
 }

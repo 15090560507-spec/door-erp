@@ -91,6 +91,15 @@ class AccessoryDatabaseManager:
             items = self._load_unlocked()
             return [it for it in items if it.get("active", 0) == 1]
 
+    def get_by_id(self, accessory_id: int) -> Optional[Dict]:
+        """按 id 返回有效配件。"""
+        with self._lock:
+            items = self._load_unlocked()
+            for item in items:
+                if item.get("id") == accessory_id and item.get("active", 0) == 1:
+                    return dict(item)
+            return None
+
     def add(self, data: Dict) -> Dict:
         """新增配件，自动递增 id，active=1"""
         with self._lock:
@@ -186,13 +195,13 @@ class QuoteDatabaseManager:
     # ---------- 公开 API ----------
 
     def get_all(self, limit: int = 50) -> List[Dict]:
-        """返回报价单列表（不含 items 明细），最新在前"""
+        """返回报价单列表（不含明细），最新在前"""
         with self._lock:
             quotes = self._load_unlocked()
             quotes_sorted = sorted(quotes, key=lambda q: q.get("id", 0), reverse=True)
             result = []
             for q in quotes_sorted[:limit]:
-                summary = {k: v for k, v in q.items() if k != "items"}
+                summary = {k: v for k, v in q.items() if k not in ("items", "doorGroups")}
                 result.append(summary)
             return result
 
@@ -202,7 +211,16 @@ class QuoteDatabaseManager:
             quotes = self._load_unlocked()
             for q in quotes:
                 if q.get("id") == quote_id:
-                    return dict(q)
+                    result = dict(q)
+                    if not result.get("doorGroups"):
+                        result["doorGroups"] = [{
+                            "groupName": "第1樘门",
+                            "taskId": "",
+                            "pricingMode": "outerArea",
+                            "trimUnitPrice": 0,
+                            "items": list(result.get("items") or []),
+                        }]
+                    return result
             return None
 
     def create(self, quote_data: Dict) -> Dict:
@@ -213,15 +231,31 @@ class QuoteDatabaseManager:
         if not quote_data.get("quoteDate", "").strip():
             raise ValueError("quoteDate 为必填字段")
 
-        items = quote_data.get("items", [])
-        if not isinstance(items, list) or len(items) == 0:
+        door_groups = quote_data.get("doorGroups") or []
+        items = quote_data.get("items") or []
+        if not door_groups and items:
+            door_groups = [{
+                "groupName": "第1樘门",
+                "taskId": "",
+                "pricingMode": "outerArea",
+                "trimUnitPrice": 0,
+                "items": items,
+            }]
+        if not isinstance(door_groups, list) or not door_groups:
             raise ValueError("items 不能为空")
-        if len(items) > 8:
-            raise ValueError("最多只能有 8 个项目")
+        total_items = sum(len(group.get("items") or []) for group in door_groups if isinstance(group, dict))
+        if total_items == 0:
+            raise ValueError("items 不能为空")
+        if total_items > 100:
+            raise ValueError("单张报价单最多只能有 100 个项目")
 
-        for idx, item in enumerate(items):
-            if not item.get("productName", "").strip():
-                raise ValueError(f"第 {idx + 1} 个项目的 productName 为必填字段")
+        for group_index, group in enumerate(door_groups):
+            group_items = group.get("items") or []
+            if not group_items:
+                raise ValueError(f"第 {group_index + 1} 樘门至少需要一个项目")
+            for item_index, item in enumerate(group_items):
+                if not item.get("productName", "").strip():
+                    raise ValueError(f"第 {group_index + 1} 樘门第 {item_index + 1} 个项目的 productName 为必填字段")
 
         with self._lock:
             quotes = self._load_unlocked()
@@ -236,21 +270,37 @@ class QuoteDatabaseManager:
                 "noticeText": quote_data.get("noticeText", "").strip() or "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002",
                 "createdAt": now,
                 "items": [],
+                "doorGroups": [],
             }
 
-            for idx, item in enumerate(items):
-                quote["items"].append({
-                    "id": idx + 1,
-                    "accessoryId": item.get("accessoryId"),
-                    "productName": item.get("productName", "").strip(),
-                    "width": item.get("width"),
-                    "height": item.get("height"),
-                    "quantity": item.get("quantity"),
-                    "openDirection": item.get("openDirection", ""),
-                    "unit": item.get("unit", ""),
-                    "unitPrice": item.get("unitPrice", 0),
-                    "rowOrder": idx,
-                })
+            global_row = 0
+            for group_index, group in enumerate(door_groups):
+                saved_group = {
+                    "groupName": str(group.get("groupName") or f"第{group_index + 1}樘门").strip(),
+                    "taskId": str(group.get("taskId") or "").strip(),
+                    "pricingMode": str(group.get("pricingMode") or "outerArea"),
+                    "trimUnitPrice": float(group.get("trimUnitPrice") or 0),
+                    "items": [],
+                }
+                for item_index, item in enumerate(group.get("items") or []):
+                    saved_item = {
+                        "id": global_row + 1,
+                        "accessoryId": item.get("accessoryId"),
+                        "category": str(item.get("category") or ""),
+                        "productName": item.get("productName", "").strip(),
+                        "width": item.get("width"),
+                        "height": item.get("height"),
+                        "quantity": item.get("quantity"),
+                        "openDirection": item.get("openDirection", "") if item_index == 0 else "",
+                        "unit": item.get("unit", ""),
+                        "unitPrice": item.get("unitPrice", 0),
+                        "rowOrder": global_row,
+                        "groupIndex": group_index,
+                    }
+                    saved_group["items"].append(saved_item)
+                    quote["items"].append(dict(saved_item))
+                    global_row += 1
+                quote["doorGroups"].append(saved_group)
 
             quotes.append(quote)
             self._atomic_save(quotes)

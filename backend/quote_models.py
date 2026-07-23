@@ -2,7 +2,7 @@
 报价系统 Pydantic 模型
 """
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 DEFAULT_QUOTE_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
 
@@ -49,6 +49,7 @@ class AccessoryImport(BaseModel):
 class QuoteItemRequest(BaseModel):
     """报价明细行"""
     accessoryId: Optional[int] = None
+    category: str = ""
     productName: str
     width: Optional[float] = None
     height: Optional[float] = None
@@ -58,19 +59,30 @@ class QuoteItemRequest(BaseModel):
     unitPrice: float = 0.0
 
 
+class QuoteDoorGroupRequest(BaseModel):
+    """同一报价单中的一樘门及其配件"""
+    groupName: str = ""
+    taskId: str = ""
+    pricingMode: str = "outerArea"
+    trimUnitPrice: float = 0.0
+    items: List[QuoteItemRequest] = Field(default_factory=list)
+
+
 class QuoteCreate(BaseModel):
     """创建报价单"""
     customerName: str
     projectName: str = ""
     quoteDate: str
     noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
-    items: List[QuoteItemRequest]
+    items: List[QuoteItemRequest] = Field(default_factory=list)
+    doorGroups: List[QuoteDoorGroupRequest] = Field(default_factory=list)
 
 
 class QuoteItemResponse(BaseModel):
     """报价明细响应"""
     id: int
     accessoryId: Optional[int] = None
+    category: str = ""
     productName: str
     width: Optional[float] = None
     height: Optional[float] = None
@@ -81,6 +93,15 @@ class QuoteItemResponse(BaseModel):
     rowOrder: int
 
 
+class QuoteDoorGroupResponse(BaseModel):
+    """报价单门组响应"""
+    groupName: str = ""
+    taskId: str = ""
+    pricingMode: str = "outerArea"
+    trimUnitPrice: float = 0.0
+    items: List[QuoteItemResponse] = Field(default_factory=list)
+
+
 class QuoteResponse(BaseModel):
     """报价单响应"""
     id: int
@@ -89,13 +110,28 @@ class QuoteResponse(BaseModel):
     quoteDate: str
     noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     createdAt: str = ""
-    items: List[QuoteItemResponse] = []
+    items: List[QuoteItemResponse] = Field(default_factory=list)
+    doorGroups: List[QuoteDoorGroupResponse] = Field(default_factory=list)
 
 
 class QuoteListResponse(BaseModel):
     """报价单列表"""
     quotes: List[QuoteResponse]
     total: int
+
+
+class QuoteMemoryItem(BaseModel):
+    """需要记忆到配件库的报价行"""
+    accessoryId: Optional[int] = None
+    category: str = ""
+    productName: str = ""
+    unit: str = ""
+    unitPrice: float = 0.0
+
+
+class QuoteMemoryRequest(BaseModel):
+    """批量记忆报价行"""
+    items: List[QuoteMemoryItem] = Field(default_factory=list)
 
 
 # ===================== AI 配置模型 =====================

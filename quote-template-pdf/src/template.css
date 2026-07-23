@@ -63,6 +63,8 @@ body {
 .quote-sheet tr.r7,
 .quote-sheet tr.r8 { height: 6.6mm; }
 .quote-sheet tr.item-row { height: 8.8mm; }
+.quote-sheet tr.group-row,
+.quote-sheet tr.group-subtotal { height: 6.6mm; }
 .quote-sheet tr.r17 { height: 6.6mm; }
 .quote-sheet tr.r18 { height: 7.2mm; }
 .quote-sheet tr.r19 { height: 12.0mm; }
@@ -138,6 +140,22 @@ body {
 
 .item.product {
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.group-row td {
+  background: #f2f2f7;
+  font-size: 12pt;
+  font-weight: 700;
+  text-align: left;
+}
+
+.group-subtotal td {
+  background: #e8f2ff;
+  font-size: 12pt;
+  font-weight: 700;
+  text-align: right;
 }
 
 .total-row td {

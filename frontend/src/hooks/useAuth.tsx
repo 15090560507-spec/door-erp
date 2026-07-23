@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { UserInfo, ModuleName } from "@/lib/types";
+import { MODULE_OPTIONS } from "@/lib/types";
 
 interface AuthCtx {
   user: UserInfo | null;
@@ -23,7 +24,7 @@ const S = {
     catch { return null; }
   },
   setUser: (v: UserInfo) => sessionStorage.setItem("door_user", JSON.stringify(v)),
-  getModule: () => sessionStorage.getItem("door_module") as ModuleName | null,
+  getModule: () => sessionStorage.getItem("door_module"),
   setModule: (v: string) => sessionStorage.setItem("door_module", v),
   clear: () => { sessionStorage.removeItem("door_token"); sessionStorage.removeItem("door_user"); sessionStorage.removeItem("door_module"); },
 };
@@ -38,7 +39,7 @@ function clearAuthCookie() {
 
 const AuthContext = createContext<AuthCtx>({
   user: null,
-  module: "汇总看板",
+  module: "任务总览",
   loading: true,
   login: async () => false,
   logout: () => {},
@@ -47,7 +48,7 @@ const AuthContext = createContext<AuthCtx>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [module, setModule] = useState<ModuleName>("汇总看板");
+  const [module, setModule] = useState<ModuleName>("任务总览");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -87,7 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser({ uid: verified.uid, role: verified.role, name: verified.name, default_module: verified.default_module });
           }
           const m = S.getModule();
-          if (m) setModule(m);
+          if (m === "汇总看板" || m === "后台管理") {
+            setModule("任务总览");
+            S.setModule("任务总览");
+          } else if (m && MODULE_OPTIONS.some((option) => option.module === m)) {
+            setModule(m as ModuleName);
+          }
         }
 
         if (!cancelled && !verified) {
@@ -114,10 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiLogin(uid, pwd);
       if (res.success && res.user && res.token) {
         setUser(res.user);
-        setModule("汇总看板");
+        setModule("任务总览");
         S.setToken(res.token);
         S.setUser(res.user);
-        S.setModule("汇总看板");
+        S.setModule("任务总览");
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;

@@ -12,6 +12,7 @@ import unicodedata
 from copy import copy
 from pathlib import Path
 from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 from PIL import Image
 
 
@@ -74,7 +75,13 @@ def _fit_row_group(ws, rows: range, value, capacity: float, minimum_total: float
         ws.row_dimensions[row].height = each
 
 
-def _apply_dynamic_layout(ws, quote: dict, items: list[dict]) -> None:
+def _apply_dynamic_layout(
+    ws,
+    quote: dict,
+    items: list[dict],
+    item_rows: list[int],
+    total_row: int,
+) -> None:
     product_width = max((_display_width(item.get("productName") or item.get("product_name") or "") for item in items), default=0)
     current_product_capacity = _column_width(ws, "B") + _column_width(ws, "C")
     if product_width > current_product_capacity:
@@ -82,17 +89,17 @@ def _apply_dynamic_layout(ws, quote: dict, items: list[dict]) -> None:
         ws.column_dimensions["C"].width = _column_width(ws, "C") + (target_capacity - current_product_capacity)
 
     product_capacity = _merged_text_capacity(ws, "BC")
-    for row in range(9, 17):
+    for row in item_rows:
         cell = ws[f"B{row}"]
         _enable_wrap(cell)
         _fit_row(ws, row, cell.value, product_capacity, 25, line_height=22)
 
     ws.column_dimensions["H"].width = max(_column_width(ws, "H"), 11.5)
     ws.column_dimensions["I"].width = max(_column_width(ws, "I"), 9.5)
-    for row in range(9, 17):
+    for row in item_rows:
         ws[f"H{row}"].number_format = "0.####"
         ws[f"J{row}"].number_format = "0"
-    ws["J17"].number_format = "0"
+    ws[f"J{total_row}"].number_format = "0"
 
     customer_capacity = sum(_column_width(ws, column) for column in ("C", "D", "E", "F"))
     for row, value in ((3, quote.get("customerName", "")), (4, quote.get("projectName", ""))):
@@ -100,21 +107,55 @@ def _apply_dynamic_layout(ws, quote: dict, items: list[dict]) -> None:
         _fit_row(ws, row, value, customer_capacity, 20.25, line_height=18)
 
     full_capacity = sum(_column_width(ws, column) for column in "ABCDEFGHIJ")
-    _enable_wrap(ws["A19"])
-    _fit_row(ws, 19, ws["A19"].value, full_capacity, 34, line_height=18)
-    _enable_wrap(ws["A20"])
-    _fit_row_group(ws, range(20, 23), ws["A20"].value, full_capacity, 66, line_height=19)
-    for row, minimum in ((23, 105), (24, 81)):
+    notice_row = total_row + 2
+    terms_row = total_row + 3
+    invoice_row = total_row + 6
+    bank_row = total_row + 7
+    _enable_wrap(ws[f"A{notice_row}"])
+    _fit_row(ws, notice_row, ws[f"A{notice_row}"].value, full_capacity, 34, line_height=18)
+    _enable_wrap(ws[f"A{terms_row}"])
+    _fit_row_group(ws, range(terms_row, terms_row + 3), ws[f"A{terms_row}"].value, full_capacity, 66, line_height=19)
+    for row, minimum in ((invoice_row, 105), (bank_row, 81)):
         _enable_wrap(ws[f"A{row}"])
         _fit_row(ws, row, ws[f"A{row}"].value, full_capacity, minimum, line_height=19)
 
-    _enable_wrap(ws["F18"])
+    amount_row = total_row + 1
+    _enable_wrap(ws[f"F{amount_row}"])
     amount_capacity = sum(_column_width(ws, column) for column in "FGHIJ")
-    _fit_row(ws, 18, ws["F18"].value, amount_capacity, 20.25, line_height=18)
+    _fit_row(ws, amount_row, ws[f"F{amount_row}"].value, amount_capacity, 20.25, line_height=18)
 
-    for row in ws.iter_rows(min_row=1, max_row=24, min_col=1, max_col=10):
+    for row in ws.iter_rows(min_row=1, max_row=bank_row, min_col=1, max_col=10):
         for cell in row:
             _set_song_font(cell)
+
+
+def _quote_groups(quote: dict) -> list[dict]:
+    groups = quote.get("doorGroups") or []
+    if groups:
+        return groups
+    return [{
+        "groupName": "第1樘门",
+        "taskId": "",
+        "pricingMode": "outerArea",
+        "trimUnitPrice": 0,
+        "items": quote.get("items") or [],
+    }]
+
+
+def _copy_row_format(ws, source_row: int, target_row: int) -> None:
+    ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
+    for column in range(1, 11):
+        source = ws.cell(source_row, column)
+        target = ws.cell(target_row, column)
+        target._style = copy(source._style)
+        target.number_format = source.number_format
+        target.alignment = copy(source.alignment)
+
+
+def _unmerge_dynamic_rows(ws) -> None:
+    for merged_range in list(ws.merged_cells.ranges):
+        if merged_range.min_row >= 9:
+            ws.unmerge_cells(str(merged_range))
 
 
 def _is_area_unit(unit: str) -> bool:
@@ -204,42 +245,105 @@ def generate_excel(quote: dict, output_path: str):
     ws["C4"] = quote.get("projectName", "")
     ws["I3"] = quote.get("quoteDate", "")
 
-    items = quote.get("items", [])[:8]
+    groups = _quote_groups(quote)
+    display_rows: list[tuple[str, dict, int]] = []
+    items: list[dict] = []
+    for group_index, group in enumerate(groups):
+        group_items = list(group.get("items") or [])
+        if len(groups) > 1:
+            display_rows.append(("group", group, group_index))
+        for item in group_items:
+            display_rows.append(("item", item, group_index))
+            items.append(item)
+        if len(groups) > 1:
+            display_rows.append(("subtotal", group, group_index))
+    while len(display_rows) < 8:
+        display_rows.append(("item", {}, -1))
 
-    # Clear and set formulas for rows 9-16
-    for row in range(9, 17):
-        ws[f"B{row}"] = None
-        ws[f"D{row}"] = None
-        ws[f"E{row}"] = None
-        ws[f"F{row}"] = None
-        ws[f"G{row}"] = None
-        ws[f"I{row}"] = None
-        ws[f"A{row}"] = f'=IF(B{row}<>"",COUNTA($B$9:B{row}),"")'
-        ws[f"H{row}"] = f'=IF(B{row}="","",IF(OR(G{row}="m2",G{row}="㎡",G{row}="m²"),IF(OR(D{row}="",E{row}=""),"",D{row}*E{row}*0.000001),1))'
-        ws[f"J{row}"] = f'=IF(OR(H{row}="",I{row}=""),"",ROUND(H{row}*I{row},0))'
+    extra_rows = max(0, len(display_rows) - 8)
+    _unmerge_dynamic_rows(ws)
+    if extra_rows:
+        ws.insert_rows(17, amount=extra_rows)
 
-    # Fill items
-    for index, item in enumerate(items):
-        row = 9 + index
-        ws[f"B{row}"] = item.get("productName") or item.get("product_name", "")
+    total_row = 9 + len(display_rows)
+    amount_row = total_row + 1
+    notice_row = total_row + 2
+    terms_row = total_row + 3
+    invoice_row = total_row + 6
+    bank_row = total_row + 7
+    item_rows: list[int] = []
+    group_item_rows: dict[int, list[int]] = {}
+    sequence = 0
+
+    for row_offset, (row_type, payload, marker) in enumerate(display_rows):
+        row = 9 + row_offset
+        if row > 16:
+            _copy_row_format(ws, 16, row)
+        for column in range(1, 11):
+            ws.cell(row, column).value = None
+
+        if row_type == "group":
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=10)
+            ws[f"A{row}"] = payload.get("groupName") or f"第{marker + 1}樘门"
+            ws[f"A{row}"].fill = PatternFill("solid", fgColor="F2F2F7")
+            font = copy(ws[f"A{row}"].font)
+            font.bold = True
+            ws[f"A{row}"].font = font
+            continue
+
+        if row_type == "subtotal":
+            _copy_row_format(ws, total_row, row)
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=9)
+            group_rows = group_item_rows.get(marker, [])
+            ws[f"A{row}"] = f'{payload.get("groupName") or f"第{marker + 1}樘门"}小计'
+            ws[f"J{row}"] = f"=SUM({','.join(f'J{item_row}' for item_row in group_rows)})" if group_rows else "=0"
+            continue
+
+        item = payload
+        item_rows.append(row)
+        group_index = marker if marker >= 0 else 0
+        group_item_rows.setdefault(group_index, []).append(row)
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=3)
+        product_name = item.get("productName") or item.get("product_name", "")
+        if product_name:
+            sequence += 1
+            ws[f"A{row}"] = sequence
+        ws[f"B{row}"] = product_name
         ws[f"D{row}"] = item.get("width")
         ws[f"E{row}"] = item.get("height")
-        ws[f"F{row}"] = (item.get("openDirection") or item.get("open_direction", "")) if index == 0 else ""
-        ws[f"G{row}"] = item.get("unit") or "m2"
+        ws[f"F{row}"] = item.get("openDirection") or item.get("open_direction", "")
+        ws[f"G{row}"] = item.get("unit") or ""
         if item.get("quantity") is not None:
             ws[f"H{row}"] = item.get("quantity")
+        else:
+            ws[f"H{row}"] = f'=IF(B{row}="","",IF(OR(G{row}="m2",G{row}="㎡",G{row}="m²"),IF(OR(D{row}="",E{row}=""),"",D{row}*E{row}*0.000001),1))'
         ws[f"I{row}"] = item.get("unitPrice") or item.get("unit_price", 0)
+        ws[f"J{row}"] = f'=IF(OR(H{row}="",I{row}=""),"",ROUND(H{row}*I{row},0))'
 
-    ws["J17"] = "=SUM(J9:J16)"
-    ws["F18"] = '=IF(J17=0,"","人民币"&TEXT(ROUND(J17,0),"[DBNum2]")&"元整")'
-    ws["A19"] = quote.get("noticeText") or DEFAULT_NOTICE_TEXT
+    ws.merge_cells(start_row=total_row, start_column=2, end_row=total_row, end_column=3)
+    ws[f"A{total_row}"] = "合计"
+    subtotal_rows = [9 + index for index, entry in enumerate(display_rows) if entry[0] == "subtotal"]
+    if subtotal_rows:
+        ws[f"J{total_row}"] = f"=SUM({','.join(f'J{row}' for row in subtotal_rows)})"
+    else:
+        ws[f"J{total_row}"] = f"=SUM(J{min(item_rows)}:J{max(item_rows)})"
 
-    _apply_dynamic_layout(ws, quote, items)
+    ws.merge_cells(start_row=amount_row, start_column=1, end_row=amount_row, end_column=5)
+    ws.merge_cells(start_row=amount_row, start_column=6, end_row=amount_row, end_column=10)
+    ws[f"A{amount_row}"] = "合计总金额（大写）："
+    ws[f"F{amount_row}"] = f'=IF(J{total_row}=0,"","人民币"&TEXT(ROUND(J{total_row},0),"[DBNum2]")&"元整")'
+    ws.merge_cells(start_row=notice_row, start_column=1, end_row=notice_row, end_column=10)
+    ws[f"A{notice_row}"] = quote.get("noticeText") or DEFAULT_NOTICE_TEXT
+    ws.merge_cells(start_row=terms_row, start_column=1, end_row=terms_row + 2, end_column=10)
+    ws.merge_cells(start_row=invoice_row, start_column=1, end_row=invoice_row, end_column=10)
+    ws.merge_cells(start_row=bank_row, start_column=1, end_row=bank_row, end_column=10)
 
-    ws.print_area = "A1:J24"
+    _apply_dynamic_layout(ws, quote, items, item_rows, total_row)
+
+    ws.print_area = f"A1:J{bank_row}"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 1
+    ws.page_setup.fitToHeight = 0
 
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True

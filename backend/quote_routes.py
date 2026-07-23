@@ -19,7 +19,7 @@ from openpyxl import load_workbook
 from config import DATA_DIR
 from quote_models import (
     AccessoryCreate, AccessoryImport,
-    QuoteCreate,
+    QuoteCreate, QuoteMemoryRequest,
     AiConfigUpdate,
 )
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
@@ -39,6 +39,27 @@ AI_MODEL_ALIASES = {
 accessory_db = AccessoryDatabaseManager()
 quote_db = QuoteDatabaseManager()
 ai_config_db = AiConfigManager()
+
+
+def _remembered_quote_category(item: dict) -> str:
+    category = str(item.get("category") or "").strip()
+    if category:
+        return category
+    accessory_id = item.get("accessoryId")
+    if accessory_id:
+        existing = accessory_db.get_by_id(accessory_id)
+        if existing and existing.get("category"):
+            return str(existing["category"])
+    name = str(item.get("productName") or "")
+    if any(word in name for word in ("合页", "铰链")):
+        return "合页"
+    if any(word in name for word in ("锁", "锁体")):
+        return "锁具"
+    if any(word in name for word in ("木箱", "包装", "全包")):
+        return "包装"
+    if any(word in name for word in ("门套面积", "包套面积")):
+        return "门套"
+    return "配件"
 
 
 def _public_ai_config(config: dict) -> dict:
@@ -353,6 +374,29 @@ def import_accessories(data: AccessoryImport, current_user: dict = Depends(requi
     items = [item.model_dump() for item in data.accessories]
     count = accessory_db.import_batch(items)
     return {"imported": count}
+
+
+@quote_router.post("/api/accessories/remember-quote", status_code=201)
+def remember_quote_items(data: QuoteMemoryRequest, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
+    """将本次报价中的有效行按名称和分类新增或更新到配件库。"""
+    remembered = []
+    for row in data.items:
+        item = row.model_dump()
+        name = str(item.get("productName") or "").strip()
+        unit = str(item.get("unit") or "").strip()
+        price = float(item.get("unitPrice") or 0)
+        if not name or not unit or price <= 0:
+            continue
+        remembered.append({
+            "name": name,
+            "category": _remembered_quote_category(item),
+            "keywords": name,
+            "unit": unit,
+            "unitPrice": price,
+            "remark": "报价记忆",
+        })
+    count = accessory_db.import_batch(remembered) if remembered else 0
+    return {"remembered": count}
 
 
 @quote_router.post("/api/accessories/import-xlsx", status_code=201)

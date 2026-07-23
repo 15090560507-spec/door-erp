@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import type { Accessory, QuoteItem, AnalysisResult, QuoteResponse } from "@/lib/quoteTypes";
+import type {
+  Accessory,
+  QuoteDoorGroup,
+  QuoteItem,
+  QuotePricingMode,
+  AnalysisResult,
+  QuoteResponse,
+} from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
-import { createQuote, getAccessories } from "@/lib/quoteApi";
+import { createQuote, getAccessories, rememberQuoteItems } from "@/lib/quoteApi";
 import { api, getTask, getTasks } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
@@ -13,9 +20,6 @@ import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 import { localDateYmd } from "@/lib/dateTime";
-
-const QUOTE_ROW_COUNT = 8;
-type QuotePricingMode = "outerArea" | "framePlusTrim";
 
 async function downloadQuoteFile(quoteId: number, ext: "xlsx" | "jpg" | "pdf", filename: string) {
   const { data } = await api.get<Blob>(`/quotes/${quoteId}/export.${ext}`, { responseType: "blob" });
@@ -35,14 +39,18 @@ function num(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function padQuoteRows(rows: QuoteItem[]): QuoteItem[] {
-  const next = rows.slice(0, QUOTE_ROW_COUNT);
-  while (next.length < QUOTE_ROW_COUNT) next.push(createEmptyQuoteItem());
-  return next;
-}
-
 function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
   return rows.map((item, index) => index === 0 ? item : { ...item, openDirection: "" });
+}
+
+function createQuoteGroup(index = 0): QuoteDoorGroup {
+  return {
+    groupName: `第${index + 1}樘门`,
+    taskId: "",
+    pricingMode: "outerArea",
+    trimUnitPrice: 0,
+    items: [createEmptyQuoteItem()],
+  };
 }
 
 function calcAreas(params: DoorFormData) {
@@ -70,6 +78,7 @@ function calcAreas(params: DoorFormData) {
 function rowFromAccessory(accessory: Accessory, productName = accessory.name, width: number | null = null, height: number | null = null, openDirection = ""): QuoteItem {
   return {
     accessoryId: accessory.id,
+    category: accessory.category || "",
     productName,
     width,
     height,
@@ -140,7 +149,8 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
 
   const rows: QuoteItem[] = [{
     accessoryId: style?.id ?? null,
-    productName: [params.zzcl, `${params.zmks || ""}+${params.fmks || ""}`].filter(Boolean).join(" "),
+    category: "门类组合",
+    productName: [params.door_type, params.zzcl, params.zmks, params.fmks].filter(Boolean).join(" "),
     width: (pricingMode === "outerArea" ? outerWidth : frameWidth) || null,
     height: (pricingMode === "outerArea" ? outerHeight : frameHeight) || null,
     quantity: null,
@@ -184,14 +194,10 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
   }
 
   if (packingRow) {
-    if (rows.length >= QUOTE_ROW_COUNT) {
-      rows[QUOTE_ROW_COUNT - 1] = packingRow;
-    } else {
-      rows.push(packingRow);
-    }
+    rows.push(packingRow);
   }
 
-  return normalizeQuoteRows(padQuoteRows(rows));
+  return normalizeQuoteRows(rows);
 }
 
 function chooseAccessoryMatch(name: string, matches: Accessory[]): Accessory | null {
@@ -253,11 +259,9 @@ export default function QuotePage() {
   const [projectName, setProjectName] = useState("");
   const [quoteDate, setQuoteDate] = useState(localDateYmd);
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
-  const [items, setItems] = useState<QuoteItem[]>(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
+  const [doorGroups, setDoorGroups] = useState<QuoteDoorGroup[]>([createQuoteGroup()]);
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState("");
-  const [quotePricingMode, setQuotePricingMode] = useState<QuotePricingMode>("outerArea");
-  const [trimUnitPrice, setTrimUnitPrice] = useState("");
+  const [rememberQuote, setRememberQuote] = useState(false);
 
   // Modal state
   const [accessoryOpen, setAccessoryOpen] = useState(false);
@@ -283,20 +287,47 @@ export default function QuotePage() {
     return () => { alive = false; };
   }, []);
 
-  const handleItemsChange = useCallback((rows: QuoteItem[]) => {
-    setItems(normalizeQuoteRows(rows));
+  const updateDoorGroup = useCallback((groupIndex: number, updates: Partial<QuoteDoorGroup>) => {
+    setDoorGroups((groups) => groups.map((group, index) => (
+      index === groupIndex ? { ...group, ...updates } : group
+    )));
+    setLastQuoteId(null);
   }, []);
 
   // Collect form data
-  const collectForm = useCallback((): { customerName: string; projectName: string; quoteDate: string; noticeText: string; items: QuoteItem[] } => {
+  const collectForm = useCallback(() => {
+    const cleanedGroups = doorGroups
+      .map((group, index) => ({
+        ...group,
+        groupName: group.groupName.trim() || `第${index + 1}樘门`,
+        items: normalizeQuoteRows(group.items).filter((item) => item.productName.trim()),
+      }))
+      .filter((group) => group.items.length > 0);
+    const items = cleanedGroups.flatMap((group) => group.items);
     return {
       customerName: customerName.trim(),
       projectName: projectName.trim(),
       quoteDate,
       noticeText: noticeText.trim() || DEFAULT_QUOTE_NOTICE_TEXT,
-      items: normalizeQuoteRows(items).filter((item) => item.productName.trim()),
+      items,
+      doorGroups: cleanedGroups,
     };
-  }, [customerName, projectName, quoteDate, noticeText, items]);
+  }, [customerName, projectName, quoteDate, noticeText, doorGroups]);
+
+  const rememberCurrentQuote = useCallback(async (items: QuoteItem[]) => {
+    if (!rememberQuote) return 0;
+    const result = await rememberQuoteItems(items);
+    return result.remembered;
+  }, [rememberQuote]);
+
+  const tryRememberCurrentQuote = useCallback(async (items: QuoteItem[]) => {
+    try {
+      return { remembered: await rememberCurrentQuote(items), failed: false };
+    } catch (error) {
+      console.warn("remember quote items failed:", error);
+      return { remembered: 0, failed: true };
+    }
+  }, [rememberCurrentQuote]);
 
   // Save quote
   async function handleSave() {
@@ -310,7 +341,15 @@ export default function QuotePage() {
     try {
       const quote = await createQuote(form);
       setLastQuoteId(quote.id);
-      setStatus(`已保存 #${quote.id}`);
+      let remembered = 0;
+      try {
+        remembered = await rememberCurrentQuote(form.items);
+      } catch (error) {
+        console.warn("remember quote items failed:", error);
+        setStatus(`已保存 #${quote.id}，但报价记忆写入失败`);
+        return;
+      }
+      setStatus(`已保存 #${quote.id}${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}`);
     } catch (err: unknown) {
       const error = err as { userMessage?: string; message?: string };
       setStatus(error?.userMessage || error?.message || "保存失败");
@@ -325,8 +364,9 @@ export default function QuotePage() {
     setExporting(true);
     setExportingType("xlsx");
     try {
+      const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "xlsx", `报价单_${lastQuoteId}.xlsx`);
-      setStatus("Excel 下载中...");
+      setStatus(memoryResult.failed ? "Excel 已下载，但报价记忆写入失败" : "Excel 下载中...");
     } catch {
       setStatus("Excel 导出失败");
     } finally {
@@ -342,8 +382,9 @@ export default function QuotePage() {
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
+      const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "jpg", `报价单_${lastQuoteId}.jpg`);
-      setStatus("JPG 已下载");
+      setStatus(memoryResult.failed ? "JPG 已下载，但报价记忆写入失败" : "JPG 已下载");
     } catch {
       setStatus("JPG 导出失败");
     } finally {
@@ -358,8 +399,9 @@ export default function QuotePage() {
     setExportingType("pdf");
     setStatus("正在生成 PDF...");
     try {
+      const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "pdf", `报价单_${lastQuoteId}.pdf`);
-      setStatus("PDF 已下载");
+      setStatus(memoryResult.failed ? "PDF 已下载，但报价记忆写入失败" : "PDF 已下载");
     } catch {
       setStatus("PDF 导出失败");
     } finally {
@@ -381,6 +423,7 @@ export default function QuotePage() {
     const mainRow: QuoteItem = mainItem
       ? {
           accessoryId: null,
+          category: "门类组合",
           productName: mainItem.productName || "",
           width: mainItem.width ?? fallbackWidth,
           height: mainItem.height ?? fallbackHeight,
@@ -417,52 +460,64 @@ export default function QuotePage() {
       lookupFailedCount = accessoryRows.length;
     }
 
-    const rows = [mainRow, ...accessoryRows].slice(0, QUOTE_ROW_COUNT);
-    while (rows.length < QUOTE_ROW_COUNT) rows.push(createEmptyQuoteItem());
-    setItems(normalizeQuoteRows(rows));
+    const rows = normalizeQuoteRows([mainRow, ...accessoryRows]);
+    updateDoorGroup(0, { items: rows.length ? rows : [createEmptyQuoteItem()] });
 
-    const overflowCount = Math.max(0, accessoryRows.length - (QUOTE_ROW_COUNT - 1));
     const statusParts = ["AI 识别结果已回填"];
     if (result.accessories?.length) statusParts.push(`配件匹配 ${matchedCount}/${result.accessories.length}`);
     if (lookupFailedCount) statusParts.push(`${lookupFailedCount} 个配件查库失败已按原名填入`);
-    if (overflowCount) statusParts.push(`超过模板行数的 ${overflowCount} 个配件未回填`);
     setStatus(statusParts.join("，"));
   }
 
-  async function handleApplyTaskQuote(taskId: string, mode = quotePricingMode, trimPrice = trimUnitPrice) {
-    setSelectedTaskId(taskId);
+  async function handleApplyTaskQuote(
+    groupIndex: number,
+    taskId: string,
+    mode: QuotePricingMode,
+    trimPrice: number,
+  ) {
+    updateDoorGroup(groupIndex, { taskId, pricingMode: mode, trimUnitPrice: trimPrice });
     if (!taskId) return;
     setStatus("正在读取图纸项目...");
     try {
       const task = await getTask(taskId);
       const params = task.params;
       const allAccessories = await getAccessories();
-      setCustomerName(params.dhdw || task.customer || "");
-      setProjectName(params.gdmc || task.project || "");
-      setQuoteDate((params.dhrq || localDateYmd()).replace(/\./g, "-"));
-      setItems(buildQuoteRowsFromTask(params, allAccessories, mode, num(trimPrice)));
+      if (!customerName.trim()) setCustomerName(params.dhdw || task.customer || "");
+      if (!projectName.trim()) setProjectName(params.gdmc || task.project || "");
+      if (groupIndex === 0) setQuoteDate((params.dhrq || localDateYmd()).replace(/\./g, "-"));
+      updateDoorGroup(groupIndex, {
+        taskId,
+        pricingMode: mode,
+        trimUnitPrice: trimPrice,
+        items: buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice),
+      });
       setLastQuoteId(null);
-      setStatus("已根据图纸项目生成报价明细");
+      setStatus(`已根据图纸项目生成${groupIndex + 1}号门报价明细`);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string };
       setStatus(err?.userMessage || err?.message || "图纸项目报价生成失败");
     }
   }
 
-  async function handlePricingModeChange(nextMode: QuotePricingMode) {
-    setQuotePricingMode(nextMode);
-    if (selectedTaskId) {
-      await handleApplyTaskQuote(selectedTaskId, nextMode, trimUnitPrice);
+  async function handlePricingModeChange(groupIndex: number, nextMode: QuotePricingMode) {
+    const group = doorGroups[groupIndex];
+    updateDoorGroup(groupIndex, { pricingMode: nextMode });
+    if (group?.taskId) {
+      await handleApplyTaskQuote(groupIndex, group.taskId, nextMode, group.trimUnitPrice);
     }
   }
 
-  async function handleTrimUnitPriceChange(value: string) {
-    setTrimUnitPrice(value);
-    if (selectedTaskId && quotePricingMode === "framePlusTrim") {
+  async function handleTrimUnitPriceChange(groupIndex: number, value: string) {
+    const price = num(value);
+    const group = doorGroups[groupIndex];
+    updateDoorGroup(groupIndex, { trimUnitPrice: price });
+    if (group?.taskId && group.pricingMode === "framePlusTrim") {
       try {
-        const task = await getTask(selectedTaskId);
+        const task = await getTask(group.taskId);
         const allAccessories = await getAccessories();
-        setItems(buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", num(value)));
+        updateDoorGroup(groupIndex, {
+          items: buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", price),
+        });
         setLastQuoteId(null);
       } catch (error: unknown) {
         const err = error as { userMessage?: string; message?: string };
@@ -471,29 +526,51 @@ export default function QuotePage() {
     }
   }
 
+  function addDoorGroup() {
+    setDoorGroups((groups) => [...groups, createQuoteGroup(groups.length)]);
+    setLastQuoteId(null);
+  }
+
+  function removeDoorGroup(groupIndex: number) {
+    if (doorGroups.length <= 1) return;
+    setDoorGroups((groups) => groups
+      .filter((_, index) => index !== groupIndex)
+      .map((group, index) => ({ ...group, groupName: `第${index + 1}樘门` })));
+    setLastQuoteId(null);
+  }
+
   // Load quote from history
   function handleLoadQuote(quote: QuoteResponse) {
     setCustomerName(quote.customerName);
     setProjectName(quote.projectName);
     setQuoteDate(quote.quoteDate);
     setNoticeText(quote.noticeText || DEFAULT_QUOTE_NOTICE_TEXT);
-    setItems(normalizeQuoteRows(
-      Array.from({ length: QUOTE_ROW_COUNT }, (_, index) => {
-        const item = quote.items?.[index];
-        return item
-          ? {
-              accessoryId: item.accessoryId,
-              productName: item.productName || "",
-              width: item.width ?? null,
-              height: item.height ?? null,
-              quantity: item.quantity ?? null,
-              openDirection: item.openDirection || "",
-              unit: item.unit || "m2",
-              unitPrice: item.unitPrice ?? 0,
-            }
-          : createEmptyQuoteItem();
-      })
-    ));
+    const sourceGroups = quote.doorGroups?.length
+      ? quote.doorGroups
+      : [{
+          groupName: "第1樘门",
+          taskId: "",
+          pricingMode: "outerArea" as QuotePricingMode,
+          trimUnitPrice: 0,
+          items: quote.items || [],
+        }];
+    setDoorGroups(sourceGroups.map((group, index) => ({
+      groupName: group.groupName || `第${index + 1}樘门`,
+      taskId: group.taskId || "",
+      pricingMode: group.pricingMode || "outerArea",
+      trimUnitPrice: group.trimUnitPrice || 0,
+      items: normalizeQuoteRows((group.items || []).map((item) => ({
+        accessoryId: item.accessoryId,
+        category: item.category || "",
+        productName: item.productName || "",
+        width: item.width ?? null,
+        height: item.height ?? null,
+        quantity: item.quantity ?? null,
+        openDirection: item.openDirection || "",
+        unit: item.unit || "m2",
+        unitPrice: item.unitPrice ?? 0,
+      }))),
+    })));
     setLastQuoteId(quote.id);
     setStatus(`已载入报价单 #${quote.id}`);
   }
@@ -503,7 +580,8 @@ export default function QuotePage() {
     setProjectName("");
     setQuoteDate(localDateYmd());
     setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
-    setItems(Array.from({ length: QUOTE_ROW_COUNT }, () => createEmptyQuoteItem()));
+    setDoorGroups([createQuoteGroup()]);
+    setRememberQuote(false);
     setLastQuoteId(null);
     setStatus("表单已清空");
   }
@@ -532,6 +610,18 @@ export default function QuotePage() {
             最近报价
           </button>
           <button
+            type="button"
+            aria-pressed={rememberQuote}
+            onClick={() => setRememberQuote((enabled) => !enabled)}
+            className={`px-3.5 py-1.5 text-[12px] font-medium rounded-lg border transition-colors ${
+              rememberQuote
+                ? "border-[#34C759] bg-[#34C759]/10 text-[#248A3D]"
+                : "border-[#E5E5EA]/60 bg-white text-[#8E8E93] hover:bg-[#F2F2F7]"
+            }`}
+          >
+            记忆报价：{rememberQuote ? "开" : "关"}
+          </button>
+          <button
             onClick={handleClear}
             className="px-3.5 py-1.5 text-[12px] font-medium rounded-lg bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E] hover:bg-[#E5E5EA]/60 transition-colors"
           >
@@ -557,58 +647,6 @@ export default function QuotePage() {
           <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-6">
             <h2 className="text-[15px] font-semibold text-[#1C1C1E] mb-4">报价明细</h2>
 
-            <label className="block mb-4">
-              <span className="text-[12px] font-medium text-[#8E8E93]">关联图纸项目</span>
-              <select
-                value={selectedTaskId}
-                onChange={(e) => handleApplyTaskQuote(e.target.value)}
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none bg-white"
-              >
-                <option value="">选择图纸项目后自动报价</option>
-                {drawingTasks.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {task.customer || "未填客户"} / {task.project || "未填项目"} / {task.door_type || ""} / {task.size || ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="mb-4 rounded-xl border border-[#E5E5EA]/60 bg-[#F8F8FA] p-3">
-              <div className="mb-2 text-[12px] font-medium text-[#8E8E93]">报价模式</div>
-              <div className="flex flex-wrap items-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePricingModeChange("outerArea")}
-                  className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
-                    quotePricingMode === "outerArea" ? "bg-[#007AFF] text-white" : "bg-white text-[#1C1C1E] border border-[#E5E5EA]/60"
-                  }`}
-                >
-                  外围面积 × 单价
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePricingModeChange("framePlusTrim")}
-                  className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
-                    quotePricingMode === "framePlusTrim" ? "bg-[#007AFF] text-white" : "bg-white text-[#1C1C1E] border border-[#E5E5EA]/60"
-                  }`}
-                >
-                  门框面积 × 单价 + 门套面积 × 单价
-                </button>
-                {quotePricingMode === "framePlusTrim" && (
-                  <label className="min-w-[150px]">
-                    <span className="block text-[12px] font-medium text-[#8E8E93]">门套单价</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={trimUnitPrice}
-                      onChange={(e) => handleTrimUnitPriceChange(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[#E5E5EA]/60 px-3 py-2 text-[13px] focus:border-[#007AFF] focus:outline-none"
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-
             {/* Customer/Project/Date fields */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               <label className="block">
@@ -616,7 +654,10 @@ export default function QuotePage() {
                 <input
                   type="text"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    setLastQuoteId(null);
+                  }}
                   placeholder="客户A"
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
                 />
@@ -626,7 +667,10 @@ export default function QuotePage() {
                 <input
                   type="text"
                   value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
+                  onChange={(e) => {
+                    setProjectName(e.target.value);
+                    setLastQuoteId(null);
+                  }}
                   placeholder="项目A"
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
                 />
@@ -636,7 +680,10 @@ export default function QuotePage() {
                 <input
                   type="date"
                   value={quoteDate}
-                  onChange={(e) => setQuoteDate(e.target.value)}
+                  onChange={(e) => {
+                    setQuoteDate(e.target.value);
+                    setLastQuoteId(null);
+                  }}
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
                 />
               </label>
@@ -646,14 +693,20 @@ export default function QuotePage() {
               <span className="ml-2 inline-flex gap-1">
                 <button
                   type="button"
-                  onClick={() => setNoticeText("本报价不含税工厂结算价，含木箱。")}
+                  onClick={() => {
+                    setNoticeText("本报价不含税工厂结算价，含木箱。");
+                    setLastQuoteId(null);
+                  }}
                   className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
                 >
                   含木箱
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNoticeText("本报价不含税工厂结算价，不含木箱。")}
+                  onClick={() => {
+                    setNoticeText("本报价不含税工厂结算价，不含木箱。");
+                    setLastQuoteId(null);
+                  }}
                   className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
                 >
                   不含木箱
@@ -662,13 +715,113 @@ export default function QuotePage() {
               <input
                 type="text"
                 value={noticeText}
-                onChange={(e) => setNoticeText(e.target.value)}
+                onChange={(e) => {
+                  setNoticeText(e.target.value);
+                  setLastQuoteId(null);
+                }}
                 className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
               />
             </label>
 
-            {/* Items Table */}
-            <QuoteItemsTable items={items} onChange={handleItemsChange} />
+            <div className="space-y-5">
+              {doorGroups.map((group, groupIndex) => (
+                <section key={groupIndex} className="border-t border-[#E5E5EA]/60 pt-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <input
+                      value={group.groupName}
+                      onChange={(event) => updateDoorGroup(groupIndex, { groupName: event.target.value })}
+                      aria-label={`第 ${groupIndex + 1} 个门组名称`}
+                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[#1C1C1E] outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeDoorGroup(groupIndex)}
+                      disabled={doorGroups.length <= 1}
+                      className="rounded-md px-2 py-1 text-[12px] text-[#FF3B30] hover:bg-[#FF3B30]/10 disabled:cursor-not-allowed disabled:opacity-25"
+                    >
+                      删除此门
+                    </button>
+                  </div>
+
+                  <label className="mb-3 block">
+                    <span className="text-[12px] font-medium text-[#8E8E93]">关联图纸项目</span>
+                    <select
+                      value={group.taskId}
+                      onChange={(event) => handleApplyTaskQuote(
+                        groupIndex,
+                        event.target.value,
+                        group.pricingMode,
+                        group.trimUnitPrice,
+                      )}
+                      className="mt-1 w-full rounded-lg border border-[#E5E5EA]/60 bg-white px-3 py-2 text-[13px] focus:border-[#007AFF] focus:outline-none"
+                    >
+                      <option value="">选择图纸项目后自动报价</option>
+                      {drawingTasks.map((task) => (
+                        <option key={task.id} value={task.id}>
+                          {task.customer || "未填客户"} / {task.project || "未填项目"} / {task.door_type || ""} / {task.size || ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="mb-3 bg-[#F8F8FA] p-3">
+                    <div className="mb-2 text-[12px] font-medium text-[#8E8E93]">报价模式</div>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handlePricingModeChange(groupIndex, "outerArea")}
+                        className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
+                          group.pricingMode === "outerArea"
+                            ? "bg-[#007AFF] text-white"
+                            : "border border-[#E5E5EA]/60 bg-white text-[#1C1C1E]"
+                        }`}
+                      >
+                        外围面积 × 单价
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePricingModeChange(groupIndex, "framePlusTrim")}
+                        className={`rounded-lg px-3 py-2 text-[12px] font-medium transition-colors ${
+                          group.pricingMode === "framePlusTrim"
+                            ? "bg-[#007AFF] text-white"
+                            : "border border-[#E5E5EA]/60 bg-white text-[#1C1C1E]"
+                        }`}
+                      >
+                        门框面积 × 单价 + 门套面积 × 单价
+                      </button>
+                      {group.pricingMode === "framePlusTrim" && (
+                        <label className="min-w-[150px]">
+                          <span className="block text-[12px] font-medium text-[#8E8E93]">门套单价</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={group.trimUnitPrice || ""}
+                            onChange={(event) => handleTrimUnitPriceChange(groupIndex, event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[#E5E5EA]/60 px-3 py-2 text-[13px] focus:border-[#007AFF] focus:outline-none"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <QuoteItemsTable
+                    items={group.items}
+                    onChange={(rows) => {
+                      updateDoorGroup(groupIndex, { items: normalizeQuoteRows(rows) });
+                      setLastQuoteId(null);
+                    }}
+                  />
+                </section>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addDoorGroup}
+              className="mt-5 w-full rounded-lg border border-dashed border-[#007AFF] px-4 py-2 text-[13px] font-medium text-[#007AFF] hover:bg-[#007AFF]/5"
+            >
+              + 添加一樘门
+            </button>
           </div>
 
           {/* AI Analysis */}
@@ -682,7 +835,7 @@ export default function QuotePage() {
             projectName={projectName}
             quoteDate={quoteDate}
             noticeText={noticeText}
-            items={normalizeQuoteRows(items)}
+            doorGroups={doorGroups}
           />
 
           {/* Action Buttons */}

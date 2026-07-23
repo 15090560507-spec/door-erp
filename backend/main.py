@@ -7,6 +7,11 @@ import json
 import os
 import uuid
 import datetime
+import hashlib
+import logging
+import threading
+import time
+from collections import OrderedDict
 from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict
 from urllib.parse import quote
@@ -16,7 +21,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from config import DATA_DIR, JWT_SECRET
+from config import DATA_DIR, JWT_SECRET, TEMPLATE_PATH
 from database import UserDatabaseManager, TaskDatabaseManager, hash_password
 from auth import (
     ENTRY_ROLES,
@@ -70,6 +75,11 @@ task_db = TaskDatabaseManager()
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+logger = logging.getLogger(__name__)
+CAD_CACHE_TTL_SECONDS = 15 * 60
+CAD_CACHE_MAX_ITEMS = 12
+_cad_cache: "OrderedDict[str, dict]" = OrderedDict()
+_cad_cache_lock = threading.Lock()
 
 
 def shanghai_now() -> datetime.datetime:
@@ -87,6 +97,76 @@ def normalize_task_date(value: Optional[str]) -> str:
         except ValueError:
             continue
     return text.replace("-", ".").replace("/", ".")
+
+
+def _cad_cache_key(req: CADRequest) -> str:
+    try:
+        template_version = os.stat(TEMPLATE_PATH).st_mtime_ns
+    except OSError:
+        template_version = 0
+    payload = {
+        "template": template_version,
+        "request": req.model_dump(mode="json"),
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
+    key = _cad_cache_key(req)
+    now = time.monotonic()
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry and now - entry["created"] <= CAD_CACHE_TTL_SECONDS:
+            _cad_cache.move_to_end(key)
+            logger.info("[cad] cache_hit key=%s bytes=%d", key[:10], len(entry["dxf"]))
+            return key, entry["dxf"], True
+        if entry:
+            _cad_cache.pop(key, None)
+
+    started = time.perf_counter()
+    info_map, check_map, draw_params = build_cad_params(req)
+    params_elapsed = time.perf_counter() - started
+    result_msg, buffer = run_integrated_system(info_map, check_map, draw_params, lambda _msg: None)
+    if buffer is None:
+        raise HTTPException(status_code=500, detail=result_msg)
+    dxf_bytes = buffer.getvalue().encode("utf-8")
+    total_elapsed = time.perf_counter() - started
+
+    with _cad_cache_lock:
+        _cad_cache[key] = {
+            "created": now,
+            "dxf": dxf_bytes,
+            "svg": None,
+        }
+        _cad_cache.move_to_end(key)
+        while len(_cad_cache) > CAD_CACHE_MAX_ITEMS:
+            _cad_cache.popitem(last=False)
+
+    logger.info(
+        "[cad] generated key=%s params=%.3fs engine=%.3fs total=%.3fs bytes=%d",
+        key[:10],
+        params_elapsed,
+        total_elapsed - params_elapsed,
+        total_elapsed,
+        len(dxf_bytes),
+    )
+    return key, dxf_bytes, False
+
+
+def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry and entry.get("svg"):
+            return entry["svg"], True
+    started = time.perf_counter()
+    svg = render_dxf_svg(dxf_bytes.decode("utf-8"))
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry:
+            entry["svg"] = svg
+    logger.info("[cad] preview_rendered key=%s elapsed=%.3fs", key[:10], time.perf_counter() - started)
+    return svg, False
 
 # 确保 data 目录存在
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -468,19 +548,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     接收表单数据，调用 ezdxf 读取 template.dxf 生成图纸，
     并以 .dxf 文件流形式返回。
     """
-    info_map, check_map, draw_params = build_cad_params(req)
-
-    progress_msgs = []
-    def progress_callback(msg: str):
-        progress_msgs.append(msg)
-
-    result_msg, buffer = run_integrated_system(info_map, check_map, draw_params, progress_callback)
-
-    if buffer is None:
-        raise HTTPException(status_code=500, detail=result_msg)
-
-    # ezdxf 写入 StringIO，转换为 bytes 用于 HTTP 响应
-    dxf_bytes = buffer.getvalue().encode('utf-8')
+    _, dxf_bytes, cache_hit = _cached_cad(req)
     bytes_io = io.BytesIO(dxf_bytes)
 
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
@@ -500,7 +568,8 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
             "Content-Disposition": (
                 f'attachment; filename="{ascii_filename}"; '
                 f"filename*=UTF-8''{encoded_filename}"
-            )
+            ),
+            "X-CAD-Cache": "HIT" if cache_hit else "MISS",
         }
     )
 
@@ -511,27 +580,20 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
     """
     Reuse the CAD export path and render the generated DXF as an SVG preview.
     """
-    info_map, check_map, draw_params = build_cad_params(req)
-
-    progress_msgs = []
-
-    def progress_callback(msg: str):
-        progress_msgs.append(msg)
-
-    result_msg, buffer = run_integrated_system(info_map, check_map, draw_params, progress_callback)
-
-    if buffer is None:
-        raise HTTPException(status_code=500, detail=result_msg)
-
     try:
-        svg = render_dxf_svg(buffer.getvalue())
+        key, dxf_bytes, cad_cache_hit = _cached_cad(req)
+        svg, svg_cache_hit = _cached_cad_svg(key, dxf_bytes)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"CAD preview failed: {exc}") from exc
 
     return Response(
         content=svg,
         media_type="image/svg+xml",
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Cache-Control": "no-store",
+            "X-CAD-Cache": "HIT" if cad_cache_hit else "MISS",
+            "X-CAD-Preview-Cache": "HIT" if svg_cache_hit else "MISS",
+        },
     )
 
 

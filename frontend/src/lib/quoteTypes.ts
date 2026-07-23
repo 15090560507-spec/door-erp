@@ -30,6 +30,7 @@ export interface AccessoryCreate {
 
 export interface QuoteItem {
   accessoryId: number | null;
+  category?: string;
   productName: string;
   width: number | null;
   height: number | null;
@@ -39,17 +40,29 @@ export interface QuoteItem {
   unitPrice: number;
 }
 
+export type QuotePricingMode = "outerArea" | "framePlusTrim";
+
+export interface QuoteDoorGroup {
+  groupName: string;
+  taskId: string;
+  pricingMode: QuotePricingMode;
+  trimUnitPrice: number;
+  items: QuoteItem[];
+}
+
 export interface QuoteFormData {
   customerName: string;
   projectName: string;
   quoteDate: string;
   noticeText: string;
   items: QuoteItem[];
+  doorGroups: QuoteDoorGroup[];
 }
 
 export interface QuoteItemResponse {
   id: number;
   accessoryId: number | null;
+  category?: string;
   productName: string;
   width: number | null;
   height: number | null;
@@ -60,6 +73,14 @@ export interface QuoteItemResponse {
   rowOrder: number;
 }
 
+export interface QuoteDoorGroupResponse {
+  groupName: string;
+  taskId: string;
+  pricingMode: QuotePricingMode;
+  trimUnitPrice: number;
+  items: QuoteItemResponse[];
+}
+
 export interface QuoteResponse {
   id: number;
   customerName: string;
@@ -68,6 +89,7 @@ export interface QuoteResponse {
   noticeText: string;
   createdAt: string;
   items: QuoteItemResponse[];
+  doorGroups?: QuoteDoorGroupResponse[];
 }
 
 export interface QuoteListResponse {
@@ -148,6 +170,7 @@ export function normalizeOpenDirection(dir: string): string {
 export function createEmptyQuoteItem(): QuoteItem {
   return {
     accessoryId: null,
+    category: "",
     productName: "",
     width: null,
     height: null,

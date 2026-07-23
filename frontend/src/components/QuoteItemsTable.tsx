@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import type { QuoteItem } from "@/lib/quoteTypes";
-import { normalizeOpenDirection, UNIT_OPTIONS } from "@/lib/quoteTypes";
+import { createEmptyQuoteItem, normalizeOpenDirection, UNIT_OPTIONS } from "@/lib/quoteTypes";
 import { getAccessories } from "@/lib/quoteApi";
 import type { Accessory } from "@/lib/quoteTypes";
 
@@ -15,6 +15,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   const [suggestions, setSuggestions] = useState<{ index: number; matches: Accessory[] } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const unitOptionsId = useId();
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -65,12 +66,23 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
       return {
         ...item,
         accessoryId: acc.id,
+        category: acc.category || "",
         productName: acc.name,
         unit: acc.unit || "m2",
         unitPrice: acc.unitPrice ?? 0,
       };
     });
     onChange(next);
+    setSuggestions(null);
+  }
+
+  function addRow() {
+    onChange([...items, createEmptyQuoteItem()]);
+  }
+
+  function removeRow(index: number) {
+    if (items.length <= 1) return;
+    onChange(items.filter((_, rowIndex) => rowIndex !== index));
     setSuggestions(null);
   }
 
@@ -86,6 +98,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">单位</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[80px]">数量</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[90px]">单价</th>
+            <th className="text-center py-2 px-2 font-medium text-[#8E8E93] w-[54px]">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -160,7 +173,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   type="text"
                   value={item.unit}
                   onChange={(e) => updateItem(index, "unit", e.target.value)}
-                  list="unitOptions"
+                  list={unitOptionsId}
                   className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors"
                 />
               </td>
@@ -185,11 +198,29 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors"
                 />
               </td>
+              <td className="py-1.5 px-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  disabled={items.length <= 1}
+                  aria-label={`删除第 ${index + 1} 行`}
+                  className="rounded-md px-2 py-1 text-[12px] text-[#FF3B30] hover:bg-[#FF3B30]/10 disabled:cursor-not-allowed disabled:opacity-25"
+                >
+                  删除
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <datalist id="unitOptions">
+      <button
+        type="button"
+        onClick={addRow}
+        className="mt-2 rounded-lg border border-dashed border-[#C7C7CC] px-3 py-1.5 text-[12px] font-medium text-[#007AFF] hover:border-[#007AFF] hover:bg-[#007AFF]/5"
+      >
+        + 添加明细
+      </button>
+      <datalist id={unitOptionsId}>
         {UNIT_OPTIONS.map((u) => (
           <option key={u} value={u} />
         ))}

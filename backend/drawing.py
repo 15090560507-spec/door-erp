@@ -3,9 +3,11 @@
 包含: DimensionCalculator, EzdxfDrawer, draw_door_in_frame, run_integrated_system
 """
 import io
+import logging
 import math
 import os
 import tempfile
+import time
 from typing import Any, Dict, Tuple, Optional, Callable, Union
 
 import ezdxf
@@ -18,6 +20,7 @@ from utils import parse_dim_str, parse_gap_str
 # ===================== 模板缓存 =====================
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
 _template_text: Optional[str] = None
+logger = logging.getLogger(__name__)
 DIMENSION_SPACING_DELTA = 40
 VIEW_TRIM_EDGE_GAP = 1200
 
@@ -1710,14 +1713,17 @@ def run_integrated_system(
         progress_callback = lambda x: None
 
     try:
+        total_started = time.perf_counter()
         progress_callback("正在启动云端图纸引擎...")
 
+        parse_started = time.perf_counter()
         cached = _get_cached_template()
         if cached:
             doc = ezdxf.read(io.StringIO(cached))
         else:
             doc = ezdxf.new('R2010')
         doc.header["$DIMASSOC"] = 2
+        parse_elapsed = time.perf_counter() - parse_started
 
         ms = doc.modelspace()
 
@@ -1847,12 +1853,23 @@ def run_integrated_system(
         lw = draw_p.get("light_w", 0)
         lh = draw_p.get("light_h", 0)
 
+        draw_started = time.perf_counter()
         draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
         draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
+        draw_elapsed = time.perf_counter() - draw_started
 
+        write_started = time.perf_counter()
         buffer = io.StringIO()
         doc.write(buffer)
         buffer.seek(0)
+        write_elapsed = time.perf_counter() - write_started
+        logger.info(
+            "[cad-engine] parse=%.3fs draw=%.3fs write=%.3fs total=%.3fs",
+            parse_elapsed,
+            draw_elapsed,
+            write_elapsed,
+            time.perf_counter() - total_started,
+        )
         return "图纸生成成功！", buffer
 
     except Exception as e:
