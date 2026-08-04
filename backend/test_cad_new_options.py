@@ -12,7 +12,7 @@ sys.path.insert(0, BACKEND_DIR)
 
 from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
 from models import CADRequest
-from drawing import EzdxfDrawer, _build_hatch_library, run_integrated_system
+from drawing import EzdxfDrawer, _build_hatch_library, _hatch_bounds, run_integrated_system
 from cad_preview import render_dxf_svg
 
 
@@ -457,6 +457,51 @@ def test_panel_hatch_presets_and_masks():
     wipeouts = [entity for entity in doc.modelspace().query("WIPEOUT") if entity.dxf.layer == "A-DOOR-MASK"]
     check("hardware mask wipeouts are generated above hatches", len(wipeouts) >= 2, len(wipeouts))
 
+    for preset_name in ("紫荆花款", "钱币款", "竖条款", "流星雨款", "四方纳福款"):
+        preset_req = CADRequest(
+            panel_preset=preset_name,
+            door_type="单门",
+            sel_hys="暗合页",
+            fingerprint_lock="无",
+        )
+        preset_info, preset_checks, preset_draw_params = build_cad_params(preset_req)
+        preset_msg, preset_buffer = run_integrated_system(preset_info, preset_checks, preset_draw_params)
+        check(f"{preset_name} CAD generation returns buffer", preset_buffer is not None, preset_msg)
+        if not preset_buffer:
+            continue
+
+        preset_doc = ezdxf.read(io.StringIO(preset_buffer.getvalue()))
+        panel_bounds = [
+            poly_bounds(entity)
+            for entity in preset_doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-PANEL" and entity.closed
+        ]
+        back_stripe_matches = []
+        for hatch in preset_doc.modelspace().query("HATCH"):
+            if hatch.dxf.layer != "A-DOOR-HATCH" or hatch.dxf.pattern_name != "ANSI31":
+                continue
+            bounds = _hatch_bounds(hatch)
+            if not bounds:
+                continue
+            hatch_left, hatch_bottom, hatch_right, hatch_top = bounds
+            if abs((hatch_right - hatch_left) - 100) > 0.01:
+                continue
+            containers = [
+                panel
+                for panel in panel_bounds
+                if panel[0] <= hatch_left + 0.01
+                and panel[1] >= hatch_right - 0.01
+                and abs(panel[2] - hatch_bottom) < 0.01
+                and abs(panel[3] - hatch_top) < 0.01
+            ]
+            if any(abs(panel[1] - hatch_right - 180) < 0.01 for panel in containers):
+                back_stripe_matches.append(bounds)
+        check(
+            f"{preset_name} back panel keeps 180mm blank then 100mm vertical stripe",
+            len(back_stripe_matches) == 1,
+            str(back_stripe_matches),
+        )
+
     polygon_doc = ezdxf.new("R2018")
     polygon_block = polygon_doc.blocks.new("POLYGON_MASK_TEST")
     polygon_block.add_lwpolyline(
@@ -839,6 +884,49 @@ def test_light_width_uses_pillar_inner_edges():
         (x1, x2) == (-549.0, 227.0),
         (x1, x2),
     )
+
+    middle_width_dims = [
+        entity for entity in doc.modelspace().query("DIMENSION")
+        if entity.dxf.text == "中门内空宽 <>" and abs(float(entity.dxf.angle)) < 0.01
+    ]
+    check("pillar drawing has one middle clear-width dimension", len(middle_width_dims) == 1, len(middle_width_dims))
+    if middle_width_dims:
+        middle_dim = middle_width_dims[0]
+        middle_x1 = round(float(middle_dim.dxf.defpoint2.x), 2)
+        middle_x2 = round(float(middle_dim.dxf.defpoint3.x), 2)
+        check(
+            "middle clear width dimensions between pillar inner edges",
+            (middle_x1, middle_x2) == (x1, x2),
+            ((middle_x1, middle_x2), (x1, x2)),
+        )
+
+    four_req = CADRequest(
+        door_type="四开门",
+        has_pillar=True,
+        pillar_width_str="55/85",
+        mark_light_size=True,
+    )
+    four_info, four_checks, four_draw_params = build_cad_params(four_req)
+    four_msg, four_buffer = run_integrated_system(four_info, four_checks, four_draw_params)
+    check("four-door pillar clear-width CAD generation returns buffer", four_buffer is not None, four_msg)
+    if four_buffer:
+        four_doc = ezdxf.read(io.StringIO(four_buffer.getvalue()))
+        four_light_dims = [
+            entity for entity in four_doc.modelspace().query("DIMENSION")
+            if entity.dxf.text.startswith("见光宽") and abs(float(entity.dxf.angle)) < 0.01
+        ]
+        four_middle_dims = [
+            entity for entity in four_doc.modelspace().query("DIMENSION")
+            if entity.dxf.text == "中门内空宽 <>" and abs(float(entity.dxf.angle)) < 0.01
+        ]
+        check(
+            "four-door middle and light dimensions use the same pillar inner edges",
+            len(four_light_dims) == 1
+            and len(four_middle_dims) == 1
+            and round(float(four_light_dims[0].dxf.defpoint2.x), 2) == round(float(four_middle_dims[0].dxf.defpoint2.x), 2)
+            and round(float(four_light_dims[0].dxf.defpoint3.x), 2) == round(float(four_middle_dims[0].dxf.defpoint3.x), 2),
+            (len(four_light_dims), len(four_middle_dims)),
+        )
 
 
 def test_new_defaults_fingerprint_and_transom_shape():

@@ -1082,7 +1082,8 @@ def draw_door_in_frame(
 
         if not is_back:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
-            drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
+            mid_dim_x1, mid_dim_x2 = pillar_inner_light_edges or (lmx1, rmx2)
+            drawer.draw_dim(off((mid_dim_x1, mid_dim_y)), off((mid_dim_x2, mid_dim_y)), off(((mid_dim_x1 + mid_dim_x2) / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
 
     elif door_type == "两定两开":
         total_door_width = dw - ref_left - ref_right - left_gap - right_gap
@@ -1140,7 +1141,8 @@ def draw_door_in_frame(
             pillar_inner_light_edges = (lpx2_draw, rpx1_draw)
         if not is_back:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
-            drawer.draw_dim(off((lmx1, mid_dim_y)), off((rmx2, mid_dim_y)), off((lmx1 + mid_total_width / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
+            mid_dim_x1, mid_dim_x2 = pillar_inner_light_edges or (lmx1, rmx2)
+            drawer.draw_dim(off((mid_dim_x1, mid_dim_y)), off((mid_dim_x2, mid_dim_y)), off(((mid_dim_x1 + mid_dim_x2) / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
 
     # ===================== 尺寸标注 =====================
     rad90 = math.radians(90)
@@ -1395,7 +1397,7 @@ def draw_door_in_frame(
             if force or not has_explicit_fill:
                 next_settings.update({
                     "style": "三列式布局",
-                    "three_col_a": 0,
+                    "three_col_a": 180,
                     "three_col_b": 100,
                     "three_col_c": 0,
                     "fill_a": "",

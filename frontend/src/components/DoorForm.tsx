@@ -170,11 +170,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const usesHPlusPanel = (style: string) => style === "H+型布局";
   const usesDiscPanel = (style: string) => style === "圆盘造型";
   const panelPresetSummary: Record<string, string> = {
-    "紫荆花款": "正面：A区紫荆花150mm + B区竖条；反面：中间B区竖条100mm。",
-    "钱币款": "正面：A区钱币款150mm + B区竖条；反面：中间B区竖条100mm。",
-    "竖条款": "正面：A区空白150mm + B区竖条；反面：中间B区竖条100mm。",
-    "流星雨款": "正面：A区流星雨150mm + B区斜实虚；反面：中间B区竖条100mm。",
-    "四方纳福款": "正面：A区四方纳福150mm + B区正实虚；反面：中间B区竖条100mm。",
+    "紫荆花款": "正面：A区紫荆花150mm + B区竖条；反面：锁边A区空白180mm + B区竖条100mm。",
+    "钱币款": "正面：A区钱币款150mm + B区竖条；反面：锁边A区空白180mm + B区竖条100mm。",
+    "竖条款": "正面：A区空白150mm + B区竖条；反面：锁边A区空白180mm + B区竖条100mm。",
+    "流星雨款": "正面：A区流星雨150mm + B区斜实虚；反面：锁边A区空白180mm + B区竖条100mm。",
+    "四方纳福款": "正面：A区四方纳福150mm + B区正实虚；反面：锁边A区空白180mm + B区竖条100mm。",
   };
   const applyPanelPreset = (preset: string) => {
     const frontFillA: Record<string, string> = {
@@ -204,7 +204,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       panel_fill_b: frontFillB[preset] || "",
       panel_fill_c: "",
       back_door_panel_style: "三列式布局",
-      back_panel_three_col_a: 0,
+      back_panel_three_col_a: 180,
       back_panel_three_col_b: 100,
       back_panel_three_col_c: 0,
       back_panel_fill_a: "",
