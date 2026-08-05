@@ -129,7 +129,7 @@ def main() -> None:
             "/api/production/pending-release",
             headers=headers("prod_workbench_none"),
         )
-        check("无生产权限不能查看待下达任务", response.status_code == 403, response.text)
+        check("所有登录用户可查看待下达任务", response.status_code == 200, response.text)
 
         if rows:
             test_production_db.create_order(
@@ -380,7 +380,7 @@ def main() -> None:
             f"/api/production/orders/{order_id}/documents/bom.xlsx",
             headers=headers("prod_workbench_reader"),
         )
-        check("无技术权限不能导出BOM", response.status_code == 403, response.text)
+        check("所有登录用户可导出BOM", response.status_code == 200, response.text)
     finally:
         main_module.production_db = original_main_db
         main_module.task_db = original_main_tasks

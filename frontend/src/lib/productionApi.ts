@@ -5,6 +5,7 @@ import type {
   CuttingSheet,
   FinishedGood,
   InventoryBalance,
+  MaterialRequirement,
   PendingProductionTask,
   ProductionMaterial,
   ProductionOperation,
@@ -134,6 +135,48 @@ export async function saveBom(orderId: number, items: BomItem[]) {
 export async function publishBom(orderId: number) {
   const { data } = await api.post<BomData>(`/production/orders/${orderId}/bom/publish`);
   return data;
+}
+
+export async function getMaterialRequirements() {
+  const { data } = await api.get<{ requirements: MaterialRequirement[] }>(
+    "/production/material-requirements",
+  );
+  return data.requirements;
+}
+
+export async function getOrderMaterialRequirement(orderId: number) {
+  const { data } = await api.get<{ requirement: MaterialRequirement | null }>(
+    `/production/orders/${orderId}/material-requirement`,
+  );
+  return data.requirement;
+}
+
+export async function purchaseRequirementShortages(payload: {
+  supplier: string;
+  expected_date: string;
+  remark: string;
+  items: Array<{ requirement_item_id: number; quantity?: number }>;
+}) {
+  const { data } = await api.post("/production/material-requirements/purchase", payload);
+  return data;
+}
+
+export async function issueOrderMaterials(orderId: number, items: Array<{
+  requirement_item_id: number;
+  quantity: number;
+  warehouse_location?: string;
+}>, remark = "") {
+  const { data } = await api.post(`/production/orders/${orderId}/materials/issue`, { items, remark });
+  return data.requirement as MaterialRequirement;
+}
+
+export async function returnOrderMaterials(orderId: number, items: Array<{
+  requirement_item_id: number;
+  quantity: number;
+  warehouse_location?: string;
+}>, remark = "") {
+  const { data } = await api.post(`/production/orders/${orderId}/materials/return`, { items, remark });
+  return data.requirement as MaterialRequirement;
 }
 
 export async function getPurchases() {

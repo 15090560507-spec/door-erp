@@ -8,8 +8,9 @@ import ProductionFilters from "@/components/production/ProductionFilters";
 import ProductionMaterials from "@/components/production/ProductionMaterials";
 import ProductionOrderDetail from "@/components/production/ProductionOrderDetail";
 import ProductionOrderList from "@/components/production/ProductionOrderList";
+import ProductionPurchasing from "@/components/production/ProductionPurchasing";
 import ProductionShipping from "@/components/production/ProductionShipping";
-import ProductionSupply from "@/components/production/ProductionSupply";
+import ProductionWarehouse from "@/components/production/ProductionWarehouse";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getPendingProductionTasks,
@@ -23,14 +24,24 @@ import type {
   ProductionOrderFilters,
 } from "@/lib/productionTypes";
 
-type View = "dashboard" | "orders" | "materials" | "supply" | "shipping";
+type View = "dashboard" | "orders" | "bom" | "schedule" | "cutting" | "purchasing" | "warehouse" | "quality" | "shipping";
 
 const views: Array<{ key: View; label: string }> = [
   { key: "dashboard", label: "生产总览" },
   { key: "orders", label: "生产订单" },
-  { key: "materials", label: "生产物料" },
-  { key: "supply", label: "采购与库存" },
-  { key: "shipping", label: "成品与发货" },
+  { key: "bom", label: "BOM 与备料" },
+  { key: "schedule", label: "生产排单" },
+  { key: "cutting", label: "综合下料" },
+  { key: "purchasing", label: "采购" },
+  { key: "warehouse", label: "仓储" },
+  { key: "quality", label: "质检与成品" },
+  { key: "shipping", label: "发货" },
+];
+
+const allProductionPermissions = [
+  "production.sales", "production.technical", "production.purchase", "production.warehouse",
+  "production.schedule", "production.cutting", "production.worker", "production.quality",
+  "production.shipping", "production.manager",
 ];
 
 const emptyFilters: ProductionOrderFilters = {
@@ -38,8 +49,8 @@ const emptyFilters: ProductionOrderFilters = {
 };
 
 export default function ProductionPage() {
-  const { user, setModule } = useAuth();
-  const permissions = user?.permissions || [];
+  const { setModule } = useAuth();
+  const permissions = allProductionPermissions;
   const [view, setView] = useState<View>("dashboard");
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
@@ -116,15 +127,11 @@ export default function ProductionPage() {
     setView("orders");
   };
 
-  if (!permissions.length) {
-    return <><TopNav /><main className="mx-auto max-w-7xl px-6 py-12"><div className="border border-[#FFD1D1] bg-white p-8 text-center text-[#FF3B30]">当前账号尚未分配生产履约权限，请联系超级管理员。</div></main></>;
-  }
-
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
     <TopNav />
     <main className="mx-auto max-w-[1600px] space-y-5 px-4 py-5 sm:px-6">
       <header className="flex flex-wrap items-end gap-4">
-        <div className="flex-1"><h1 className="text-xl font-semibold">生产履约</h1><p className="mt-1 text-sm text-[#636366]">终审任务待下达、生产订单、BOM、下料、排单、质检、库存与发货集中处理。</p></div>
+        <div className="flex-1"><h1 className="text-xl font-semibold">生产履约</h1><p className="mt-1 text-sm text-[#636366]">生产订单发布后，依次完成 BOM、备料、排单、下料、生产、质检、入库和发货。</p></div>
         <button onClick={() => void refresh()} className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm">刷新</button>
       </header>
 
@@ -134,23 +141,35 @@ export default function ProductionPage() {
 
       {view === "dashboard" && <>
         <ProductionDashboard counts={counts} onFilter={filterFromDashboard} />
-        <PendingReleaseList tasks={pendingTasks} canRelease={permissions.includes("production.sales")} onReleased={() => void refresh()} />
+        <PendingReleaseList tasks={pendingTasks} canRelease onReleased={() => void refresh()} />
         <section className="border border-[#E5E5EA] bg-white p-5"><h2 className="mb-4 font-semibold">最近生产订单</h2><ProductionOrderList orders={orders.slice(0, 8)} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setView("orders"); }} /></section>
       </>}
 
       {view === "orders" && <div className="space-y-5">
-        <PendingReleaseList tasks={pendingTasks} canRelease={permissions.includes("production.sales")} onReleased={() => void refresh()} />
+        <PendingReleaseList tasks={pendingTasks} canRelease onReleased={() => void refresh()} />
         <ProductionFilters value={draftFilters} onChange={setDraftFilters} onApply={applyFilters} />
         {loading ? <div className="border border-[#E5E5EA] bg-white p-12 text-center text-sm text-[#8E8E93]">正在加载生产订单...</div> : <ProductionOrderList orders={orders} selectedId={selectedId} onSelect={setSelectedId} />}
         {selectedOrder && <ProductionOrderDetail order={selectedOrder} permissions={permissions} notify={notify} onChanged={() => void refresh()} />}
       </div>}
 
-      {view === "materials" && <ProductionMaterials canEdit={permissions.some((item) => ["production.technical", "production.warehouse", "production.purchase"].includes(item))} notify={notify} />}
-      {view === "supply" && <ProductionSupply permissions={permissions} notify={notify} />}
-      {view === "shipping" && <ProductionShipping canEdit={permissions.includes("production.shipping")} notify={notify} />}
+      {view === "bom" && <div className="space-y-5"><ProductionMaterials canEdit notify={notify} /><OrderWorkbench title="BOM 与备料订单" description="建立物料资料后，在订单详情中手工录入并发布 BOM；系统会自动生成需求和预留库存。" orders={orders.filter((order) => ['BOM准备', '备料'].includes(order.stage))} selectedId={selectedId} onSelect={setSelectedId} selectedOrder={selectedOrder} permissions={permissions} notify={notify} refresh={refresh} /></div>}
+      {view === "schedule" && <OrderWorkbench title="生产排单" description="安排计划开始、完成日期、生产人和负责人；缺料排单需要明确确认。" orders={orders.filter((order) => !['已完成', '已作废', '已撤回'].includes(order.status))} selectedId={selectedId} onSelect={setSelectedId} selectedOrder={selectedOrder} permissions={permissions} notify={notify} refresh={refresh} />}
+      {view === "cutting" && <OrderWorkbench title="综合下料" description="BOM 已发布且物料备齐后，可生成综合下料单并记录实际下料。" orders={orders.filter((order) => ['备料', '下料', '生产'].includes(order.stage))} selectedId={selectedId} onSelect={setSelectedId} selectedOrder={selectedOrder} permissions={permissions} notify={notify} refresh={refresh} />}
+      {view === "purchasing" && <ProductionPurchasing notify={notify} />}
+      {view === "warehouse" && <ProductionWarehouse notify={notify} />}
+      {view === "quality" && <OrderWorkbench title="质检与成品" description="跟踪生产工序、成品质检和成品入库。" orders={orders.filter((order) => ['生产', '质检', '入库'].includes(order.stage))} selectedId={selectedId} onSelect={setSelectedId} selectedOrder={selectedOrder} permissions={permissions} notify={notify} refresh={refresh} />}
+      {view === "shipping" && <ProductionShipping canEdit notify={notify} />}
     </main>
     {notice && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setNotice(null)}><div className="w-full max-w-sm border border-[#D1D1D6] bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}><h3 className="font-semibold">{notice.error ? "操作失败" : "操作成功"}</h3><p className={`mt-3 text-sm ${notice.error ? 'text-[#FF3B30]' : 'text-[#248A3D]'}`}>{notice.message}</p><div className="mt-5 text-right"><button onClick={() => setNotice(null)} className="h-9 bg-[#007AFF] px-5 text-sm text-white">知道了</button></div></div></div>}
   </div>;
+}
+
+function OrderWorkbench({ title, description, orders, selectedId, onSelect, selectedOrder, permissions, notify, refresh }: {
+  title: string; description: string; orders: ProductionOrder[]; selectedId: number | null;
+  onSelect: (id: number) => void; selectedOrder: ProductionOrder | null; permissions: string[];
+  notify: (message: string, error?: boolean) => void; refresh: () => Promise<void>;
+}) {
+  return <div className="space-y-5"><section className="border border-[#E5E5EA] bg-white p-5"><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-[#636366]">{description}</p></section><ProductionOrderList orders={orders} selectedId={selectedId} onSelect={onSelect} />{selectedOrder && <ProductionOrderDetail order={selectedOrder} permissions={permissions} notify={notify} onChanged={() => void refresh()} />}</div>;
 }
 
 function dateValue(value: Date) {

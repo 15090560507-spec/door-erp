@@ -57,6 +57,7 @@ class PurchaseItemRequest(BaseModel):
     unit: str = ""
     unit_price: float = Field(default=0, ge=0)
     remark: str = ""
+    requirement_item_id: Optional[int] = None
 
 
 class PurchaseRequest(BaseModel):
@@ -91,6 +92,29 @@ class InventoryTransactionRequest(BaseModel):
     remark: str = ""
 
 
+class RequirementPurchaseItem(BaseModel):
+    requirement_item_id: int
+    quantity: Optional[float] = Field(default=None, gt=0)
+
+
+class RequirementPurchaseRequest(BaseModel):
+    supplier: str = ""
+    expected_date: str = ""
+    remark: str = ""
+    items: List[RequirementPurchaseItem]
+
+
+class MaterialMovementItem(BaseModel):
+    requirement_item_id: int
+    quantity: float = Field(gt=0)
+    warehouse_location: str = ""
+
+
+class MaterialMovementRequest(BaseModel):
+    items: List[MaterialMovementItem]
+    remark: str = ""
+
+
 class CuttingItemUpdate(BaseModel):
     id: int
     actual_quantity: float = Field(default=0, ge=0)
@@ -110,6 +134,7 @@ class ScheduleRequest(BaseModel):
     producer: str = ""
     shortage_status: str = "未知"
     owner: str = ""
+    allow_shortage: bool = False
 
 
 class OperationUpdateRequest(BaseModel):

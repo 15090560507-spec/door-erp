@@ -41,12 +41,9 @@ ROLE_DEFAULT_PERMISSIONS = {
 
 
 def user_permissions(user_info: Dict) -> set[str]:
-    if user_info.get("role") == SUPER_ADMIN_ROLE:
-        return set(PRODUCTION_PERMISSIONS)
-    explicit = user_info.get("permissions")
-    if isinstance(explicit, list):
-        return {str(item) for item in explicit if str(item) in PRODUCTION_PERMISSIONS}
-    return set(ROLE_DEFAULT_PERMISSIONS.get(user_info.get("role", ""), set()))
+    # Production fulfillment is currently an all-staff workspace. Authentication
+    # remains mandatory, while administrator-only APIs keep using require_roles.
+    return set(PRODUCTION_PERMISSIONS)
 
 
 def public_user_info(user_info: Dict, uid: str | None = None) -> Dict:

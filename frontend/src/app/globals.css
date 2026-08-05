@@ -20,8 +20,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-header, footer { display: none !important; }
-
 /* 全局按钮按下反馈 */
 button:not(:disabled) {
   cursor: pointer;

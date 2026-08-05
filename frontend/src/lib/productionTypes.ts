@@ -101,6 +101,7 @@ export interface PurchaseItem {
   id?: number;
   order_id?: number | null;
   material_id?: number | null;
+  requirement_item_id?: number | null;
   name: string;
   specification: string;
   quantity: number;
@@ -127,6 +128,42 @@ export interface InventoryBalance {
   unit: string;
   warehouse_location: string;
   quantity: number;
+  specification: string;
+  on_hand: number;
+  reserved: number;
+  available: number;
+}
+
+export interface MaterialRequirementItem {
+  id: number;
+  requirement_id: number;
+  bom_item_id?: number | null;
+  material_id?: number | null;
+  material_code?: string | null;
+  name: string;
+  specification: string;
+  required_quantity: number;
+  reserved_quantity: number;
+  purchased_quantity: number;
+  received_quantity: number;
+  issued_quantity: number;
+  shortage_quantity: number;
+  unit: string;
+  status: string;
+}
+
+export interface MaterialRequirement {
+  id: number;
+  order_id: number;
+  order_no: string;
+  customer: string;
+  project: string;
+  due_date: string;
+  shortage_status: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  items: MaterialRequirementItem[];
 }
 
 export interface CuttingItem {
@@ -155,6 +192,7 @@ export interface ProductionSchedule {
   producer: string;
   shortage_status: string;
   owner: string;
+  allow_shortage?: boolean;
 }
 
 export interface ProductionOperation {

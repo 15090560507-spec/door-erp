@@ -25,11 +25,13 @@ from production_document_service import (
     render_print_html,
     render_xlsx,
 )
+from production_material_service import ProductionMaterialService
 from production_models import (
     BomReplaceRequest,
     CuttingSheetUpdate,
     FinishedGoodInboundRequest,
     InventoryTransactionRequest,
+    MaterialMovementRequest,
     MaterialRequest,
     OperationUpdateRequest,
     ProductionOrderActionRequest,
@@ -37,6 +39,7 @@ from production_models import (
     PurchaseRequest,
     PurchaseStatusRequest,
     QualityRequest,
+    RequirementPurchaseRequest,
     ScheduleRequest,
     ShipmentRequest,
     ShipmentStatusRequest,
@@ -47,6 +50,10 @@ router = APIRouter(prefix="/api/production", tags=["production"])
 production_db = ProductionDatabase()
 task_repository: Any = None
 read_production = require_permissions(*sorted(PRODUCTION_PERMISSIONS))
+
+
+def _material_service() -> ProductionMaterialService:
+    return ProductionMaterialService(production_db)
 
 
 def configure_task_repository(repository: Any) -> None:
@@ -481,16 +488,144 @@ def publish_bom(
     if not count or int(count["count"]) == 0:
         raise HTTPException(status_code=409, detail="BOM 为空，不能发布")
     now = production_now()
-    production_db.execute(
-        "UPDATE production_bom_status SET status='已发布', published_by=?, published_at=?, updated_at=? WHERE order_id=?",
-        (current_user["uid"], now, now, order_id),
-    )
-    production_db.update_order(order_id, {"stage": "备料"})
+    with production_db.transaction() as conn:
+        conn.execute(
+            "UPDATE production_bom_status SET status='已发布', published_by=?, published_at=?, updated_at=? WHERE order_id=?",
+            (current_user["uid"], now, now, order_id),
+        )
+        conn.execute(
+            "UPDATE production_orders SET stage='备料', updated_at=? WHERE id=?", (now, order_id)
+        )
+        _material_service().create_requirement_for_order(conn, order_id)
     _event(order_id, "发布BOM", "", current_user)
     return get_bom(order_id, current_user)
 
 
 # Purchases and inventory
+@router.get("/material-requirements")
+def list_material_requirements(current_user: Dict = Depends(read_production)):
+    return {"requirements": _material_service().list_requirements()}
+
+
+@router.get("/orders/{order_id}/material-requirement")
+def get_material_requirement(order_id: int, current_user: Dict = Depends(read_production)):
+    _order_or_404(order_id)
+    return {"requirement": _material_service().get_requirement_for_order(order_id)}
+
+
+@router.post("/material-requirements/purchase")
+def purchase_requirement_shortages(
+    req: RequirementPurchaseRequest,
+    current_user: Dict = Depends(require_permissions("production.purchase")),
+):
+    if not req.items:
+        raise HTTPException(status_code=400, detail="请至少选择一条缺料明细")
+    now = production_now()
+    prefix = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("CG%Y%m%d")
+    service = _material_service()
+    with production_db.transaction() as conn:
+        purchase_no = production_db._next_number(
+            conn, "production_purchase_orders", "purchase_no", prefix
+        )
+        cursor = conn.execute(
+            """
+            INSERT INTO production_purchase_orders(
+                purchase_no, supplier, status, expected_date, remark, created_by, created_at, updated_at
+            ) VALUES (?, ?, '草稿', ?, ?, ?, ?, ?)
+            """,
+            (purchase_no, req.supplier, req.expected_date, req.remark, current_user["uid"], now, now),
+        )
+        purchase_id = int(cursor.lastrowid)
+        affected_requirements: set[int] = set()
+        affected_orders: set[int] = set()
+        for requested in req.items:
+            item = conn.execute(
+                """
+                SELECT i.*, r.order_id
+                FROM production_material_requirement_items i
+                JOIN production_material_requirements r ON r.id=i.requirement_id
+                WHERE i.id=?
+                """,
+                (requested.requirement_item_id,),
+            ).fetchone()
+            if not item:
+                raise HTTPException(status_code=404, detail="物料需求明细不存在")
+            if not item["material_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{item['name']} 尚未关联物料资料，请先处理 BOM",
+                )
+            shortage = service._shortage(item)
+            quantity = float(requested.quantity) if requested.quantity is not None else shortage
+            if shortage <= 1e-9:
+                raise HTTPException(status_code=409, detail=f"{item['name']} 当前没有待采购缺口")
+            if quantity > shortage + 1e-9:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{item['name']} 本次最多可转采购 {shortage:g}{item['unit']}",
+                )
+            conn.execute(
+                """
+                INSERT INTO production_purchase_items(
+                    purchase_id, order_id, material_id, requirement_item_id, name,
+                    specification, quantity, unit, unit_price, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                """,
+                (
+                    purchase_id, item["order_id"], item["material_id"], item["id"],
+                    item["name"], item["specification"], quantity, item["unit"], req.remark,
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE production_material_requirement_items
+                SET purchased_quantity=purchased_quantity+?, updated_at=? WHERE id=?
+                """,
+                (quantity, now, item["id"]),
+            )
+            affected_requirements.add(int(item["requirement_id"]))
+            affected_orders.add(int(item["order_id"]))
+        for requirement_id in affected_requirements:
+            service._refresh_requirement(conn, requirement_id)
+    for order_id in affected_orders:
+        _event(order_id, "缺料转采购", purchase_no, current_user)
+    return {"purchase_id": purchase_id, "purchase_no": purchase_no}
+
+
+@router.post("/orders/{order_id}/materials/issue")
+def issue_order_materials(
+    order_id: int,
+    req: MaterialMovementRequest,
+    current_user: Dict = Depends(require_permissions("production.warehouse")),
+):
+    _order_or_404(order_id)
+    try:
+        _material_service().issue(
+            order_id, [item.model_dump() for item in req.items], current_user["uid"], req.remark
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _event(order_id, "生产领料", req.remark, current_user)
+    return {"requirement": _material_service().get_requirement_for_order(order_id)}
+
+
+@router.post("/orders/{order_id}/materials/return")
+def return_order_materials(
+    order_id: int,
+    req: MaterialMovementRequest,
+    current_user: Dict = Depends(require_permissions("production.warehouse")),
+):
+    _order_or_404(order_id)
+    try:
+        _material_service().return_materials(
+            order_id, [item.model_dump() for item in req.items], current_user["uid"], req.remark
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _event(order_id, "生产退料", req.remark, current_user)
+    return {"requirement": _material_service().get_requirement_for_order(order_id)}
+
+
 @router.get("/purchases")
 def list_purchases(current_user: Dict = Depends(read_production)):
     purchases = production_db.fetch_all("SELECT * FROM production_purchase_orders ORDER BY id DESC")
@@ -544,12 +679,14 @@ def create_purchase(
         conn.executemany(
             """
             INSERT INTO production_purchase_items(
-                purchase_id, order_id, material_id, name, specification, quantity, unit, unit_price, remark
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                purchase_id, order_id, material_id, requirement_item_id, name,
+                specification, quantity, unit, unit_price, remark
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
-                    purchase_id, item.order_id, item.material_id, item.name, item.specification,
+                    purchase_id, item.order_id, item.material_id, item.requirement_item_id,
+                    item.name, item.specification,
                     item.quantity, item.unit, item.unit_price, item.remark,
                 )
                 for item in req.items
@@ -595,8 +732,10 @@ def receive_purchase(
     if not purchase:
         raise HTTPException(status_code=404, detail="采购单不存在")
     now = production_now()
+    service = _material_service()
     with production_db.transaction() as conn:
         affected_order_ids = set()
+        affected_requirement_ids = set()
         for received in req.items:
             item = conn.execute(
                 "SELECT * FROM production_purchase_items WHERE id=? AND purchase_id=?",
@@ -617,6 +756,20 @@ def receive_purchase(
                 "UPDATE production_purchase_items SET received_quantity=? WHERE id=?",
                 (new_received, received.item_id),
             )
+            if item["requirement_item_id"]:
+                conn.execute(
+                    """
+                    UPDATE production_material_requirement_items
+                    SET received_quantity=received_quantity+?, updated_at=? WHERE id=?
+                    """,
+                    (received.quantity, now, item["requirement_item_id"]),
+                )
+                requirement_row = conn.execute(
+                    "SELECT requirement_id FROM production_material_requirement_items WHERE id=?",
+                    (item["requirement_item_id"],),
+                ).fetchone()
+                if requirement_row:
+                    affected_requirement_ids.add(int(requirement_row["requirement_id"]))
             conn.execute(
                 """
                 INSERT INTO production_inventory_transactions(
@@ -637,6 +790,9 @@ def receive_purchase(
         conn.execute(
             "UPDATE production_purchase_orders SET status=?, updated_at=? WHERE id=?", (status, now, purchase_id)
         )
+        service.allocate_open_requirements(conn, affected_order_ids)
+        for requirement_id in affected_requirement_ids:
+            service._refresh_requirement(conn, requirement_id)
     for order_id in affected_order_ids:
         _event(order_id, "采购到货入库", purchase["purchase_no"], current_user)
     return {"success": True, "status": status}
@@ -644,17 +800,9 @@ def receive_purchase(
 
 @router.get("/inventory")
 def inventory(current_user: Dict = Depends(read_production)):
-    balances = production_db.fetch_all(
-        """
-        SELECT m.id AS material_id, m.code, m.name, m.unit, m.warehouse_location,
-               COALESCE(SUM(t.quantity), 0) AS quantity
-        FROM production_materials m
-        LEFT JOIN production_inventory_transactions t ON t.material_id = m.id
-        WHERE m.active = 1
-        GROUP BY m.id
-        ORDER BY m.id DESC
-        """
-    )
+    balances = _material_service().inventory_balances()
+    for balance in balances:
+        balance["quantity"] = balance["on_hand"]
     transactions = production_db.fetch_all(
         "SELECT * FROM production_inventory_transactions ORDER BY id DESC LIMIT 200"
     )
@@ -681,23 +829,49 @@ def create_inventory_transaction(
 ):
     if req.quantity == 0:
         raise HTTPException(status_code=400, detail="库存数量不能为 0")
+    if req.transaction_type in {"生产领料", "生产退料"}:
+        raise HTTPException(
+            status_code=400,
+            detail="生产领料和退料必须在对应生产订单的物料需求中操作",
+        )
     quantity = req.quantity
     if req.transaction_type in {"生产领料", "报废", "成品出库"}:
         quantity = -abs(quantity)
     elif req.transaction_type in {"采购入库", "其他入库", "生产退料"}:
         quantity = abs(quantity)
-    tx_id = production_db.execute(
-        """
-        INSERT INTO production_inventory_transactions(
-            material_id, order_id, transaction_type, quantity, unit, warehouse_location,
-            remark, operator_uid, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            req.material_id, req.order_id, req.transaction_type, quantity, req.unit,
-            req.warehouse_location, req.remark, current_user["uid"], production_now(),
-        ),
-    )
+    with production_db.transaction() as conn:
+        if quantity < 0 and req.material_id:
+            balance = conn.execute(
+                """
+                SELECT
+                    COALESCE((SELECT SUM(quantity) FROM production_inventory_transactions
+                              WHERE material_id=?), 0) AS on_hand,
+                    COALESCE((SELECT SUM(quantity) FROM production_inventory_reservations
+                              WHERE material_id=? AND status='有效'), 0) AS reserved
+                """,
+                (req.material_id, req.material_id),
+            ).fetchone()
+            available = float(balance["on_hand"] or 0) - float(balance["reserved"] or 0)
+            if abs(quantity) > available + 1e-6:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"可用库存不足，当前可用 {max(0, available):g}{req.unit}",
+                )
+        cursor = conn.execute(
+            """
+            INSERT INTO production_inventory_transactions(
+                material_id, order_id, transaction_type, quantity, unit, warehouse_location,
+                remark, operator_uid, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                req.material_id, req.order_id, req.transaction_type, quantity, req.unit,
+                req.warehouse_location, req.remark, current_user["uid"], production_now(),
+            ),
+        )
+        tx_id = int(cursor.lastrowid)
+        if quantity > 0 and req.material_id:
+            _material_service().allocate_open_requirements(conn, [req.order_id] if req.order_id else [])
     if req.order_id:
         _event(
             req.order_id,
@@ -732,6 +906,14 @@ def create_cutting_sheet(
     bom_status = production_db.fetch_one("SELECT status FROM production_bom_status WHERE order_id=?", (order_id,))
     if not bom_status or bom_status["status"] != "已发布":
         raise HTTPException(status_code=409, detail="BOM 未发布，不能生成综合下料单")
+    requirement = _material_service().get_requirement_for_order(order_id)
+    if not requirement:
+        raise HTTPException(status_code=409, detail="物料需求尚未生成，请重新发布 BOM")
+    if requirement["status"] not in {"已备料", "已领料"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"当前物料状态为“{requirement['status']}”，备料完成后才能生成综合下料单",
+        )
     bom_items = production_db.fetch_all(
         "SELECT * FROM production_bom_items WHERE order_id=? ORDER BY id", (order_id,)
     )
@@ -802,6 +984,14 @@ def save_schedule(
     current_user: Dict = Depends(require_permissions("production.schedule")),
 ):
     _order_or_404(order_id)
+    requirement = _material_service().get_requirement_for_order(order_id)
+    if not requirement:
+        raise HTTPException(status_code=409, detail="BOM 尚未发布，不能排单")
+    if requirement["status"] not in {"已备料", "已领料"} and not req.allow_shortage:
+        raise HTTPException(
+            status_code=409,
+            detail=f"当前物料状态为“{requirement['status']}”；确认允许缺料排单后才能保存",
+        )
     now = production_now()
     with production_db.transaction() as conn:
         conn.execute(
@@ -815,13 +1005,18 @@ def save_schedule(
                 owner=excluded.owner, updated_by=excluded.updated_by, updated_at=excluded.updated_at
             """,
             (
-                order_id, req.planned_start, req.planned_end, req.producer, req.shortage_status,
+                order_id, req.planned_start, req.planned_end, req.producer,
+                "不缺料" if requirement["status"] in {"已备料", "已领料"} else requirement["status"],
                 req.owner, current_user["uid"], now,
             ),
         )
         conn.execute(
             "UPDATE production_orders SET shortage_status=?, updated_at=? WHERE id=?",
-            (req.shortage_status, now, order_id),
+            (
+                "不缺料" if requirement["status"] in {"已备料", "已领料"} else requirement["status"],
+                now,
+                order_id,
+            ),
         )
     _event(order_id, "保存排单", f"{req.planned_start} - {req.planned_end}", current_user)
     return get_schedule(order_id, current_user)

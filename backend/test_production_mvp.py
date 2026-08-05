@@ -85,7 +85,7 @@ def main():
         check("未登录不能访问生产履约", response.status_code == 401, response.text)
 
         response = client.get("/api/production/dashboard", headers=headers("prod_none"))
-        check("无生产权限用户返回 403", response.status_code == 403, response.text)
+        check("所有登录用户均可访问生产履约", response.status_code == 200, response.text)
 
         response = client.get("/api/production/orders", headers=headers("prod_sales"))
         check(
@@ -108,9 +108,26 @@ def main():
             response.text,
         )
 
+        now = "2026-08-05T10:00:00+08:00"
+        material_id = test_db.execute(
+            """
+            INSERT INTO production_materials(
+                code, name, category, specification, unit, created_at, updated_at
+            ) VALUES ('TEST-PLATE', '门板不锈钢板', '板材', '1200x2400', '张', ?, ?)
+            """,
+            (now, now),
+        )
+        test_db.execute(
+            """
+            INSERT INTO production_inventory_transactions(
+                material_id, transaction_type, quantity, unit, operator_uid, created_at
+            ) VALUES (?, '其他入库', 2, '张', 'prod_none', ?)
+            """,
+            (material_id, now),
+        )
         bom_payload = {
             "items": [{
-                "material_id": None,
+                "material_id": material_id,
                 "category": "板材",
                 "name": "门板不锈钢板",
                 "specification": "1200x2400",

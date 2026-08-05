@@ -158,6 +158,51 @@ class ProductionDatabase:
                     FOREIGN KEY(order_id) REFERENCES production_orders(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS production_material_requirements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL UNIQUE,
+                    bom_published_at TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '待备料',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(order_id) REFERENCES production_orders(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS production_material_requirement_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_id INTEGER NOT NULL,
+                    bom_item_id INTEGER,
+                    material_id INTEGER,
+                    name TEXT NOT NULL,
+                    specification TEXT NOT NULL DEFAULT '',
+                    required_quantity REAL NOT NULL DEFAULT 0,
+                    reserved_quantity REAL NOT NULL DEFAULT 0,
+                    purchased_quantity REAL NOT NULL DEFAULT 0,
+                    received_quantity REAL NOT NULL DEFAULT 0,
+                    issued_quantity REAL NOT NULL DEFAULT 0,
+                    unit TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '待备料',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_id) REFERENCES production_material_requirements(id) ON DELETE CASCADE,
+                    FOREIGN KEY(bom_item_id) REFERENCES production_bom_items(id),
+                    FOREIGN KEY(material_id) REFERENCES production_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS production_inventory_reservations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_item_id INTEGER NOT NULL UNIQUE,
+                    order_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    quantity REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT '有效',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_item_id) REFERENCES production_material_requirement_items(id) ON DELETE CASCADE,
+                    FOREIGN KEY(order_id) REFERENCES production_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(material_id) REFERENCES production_materials(id)
+                );
+
                 CREATE TABLE IF NOT EXISTS production_purchase_orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     purchase_no TEXT NOT NULL UNIQUE,
@@ -308,8 +353,23 @@ class ProductionDatabase:
                     FOREIGN KEY(order_id) REFERENCES production_orders(id),
                     FOREIGN KEY(finished_good_id) REFERENCES production_finished_goods(id)
                 );
+
+                CREATE INDEX IF NOT EXISTS ix_production_requirement_status
+                ON production_material_requirements(status, created_at);
+
+                CREATE INDEX IF NOT EXISTS ix_production_reservation_material
+                ON production_inventory_reservations(material_id, status);
                 """
             )
+            self._ensure_column(conn, "production_purchase_items", "requirement_item_id", "INTEGER")
+
+    @staticmethod
+    def _ensure_column(
+        conn: sqlite3.Connection, table: str, column: str, definition: str
+    ) -> None:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def fetch_all(self, sql: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
         with self._connect() as conn:
