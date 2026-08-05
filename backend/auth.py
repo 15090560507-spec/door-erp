@@ -18,11 +18,42 @@ SUPER_ADMIN_ROLE = "超级管理员"
 ENTRY_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员"}
 TASK_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员", "初审员", "总工"}
 
+PRODUCTION_PERMISSIONS = {
+    "production.sales",
+    "production.technical",
+    "production.purchase",
+    "production.warehouse",
+    "production.schedule",
+    "production.cutting",
+    "production.worker",
+    "production.quality",
+    "production.shipping",
+    "production.manager",
+}
+
+ROLE_DEFAULT_PERMISSIONS = {
+    "录入员": {"production.sales"},
+    "绘图员": {"production.technical", "production.cutting", "production.worker"},
+    "初审员": {"production.quality"},
+    "总工": {"production.technical", "production.schedule", "production.manager"},
+    SUPER_ADMIN_ROLE: PRODUCTION_PERMISSIONS,
+}
+
+
+def user_permissions(user_info: Dict) -> set[str]:
+    if user_info.get("role") == SUPER_ADMIN_ROLE:
+        return set(PRODUCTION_PERMISSIONS)
+    explicit = user_info.get("permissions")
+    if isinstance(explicit, list):
+        return {str(item) for item in explicit if str(item) in PRODUCTION_PERMISSIONS}
+    return set(ROLE_DEFAULT_PERMISSIONS.get(user_info.get("role", ""), set()))
+
 
 def public_user_info(user_info: Dict, uid: str | None = None) -> Dict:
     """Return user data that is safe to send to the browser."""
     data = dict(user_info or {})
     data.pop("password", None)
+    data["permissions"] = sorted(user_permissions(data))
     if uid is not None:
         data["uid"] = uid
     return data
@@ -97,6 +128,17 @@ def require_roles(*roles: str):
 
     def dependency(current_user: Dict = Depends(get_current_user)) -> Dict:
         if current_user.get("role") not in allowed:
+            raise HTTPException(status_code=403, detail="权限不足")
+        return current_user
+
+    return dependency
+
+
+def require_permissions(*permissions: str):
+    required = set(permissions)
+
+    def dependency(current_user: Dict = Depends(get_current_user)) -> Dict:
+        if not required.intersection(user_permissions(current_user)):
             raise HTTPException(status_code=403, detail="权限不足")
         return current_user
 

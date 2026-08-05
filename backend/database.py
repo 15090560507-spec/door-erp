@@ -442,7 +442,7 @@ class UserDatabaseManager:
         user_info["uid"] = uid
         return user_info
 
-    def add_or_update_user(self, uid: str, pwd: str, role: str, name: str):
+    def add_or_update_user(self, uid: str, pwd: str, role: str, name: str, permissions: Optional[List[str]] = None):
         if uid == "admin":
             raise ValueError("内置 admin 账号不能通过普通创建接口覆盖")
         users = self.load_all_users()
@@ -457,7 +457,8 @@ class UserDatabaseManager:
             "password": hash_password(pwd),
             "role": role,
             "name": name,
-            "default_module": module_map.get(role, "图纸信息录入")
+            "default_module": module_map.get(role, "图纸信息录入"),
+            "permissions": sorted(set(permissions or [])),
         }
         self.save(users)
 

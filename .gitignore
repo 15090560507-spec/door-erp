@@ -37,6 +37,8 @@ data/*.json
 data/backups/
 data/images/
 data/render/
+data/*.db
+data/production_files/
 output/
 
 # ===================== IDE & OS =====================

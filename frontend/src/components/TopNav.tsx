@@ -9,7 +9,9 @@ export default function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const items = MODULE_OPTIONS;
+  const items = MODULE_OPTIONS.filter(
+    (item) => item.module !== "生产履约" || (user?.permissions?.length || 0) > 0,
+  );
 
   return (
     <nav className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-[#E5E5EA]/60 shadow-sm">
@@ -32,6 +34,8 @@ export default function TopNav() {
                     router.push("/quote");
                   } else if (item.module === "效果渲染") {
                     router.push("/render");
+                  } else if (item.module === "生产履约") {
+                    router.push("/production");
                   } else if (pathname !== "/dashboard") {
                     router.push("/dashboard");
                   }

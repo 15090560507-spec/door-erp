@@ -2,7 +2,7 @@
 Pydantic 模型 - 请求/响应数据定义
 """
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ===================== 表单数据模型（生成 CAD 用） =====================
@@ -143,6 +143,7 @@ class UserCreateRequest(BaseModel):
     pwd: str
     role: str
     name: str
+    permissions: List[str] = Field(default_factory=list)
 
 
 class ResetPasswordRequest(BaseModel):

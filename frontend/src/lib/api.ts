@@ -101,7 +101,7 @@ export async function getUsers(): Promise<{ users: Record<string, UserInfo>; tot
   return data;
 }
 
-export async function createUser(user: { uid: string; pwd: string; role: string; name: string }) {
+export async function createUser(user: { uid: string; pwd: string; role: string; name: string; permissions?: string[] }) {
   const { data } = await api.post("/users", user);
   return data;
 }

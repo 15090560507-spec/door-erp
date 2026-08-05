@@ -83,9 +83,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled && verified) {
           const cached = S.getUser();
           if (cached) {
-            setUser(cached);
+            setUser({ ...cached, permissions: verified.permissions || cached.permissions || [] });
           } else {
-            setUser({ uid: verified.uid, role: verified.role, name: verified.name, default_module: verified.default_module });
+            setUser({
+              uid: verified.uid,
+              role: verified.role,
+              name: verified.name,
+              default_module: verified.default_module,
+              permissions: verified.permissions || [],
+            });
           }
           const m = S.getModule();
           if (m === "汇总看板" || m === "后台管理") {

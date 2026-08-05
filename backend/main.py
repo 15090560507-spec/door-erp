@@ -9,6 +9,7 @@ import uuid
 import datetime
 import hashlib
 import logging
+import sqlite3
 import threading
 import time
 from collections import OrderedDict
@@ -30,6 +31,7 @@ from auth import (
     get_current_user,
     public_user_info,
     public_users_map,
+    require_permissions,
     require_roles,
     require_super_admin,
     verify_token,
@@ -44,8 +46,10 @@ from drawing import run_integrated_system
 from drawing import _load_template
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
-from quote_routes import quote_router
+from quote_routes import quote_router, quote_db
 from render_routes import render_router
+from production_models import ProductionReleaseRequest
+from production_routes import router as production_router, production_db
 from rendering.cad_line_art import export_dxf_line_art
 
 # ===================== FastAPI 应用初始化 =====================
@@ -69,6 +73,7 @@ app.add_middleware(
 
 app.include_router(quote_router)
 app.include_router(render_router)
+app.include_router(production_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
@@ -624,6 +629,78 @@ def get_task_line_art(task_id: str, current_user: Dict = Depends(get_current_use
     }
 
 
+@app.post("/api/production/orders/from-task/{task_id}")
+def release_production_order(
+    task_id: str,
+    req: ProductionReleaseRequest,
+    current_user: Dict = Depends(require_permissions("production.sales")),
+):
+    """Freeze an approved drawing task and release one door to production."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="图纸任务不存在")
+    if task.get("status") != "已通过":
+        raise HTTPException(status_code=409, detail="图纸尚未终审通过，不能下达生产")
+
+    params = task.get("params") or {}
+    customer = str(params.get("dhdw") or task.get("customer") or "").strip()
+    if not customer:
+        raise HTTPException(status_code=400, detail="订货单位不能为空")
+    required_fields = {
+        "door_type": "门型",
+        "dw": "门宽",
+        "dh": "门高",
+        "sel_kx": "左右开向",
+        "sel_nk": "内外开向",
+        "zzcl": "制作材料",
+        "zmks": "正面款式",
+        "fmks": "反面款式",
+    }
+    missing = [label for key, label in required_fields.items() if params.get(key) in (None, "", 0)]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"下达生产前请补充：{'、'.join(missing)}")
+
+    quote_snapshot = None
+    if req.include_quote and req.quote_id is not None:
+        quote_snapshot = quote_db.get_by_id(req.quote_id)
+        if not quote_snapshot:
+            raise HTTPException(status_code=404, detail="选择的报价单不存在")
+
+    revision_payload = {
+        "task_id": task_id,
+        "status": task.get("status"),
+        "params": params,
+        "review_feedback": task.get("review_feedback", ""),
+        "history": task.get("history", []),
+    }
+    source_revision = hashlib.sha256(
+        json.dumps(revision_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    try:
+        _, dxf_bytes, _cache_hit = _cached_cad(CADRequest(**params))
+        order = production_db.create_order(
+            source_task_id=task_id,
+            source_revision=source_revision,
+            customer=customer,
+            project=str(params.get("gdmc") or task.get("project") or "").strip(),
+            due_date=req.due_date,
+            sales_note=req.sales_note,
+            include_quote=bool(quote_snapshot),
+            task_snapshot=task,
+            quote_snapshot=quote_snapshot,
+            dxf_bytes=dxf_bytes,
+            created_by=current_user["uid"],
+        )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="该终审图纸已经下达过生产，请复制原生产订单") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Release production order failed")
+        raise HTTPException(status_code=500, detail=f"下达生产失败：{exc}") from exc
+    return {"order": order, "message": "生产订单已下达"}
+
+
 @app.post("/api/login", response_model=LoginResponse)
 def login(req: LoginRequest):
     user_info = user_db.authenticate(req.uid, req.pwd)
@@ -654,7 +731,7 @@ def create_user(req: UserCreateRequest, current_user: Dict = Depends(require_sup
         raise HTTPException(status_code=400, detail="请填写完整账号信息。")
     if req.uid == "admin":
         raise HTTPException(status_code=400, detail="内置 admin 账号不能通过普通创建接口覆盖")
-    user_db.add_or_update_user(req.uid, req.pwd, req.role, req.name)
+    user_db.add_or_update_user(req.uid, req.pwd, req.role, req.name, req.permissions)
     return {"success": True, "message": f"成功保存账号: {req.uid}"}
 
 
@@ -826,6 +903,7 @@ def auth_verify(current_user: dict = Depends(get_current_user)):
         "role": current_user["role"],
         "name": current_user["name"],
         "default_module": current_user["default_module"],
+        "permissions": current_user.get("permissions", []),
     }
 
 
