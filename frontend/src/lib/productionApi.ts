@@ -5,10 +5,13 @@ import type {
   CuttingSheet,
   FinishedGood,
   InventoryBalance,
+  PendingProductionTask,
   ProductionMaterial,
   ProductionOperation,
   ProductionOrder,
+  ProductionOrderFilters,
   ProductionSchedule,
+  ProductionTimelineItem,
   PurchaseItem,
   PurchaseOrder,
   QualityInspection,
@@ -20,14 +23,57 @@ export async function getProductionDashboard() {
   return data.counts;
 }
 
-export async function getProductionOrders(params?: { stage?: string; status?: string; q?: string }) {
+export async function getProductionOrders(params?: ProductionOrderFilters) {
   const { data } = await api.get<{ orders: ProductionOrder[] }>("/production/orders", { params });
   return data.orders;
+}
+
+export async function getPendingProductionTasks() {
+  const { data } = await api.get<{ tasks: PendingProductionTask[] }>("/production/pending-release");
+  return data.tasks;
 }
 
 export async function getProductionOrder(id: number) {
   const { data } = await api.get<{ order: ProductionOrder }>(`/production/orders/${id}`);
   return data.order;
+}
+
+export async function getProductionTimeline(id: number) {
+  const { data } = await api.get<{ timeline: ProductionTimelineItem[] }>(
+    `/production/orders/${id}/timeline`,
+  );
+  return data.timeline;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadProductionFile(path: string, filename: string) {
+  const { data } = await api.get<Blob>(path, { responseType: "blob", timeout: 120000 });
+  triggerBlobDownload(data, filename);
+}
+
+export async function openProductionPrint(path: string) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) throw new Error("浏览器阻止了打印窗口，请允许本站打开新窗口");
+  printWindow.document.write("<p style='font-family:sans-serif;padding:24px'>正在准备打印单据...</p>");
+  try {
+    const { data } = await api.get<string>(path, { responseType: "text", timeout: 120000 });
+    const url = URL.createObjectURL(new Blob([data], { type: "text/html;charset=utf-8" }));
+    printWindow.location.href = url;
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    printWindow.close();
+    throw error;
+  }
 }
 
 export async function releaseProductionOrder(taskId: string, payload: {

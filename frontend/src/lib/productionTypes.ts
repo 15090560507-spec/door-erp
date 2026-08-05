@@ -13,9 +13,46 @@ export interface ProductionOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  owner?: string;
+  producer?: string;
+  planned_start?: string;
+  planned_end?: string;
   task_snapshot?: Record<string, unknown>;
   quote_snapshot?: Record<string, unknown> | null;
   events?: ProductionEvent[];
+}
+
+export interface PendingProductionTask {
+  task_id: string;
+  source_revision: string;
+  status: "待下达";
+  customer: string;
+  project: string;
+  door_type: string;
+  width: number | null;
+  height: number | null;
+  opening: string;
+  approved_at: string;
+  approved_by: string;
+}
+
+export interface ProductionTimelineItem {
+  id: string;
+  type: string;
+  title: string;
+  detail: string;
+  operator: string;
+  created_at: string;
+}
+
+export interface ProductionOrderFilters {
+  stage?: string;
+  status?: string;
+  q?: string;
+  owner?: string;
+  shortage?: string;
+  due_from?: string;
+  due_to?: string;
 }
 
 export interface ProductionEvent {
