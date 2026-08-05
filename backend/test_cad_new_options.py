@@ -1336,6 +1336,66 @@ def test_cad_preview_svg_renders():
     check("preview SVG crops to front and back views", 0 < view_width < 7000, view_box.group(1) if view_box else svg[:120])
 
 
+def test_optional_structural_occlusion_keeps_source_geometry():
+    base_req = CADRequest(
+        door_type="对开门",
+        has_outer=True,
+        has_inner=True,
+        zmls="A1022",
+        fmls="背包拉手",
+        fingerprint_lock="安志杰AF-12",
+        enable_occlusion=False,
+    )
+    enabled_req = base_req.model_copy(update={"enable_occlusion": True})
+
+    base_info, base_checks, base_params = build_cad_params(base_req)
+    enabled_info, enabled_checks, enabled_params = build_cad_params(enabled_req)
+    _base_msg, base_buffer = run_integrated_system(base_info, base_checks, base_params)
+    enabled_msg, enabled_buffer = run_integrated_system(enabled_info, enabled_checks, enabled_params)
+    check("occlusion CAD generation returns buffer", enabled_buffer is not None, enabled_msg)
+    if not base_buffer or not enabled_buffer:
+        return
+
+    base_doc = ezdxf.read(io.StringIO(base_buffer.getvalue()))
+    enabled_doc = ezdxf.read(io.StringIO(enabled_buffer.getvalue()))
+    base_ms = base_doc.modelspace()
+    enabled_ms = enabled_doc.modelspace()
+
+    base_masks = [entity for entity in base_ms.query("WIPEOUT") if entity.dxf.layer == "A-DOOR-OCCLUSION"]
+    enabled_masks = [entity for entity in enabled_ms.query("WIPEOUT") if entity.dxf.layer == "A-DOOR-OCCLUSION"]
+    check("occlusion is disabled by default", len(base_masks) == 0, str(len(base_masks)))
+    check("occlusion creates structural masks when enabled", len(enabled_masks) > 0, str(len(enabled_masks)))
+
+    for layer in ("A-DOOR-PANEL", "A-DOOR-FRAME", "A-DOOR-TRIM"):
+        base_count = len([entity for entity in base_ms if entity.dxf.layer == layer and entity.dxftype() != "WIPEOUT"])
+        enabled_count = len([entity for entity in enabled_ms if entity.dxf.layer == layer and entity.dxftype() != "WIPEOUT"])
+        check(
+            f"occlusion keeps original {layer} geometry",
+            enabled_count == base_count,
+            f"{base_count} -> {enabled_count}",
+        )
+
+    ordered = list(enabled_ms.entities_in_redraw_order())
+    mask_indexes = [index for index, entity in enumerate(ordered) if entity.dxf.layer == "A-DOOR-OCCLUSION"]
+    foreground_indexes = [
+        index for index, entity in enumerate(ordered)
+        if entity.dxftype() in {"DIMENSION", "TEXT", "MTEXT", "INSERT"}
+        and entity.dxf.layer != "ORDER_FORM"
+    ]
+    check(
+        "hardware text and dimensions stay above structural masks",
+        bool(mask_indexes and foreground_indexes and min(foreground_indexes) > min(mask_indexes)),
+        f"masks={mask_indexes[:3]}, foreground={foreground_indexes[:3]}",
+    )
+
+    enabled_svg = render_dxf_svg(enabled_buffer.getvalue())
+    check(
+        "CAD preview renders structural wipeouts",
+        'class="cad-wipeout" data-layer="A-DOOR-OCCLUSION"' in enabled_svg,
+        enabled_svg[:240],
+    )
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
@@ -1357,6 +1417,7 @@ if __name__ == "__main__":
     test_new_defaults_fingerprint_and_transom_shape()
     test_integrated_door_sections_and_dimensions()
     test_cad_preview_svg_renders()
+    test_optional_structural_occlusion_keeps_source_geometry()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

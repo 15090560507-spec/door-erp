@@ -136,6 +136,7 @@ export interface DoorFormData {
   top_gap: number;
   bottom_gap: number;
   middle_gap: number;
+  enable_occlusion: boolean;
 }
 
 // ===================== 任务 =====================
@@ -259,6 +260,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   fw_left_str: "55/85", fw_right_str: "55/62", fw_top_str: "55/75",
   th_str: "55/75", threshold_type: "高低槛", has_dj: false, dj_height: 0,
   left_gap: 2, right_gap: 2, top_gap: 3, bottom_gap: 5, middle_gap: 2,
+  enable_occlusion: false,
   use_light_size: false, mark_light_size: false, light_w: 0, light_h: 0,
   pdk: "60", sel_bz: "全包",
 };

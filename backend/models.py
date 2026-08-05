@@ -120,6 +120,7 @@ class CADRequest(BaseModel):
     top_gap: int = 3                    # 上门缝
     bottom_gap: int = 5                 # 下门缝
     middle_gap: int = 2                 # 中缝
+    enable_occlusion: bool = False      # 门板/门框/门套结构遮挡
     left_right_gap_str: str = "0/0"     # [兼容旧数据] 左右间隙
     top_bottom_gap_str: str = "0/0"     # [兼容旧数据] 上下间隙
 

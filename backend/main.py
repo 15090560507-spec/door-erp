@@ -536,6 +536,7 @@ def build_cad_params(req: CADRequest):
         "child_panel_disc_radius": req.child_panel_disc_radius,
         "handle_size": req.handle_size,
         "fingerprint_lock": req.fingerprint_lock,
+        "enable_occlusion": req.enable_occlusion,
     }
 
     return info_map, check_map, draw_params

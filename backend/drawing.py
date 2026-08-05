@@ -13,6 +13,8 @@ from typing import Any, Dict, Tuple, Optional, Callable, Union
 import ezdxf
 from ezdxf.disassemble import recursive_decompose
 
+from cad_occlusion import CadOcclusionManager, structural_group_for_layer
+
 from config import CONFIG, TEMPLATE_PATH
 from utils import parse_dim_str, parse_gap_str
 
@@ -224,11 +226,12 @@ class DimensionCalculator:
 
 # ===================== ezdxf 绘图器 =====================
 class EzdxfDrawer:
-    def __init__(self, doc, ms, hinge_block_name, progress_callback=None):
+    def __init__(self, doc, ms, hinge_block_name, progress_callback=None, enable_occlusion=False):
         self.doc = doc
         self.ms = ms
         self.hinge_block_name = hinge_block_name
         self.progress_callback = progress_callback or (lambda x: None)
+        self.occlusion = CadOcclusionManager(doc, ms, enable_occlusion)
         self.doc.header["$DIMASSOC"] = 2
         self.doc.header["$FILLMODE"] = 1
         self.doc.header["$REGENMODE"] = 1
@@ -246,11 +249,16 @@ class EzdxfDrawer:
             if name not in self.doc.layers:
                 self.doc.layers.add(name, color=color)
 
-    def draw_poly(self, points, layer, closed=True):
-        self.ms.add_lwpolyline(points, close=closed, dxfattribs={'layer': layer})
+    def draw_poly(self, points, layer, closed=True, foreground=False, structural_mask=True):
+        group = "hardware" if foreground else structural_group_for_layer(layer)
+        if closed and structural_mask and group in {"frame", "trim"}:
+            self.occlusion.add_mask(points, group)
+        entity = self.ms.add_lwpolyline(points, close=closed, dxfattribs={'layer': layer})
+        return self.occlusion.register(entity, group)
 
     def draw_bulged_poly(self, points, layer, closed=True):
-        self.ms.add_lwpolyline(points, format='xyseb', close=closed, dxfattribs={'layer': layer})
+        entity = self.ms.add_lwpolyline(points, format='xyseb', close=closed, dxfattribs={'layer': layer})
+        return self.occlusion.register(entity, structural_group_for_layer(layer))
 
     def draw_wipeout_rect(self, x1, y1, x2, y2, layer="A-DOOR-MASK"):
         self.draw_wipeout_polygon([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], layer=layer)
@@ -260,6 +268,11 @@ class EzdxfDrawer:
             return
         wipeout = self.ms.add_wipeout(points)
         wipeout.dxf.layer = layer
+        self.occlusion.register(wipeout, "hardware_mask")
+        return wipeout
+
+    def draw_structural_mask(self, points, tier):
+        return self.occlusion.add_mask(points, tier)
 
     def block_local_mask_points(self, block_name: str) -> Optional[list[tuple[float, float]]]:
         if block_name not in self.doc.blocks:
@@ -384,6 +397,7 @@ class EzdxfDrawer:
         if not sample or x2 - x1 <= 1 or y2 - y1 <= 1:
             return
         hatch = self.ms.add_hatch(dxfattribs={'layer': layer, 'color': sample.get('color', 9)})
+        self.occlusion.register(hatch, "panel")
         if sample.get('solid_fill'):
             hatch.set_solid_fill(color=sample.get('color', 9), style=sample.get('hatch_style', 1))
         else:
@@ -418,16 +432,18 @@ class EzdxfDrawer:
         attribs = {'layer': layer}
         if linetype:
             attribs['linetype'] = linetype
-        self.ms.add_line(p1, p2, dxfattribs=attribs)
+        entity = self.ms.add_line(p1, p2, dxfattribs=attribs)
+        return self.occlusion.register(entity, structural_group_for_layer(layer))
 
     def draw_arc(self, center, radius, start_angle, end_angle, layer):
-        self.ms.add_arc(
+        entity = self.ms.add_arc(
             center=center,
             radius=radius,
             start_angle=start_angle,
             end_angle=end_angle,
             dxfattribs={'layer': layer},
         )
+        return self.occlusion.register(entity, structural_group_for_layer(layer))
 
     def draw_dim(self, p1, p2, text_pos, rotation, layer, text_override=""):
         dimstyle = "23231" if "23231" in self.doc.dimstyles else "Standard"
@@ -438,23 +454,28 @@ class EzdxfDrawer:
             text=final_text, dimstyle=dimstyle, dxfattribs={'layer': layer}
         )
         dim.render()
+        self.occlusion.register(dim.dimension, "annotation")
+        return dim.dimension
 
     def draw_text(self, text_str, pos, height, layer):
-        self.ms.add_text(text_str, dxfattribs={'layer': layer, 'height': height}).set_placement(pos)
+        entity = self.ms.add_text(text_str, dxfattribs={'layer': layer, 'height': height}).set_placement(pos)
+        return self.occlusion.register(entity, "annotation")
 
     def insert_hinge_block(self, insert_point, layer="A-DOOR-FRAME"):
-        self.ms.add_blockref(self.hinge_block_name, insert_point, dxfattribs={'layer': layer})
+        entity = self.ms.add_blockref(self.hinge_block_name, insert_point, dxfattribs={'layer': layer})
+        return self.occlusion.register(entity, "hardware")
 
     def insert_custom_block(self, block_name, insert_point, layer="A-DOOR-PANEL", xscale=1, yscale=1, rotation=0):
         if block_name not in self.doc.blocks:
             block = self.doc.blocks.new(name=block_name)
             block.add_lwpolyline([(-15, -150), (15, -150), (15, 150), (-15, 150)], close=True)
-        self.ms.add_blockref(block_name, insert_point, dxfattribs={
+        entity = self.ms.add_blockref(block_name, insert_point, dxfattribs={
             'layer': layer,
             'xscale': xscale,
             'yscale': yscale,
             'rotation': rotation,
         })
+        return self.occlusion.register(entity, "hardware")
 
 
 # ===================== 门体绘制 =====================
@@ -669,6 +690,36 @@ def draw_door_in_frame(
             ))
         return points
 
+    def arch_points_between(geom, left_pt, right_pt, radius_delta: float = 0, segments: int = 32):
+        if not geom or not left_pt or not right_pt:
+            return []
+        radius = geom["radius"] + radius_delta
+        if radius <= 0:
+            return []
+        left_angle = arc_angle_for_point(geom, left_pt)
+        right_angle = arc_angle_for_point(geom, right_pt)
+        if right_angle > left_angle:
+            right_angle -= 360
+        return [
+            (
+                geom["center_x"] + radius * math.cos(math.radians(left_angle + (right_angle - left_angle) * index / segments)),
+                geom["center_y"] + radius * math.sin(math.radians(left_angle + (right_angle - left_angle) * index / segments)),
+            )
+            for index in range(segments + 1)
+        ]
+
+    def draw_arch_band_mask(inner_geom, outer_shape, tier: str):
+        outer_left, outer_right, outer_geom, outer_delta = outer_shape
+        if not inner_geom or not outer_left or not outer_right or not outer_geom:
+            return
+        inner_points = arch_poly_points(inner_geom)
+        outer_points = arch_points_between(outer_geom, outer_left, outer_right, outer_delta)
+        if inner_points and outer_points:
+            drawer.draw_structural_mask(
+                [off(point) for point in outer_points + list(reversed(inner_points))],
+                tier,
+            )
+
     def draw_arch_span(left_x: float, right_x: float, spring_y: float, apex_y: float, layer: str):
         draw_arch_geom(arch_geometry(left_x, right_x, spring_y, apex_y), layer)
 
@@ -738,7 +789,9 @@ def draw_door_in_frame(
         arch_frame = frame_top_arch()
         if arch_frame:
             draw_arch_geom(arch_frame, 'A-DOOR-FRAME')
+            outer_shape = arch_extended_shape(arch_frame, 0, dw, fw_top)
             left_outer_top, right_outer_top = draw_arch_extended_to_x(arch_frame, 0, dw, 'A-DOOR-FRAME', fw_top)
+            draw_arch_band_mask(arch_frame, outer_shape, "frame")
             if left_outer_top and right_outer_top:
                 drawer.draw_line(off(left_outer_top), off((left_width, arch_spring_height)), 'A-DOOR-FRAME')
                 drawer.draw_line(off((dw - right_width, arch_spring_height)), off(right_outer_top), 'A-DOOR-FRAME')
@@ -755,7 +808,9 @@ def draw_door_in_frame(
                 arch_region = arch_poly_points(arch_frame)
                 if arch_region:
                     drawer.draw_poly([off(point) for point in arch_region], 'A-DOOR-FRAME', closed=True)
+                outer_shape = arch_extended_shape(arch_frame, 0, dw, fw_top)
                 left_outer_top, right_outer_top = draw_arch_extended_to_x(arch_frame, 0, dw, 'A-DOOR-FRAME', fw_top)
+                draw_arch_band_mask(arch_frame, outer_shape, "frame")
                 if left_outer_top and right_outer_top:
                     drawer.draw_line(off(left_outer_top), off((left_width, inner_spring_y)), 'A-DOOR-FRAME')
                     drawer.draw_line(off((dw - right_width, inner_spring_y)), off(right_outer_top), 'A-DOOR-FRAME')
@@ -791,6 +846,17 @@ def draw_door_in_frame(
             if trim_base_arch:
                 trim_left_inner, trim_right_inner = draw_arch_extended_to_x(trim_base_arch, ix1, ix4, 'A-DOOR-TRIM', trim_base_delta - O)
                 trim_left_outer, trim_right_outer = draw_arch_extended_to_x(trim_base_arch, ox1, ox4, 'A-DOOR-TRIM', trim_base_delta - O + WT)
+                trim_inner_shape = arch_extended_shape(trim_base_arch, ix1, ix4, trim_base_delta - O)
+                trim_outer_shape = arch_extended_shape(trim_base_arch, ox1, ox4, trim_base_delta - O + WT)
+                inner_left, inner_right, inner_geom, inner_delta = trim_inner_shape
+                outer_left, outer_right, outer_geom, outer_delta = trim_outer_shape
+                inner_points = arch_points_between(inner_geom, inner_left, inner_right, inner_delta)
+                outer_points = arch_points_between(outer_geom, outer_left, outer_right, outer_delta)
+                if inner_points and outer_points:
+                    drawer.draw_structural_mask(
+                        [off(point) for point in outer_points + list(reversed(inner_points))],
+                        "trim",
+                    )
                 drawer.draw_poly([off((ox1, oy1)), off((ox1, trim_left_outer[1])), off(trim_left_outer), off(trim_left_inner), off((ix1, iy1))], 'A-DOOR-TRIM')
                 drawer.draw_poly([off((ix4, iy4)), off(trim_right_inner), off(trim_right_outer), off((ox4, trim_right_outer[1])), off((ox4, oy4))], 'A-DOOR-TRIM')
                 drawer.draw_line(off(trim_left_outer), off(trim_left_inner), 'A-DOOR-TRIM')
@@ -1829,10 +1895,17 @@ def run_integrated_system(
 
         sel_hys = checks.get('hys', '葫芦头合页')
         hinge_name = CONFIG.HINGE_TYPES.get(sel_hys, "hlt")
-        drawer = EzdxfDrawer(doc, ms, hinge_name, progress_callback)
+        drawer = EzdxfDrawer(
+            doc,
+            ms,
+            hinge_name,
+            progress_callback,
+            enable_occlusion=bool(draw_p.get("enable_occlusion", False)),
+        )
         drawer.batch_add_layers({
             "A-DOOR-HATCH": 9,
             "A-DOOR-MASK": 7,
+            "A-DOOR-OCCLUSION": 7,
             "A-DOOR-FRAME": 4,
             "A-DOOR-PANEL": 2,
             "A-DOOR-TRIM": 1,
@@ -1858,6 +1931,7 @@ def run_integrated_system(
         draw_started = time.perf_counter()
         draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
         draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
+        drawer.occlusion.apply()
         draw_elapsed = time.perf_counter() - draw_started
 
         write_started = time.perf_counter()

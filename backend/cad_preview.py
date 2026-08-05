@@ -104,6 +104,17 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
     kind = entity.dxftype()
     layer = _layer(entity)
 
+    if kind == "WIPEOUT":
+        try:
+            points = [_point(point) for point in entity.boundary_path_wcs()]
+        except Exception:
+            points = []
+        if len(points) > 1 and points[0] == points[-1]:
+            points.pop()
+        if len(points) >= 3:
+            primitives.append(Primitive("wipeout", layer, points, {}))
+        return
+
     if kind in {"INSERT", "DIMENSION"}:
         try:
             for virtual_entity in entity.virtual_entities():
@@ -179,7 +190,7 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
 def render_dxf_svg(dxf_text: str) -> str:
     doc = ezdxf.read(io.StringIO(dxf_text))
     primitives: list[Primitive] = []
-    for entity in doc.modelspace():
+    for entity in doc.modelspace().entities_in_redraw_order():
         _collect_entity(entity, primitives)
     primitives = _filter_to_door_views(primitives)
 
@@ -212,7 +223,7 @@ def render_dxf_svg(dxf_text: str) -> str:
             'role="img" aria-label="CAD preview">'
         ),
         "<style>",
-        ".cad-bg{fill:#f8fafc}.cad-line{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.cad-text{font-family:'Microsoft YaHei',SimSun,sans-serif;fill:#0f172a;dominant-baseline:middle;font-weight:600}.cad-note{fill:#64748b;font-size:32px}",
+        ".cad-bg,.cad-wipeout{fill:#f8fafc}.cad-line{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.cad-text{font-family:'Microsoft YaHei',SimSun,sans-serif;fill:#0f172a;dominant-baseline:middle;font-weight:600}.cad-note{fill:#64748b;font-size:32px}",
         "</style>",
         f'<rect class="cad-bg" x="0" y="0" width="{fmt(view_width)}" height="{fmt(view_height)}"/>',
     ]
@@ -225,7 +236,11 @@ def render_dxf_svg(dxf_text: str) -> str:
         elif primitive.layer == "A-DOOR-FRAME":
             stroke_width = "2"
 
-        if primitive.kind == "line":
+        if primitive.kind == "wipeout":
+            points = " ".join(f"{fmt(sx(x))},{fmt(sy(y))}" for x, y in primitive.points)
+            layer = html.escape(primitive.layer, quote=True)
+            parts.append(f'<polygon class="cad-wipeout" data-layer="{layer}" points="{points}"/>')
+        elif primitive.kind == "line":
             (x1, y1), (x2, y2) = primitive.points
             parts.append(
                 f'<line class="cad-line" x1="{fmt(sx(x1))}" y1="{fmt(sy(y1))}" x2="{fmt(sx(x2))}" y2="{fmt(sy(y2))}" stroke="{color}" stroke-width="{stroke_width}"/>'

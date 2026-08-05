@@ -671,6 +671,17 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           />
         </Card>
 
+        <Card title="遮挡关系">
+          <Checkbox
+            label="启用门板、门框、门套/门头门柱遮挡"
+            checked={Boolean(data.enable_occlusion)}
+            onChange={(value) => set("enable_occlusion", value)}
+          />
+          <p className="mt-2 text-xs text-[#8E8E93]">
+            仅影响打印与预览显示；原始门板、门框和门套实体仍完整保留。
+          </p>
+        </Card>
+
         {children}
       </div>
     </div>
