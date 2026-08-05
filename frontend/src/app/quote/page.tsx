@@ -603,8 +603,8 @@ export default function QuotePage() {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setAccessoryOpen(true)}
             className="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-white border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors"
@@ -653,16 +653,16 @@ export default function QuotePage() {
         )}
       </div>
 
-      {/* Main two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Editor */}
+      {/* Full-width editor followed by the A4 preview. */}
+      <div className="space-y-6">
+        {/* Editor */}
         <div className="space-y-4">
           {/* Quote Form Header */}
-          <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-6">
+          <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4 sm:p-6">
             <h2 className="text-[15px] font-semibold text-[#1C1C1E] mb-4">报价明细</h2>
 
             {/* Customer/Project/Date fields */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 gap-3 mb-4 md:grid-cols-3">
               <label className="block">
                 <span className="text-[12px] font-medium text-[#8E8E93]">客户名称</span>
                 <input
@@ -835,7 +835,7 @@ export default function QuotePage() {
           <AiAnalysisPanel onApply={handleApplyAnalysis} />
         </div>
 
-        {/* Right: Preview */}
+        {/* Preview */}
         <div className="space-y-4">
           <QuotePreview
             customerName={customerName}
@@ -847,32 +847,32 @@ export default function QuotePage() {
 
           {/* Action Buttons */}
           <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4">
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
+                className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
                 {saving ? "保存中..." : "保存"}
               </button>
               <button
                 onClick={handleExportExcel}
                 disabled={exporting}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 active:scale-[0.97] disabled:opacity-60 transition-all"
+                className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 active:scale-[0.97] disabled:opacity-60 transition-all"
               >
                 {exportingType === "xlsx" ? "导出中..." : "导出 Excel"}
               </button>
               <button
                 onClick={handleExportJpg}
                 disabled={exporting}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
+                className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
                 {exportingType === "jpg" ? "生成中..." : "导出 JPG"}
               </button>
               <button
                 onClick={handlePrint}
                 disabled={exporting}
-                className="flex-1 px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
+                className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
                 打印
               </button>

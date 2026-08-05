@@ -77,7 +77,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
 
   return (
     <div id="quote-preview-area" className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-3 overflow-auto">
-      <div className="mx-auto w-full max-w-[760px] bg-white">
+      <div className="mx-auto w-[760px] min-w-[760px] bg-white">
         <table
           className="w-full table-fixed border-collapse border border-black text-black"
           style={{

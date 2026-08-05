@@ -90,18 +90,28 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="overflow-x-auto">
-      <table className="w-full text-[13px]">
+    <div ref={containerRef} className="overflow-x-auto pb-1">
+      <table className="w-full min-w-[1000px] table-fixed text-[13px]">
+        <colgroup>
+          <col className="w-[320px]" />
+          <col className="w-[90px]" />
+          <col className="w-[90px]" />
+          <col className="w-[125px]" />
+          <col className="w-[85px]" />
+          <col className="w-[110px]" />
+          <col className="w-[110px]" />
+          <col className="w-[70px]" />
+        </colgroup>
         <thead>
           <tr className="border-b border-[#E5E5EA]/60">
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[200px]">品名型号</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">宽</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">高</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[80px]">开启方向</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[70px]">单位</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[80px]">数量</th>
-            <th className="text-left py-2 px-2 font-medium text-[#8E8E93] w-[90px]">单价</th>
-            <th className="text-center py-2 px-2 font-medium text-[#8E8E93] w-[54px]">操作</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">品名型号</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">宽</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">高</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">开启方向</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">单位</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">数量</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">单价</th>
+            <th className="text-center py-2 px-2 font-medium text-[#8E8E93]">操作</th>
           </tr>
         </thead>
         <tbody>
