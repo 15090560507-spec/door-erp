@@ -22,6 +22,12 @@ import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { localDateYmd } from "@/lib/dateTime";
 
+type QuoteFeedback = {
+  tone: "success" | "error";
+  title: string;
+  message: string;
+};
+
 async function downloadQuoteFile(quoteId: number, ext: "xlsx" | "jpg" | "pdf", filename: string) {
   const { data } = await api.get<Blob>(`/quotes/${quoteId}/export.${ext}`, { responseType: "blob" });
   const url = URL.createObjectURL(data);
@@ -281,6 +287,7 @@ export default function QuotePage() {
   const [accessoryOpen, setAccessoryOpen] = useState(false);
   const [aiConfigOpen, setAiConfigOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [feedback, setFeedback] = useState<QuoteFeedback | null>(null);
 
   // Status
   const [status, setStatus] = useState("");
@@ -288,6 +295,11 @@ export default function QuotePage() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingType, setExportingType] = useState("");
+
+  function showFeedback(tone: QuoteFeedback["tone"], title: string, message: string) {
+    setStatus(message);
+    setFeedback({ tone, title, message });
+  }
 
   useEffect(() => {
     let alive = true;
@@ -346,9 +358,9 @@ export default function QuotePage() {
   // Save quote
   async function handleSave() {
     const form = collectForm();
-    if (!form.customerName) { setStatus("请填写客户名称"); return; }
-    if (!form.quoteDate) { setStatus("请选择日期"); return; }
-    if (!form.items.length) { setStatus("至少填写一条品名型号"); return; }
+    if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
+    if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
+    if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
 
     setSaving(true);
     setStatus("");
@@ -360,13 +372,13 @@ export default function QuotePage() {
         remembered = await rememberCurrentQuote(form.items);
       } catch (error) {
         console.warn("remember quote items failed:", error);
-        setStatus(`已保存 #${quote.id}，但报价记忆写入失败`);
+        showFeedback("error", "报价已保存", `已保存 #${quote.id}，但报价记忆写入失败`);
         return;
       }
-      setStatus(`已保存 #${quote.id}${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}`);
+      showFeedback("success", "保存成功", `已保存 #${quote.id}${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}`);
     } catch (err: unknown) {
       const error = err as { userMessage?: string; message?: string };
-      setStatus(error?.userMessage || error?.message || "保存失败");
+      showFeedback("error", "保存失败", error?.userMessage || error?.message || "保存失败");
     } finally {
       setSaving(false);
     }
@@ -374,15 +386,17 @@ export default function QuotePage() {
 
   // Export Excel: fetch blob then trigger download
   async function handleExportExcel() {
-    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
+    if (!lastQuoteId) { showFeedback("error", "无法导出", "请先保存报价单"); return; }
     setExporting(true);
     setExportingType("xlsx");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "xlsx", `报价单_${lastQuoteId}.xlsx`);
-      setStatus(memoryResult.failed ? "Excel 已下载，但报价记忆写入失败" : "Excel 下载中...");
-    } catch {
-      setStatus("Excel 导出失败");
+      const message = memoryResult.failed ? "Excel 已下载，但报价记忆写入失败" : "Excel 已下载";
+      showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "导出部分完成" : "导出成功", message);
+    } catch (err: unknown) {
+      const error = err as { userMessage?: string; message?: string };
+      showFeedback("error", "Excel 导出失败", error?.userMessage || error?.message || "Excel 导出失败");
     } finally {
       setExporting(false);
     setExportingType("");
@@ -391,16 +405,18 @@ export default function QuotePage() {
 
   // Export JPG: 服务端渲染 Excel A1:J24 → JPG + 40px 白边
   async function handleExportJpg() {
-    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
+    if (!lastQuoteId) { showFeedback("error", "无法导出", "请先保存报价单"); return; }
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "jpg", `报价单_${lastQuoteId}.jpg`);
-      setStatus(memoryResult.failed ? "JPG 已下载，但报价记忆写入失败" : "JPG 已下载");
-    } catch {
-      setStatus("JPG 导出失败");
+      const message = memoryResult.failed ? "JPG 已下载，但报价记忆写入失败" : "JPG 已下载";
+      showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "导出部分完成" : "导出成功", message);
+    } catch (err: unknown) {
+      const error = err as { userMessage?: string; message?: string };
+      showFeedback("error", "JPG 导出失败", error?.userMessage || error?.message || "JPG 导出失败");
     } finally {
       setExporting(false);
       setExportingType("");
@@ -408,16 +424,18 @@ export default function QuotePage() {
   }
 
   async function handlePrint() {
-    if (!lastQuoteId) { setStatus("请先保存报价单"); return; }
+    if (!lastQuoteId) { showFeedback("error", "无法打印", "请先保存报价单"); return; }
     setExporting(true);
     setExportingType("pdf");
     setStatus("正在生成 PDF...");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
       await downloadQuoteFile(lastQuoteId, "pdf", `报价单_${lastQuoteId}.pdf`);
-      setStatus(memoryResult.failed ? "PDF 已下载，但报价记忆写入失败" : "PDF 已下载");
-    } catch {
-      setStatus("PDF 导出失败");
+      const message = memoryResult.failed ? "PDF 已下载，但报价记忆写入失败" : "PDF 已下载，可打开后打印";
+      showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "打印文件部分完成" : "打印文件已生成", message);
+    } catch (err: unknown) {
+      const error = err as { userMessage?: string; message?: string };
+      showFeedback("error", "打印失败", error?.userMessage || error?.message || "PDF 导出失败");
     } finally {
       setExporting(false);
       setExportingType("");
@@ -837,14 +855,6 @@ export default function QuotePage() {
 
         {/* Preview */}
         <div className="space-y-4">
-          <QuotePreview
-            customerName={customerName}
-            projectName={projectName}
-            quoteDate={quoteDate}
-            noticeText={noticeText}
-            doorGroups={doorGroups}
-          />
-
           {/* Action Buttons */}
           <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4">
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -878,10 +888,49 @@ export default function QuotePage() {
               </button>
             </div>
           </div>
+
+          <QuotePreview
+            customerName={customerName}
+            projectName={projectName}
+            quoteDate={quoteDate}
+            noticeText={noticeText}
+            doorGroups={doorGroups}
+          />
         </div>
       </div>
 
       {/* Modals */}
+      {feedback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => setFeedback(null)}>
+          <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setFeedback(null)}
+              aria-label="关闭反馈窗口"
+              className="absolute right-3 top-3 h-7 w-7 rounded-full text-[18px] leading-7 text-[#8E8E93] hover:bg-[#F2F2F7]"
+            >
+              ×
+            </button>
+            <h2 className="pr-8 text-[16px] font-semibold text-[#1C1C1E]">{feedback.title}</h2>
+            <div className={`mt-4 rounded-lg px-3 py-3 text-[13px] leading-6 ${
+              feedback.tone === "success"
+                ? "bg-[#34C759]/10 text-[#248A3D]"
+                : "bg-[#FF3B30]/10 text-[#D70015]"
+            }`}>
+              {feedback.message}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white"
+              >
+                知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <AccessoryModal open={accessoryOpen} onClose={() => setAccessoryOpen(false)} />
       <AiConfigModal open={aiConfigOpen} onClose={() => setAiConfigOpen(false)} />
       <QuoteHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onLoad={handleLoadQuote} />

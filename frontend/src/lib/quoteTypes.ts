@@ -134,7 +134,7 @@ export interface DrawingAnalysisResponse {
   rawPreview: string;
 }
 
-export const DEFAULT_QUOTE_NOTICE_TEXT = "本报价不含税工厂结算价，含木箱。";
+export const DEFAULT_QUOTE_NOTICE_TEXT = "本报价不含税工厂结算价，不含木箱。";
 
 export const OPEN_DIRECTION_MAP: Record<string, string> = {
   "内开": "右内开",
