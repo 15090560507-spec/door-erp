@@ -130,7 +130,17 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
     if kind == "LINE":
         primitives.append(Primitive("line", layer, [_point(entity.dxf.start), _point(entity.dxf.end)], {}))
     elif kind == "LWPOLYLINE":
-        points = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+        has_bulge = any(abs(float(point[4] or 0)) > 1e-9 for point in entity.get_points("xyseb"))
+        if has_bulge:
+            try:
+                path = ezdxf.path.make_path(entity)
+                points = [(float(point.x), float(point.y)) for point in path.flattening(distance=1.5, segments=16)]
+                if len(points) > 1 and points[0] == points[-1]:
+                    points.pop()
+            except Exception:
+                points = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+        else:
+            points = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
         if len(points) >= 2:
             primitives.append(Primitive("polyline", layer, points, {"closed": bool(entity.closed)}))
     elif kind == "POLYLINE":

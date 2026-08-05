@@ -15,6 +15,7 @@ RENDER_DB_DIR = os.path.join(DATA_DIR, "render")
 MODEL_CONFIGS_FILE = os.path.join(RENDER_DB_DIR, "model_configs.json")
 ASSETS_FILE = os.path.join(RENDER_DB_DIR, "assets.json")
 TASKS_FILE = os.path.join(RENDER_DB_DIR, "tasks.json")
+LINE_ART_EXTRACTIONS_FILE = os.path.join(RENDER_DB_DIR, "line_art_extractions.json")
 RENDER_BACKUP_DIR = os.path.join(BACKUP_DIR, "render")
 
 
@@ -74,6 +75,7 @@ class RenderDatabase:
         self.model_configs = JsonTable(MODEL_CONFIGS_FILE, [])
         self.assets = JsonTable(ASSETS_FILE, [])
         self.tasks = JsonTable(TASKS_FILE, [])
+        self.line_art_extractions = JsonTable(LINE_ART_EXTRACTIONS_FILE, [])
         self._ensure_default_config()
 
     def list_model_configs(self, include_disabled: bool = False) -> list[dict]:
@@ -247,6 +249,43 @@ class RenderDatabase:
     def list_tasks(self, limit: int = 30) -> list[dict]:
         items = self.tasks.load()
         return sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)[:limit]
+
+    def create_line_art_extraction(self, data: dict) -> dict:
+        now = utc_now_iso()
+        item = {
+            "id": uuid.uuid4().hex[:12],
+            "sourcePath": data.get("sourcePath", ""),
+            "sourceUrl": data.get("sourceUrl", ""),
+            "originalSourcePath": data.get("originalSourcePath", data.get("sourcePath", "")),
+            "originalSourceUrl": data.get("originalSourceUrl", data.get("sourceUrl", "")),
+            "sourceWidth": int(data.get("sourceWidth", 0) or 0),
+            "sourceHeight": int(data.get("sourceHeight", 0) or 0),
+            "rotation": int(data.get("rotation", 0) or 0),
+            "front": data.get("front", {}),
+            "back": data.get("back", {}),
+            "reviewRequired": bool(data.get("reviewRequired", False)),
+            "warnings": data.get("warnings", []),
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        return self.line_art_extractions.update(lambda items: items.append(item) or item)
+
+    def get_line_art_extraction(self, extraction_id: str) -> dict | None:
+        for item in self.line_art_extractions.load():
+            if item.get("id") == extraction_id:
+                return dict(item)
+        return None
+
+    def update_line_art_extraction(self, extraction_id: str, patch: dict) -> dict | None:
+        def mutate(items):
+            for item in items:
+                if item.get("id") == extraction_id:
+                    item.update(patch)
+                    item["updatedAt"] = utc_now_iso()
+                    return item
+            return None
+
+        return self.line_art_extractions.update(mutate)
 
     def _ensure_default_config(self):
         if self.model_configs.load():

@@ -77,6 +77,33 @@ export interface RenderTask {
   finishedAt: string;
 }
 
+export interface LineArtCropBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LineArtView {
+  url: string;
+  filePath?: string;
+  crop?: LineArtCropBox;
+}
+
+export interface LineArtExtraction {
+  id: string;
+  sourceType?: "task" | "upload";
+  taskId?: string;
+  sourceUrl?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  rotation?: number;
+  front: LineArtView;
+  back: LineArtView;
+  reviewRequired: boolean;
+  warnings: string[];
+}
+
 export interface ModelConfigInput {
   name: string;
   provider: string;
@@ -176,6 +203,32 @@ export async function listRenderTasks(limit = 30): Promise<RenderTask[]> {
 
 export async function deleteRenderTask(id: string): Promise<void> {
   await api.delete(`/render/tasks/${id}`);
+}
+
+export async function extractUploadedLineArt(file: File): Promise<LineArtExtraction> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post<{ extraction: LineArtExtraction }>("/render/line-art/extractions", formData, { timeout: 120000 });
+  return { ...data.extraction, sourceType: "upload" };
+}
+
+export async function updateLineArtCrop(
+  id: string,
+  input: { front: LineArtCropBox; back: LineArtCropBox; rotation: number },
+): Promise<LineArtExtraction> {
+  const { data } = await api.put<{ extraction: LineArtExtraction }>(`/render/line-art/extractions/${id}`, input, { timeout: 120000 });
+  return { ...data.extraction, sourceType: "upload" };
+}
+
+export async function extractTaskLineArt(taskId: string): Promise<LineArtExtraction> {
+  const { data } = await api.get<{ extraction: LineArtExtraction }>(`/render/line-art/tasks/${taskId}`, { timeout: 120000 });
+  return data.extraction;
+}
+
+export async function lineArtViewToFile(view: LineArtView, filename: string): Promise<File> {
+  const requestPath = view.url.startsWith("/api/") ? view.url.slice(4) : view.url;
+  const { data } = await api.get<Blob>(requestPath, { responseType: "blob", timeout: 120000 });
+  return new File([data], filename, { type: data.type || "image/png" });
 }
 
 function normalizeRenderError(error: unknown): Error & { userMessage?: string; task?: RenderTask; raw?: string } {

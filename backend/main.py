@@ -46,6 +46,7 @@ from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router
 from render_routes import render_router
+from rendering.cad_line_art import export_dxf_line_art
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -596,6 +597,31 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
             "X-CAD-Preview-Cache": "HIT" if svg_cache_hit else "MISS",
         },
     )
+
+
+@app.get("/api/render/line-art/tasks/{task_id}")
+def get_task_line_art(task_id: str, current_user: Dict = Depends(get_current_user)):
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="图纸项目不存在")
+    try:
+        req = CADRequest(**(task.get("params") or {}))
+        _cache_key, dxf_bytes, _cache_hit = _cached_cad(req)
+        views = export_dxf_line_art(dxf_bytes.decode("utf-8"))
+    except Exception as exc:
+        logger.exception("Task CAD line-art export failed")
+        raise HTTPException(status_code=422, detail=f"图纸线稿导出失败: {exc}") from exc
+    return {
+        "extraction": {
+            "id": f"task-{task_id}",
+            "sourceType": "task",
+            "taskId": task_id,
+            "front": views["front"],
+            "back": views["back"],
+            "reviewRequired": False,
+            "warnings": [],
+        }
+    }
 
 
 @app.post("/api/login", response_model=LoginResponse)

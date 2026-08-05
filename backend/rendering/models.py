@@ -78,3 +78,15 @@ class RenderTaskResponse(BaseModel):
     upstreamRawError: str = ""
     raw: Any = None
 
+
+class CropBox(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class LineArtCropUpdate(BaseModel):
+    front: CropBox
+    back: CropBox
+    rotation: int = 0

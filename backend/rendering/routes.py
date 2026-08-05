@@ -5,7 +5,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse
 
 from .database import render_db
-from .models import RenderAssetUpdate, RenderModelConfigCreate, RenderModelConfigUpdate
+from .line_art import extract_uploaded_line_art, recrop_uploaded_line_art
+from .models import LineArtCropUpdate, RenderAssetUpdate, RenderModelConfigCreate, RenderModelConfigUpdate
 from .service import create_asset_from_upload, create_render_task_request, execute_render_task, file_response_path
 from auth import get_current_user
 
@@ -143,6 +144,39 @@ def delete_render_task(task_id: str, current_user: dict = Depends(get_current_us
     if not render_db.delete_task(task_id):
         raise HTTPException(status_code=404, detail="渲染任务不存在")
     return {"ok": True}
+
+
+@render_router.post("/api/render/line-art/extractions")
+async def extract_line_art(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="上传图片为空")
+    if len(data) > 40 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="图片不能超过40MB")
+    try:
+        return {"extraction": extract_uploaded_line_art(data, file.filename or "order-sheet.png")}
+    except Exception as exc:
+        logger.exception("Line-art extraction failed")
+        raise HTTPException(status_code=422, detail=f"线稿提取失败: {exc}") from exc
+
+
+@render_router.put("/api/render/line-art/extractions/{extraction_id}")
+def update_line_art_crop(extraction_id: str, data: LineArtCropUpdate, current_user: dict = Depends(get_current_user)):
+    try:
+        item = recrop_uploaded_line_art(
+            extraction_id,
+            data.front.model_dump(),
+            data.back.model_dump(),
+            data.rotation,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="线稿提取记录不存在") from exc
+    except Exception as exc:
+        logger.exception("Line-art recrop failed")
+        raise HTTPException(status_code=422, detail=f"线稿裁剪失败: {exc}") from exc
+    return {"extraction": item}
 
 
 @render_router.get("/api/render/files/{path:path}")

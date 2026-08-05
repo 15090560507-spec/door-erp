@@ -1,6 +1,10 @@
 "use client";
 
-import { ChangeEvent, ClipboardEvent, useEffect, useState } from "react";
+import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
+import LineArtCropEditor from "@/components/LineArtCropEditor";
+import TaskProjectCombobox from "@/components/TaskProjectCombobox";
+import { getTasks } from "@/lib/api";
+import type { TaskItem } from "@/lib/types";
 import {
   RENDER_CATEGORIES,
   createRenderModelConfig,
@@ -8,15 +12,20 @@ import {
   deleteRenderAsset,
   deleteRenderModelConfig,
   deleteRenderTask,
+  extractTaskLineArt,
+  extractUploadedLineArt,
+  lineArtViewToFile,
   listRenderAssets,
   listRenderModelConfigs,
   listRenderTasks,
   updateRenderModelConfig,
+  updateLineArtCrop,
   uploadRenderAsset,
   type ModelConfigInput,
   type RenderAsset,
   type RenderModelConfig,
   type RenderTask,
+  type LineArtExtraction,
 } from "@/lib/renderApi";
 
 const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
@@ -107,6 +116,14 @@ export default function RenderPage() {
   const [assetHasMore, setAssetHasMore] = useState(false);
   const [assetLoading, setAssetLoading] = useState(false);
   const [lineArt, setLineArt] = useState<File | null>(null);
+  const [lineArtSource, setLineArtSource] = useState<"task" | "upload" | "direct">("task");
+  const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
+  const [selectedDrawingTaskId, setSelectedDrawingTaskId] = useState("");
+  const [orderSheet, setOrderSheet] = useState<File | null>(null);
+  const [lineArtExtraction, setLineArtExtraction] = useState<LineArtExtraction | null>(null);
+  const [selectedLineArtSide, setSelectedLineArtSide] = useState<"front" | "back">("front");
+  const [lineArtBusy, setLineArtBusy] = useState(false);
+  const [cropEditorOpen, setCropEditorOpen] = useState(false);
   const [styleReference, setStyleReference] = useState<File | null>(null);
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -129,6 +146,7 @@ export default function RenderPage() {
 
   useEffect(() => {
     refreshAll();
+    void getTasks({ limit: 100, offset: 0 }).then((result) => setDrawingTasks(result.tasks || [])).catch(() => setDrawingTasks([]));
   }, []);
 
   async function refreshAll() {
@@ -262,7 +280,8 @@ export default function RenderPage() {
   }
 
   async function submitTask() {
-    if (!lineArt) return setMessage("请上传线稿图");
+    if (lineArtSource === "direct" && !lineArt) return setMessage("请上传线稿图");
+    if (lineArtSource !== "direct" && !lineArtExtraction) return setMessage("请先生成正面和反面线稿");
     if (!styleReference) return setMessage("请上传参考款式图");
     if (!prompt.trim()) return setMessage("请填写提示词");
     setLoading(true);
@@ -273,6 +292,13 @@ export default function RenderPage() {
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
     const taskTempAssets = referenceGroups.flatMap((group) => group.files);
     try {
+      const selectedLineArt = lineArtSource === "direct"
+        ? lineArt
+        : await lineArtViewToFile(
+          lineArtExtraction![selectedLineArtSide],
+          `${selectedLineArtSide === "front" ? "front" : "back"}-line-art.png`,
+        );
+      if (!selectedLineArt) throw new Error("未选择可用线稿");
       const saved = await saveConfig({ silent: true });
       if (!saved) {
         setLoading(false);
@@ -288,7 +314,7 @@ export default function RenderPage() {
           size,
           count: 1,
           selectedAssetIds: taskAssetIds,
-          lineArt,
+          lineArt: selectedLineArt,
           styleReference,
           tempAssets: taskTempAssets,
         }),
@@ -341,6 +367,49 @@ export default function RenderPage() {
         return null;
       }
     }
+  }
+
+  async function generateTaskLineArt() {
+    if (!selectedDrawingTaskId) return setMessage("请先选择图纸项目");
+    setLineArtBusy(true);
+    setMessage("正在从图纸项目提取正面和反面线稿...");
+    try {
+      const extraction = await extractTaskLineArt(selectedDrawingTaskId);
+      setLineArtExtraction(extraction);
+      setSelectedLineArtSide("front");
+      setMessage("正面和反面线稿已生成，请选择本次要使用的一面");
+    } catch (error) {
+      setErrorDialog({ title: "线稿生成失败", message: (error as { userMessage?: string; message?: string }).userMessage || (error as Error).message });
+    } finally {
+      setLineArtBusy(false);
+    }
+  }
+
+  async function handleOrderSheet(file: File | null) {
+    setOrderSheet(file);
+    setLineArtExtraction(null);
+    if (!file) return;
+    setLineArtBusy(true);
+    setMessage("正在识别订单图中的正面和反面门体...");
+    try {
+      const extraction = await extractUploadedLineArt(file);
+      setLineArtExtraction(extraction);
+      setSelectedLineArtSide("front");
+      setMessage(extraction.reviewRequired ? "已生成候选线稿，请调整裁剪框后确认" : "已识别正面和反面线稿，请选择本次要使用的一面");
+      if (extraction.reviewRequired) setCropEditorOpen(true);
+    } catch (error) {
+      setErrorDialog({ title: "线稿识别失败", message: (error as { userMessage?: string; message?: string }).userMessage || (error as Error).message });
+    } finally {
+      setLineArtBusy(false);
+    }
+  }
+
+  async function saveLineArtCrop(value: Parameters<typeof updateLineArtCrop>[1]) {
+    if (!lineArtExtraction) return;
+    const updated = await updateLineArtCrop(lineArtExtraction.id, value);
+    setLineArtExtraction(updated);
+    setCropEditorOpen(false);
+    setMessage("正面和反面裁剪已更新");
   }
 
   useEffect(() => {
@@ -471,6 +540,9 @@ export default function RenderPage() {
           </div>
         </div>
       )}
+      {cropEditorOpen && lineArtExtraction?.sourceUrl && (
+        <LineArtCropEditor extraction={lineArtExtraction} onCancel={() => setCropEditorOpen(false)} onSave={saveLineArtCrop} />
+      )}
       {loading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/65 px-4 backdrop-blur-[2px]">
           <div className="relative w-full max-w-md rounded-2xl border border-[#E5E5EA] bg-white p-5 text-center shadow-xl">
@@ -531,10 +603,68 @@ export default function RenderPage() {
         </div>}
       </section>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
-        <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="mr-2">
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">线稿来源 *</h2>
+            <p className="mt-1 text-[12px] text-[#8E8E93]">生成两张独立线稿后，选择正面或反面作为本次输入。</p>
+          </div>
+          <div className="flex-1" />
+          {(["task", "upload", "direct"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setLineArtSource(value); setLineArtExtraction(null); }}
+              className={`rounded-lg px-3 py-2 text-[12px] font-medium ${lineArtSource === value ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#3C3C43]"}`}
+            >
+              {value === "task" ? "关联图纸项目" : value === "upload" ? "上传完整订单图" : "直接上传线稿"}
+            </button>
+          ))}
+        </div>
+
+        {lineArtSource === "task" && (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
+            <div>
+              <span className="text-[12px] font-medium text-[#8E8E93]">选择图纸项目</span>
+              <TaskProjectCombobox tasks={drawingTasks} value={selectedDrawingTaskId} onChange={(value) => { setSelectedDrawingTaskId(value); setLineArtExtraction(null); }} />
+            </div>
+            <button type="button" onClick={() => void generateTaskLineArt()} disabled={lineArtBusy || !selectedDrawingTaskId} className="self-end rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{lineArtBusy ? "生成中..." : "生成正反面线稿"}</button>
+          </div>
+        )}
+
+        {lineArtSource === "upload" && (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
+            <CompactSourceUpload file={orderSheet} onPick={(file) => void handleOrderSheet(file)} />
+            {lineArtExtraction?.sourceUrl && <button type="button" onClick={() => setCropEditorOpen(true)} className="self-end rounded-lg bg-[#F2F2F7] px-4 py-2 text-[13px] font-medium">调整裁剪</button>}
+          </div>
+        )}
+
+        {lineArtSource === "direct" && (
+          <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+        )}
+
+        {lineArtSource !== "direct" && lineArtExtraction && (
+          <div className="mt-4">
+            {lineArtExtraction.warnings?.map((warning) => <p key={warning} className="mb-2 rounded-lg bg-[#FF9500]/10 px-3 py-2 text-[12px] text-[#9A5A00]">{warning}</p>)}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {(["front", "back"] as const).map((side) => (
+                <label key={side} className={`cursor-pointer rounded-xl border p-3 ${selectedLineArtSide === side ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <input type="radio" name="line-art-side" checked={selectedLineArtSide === side} onChange={() => setSelectedLineArtSide(side)} />
+                    <span className="text-[13px] font-semibold">{side === "front" ? "正面线稿" : "反面线稿"}</span>
+                    {selectedLineArtSide === side && <span className="rounded-full bg-[#007AFF] px-2 py-0.5 text-[11px] text-white">本次使用</span>}
+                  </div>
+                  <button type="button" onClick={(event) => { event.preventDefault(); setPreviewImage({ src: lineArtExtraction[side].url, title: side === "front" ? "正面线稿" : "反面线稿" }); }} className="block w-full rounded-lg bg-white">
+                    <img src={lineArtExtraction[side].url} alt={side === "front" ? "正面线稿" : "反面线稿"} className="mx-auto max-h-[360px] w-full object-contain" />
+                  </button>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
+
+      <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -775,6 +905,34 @@ function UploadBox({ title, file, onPick, onPreview, required }: { title: string
   );
 }
 
+function CompactSourceUpload({ file, onPick }: { file: File | null; onPick: (file: File | null) => void }) {
+  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
+    const [pastedFile] = imageFilesFromClipboard(event);
+    if (!pastedFile) return;
+    event.preventDefault();
+    onPick(pastedFile);
+  }
+
+  return (
+    <label tabIndex={0} onPaste={handlePaste} className="flex min-h-20 cursor-pointer items-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F7F7FA] px-4 py-3 outline-none focus:border-[#007AFF]">
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          onPick(event.target.files?.[0] || null);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-[#1C1C1E]">{file ? file.name : "点击上传完整订单图，或 Ctrl+V 粘贴"}</p>
+        <p className="mt-1 text-[11px] text-[#8E8E93]">保留原图并自动提取正面、反面两个门体区域</p>
+      </div>
+      {file && <button type="button" onClick={(event) => { event.preventDefault(); onPick(null); }} className="ml-3 rounded-lg bg-white px-3 py-1.5 text-[12px] text-[#FF3B30]">清空</button>}
+    </label>
+  );
+}
+
 function CompactImageUpload({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
   function appendFiles(nextFiles: File[]) {
     if (!nextFiles.length) return;
@@ -811,13 +969,11 @@ function CompactImageUpload({ files, onChange }: { files: File[]; onChange: (fil
 }
 
 function TempFileChip({ file, onPreview, onRemove }: { file: File; onPreview: (src: string, title: string) => void; onRemove: () => void }) {
-  const [src, setSrc] = useState("");
+  const src = useMemo(() => URL.createObjectURL(file), [file]);
 
   useEffect(() => {
-    const url = URL.createObjectURL(file);
-    setSrc(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    return () => URL.revokeObjectURL(src);
+  }, [src]);
 
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#3C3C43]">
@@ -880,15 +1036,12 @@ function LibraryUploadButton({ category, onUploaded }: { category: string; onUpl
 }
 
 function FilePreviewImage({ file, className, onPreview }: { file: File; className: string; onPreview?: (src: string, title: string) => void }) {
-  const [src, setSrc] = useState("");
+  const src = useMemo(() => URL.createObjectURL(file), [file]);
 
   useEffect(() => {
-    const url = URL.createObjectURL(file);
-    setSrc(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    return () => URL.revokeObjectURL(src);
+  }, [src]);
 
-  if (!src) return null;
   if (onPreview) {
     return (
       <button type="button" onClick={(event) => { event.preventDefault(); onPreview(src, file.name); }} className="inline-block max-w-full">
@@ -993,5 +1146,6 @@ function wait(ms: number): Promise<null> {
 }
 
 function clampCount(value: unknown): number {
+  void value;
   return 1;
 }
