@@ -5,6 +5,8 @@ import os
 import shutil
 import sys
 import tempfile
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
@@ -146,6 +148,72 @@ def main() -> None:
         check(
             "相同终审版本下达后不再出现在待下达列表",
             response.status_code == 200 and response.json().get("tasks") == [],
+            response.text,
+        )
+
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        seeded_orders = []
+        for index, due_date in enumerate(
+            [today - timedelta(days=1), today + timedelta(days=1), today + timedelta(days=10)]
+        ):
+            seeded_orders.append(test_production_db.create_order(
+                source_task_id=f"dashboard-{index}",
+                source_revision=f"dashboard-revision-{index}",
+                customer=f"看板客户{index}",
+                project="看板项目",
+                due_date=due_date.isoformat(),
+                sales_note="",
+                include_quote=False,
+                task_snapshot=approved_task(),
+                quote_snapshot=None,
+                dxf_bytes=b"0\nSECTION\n0\nEOF\n",
+                created_by="prod_workbench_sales",
+                direct_release=False,
+            ))
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
+        test_production_db.execute(
+            """
+            INSERT INTO production_schedules(
+                order_id, planned_start, planned_end, producer, shortage_status,
+                owner, updated_by, updated_at
+            ) VALUES (?, '', '', '生产甲', '缺料', '王师傅', 'prod_workbench_sales', ?)
+            """,
+            (seeded_orders[1]["id"], now),
+        )
+        test_production_db.update_order(seeded_orders[1]["id"], {"shortage_status": "缺料"})
+
+        response = client.get(
+            "/api/production/dashboard",
+            headers=headers("prod_workbench_reader"),
+        )
+        counts = response.json().get("counts", {}) if response.status_code == 200 else {}
+        check(
+            "生产总览包含待下达和交期预警",
+            response.status_code == 200
+            and counts.get("待下达") == 0
+            and counts.get("已逾期", 0) >= 1
+            and counts.get("即将到期", 0) >= 1
+            and counts.get("今日下达", 0) >= 3,
+            response.text,
+        )
+
+        response = client.get(
+            "/api/production/orders",
+            params={
+                "owner": "王师傅",
+                "shortage": "缺料",
+                "due_from": today.isoformat(),
+                "due_to": (today + timedelta(days=3)).isoformat(),
+            },
+            headers=headers("prod_workbench_reader"),
+        )
+        filtered = response.json().get("orders", []) if response.status_code == 200 else []
+        check(
+            "生产订单支持负责人缺料和交期组合筛选",
+            response.status_code == 200
+            and len(filtered) == 1
+            and filtered[0].get("id") == seeded_orders[1]["id"]
+            and filtered[0].get("owner") == "王师傅",
             response.text,
         )
     finally:

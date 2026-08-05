@@ -9,7 +9,7 @@ import os
 import shutil
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -436,25 +436,53 @@ class ProductionDatabase:
         order["direct_release"] = bool(order.get("direct_release"))
         return order
 
-    def list_orders(self, stage: str = "", status: str = "", query: str = "") -> List[Dict[str, Any]]:
+    def list_orders(
+        self,
+        stage: str = "",
+        status: str = "",
+        query: str = "",
+        owner: str = "",
+        shortage: str = "",
+        due_from: str = "",
+        due_to: str = "",
+    ) -> List[Dict[str, Any]]:
         where: List[str] = []
         params: List[Any] = []
         if stage == "缺料":
-            where.append("shortage_status = '缺料'")
+            where.append("o.shortage_status = '缺料'")
         elif stage:
-            where.append("stage = ?")
+            where.append("o.stage = ?")
             params.append(stage)
         if status:
-            where.append("status = ?")
+            where.append("o.status = ?")
             params.append(status)
         if query:
-            where.append("(order_no LIKE ? OR customer LIKE ? OR project LIKE ?)")
+            where.append("(o.order_no LIKE ? OR o.customer LIKE ? OR o.project LIKE ?)")
             term = f"%{query}%"
             params.extend([term, term, term])
-        sql = "SELECT * FROM production_orders"
+        if owner:
+            where.append("s.owner = ?")
+            params.append(owner)
+        if shortage:
+            where.append("o.shortage_status = ?")
+            params.append(shortage)
+        if due_from:
+            where.append("o.due_date >= ?")
+            params.append(due_from)
+        if due_to:
+            where.append("o.due_date <= ?")
+            params.append(due_to)
+        sql = """
+            SELECT o.*, COALESCE(s.owner, '') AS owner,
+                   COALESCE(s.producer, '') AS producer,
+                   COALESCE(s.planned_start, '') AS planned_start,
+                   COALESCE(s.planned_end, '') AS planned_end
+            FROM production_orders o
+            LEFT JOIN production_schedules s ON s.order_id = o.id
+        """
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY id DESC"
+        sql += " ORDER BY o.id DESC"
         rows = self.fetch_all(sql, params)
         for row in rows:
             row.pop("task_snapshot_json", None)
@@ -500,6 +528,33 @@ class ProductionDatabase:
         result["完成"] = int(
             (self.fetch_one(
                 "SELECT COUNT(*) AS count FROM production_orders WHERE status = '已完成'"
+            ) or {"count": 0})["count"]
+        )
+        today = datetime.now(SHANGHAI_TZ).date()
+        near_due = today + timedelta(days=3)
+        active_clause = "status NOT IN ('已完成', '已作废', '已撤回')"
+        result["今日下达"] = int(
+            (self.fetch_one(
+                "SELECT COUNT(*) AS count FROM production_orders WHERE substr(created_at, 1, 10)=?",
+                (today.isoformat(),),
+            ) or {"count": 0})["count"]
+        )
+        result["即将到期"] = int(
+            (self.fetch_one(
+                f"""
+                SELECT COUNT(*) AS count FROM production_orders
+                WHERE {active_clause} AND due_date >= ? AND due_date <= ?
+                """,
+                (today.isoformat(), near_due.isoformat()),
+            ) or {"count": 0})["count"]
+        )
+        result["已逾期"] = int(
+            (self.fetch_one(
+                f"""
+                SELECT COUNT(*) AS count FROM production_orders
+                WHERE {active_clause} AND due_date != '' AND due_date < ?
+                """,
+                (today.isoformat(),),
             ) or {"count": 0})["count"]
         )
         return result

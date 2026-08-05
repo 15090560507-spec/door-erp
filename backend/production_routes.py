@@ -124,7 +124,9 @@ def _event(order_id: int, action: str, detail: str, user: Dict[str, Any]) -> Non
 
 @router.get("/dashboard")
 def dashboard(current_user: Dict = Depends(read_production)):
-    return {"counts": production_db.dashboard()}
+    counts = production_db.dashboard()
+    counts["待下达"] = len(pending_release_tasks())
+    return {"counts": counts}
 
 
 @router.get("/pending-release")
@@ -137,9 +139,21 @@ def list_orders(
     stage: str = "",
     status: str = "",
     q: str = "",
+    owner: str = "",
+    shortage: str = "",
+    due_from: str = "",
+    due_to: str = "",
     current_user: Dict = Depends(read_production),
 ):
-    return {"orders": production_db.list_orders(stage=stage, status=status, query=q)}
+    return {"orders": production_db.list_orders(
+        stage=stage,
+        status=status,
+        query=q,
+        owner=owner,
+        shortage=shortage,
+        due_from=due_from,
+        due_to=due_to,
+    )}
 
 
 @router.get("/orders/{order_id}")
