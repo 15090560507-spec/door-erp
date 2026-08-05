@@ -92,6 +92,11 @@ def main() -> None:
         "prod_workbench_none": [],
         "prod_workbench_reader": ["production.worker"],
         "prod_workbench_sales": ["production.sales"],
+        "prod_workbench_tech": ["production.technical"],
+        "prod_workbench_purchase": ["production.purchase"],
+        "prod_workbench_warehouse": ["production.warehouse"],
+        "prod_workbench_quality": ["production.quality"],
+        "prod_workbench_shipping": ["production.shipping"],
     }
     for uid, permissions in user_specs.items():
         cleanup_user(uid)
@@ -247,6 +252,135 @@ def main() -> None:
             f"/api/production/orders/{timeline_order['id']}/approved-dxf"
         )
         check("未登录不能下载冻结DXF", response.status_code == 401, response.text)
+
+        order_id = timeline_order["id"]
+        with test_production_db.transaction() as conn:
+            material_id = conn.execute(
+                """
+                INSERT INTO production_materials(
+                    code, name, category, specification, unit, created_at, updated_at
+                ) VALUES ('WB-001', '测试板材', '板材', '1200x2400', '张', ?, ?)
+                """,
+                (now, now),
+            ).lastrowid
+            bom_item_id = conn.execute(
+                """
+                INSERT INTO production_bom_items(
+                    order_id, material_id, category, name, specification, material,
+                    thickness, quantity, unit, supply_type, remark, created_at, updated_at
+                ) VALUES (?, ?, '板材', '测试板材', '1200x2400', '铜', '1.0', 2, '张', '外购', '', ?, ?)
+                """,
+                (order_id, material_id, now, now),
+            ).lastrowid
+            conn.execute(
+                "UPDATE production_bom_status SET status='已发布', published_at=?, updated_at=? WHERE order_id=?",
+                (now, now, order_id),
+            )
+            sheet_id = conn.execute(
+                """
+                INSERT INTO production_cutting_sheets(order_id, status, created_by, created_at, updated_at)
+                VALUES (?, '已下发', 'prod_workbench_tech', ?, ?)
+                """,
+                (order_id, now, now),
+            ).lastrowid
+            conn.execute(
+                """
+                INSERT INTO production_cutting_items(
+                    sheet_id, bom_item_id, name, specification, quantity, actual_quantity, unit, cutter
+                ) VALUES (?, ?, '测试板材', '1200x2400', 2, 2, '张', '下料甲')
+                """,
+                (sheet_id, bom_item_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO production_quality_inspections(
+                    order_id, result, inspector, photos_json, remark, created_at
+                ) VALUES (?, '合格', '质检甲', '[]', '尺寸合格', ?)
+                """,
+                (order_id, now),
+            )
+            purchase_id = conn.execute(
+                """
+                INSERT INTO production_purchase_orders(
+                    purchase_no, supplier, status, created_by, created_at, updated_at
+                ) VALUES ('CG-WB-001', '测试供应商', '已下单', 'prod_workbench_purchase', ?, ?)
+                """,
+                (now, now),
+            ).lastrowid
+            conn.execute(
+                """
+                INSERT INTO production_purchase_items(
+                    purchase_id, order_id, material_id, name, specification, quantity, unit, unit_price
+                ) VALUES (?, ?, ?, '测试板材', '1200x2400', 2, '张', 100)
+                """,
+                (purchase_id, order_id, material_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO production_inventory_transactions(
+                    material_id, order_id, transaction_type, quantity, unit,
+                    warehouse_location, operator_uid, created_at
+                ) VALUES (?, ?, '其他入库', 2, '张', 'A-01', 'prod_workbench_warehouse', ?)
+                """,
+                (material_id, order_id, now),
+            )
+            finished_id = conn.execute(
+                """
+                INSERT INTO production_finished_goods(
+                    finished_no, order_id, warehouse_location, status, inbound_by, inbound_at
+                ) VALUES ('CP-WB-001', ?, '成品区', '已入库', 'prod_workbench_warehouse', ?)
+                """,
+                (order_id, now),
+            ).lastrowid
+            shipment_id = conn.execute(
+                """
+                INSERT INTO production_shipments(
+                    shipment_no, customer, status, created_by, created_at, updated_at
+                ) VALUES ('FH-WB-001', '看板客户1', '待发货', 'prod_workbench_shipping', ?, ?)
+                """,
+                (now, now),
+            ).lastrowid
+            conn.execute(
+                """
+                INSERT INTO production_shipment_items(shipment_id, order_id, finished_good_id)
+                VALUES (?, ?, ?)
+                """,
+                (shipment_id, order_id, finished_id),
+            )
+
+        export_cases = [
+            (f"/api/production/orders/{order_id}/documents/bom.xlsx", "prod_workbench_tech"),
+            (f"/api/production/orders/{order_id}/documents/cutting.xlsx", "prod_workbench_tech"),
+            (f"/api/production/orders/{order_id}/documents/quality.xlsx", "prod_workbench_quality"),
+            (f"/api/production/purchases/{purchase_id}/export.xlsx", "prod_workbench_purchase"),
+            ("/api/production/inventory/export.xlsx", "prod_workbench_warehouse"),
+            (f"/api/production/shipments/{shipment_id}/export.xlsx", "prod_workbench_shipping"),
+        ]
+        export_success = True
+        export_detail = ""
+        for path, uid in export_cases:
+            response = client.get(path, headers=headers(uid))
+            if response.status_code != 200 or not response.content.startswith(b"PK"):
+                export_success = False
+                export_detail = f"{path}: {response.status_code} {response.text}"
+                break
+        check("六类生产单据均可导出有效Excel", export_success, export_detail)
+
+        response = client.get(
+            f"/api/production/orders/{order_id}/documents/bom/print",
+            headers=headers("prod_workbench_tech"),
+        )
+        check(
+            "生产单据打印页包含A4打印样式",
+            response.status_code == 200 and "@page" in response.text and "生产BOM" in response.text,
+            response.text,
+        )
+
+        response = client.get(
+            f"/api/production/orders/{order_id}/documents/bom.xlsx",
+            headers=headers("prod_workbench_reader"),
+        )
+        check("无技术权限不能导出BOM", response.status_code == 403, response.text)
     finally:
         main_module.production_db = original_main_db
         main_module.task_db = original_main_tasks

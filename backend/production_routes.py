@@ -8,13 +8,23 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from auth import PRODUCTION_PERMISSIONS, require_permissions
 from production_database import ProductionDatabase, json_loads, production_now
+from production_document_service import (
+    ProductionDocument,
+    build_inventory_document,
+    build_order_document,
+    build_purchase_document,
+    build_shipment_document,
+    render_print_html,
+    render_xlsx,
+)
 from production_models import (
     BomReplaceRequest,
     CuttingSheetUpdate,
@@ -123,6 +133,27 @@ def _event(order_id: int, action: str, detail: str, user: Dict[str, Any]) -> Non
     production_db.add_event(order_id, action, detail, user)
 
 
+def _ensure_document_permission(current_user: Dict[str, Any], *allowed: str) -> None:
+    permissions = set(current_user.get("permissions") or [])
+    if not permissions.intersection({*allowed, "production.manager"}):
+        raise HTTPException(status_code=403, detail="权限不足")
+
+
+def _document_or_404(builder, *args) -> ProductionDocument:
+    try:
+        return builder(production_db, *args)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _xlsx_response(document: ProductionDocument, filename: str) -> Response:
+    return Response(
+        content=render_xlsx(document),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
 @router.get("/dashboard")
 def dashboard(current_user: Dict = Depends(read_production)):
     counts = production_db.dashboard()
@@ -186,6 +217,41 @@ def download_approved_dxf(order_id: int, current_user: Dict = Depends(read_produ
         media_type="application/dxf",
         filename=f"{order['order_no']}_终审冻结图.dxf",
     )
+
+
+ORDER_DOCUMENT_PERMISSIONS = {
+    "bom": ("production.technical",),
+    "cutting": ("production.cutting", "production.technical"),
+    "quality": ("production.quality",),
+}
+
+
+@router.get("/orders/{order_id}/documents/{document_type}.xlsx")
+def export_order_document(
+    order_id: int,
+    document_type: str,
+    current_user: Dict = Depends(read_production),
+):
+    permissions = ORDER_DOCUMENT_PERMISSIONS.get(document_type)
+    if not permissions:
+        raise HTTPException(status_code=404, detail="不支持的生产单据类型")
+    _ensure_document_permission(current_user, *permissions)
+    document = _document_or_404(build_order_document, order_id, document_type)
+    return _xlsx_response(document, f"{document.title}_{document.document_no}.xlsx")
+
+
+@router.get("/orders/{order_id}/documents/{document_type}/print")
+def print_order_document(
+    order_id: int,
+    document_type: str,
+    current_user: Dict = Depends(read_production),
+):
+    permissions = ORDER_DOCUMENT_PERMISSIONS.get(document_type)
+    if not permissions:
+        raise HTTPException(status_code=404, detail="不支持的生产单据类型")
+    _ensure_document_permission(current_user, *permissions)
+    document = _document_or_404(build_order_document, order_id, document_type)
+    return HTMLResponse(render_print_html(document))
 
 
 @router.post("/orders/{order_id}/copy")
@@ -435,6 +501,27 @@ def list_purchases(current_user: Dict = Depends(read_production)):
     return {"purchases": purchases}
 
 
+@router.get("/purchases/{purchase_id}/export.xlsx")
+def export_purchase_document(
+    purchase_id: int,
+    current_user: Dict = Depends(read_production),
+):
+    _ensure_document_permission(current_user, "production.purchase")
+    document = _document_or_404(build_purchase_document, purchase_id)
+    return _xlsx_response(document, f"采购单_{document.document_no}.xlsx")
+
+
+@router.get("/purchases/{purchase_id}/print")
+def print_purchase_document(
+    purchase_id: int,
+    current_user: Dict = Depends(read_production),
+):
+    _ensure_document_permission(current_user, "production.purchase")
+    return HTMLResponse(render_print_html(
+        _document_or_404(build_purchase_document, purchase_id)
+    ))
+
+
 @router.post("/purchases")
 def create_purchase(
     req: PurchaseRequest,
@@ -468,6 +555,8 @@ def create_purchase(
                 for item in req.items
             ],
         )
+    for order_id in {item.order_id for item in req.items if item.order_id}:
+        _event(int(order_id), "创建采购单", purchase_no, current_user)
     return {"purchase_id": purchase_id, "purchase_no": purchase_no}
 
 
@@ -484,6 +573,15 @@ def update_purchase_status(
         "UPDATE production_purchase_orders SET status=?, updated_at=? WHERE id=?",
         (req.status, production_now(), purchase_id),
     )
+    purchase = production_db.fetch_one(
+        "SELECT purchase_no FROM production_purchase_orders WHERE id=?", (purchase_id,)
+    )
+    order_rows = production_db.fetch_all(
+        "SELECT DISTINCT order_id FROM production_purchase_items WHERE purchase_id=? AND order_id IS NOT NULL",
+        (purchase_id,),
+    )
+    for row in order_rows:
+        _event(int(row["order_id"]), f"采购单{req.status}", purchase["purchase_no"] if purchase else "", current_user)
     return {"success": True}
 
 
@@ -498,6 +596,7 @@ def receive_purchase(
         raise HTTPException(status_code=404, detail="采购单不存在")
     now = production_now()
     with production_db.transaction() as conn:
+        affected_order_ids = set()
         for received in req.items:
             item = conn.execute(
                 "SELECT * FROM production_purchase_items WHERE id=? AND purchase_id=?",
@@ -512,6 +611,8 @@ def receive_purchase(
                     status_code=409,
                     detail=f"采购明细 {received.item_id} 本次最多可入库 {remaining:g}{item['unit']}",
                 )
+            if item["order_id"]:
+                affected_order_ids.add(int(item["order_id"]))
             conn.execute(
                 "UPDATE production_purchase_items SET received_quantity=? WHERE id=?",
                 (new_received, received.item_id),
@@ -536,6 +637,8 @@ def receive_purchase(
         conn.execute(
             "UPDATE production_purchase_orders SET status=?, updated_at=? WHERE id=?", (status, now, purchase_id)
         )
+    for order_id in affected_order_ids:
+        _event(order_id, "采购到货入库", purchase["purchase_no"], current_user)
     return {"success": True, "status": status}
 
 
@@ -556,6 +659,19 @@ def inventory(current_user: Dict = Depends(read_production)):
         "SELECT * FROM production_inventory_transactions ORDER BY id DESC LIMIT 200"
     )
     return {"balances": balances, "transactions": transactions}
+
+
+@router.get("/inventory/export.xlsx")
+def export_inventory_document(current_user: Dict = Depends(read_production)):
+    _ensure_document_permission(current_user, "production.warehouse")
+    document = build_inventory_document(production_db)
+    return _xlsx_response(document, f"库存流水_{document.document_no}.xlsx")
+
+
+@router.get("/inventory/print")
+def print_inventory_document(current_user: Dict = Depends(read_production)):
+    _ensure_document_permission(current_user, "production.warehouse")
+    return HTMLResponse(render_print_html(build_inventory_document(production_db)))
 
 
 @router.post("/inventory/transactions")
@@ -582,6 +698,13 @@ def create_inventory_transaction(
             req.warehouse_location, req.remark, current_user["uid"], production_now(),
         ),
     )
+    if req.order_id:
+        _event(
+            req.order_id,
+            req.transaction_type,
+            f"{quantity:g}{req.unit} {req.warehouse_location}".strip(),
+            current_user,
+        )
     return {"transaction_id": tx_id}
 
 
@@ -874,6 +997,27 @@ def list_shipments(current_user: Dict = Depends(read_production)):
     return {"shipments": shipments}
 
 
+@router.get("/shipments/{shipment_id}/export.xlsx")
+def export_shipment_document(
+    shipment_id: int,
+    current_user: Dict = Depends(read_production),
+):
+    _ensure_document_permission(current_user, "production.shipping")
+    document = _document_or_404(build_shipment_document, shipment_id)
+    return _xlsx_response(document, f"发货单_{document.document_no}.xlsx")
+
+
+@router.get("/shipments/{shipment_id}/print")
+def print_shipment_document(
+    shipment_id: int,
+    current_user: Dict = Depends(read_production),
+):
+    _ensure_document_permission(current_user, "production.shipping")
+    return HTMLResponse(render_print_html(
+        _document_or_404(build_shipment_document, shipment_id)
+    ))
+
+
 @router.post("/shipments")
 def create_shipment(
     req: ShipmentRequest,
@@ -914,6 +1058,8 @@ def create_shipment(
             )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="所选成品已经加入其他发货单") from exc
+    for order_id in order_ids:
+        _event(order_id, "创建发货单", shipment_no, current_user)
     return {"shipment_id": shipment_id, "shipment_no": shipment_no}
 
 
@@ -975,4 +1121,9 @@ def update_shipment_status(
                 """,
                 (now, shipment_id),
             )
+    order_rows = production_db.fetch_all(
+        "SELECT order_id FROM production_shipment_items WHERE shipment_id=?", (shipment_id,)
+    )
+    for row in order_rows:
+        _event(int(row["order_id"]), f"发货单{req.status}", shipment["shipment_no"], current_user)
     return {"success": True}
