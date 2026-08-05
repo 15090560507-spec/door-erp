@@ -505,6 +505,19 @@ class ProductionDatabase:
             "SELECT * FROM production_events WHERE order_id = ? ORDER BY id DESC", (order_id,)
         )
 
+    def timeline(self, order_id: int) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": f"event-{row['id']}",
+                "type": "event",
+                "title": row["action"],
+                "detail": row["detail"],
+                "operator": row["operator_name"],
+                "created_at": row["created_at"],
+            }
+            for row in self.events(order_id)
+        ]
+
     def update_order(self, order_id: int, values: Dict[str, Any]) -> Dict[str, Any]:
         allowed = {"stage", "status", "shortage_status", "due_date", "sales_note", "cutting_started", "withdrawn_at"}
         data = {key: value for key, value in values.items() if key in allowed}

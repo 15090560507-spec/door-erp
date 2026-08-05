@@ -216,6 +216,37 @@ def main() -> None:
             and filtered[0].get("owner") == "王师傅",
             response.text,
         )
+
+        timeline_order = seeded_orders[1]
+        response = client.get(
+            f"/api/production/orders/{timeline_order['id']}/timeline",
+            headers=headers("prod_workbench_reader"),
+        )
+        timeline = response.json().get("timeline", []) if response.status_code == 200 else []
+        check(
+            "生产订单时间轴返回标准化操作记录",
+            response.status_code == 200
+            and len(timeline) >= 1
+            and timeline[0].get("title") in {"下达生产订单", "复制生产订单"},
+            response.text,
+        )
+
+        response = client.get(
+            f"/api/production/orders/{timeline_order['id']}/approved-dxf",
+            headers=headers("prod_workbench_reader"),
+        )
+        check(
+            "登录生产用户可下载冻结DXF",
+            response.status_code == 200
+            and response.content.startswith(b"0\nSECTION")
+            and "attachment" in response.headers.get("content-disposition", ""),
+            response.text,
+        )
+
+        response = client.get(
+            f"/api/production/orders/{timeline_order['id']}/approved-dxf"
+        )
+        check("未登录不能下载冻结DXF", response.status_code == 401, response.text)
     finally:
         main_module.production_db = original_main_db
         main_module.task_db = original_main_tasks

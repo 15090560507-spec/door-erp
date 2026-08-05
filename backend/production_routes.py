@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from auth import PRODUCTION_PERMISSIONS, require_permissions
 from production_database import ProductionDatabase, json_loads, production_now
@@ -161,6 +162,30 @@ def get_order(order_id: int, current_user: Dict = Depends(read_production)):
     order = _order_or_404(order_id)
     order["events"] = production_db.events(order_id)
     return {"order": order}
+
+
+@router.get("/orders/{order_id}/timeline")
+def get_order_timeline(order_id: int, current_user: Dict = Depends(read_production)):
+    _order_or_404(order_id)
+    return {"timeline": production_db.timeline(order_id)}
+
+
+@router.get("/orders/{order_id}/approved-dxf")
+def download_approved_dxf(order_id: int, current_user: Dict = Depends(read_production)):
+    order = _order_or_404(order_id)
+    root = Path(production_db.files_dir).resolve()
+    dxf_path = (root / str(order["dxf_path"])).resolve()
+    try:
+        dxf_path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="生产图纸路径不安全") from exc
+    if not dxf_path.is_file():
+        raise HTTPException(status_code=404, detail="终审冻结 DXF 不存在")
+    return FileResponse(
+        path=dxf_path,
+        media_type="application/dxf",
+        filename=f"{order['order_no']}_终审冻结图.dxf",
+    )
 
 
 @router.post("/orders/{order_id}/copy")
