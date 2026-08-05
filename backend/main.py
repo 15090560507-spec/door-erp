@@ -49,7 +49,12 @@ from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
 from render_routes import render_router
 from production_models import ProductionReleaseRequest
-from production_routes import router as production_router, production_db
+from production_routes import (
+    configure_task_repository,
+    production_source_revision,
+    router as production_router,
+    production_db,
+)
 from rendering.cad_line_art import export_dxf_line_art
 
 # ===================== FastAPI 应用初始化 =====================
@@ -78,6 +83,7 @@ app.include_router(production_router)
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
 task_db = TaskDatabaseManager()
+configure_task_repository(task_db)
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -666,16 +672,7 @@ def release_production_order(
         if not quote_snapshot:
             raise HTTPException(status_code=404, detail="选择的报价单不存在")
 
-    revision_payload = {
-        "task_id": task_id,
-        "status": task.get("status"),
-        "params": params,
-        "review_feedback": task.get("review_feedback", ""),
-        "history": task.get("history", []),
-    }
-    source_revision = hashlib.sha256(
-        json.dumps(revision_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()
+    source_revision = production_source_revision(task)
     try:
         _, dxf_bytes, _cache_hit = _cached_cad(CADRequest(**params))
         order = production_db.create_order(

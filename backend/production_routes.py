@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from datetime import datetime
@@ -33,7 +34,81 @@ from production_models import (
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 production_db = ProductionDatabase()
+task_repository: Any = None
 read_production = require_permissions(*sorted(PRODUCTION_PERMISSIONS))
+
+
+def configure_task_repository(repository: Any) -> None:
+    global task_repository
+    task_repository = repository
+
+
+def production_source_revision(task: Dict[str, Any]) -> str:
+    revision_payload = {
+        "task_id": task.get("id"),
+        "status": task.get("status"),
+        "params": task.get("params") or {},
+        "review_feedback": task.get("review_feedback", ""),
+        "history": task.get("history", []),
+    }
+    serialized = json.dumps(
+        revision_payload, ensure_ascii=False, sort_keys=True, default=str
+    ).encode("utf-8")
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def _review_summary(task: Dict[str, Any]) -> tuple[str, str]:
+    history = task.get("history")
+    if isinstance(history, list):
+        for entry in reversed(history):
+            if not isinstance(entry, dict):
+                continue
+            action = str(entry.get("action") or entry.get("status") or "")
+            if "终审" in action or "通过" in action:
+                return (
+                    str(entry.get("time") or entry.get("created_at") or ""),
+                    str(entry.get("user") or entry.get("operator") or ""),
+                )
+    return str(task.get("updated_at") or task.get("date") or ""), ""
+
+
+def pending_release_tasks() -> List[Dict[str, Any]]:
+    if task_repository is None:
+        return []
+    released = {
+        (str(row["source_task_id"]), str(row["source_revision"]))
+        for row in production_db.fetch_all(
+            """
+            SELECT source_task_id, source_revision
+            FROM production_orders
+            WHERE direct_release=1 AND status != '已作废'
+            """
+        )
+    }
+    rows: List[Dict[str, Any]] = []
+    for task in task_repository.load_all_tasks():
+        if task.get("status") != "已通过":
+            continue
+        revision = production_source_revision(task)
+        if (str(task.get("id", "")), revision) in released:
+            continue
+        params = task.get("params") or {}
+        approved_at, approved_by = _review_summary(task)
+        rows.append({
+            "task_id": str(task.get("id", "")),
+            "source_revision": revision,
+            "status": "待下达",
+            "customer": str(params.get("dhdw") or task.get("customer") or ""),
+            "project": str(params.get("gdmc") or task.get("project") or ""),
+            "door_type": str(params.get("door_type") or ""),
+            "width": params.get("dw"),
+            "height": params.get("dh"),
+            "opening": f"{params.get('sel_kx') or ''}{params.get('sel_nk') or ''}",
+            "approved_at": approved_at,
+            "approved_by": approved_by,
+        })
+    rows.sort(key=lambda row: row["approved_at"], reverse=True)
+    return rows
 
 
 def _order_or_404(order_id: int) -> Dict[str, Any]:
@@ -50,6 +125,11 @@ def _event(order_id: int, action: str, detail: str, user: Dict[str, Any]) -> Non
 @router.get("/dashboard")
 def dashboard(current_user: Dict = Depends(read_production)):
     return {"counts": production_db.dashboard()}
+
+
+@router.get("/pending-release")
+def list_pending_release(current_user: Dict = Depends(read_production)):
+    return {"tasks": pending_release_tasks()}
 
 
 @router.get("/orders")
