@@ -52,8 +52,10 @@ services:
     environment:
       - HTTPS_HOST=124.223.87.161
     volumes:
-      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount the directory so Door ERP and ERPNext can have separate host rules.
+      - ./deploy/nginx:/etc/nginx/conf.d:ro
       - ./deploy/nginx/certs:/etc/nginx/certs
+      - ./deploy/nginx/acme:/var/www/acme
     command: >
       /bin/sh -c "if [ ! -f /etc/nginx/certs/door-erp.crt ] || [ ! -f /etc/nginx/certs/door-erp.key ]; then
       apk add --no-cache openssl >/dev/null &&
@@ -65,3 +67,14 @@ services:
       fi;
       nginx -g 'daemon off;'"
     restart: unless-stopped
+
+    # ERPNext is deliberately isolated in its own Compose project. This is the
+    # only shared network, used solely by Nginx to reverse-proxy its frontend.
+    networks:
+      default:
+      erp_gateway:
+
+networks:
+  erp_gateway:
+    name: erp-gateway
+    external: true
