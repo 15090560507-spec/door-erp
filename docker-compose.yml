@@ -30,14 +30,14 @@ services:
         # 构建时注入：前端在浏览器中请求后端的地址
         NEXT_PUBLIC_API_URL: /api
         INTERNAL_API_URL: http://backend:8000
-        NEXT_PUBLIC_ERPNEXT_URL: ${NEXT_PUBLIC_ERPNEXT_URL:-https://erp.124.223.87.161.nip.io}
+        NEXT_PUBLIC_ERPNEXT_URL: ${NEXT_PUBLIC_ERPNEXT_URL:-https://124.223.87.161:8443}
     container_name: door-frontend
     expose:
       - "3000"
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:8000
-      - NEXT_PUBLIC_ERPNEXT_URL=${NEXT_PUBLIC_ERPNEXT_URL:-https://erp.124.223.87.161.nip.io}
+      - NEXT_PUBLIC_ERPNEXT_URL=${NEXT_PUBLIC_ERPNEXT_URL:-https://124.223.87.161:8443}
     depends_on:
       - backend
     restart: unless-stopped
@@ -51,6 +51,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
     environment:
       - HTTPS_HOST=124.223.87.161
     volumes:

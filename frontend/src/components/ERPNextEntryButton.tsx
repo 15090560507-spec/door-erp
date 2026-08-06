@@ -1,6 +1,6 @@
 "use client";
 
-const ERP_NEXT_URL = process.env.NEXT_PUBLIC_ERPNEXT_URL || "https://erp.124.223.87.161.nip.io";
+const ERP_NEXT_URL = process.env.NEXT_PUBLIC_ERPNEXT_URL || "https://124.223.87.161:8443";
 
 export default function ERPNextEntryButton() {
   return (

@@ -10,7 +10,7 @@ export default function TopNav() {
   const pathname = usePathname();
 
   const items = MODULE_OPTIONS;
-  const erpNextUrl = process.env.NEXT_PUBLIC_ERPNEXT_URL || "https://erp.124.223.87.161.nip.io";
+  const erpNextUrl = process.env.NEXT_PUBLIC_ERPNEXT_URL || "https://124.223.87.161:8443";
 
   return (
     <nav className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-[#E5E5EA]/60 shadow-sm">

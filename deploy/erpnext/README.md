@@ -10,6 +10,20 @@ The initial test hostname is `erp.124.223.87.161.nip.io`. It is a public
 dynamic-DNS convenience hostname, not a long-term production identity. Replace
 it with a company-owned `erp.<domain>` before formal rollout.
 
+## IP fallback access
+
+Some networks reset TLS handshakes for dynamic-DNS hostnames. The shared Nginx
+gateway also exposes ERPNext through the server IP on TCP `8443`:
+
+```text
+https://124.223.87.161:8443
+```
+
+Allow inbound TCP `8443` in the Tencent Cloud security group before using this
+fallback. It uses the same self-signed bootstrap certificate as Door ERP, so a
+browser warning is expected until a company domain and trusted certificate are
+configured.
+
 ## Server preparation
 
 Run these commands on the Tencent Cloud VM after pulling the Door ERP change:
