@@ -176,7 +176,7 @@ export interface TaskListResponse {
 }
 
 // ===================== 模块 =====================
-export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "任务总览" | "生产履约";
+export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "任务总览" | "生产管理";
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
@@ -186,22 +186,9 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "图纸终审", module: "图纸终审" },
   { title: "效果渲染", module: "效果渲染" },
   { title: "报价系统", module: "报价系统" },
-  { title: "生产履约", module: "生产履约" },
+  { title: "生产管理", module: "生产管理" },
   { title: "任务总览", module: "任务总览" },
 ];
-
-export const PRODUCTION_PERMISSION_OPTIONS = [
-  { value: "production.sales", label: "销售下达" },
-  { value: "production.technical", label: "技术/BOM" },
-  { value: "production.purchase", label: "采购" },
-  { value: "production.warehouse", label: "仓储" },
-  { value: "production.schedule", label: "排单" },
-  { value: "production.cutting", label: "下料" },
-  { value: "production.worker", label: "生产" },
-  { value: "production.quality", label: "质检" },
-  { value: "production.shipping", label: "发货" },
-  { value: "production.manager", label: "生产负责人" },
-] as const;
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];
 export const KX_OPTIONS = ["左开", "右开"];

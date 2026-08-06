@@ -23,8 +23,6 @@ USERS_DB_FILE = os.path.join(DATA_DIR, 'users_database.json')
 ACCESSORIES_DB_FILE = os.path.join(DATA_DIR, 'accessories_database.json')
 QUOTES_DB_FILE = os.path.join(DATA_DIR, 'quotes_database.json')
 AI_CONFIG_FILE = os.path.join(DATA_DIR, 'ai_config.json')
-PRODUCTION_DB_FILE = os.path.join(DATA_DIR, 'production.db')
-PRODUCTION_FILES_DIR = os.path.join(DATA_DIR, 'production_files')
 
 TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(_base, 'template.dxf'))
 
@@ -36,7 +34,7 @@ TASKS_BACKUP_DIR = os.path.join(BACKUP_DIR, 'tasks')
 ACCESSORIES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'accessories')
 QUOTES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'quotes')
 
-for _d in (BACKUP_DIR, IMAGES_DIR, PRODUCTION_FILES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR):
+for _d in (BACKUP_DIR, IMAGES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR):
     os.makedirs(_d, exist_ok=True)
 
 

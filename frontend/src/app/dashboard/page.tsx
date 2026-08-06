@@ -17,9 +17,8 @@ import ClipboardUpload from "@/components/ClipboardUpload";
 import { Thumbnail } from "@/components/ImageModal";
 import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
-import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
+import ERPNextEntryButton from "@/components/ERPNextEntryButton";
 import { isLocalToday, localDateCompact } from "@/lib/dateTime";
-import { PRODUCTION_PERMISSION_OPTIONS } from "@/lib/types";
 
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   const date = localDateCompact();
@@ -631,7 +630,7 @@ export default function DashboardPage() {
                       终审通过 (发车间)
                     </button>
                   </div>
-                  {activeTask.status === "已通过" && <ProductionReleaseButton taskId={activeTask.id} />}
+                  {activeTask.status === "已通过" && <ERPNextEntryButton />}
                 </div>
               </div>
             )}
@@ -1235,7 +1234,6 @@ function AdminSettingsPanel() {
   const [name, setName] = useState("");
   const [pwd, setPwd] = useState("");
   const [role, setRole] = useState("录入员");
-  const [permissions, setPermissions] = useState<string[]>([]);
   const [resetUid, setResetUid] = useState<string | null>(null);
   const [resetPwd, setResetPwd] = useState("");
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -1264,10 +1262,10 @@ function AdminSettingsPanel() {
   const handleSave = async () => {
     if (!uid || !name || !pwd) return;
     try {
-      await apiCreateUser({ uid, pwd, role, name, permissions });
+      await apiCreateUser({ uid, pwd, role, name });
       flash(`成功保存账号: ${uid}`, "success");
       fetchUsers();
-      setUid(""); setName(""); setPwd(""); setPermissions([]);
+      setUid(""); setName(""); setPwd("");
     } catch { flash("保存失败", "error"); }
   };
 
@@ -1348,12 +1346,6 @@ function AdminSettingsPanel() {
               + 添加账号
             </button>
           </div>
-          <div className="mt-4 border-t border-[#E5E5EA] pt-3">
-            <div className="mb-2 text-[11px] font-medium text-[#8E8E93]">生产履约权限（可多选）</div>
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {PRODUCTION_PERMISSION_OPTIONS.map((item) => <label key={item.value} className="flex items-center gap-2 text-sm text-[#48484A]"><input type="checkbox" checked={permissions.includes(item.value)} onChange={(event) => setPermissions(event.target.checked ? [...permissions, item.value] : permissions.filter((permission) => permission !== item.value))} />{item.label}</label>)}
-            </div>
-          </div>
         </div>
 
         {/* 用户表格 */}
@@ -1365,7 +1357,6 @@ function AdminSettingsPanel() {
                 <AdminTh>姓名</AdminTh>
                 <AdminTh>角色</AdminTh>
                 <AdminTh>默认模块</AdminTh>
-                <AdminTh>生产权限</AdminTh>
                 <AdminTh className="text-right">操作</AdminTh>
               </tr>
             </thead>
@@ -1380,7 +1371,6 @@ function AdminSettingsPanel() {
                     </span>
                   </AdminTd>
                   <AdminTd className="text-[#8E8E93]">{info.default_module}</AdminTd>
-                  <AdminTd className="text-[#636366]">{(info.permissions || []).map((permission) => PRODUCTION_PERMISSION_OPTIONS.find((item) => item.value === permission)?.label || permission).join('、') || '-'}</AdminTd>
                   <AdminTd>
                     <div className="flex items-center justify-end gap-2">
                       <button

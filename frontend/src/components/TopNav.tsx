@@ -9,9 +9,8 @@ export default function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const items = MODULE_OPTIONS.filter(
-    (item) => item.module !== "生产履约" || (user?.permissions?.length || 0) > 0,
-  );
+  const items = MODULE_OPTIONS;
+  const erpNextUrl = process.env.NEXT_PUBLIC_ERPNEXT_URL || "https://erp.124.223.87.161.nip.io";
 
   return (
     <nav className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-[#E5E5EA]/60 shadow-sm">
@@ -29,13 +28,15 @@ export default function TopNav() {
               <button
                 key={item.module}
                 onClick={() => {
+                  if (item.module === "生产管理") {
+                    window.location.assign(erpNextUrl);
+                    return;
+                  }
                   setModule(item.module);
                   if (item.module === "报价系统") {
                     router.push("/quote");
                   } else if (item.module === "效果渲染") {
                     router.push("/render");
-                  } else if (item.module === "生产履约") {
-                    router.push("/production");
                   } else if (pathname !== "/dashboard") {
                     router.push("/dashboard");
                   }

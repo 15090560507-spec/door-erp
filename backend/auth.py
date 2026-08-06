@@ -18,39 +18,13 @@ SUPER_ADMIN_ROLE = "超级管理员"
 ENTRY_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员"}
 TASK_ROLES = {SUPER_ADMIN_ROLE, "录入员", "绘图员", "初审员", "总工"}
 
-PRODUCTION_PERMISSIONS = {
-    "production.sales",
-    "production.technical",
-    "production.purchase",
-    "production.warehouse",
-    "production.schedule",
-    "production.cutting",
-    "production.worker",
-    "production.quality",
-    "production.shipping",
-    "production.manager",
-}
-
-ROLE_DEFAULT_PERMISSIONS = {
-    "录入员": {"production.sales"},
-    "绘图员": {"production.technical", "production.cutting", "production.worker"},
-    "初审员": {"production.quality"},
-    "总工": {"production.technical", "production.schedule", "production.manager"},
-    SUPER_ADMIN_ROLE: PRODUCTION_PERMISSIONS,
-}
-
-
-def user_permissions(user_info: Dict) -> set[str]:
-    # Production fulfillment is currently an all-staff workspace. Authentication
-    # remains mandatory, while administrator-only APIs keep using require_roles.
-    return set(PRODUCTION_PERMISSIONS)
-
-
 def public_user_info(user_info: Dict, uid: str | None = None) -> Dict:
     """Return user data that is safe to send to the browser."""
     data = dict(user_info or {})
     data.pop("password", None)
-    data["permissions"] = sorted(user_permissions(data))
+    # Legacy production permissions belong to the retired in-app workbench.
+    # ERPNext now owns production authorization independently.
+    data["permissions"] = []
     if uid is not None:
         data["uid"] = uid
     return data
@@ -125,17 +99,6 @@ def require_roles(*roles: str):
 
     def dependency(current_user: Dict = Depends(get_current_user)) -> Dict:
         if current_user.get("role") not in allowed:
-            raise HTTPException(status_code=403, detail="权限不足")
-        return current_user
-
-    return dependency
-
-
-def require_permissions(*permissions: str):
-    required = set(permissions)
-
-    def dependency(current_user: Dict = Depends(get_current_user)) -> Dict:
-        if not required.intersection(user_permissions(current_user)):
             raise HTTPException(status_code=403, detail="权限不足")
         return current_user
 
