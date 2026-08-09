@@ -1396,6 +1396,38 @@ def test_optional_structural_occlusion_keeps_source_geometry():
     )
 
 
+def test_outer_landscape_trim_with_occlusion():
+    req = CADRequest(
+        dhdw="一门一景测试",
+        st_val="连体锁",
+        sel_hys="暗合页",
+        fingerprint_lock="无",
+        has_outer=False,
+        has_outer_portal=False,
+        has_outer_landscape=True,
+        outer_landscape_left_width=150,
+        outer_landscape_right_width=180,
+        outer_landscape_top_height=160,
+        outer_landscape_left_overlap=20,
+        outer_landscape_right_overlap=25,
+        outer_landscape_top_overlap=30,
+        enable_occlusion=True,
+    )
+    info, checks, draw_params = build_cad_params(req)
+    check("one-scene trim is marked as outer trim", checks["OUTER"] == "√", str(checks))
+    check("one-scene trim preserves three independent overlap values", (
+        draw_params["outer_landscape_left_overlap"],
+        draw_params["outer_landscape_right_overlap"],
+        draw_params["outer_landscape_top_overlap"],
+    ) == (20, 25, 30), str(draw_params))
+    message, buffer = run_integrated_system(info, checks, draw_params)
+    check("one-scene CAD generation supports occlusion", buffer is not None, message)
+    if not buffer:
+        return
+    svg = render_dxf_svg(buffer.getvalue())
+    check("one-scene CAD preview supports occlusion", svg.startswith("<svg") and "cad-wipeout" in svg, svg[:180])
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
@@ -1418,6 +1450,7 @@ if __name__ == "__main__":
     test_integrated_door_sections_and_dimensions()
     test_cad_preview_svg_renders()
     test_optional_structural_occlusion_keeps_source_geometry()
+    test_outer_landscape_trim_with_occlusion()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

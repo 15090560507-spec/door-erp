@@ -67,6 +67,7 @@ export interface DoorFormData {
   hysl: string;
   has_outer: boolean;
   has_outer_portal: boolean;
+  has_outer_landscape: boolean;
   has_inner: boolean;
   overlap: number;
   overlap_front: number;
@@ -74,6 +75,12 @@ export interface DoorFormData {
   trim_front_in: number;
   outer_portal_pillar_width: number;
   outer_portal_header_height: number;
+  outer_landscape_left_width: number;
+  outer_landscape_right_width: number;
+  outer_landscape_top_height: number;
+  outer_landscape_left_overlap: number;
+  outer_landscape_right_overlap: number;
+  outer_landscape_top_overlap: number;
   trim_back_in: number;
   sel_qc: string;
   qc_shape: string;
@@ -229,7 +236,7 @@ export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "�
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
   zmks: "", fmks: "",
-  zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "连体锁", fingerprint_lock: "",
+  zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
   door_panel_style: "无造型", back_door_panel_style: "无造型", child_door_panel_style: "",
@@ -256,8 +263,10 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,
   integrated_glass_height: 500,
   has_mm: false, mm_height: 200,
-  has_outer: true, has_outer_portal: false, trim_front_in: 160,
+  has_outer: true, has_outer_portal: false, has_outer_landscape: false, trim_front_in: 160,
   outer_portal_pillar_width: 160, outer_portal_header_height: 220,
+  outer_landscape_left_width: 160, outer_landscape_right_width: 160, outer_landscape_top_height: 160,
+  outer_landscape_left_overlap: 20, outer_landscape_right_overlap: 20, outer_landscape_top_overlap: 20,
   has_inner: false, trim_back_in: 140,
   dw: 900, dh: 2100, overlap: 20, overlap_front: 20, overlap_back: 20,
   fw_left_str: "55/85", fw_right_str: "55/62", fw_top_str: "55/75",

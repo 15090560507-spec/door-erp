@@ -43,12 +43,13 @@ class CADRequest(BaseModel):
     zmls: str = "标配拉手"              # 正面拉手
     fmls: str = "标配拉手"              # 反面拉手
     handle_size: str = ""               # 拉手尺寸，如 40*800
-    st_val: str = "连体锁"              # 锁体类型
+    st_val: str = ""                    # 锁体类型（录入时必填）
     fingerprint_lock: str = ""          # 指纹锁
     sel_hys: str = ""                   # 合页样式
     hysl: str = "3个/扇"                # 合页数量
     has_outer: bool = True              # 外包套
     has_outer_portal: bool = False      # 外门头门柱（与外包套互斥）
+    has_outer_landscape: bool = False   # 外门套一门一景（与外包套、门头门柱互斥）
     has_inner: bool = False             # 内包套
     overlap: int = 20                   # 压框
     overlap_front: int = 20             # 正面包套压框
@@ -56,6 +57,12 @@ class CADRequest(BaseModel):
     trim_front_in: int = 160            # 外包套宽
     outer_portal_pillar_width: int = 160 # 外门柱宽度
     outer_portal_header_height: int = 220 # 外门头高度
+    outer_landscape_left_width: int = 160  # 一门一景左景宽
+    outer_landscape_right_width: int = 160 # 一门一景右景宽
+    outer_landscape_top_height: int = 160  # 一门一景上景高
+    outer_landscape_left_overlap: int = 20 # 一门一景左景压框
+    outer_landscape_right_overlap: int = 20 # 一门一景右景压框
+    outer_landscape_top_overlap: int = 20  # 一门一景上景压框
     trim_back_in: int = 140             # 内包套宽
     sel_qc: str = "无"                  # 气窗
     qc_shape: str = "矩形气窗"          # 气窗形状

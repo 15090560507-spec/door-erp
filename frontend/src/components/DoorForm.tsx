@@ -144,18 +144,29 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   };
   const frameWidth = Number(data.dw || 0);
   const frameHeight = Number(data.dh || 0);
-  const frontOuterSideWidth = data.has_outer
+  const frontOuterLeftWidth = data.has_outer
     ? Number(data.trim_front_in || 0)
     : data.has_outer_portal
       ? Number(data.outer_portal_pillar_width || 0)
-      : 0;
+      : data.has_outer_landscape
+        ? Number(data.outer_landscape_left_width || 0)
+        : 0;
+  const frontOuterRightWidth = data.has_outer
+    ? Number(data.trim_front_in || 0)
+    : data.has_outer_portal
+      ? Number(data.outer_portal_pillar_width || 0)
+      : data.has_outer_landscape
+        ? Number(data.outer_landscape_right_width || 0)
+        : 0;
   const frontOuterTopHeight = data.has_outer
     ? Number(data.trim_front_in || 0)
     : data.has_outer_portal
       ? Number(data.outer_portal_header_height || 0)
-      : 0;
+      : data.has_outer_landscape
+        ? Number(data.outer_landscape_top_height || 0)
+        : 0;
   const innerTrimWidth = data.has_inner ? Number(data.trim_back_in || 0) : 0;
-  const outerWidth = frameWidth + (frontOuterSideWidth + innerTrimWidth) * 2;
+  const outerWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth + innerTrimWidth * 2;
   const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
   const frameArea = frameWidth > 0 && frameHeight > 0 ? frameWidth * frameHeight / 1000000 : 0;
   const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
@@ -617,7 +628,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
             <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("fmls", v)} />
-            <Combobox label="锁体类型" value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
+            <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
             <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
             <Combobox label="合页样式" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
@@ -629,8 +640,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="包套与附加件">
           <div className="flex gap-4 mb-3">
-            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => onChange({ ...data, has_outer: v, has_outer_portal: v ? false : data.has_outer_portal })} />
-            <Checkbox label="外门头门柱" checked={data.has_outer_portal} onChange={(v) => onChange({ ...data, has_outer_portal: v, has_outer: v ? false : data.has_outer })} />
+            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => onChange({ ...data, has_outer: v, has_outer_portal: v ? false : data.has_outer_portal, has_outer_landscape: v ? false : data.has_outer_landscape })} />
+            <Checkbox label="外门头门柱" checked={data.has_outer_portal} onChange={(v) => onChange({ ...data, has_outer_portal: v, has_outer: v ? false : data.has_outer, has_outer_landscape: v ? false : data.has_outer_landscape })} />
+            <Checkbox label="一门一景" checked={data.has_outer_landscape} onChange={(v) => onChange({ ...data, has_outer_landscape: v, has_outer: v ? false : data.has_outer, has_outer_portal: v ? false : data.has_outer_portal })} />
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
           </div>
           {data.has_outer && (
@@ -645,6 +657,16 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Input label="门柱宽度" required value={data.outer_portal_pillar_width} type="number" onChange={(v) => set("outer_portal_pillar_width", Number(v))} />
               <Input label="门头高度" required value={data.outer_portal_header_height} type="number" onChange={(v) => set("outer_portal_header_height", Number(v))} />
               <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
+            </div>
+          )}
+          {data.has_outer_landscape && (
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="左景宽度" required value={data.outer_landscape_left_width} type="number" onChange={(v) => set("outer_landscape_left_width", Number(v))} />
+              <Input label="右景宽度" required value={data.outer_landscape_right_width} type="number" onChange={(v) => set("outer_landscape_right_width", Number(v))} />
+              <Input label="上景高度" required value={data.outer_landscape_top_height} type="number" onChange={(v) => set("outer_landscape_top_height", Number(v))} />
+              <Input label="左景压框" value={data.outer_landscape_left_overlap} type="number" onChange={(v) => set("outer_landscape_left_overlap", Number(v))} />
+              <Input label="右景压框" value={data.outer_landscape_right_overlap} type="number" onChange={(v) => set("outer_landscape_right_overlap", Number(v))} />
+              <Input label="上景压框" value={data.outer_landscape_top_overlap} type="number" onChange={(v) => set("outer_landscape_top_overlap", Number(v))} />
             </div>
           )}
           {data.has_inner && (

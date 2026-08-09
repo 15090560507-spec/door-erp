@@ -502,6 +502,7 @@ def draw_door_in_frame(
     trim_w = p['trim_back'] if is_back else p['trim_front']
     trim_top_w = p.get('trim_back_top' if is_back else 'trim_front_top', trim_w)
     has_outer_portal = bool(p.get('has_outer_portal', False)) and not is_back
+    has_outer_landscape = bool(p.get('has_outer_landscape', False)) and not is_back
     overlap_key = 'overlap_back' if is_back else 'overlap_front'
     overlap = p.get(overlap_key, p.get('overlap', 20)) if trim_w > 0 else 0
 
@@ -565,9 +566,11 @@ def draw_door_in_frame(
     frame_center_x = 0.0
     frame_center_y = 0.0
     front_trim = p.get('trim_front', 0)
-    front_total_width = dw + 2 * front_trim
-    front_overlap = p.get('overlap_front', p.get('overlap', 20)) if front_trim > 0 else 0
-    front_outer_right = dw - front_overlap + front_trim if front_trim > 0 else dw
+    front_trim_right = p.get('trim_front_right', front_trim)
+    front_total_width = dw + front_trim + front_trim_right
+    front_overlap = p.get('outer_landscape_left_overlap', p.get('overlap_front', p.get('overlap', 20))) if has_outer_landscape else p.get('overlap_front', p.get('overlap', 20))
+    front_overlap_right = p.get('outer_landscape_right_overlap', front_overlap) if has_outer_landscape else front_overlap
+    front_outer_right = dw - front_overlap_right + front_trim_right if front_trim > 0 else dw
     view_outer_left = overlap - trim_w if trim_w > 0 else 0
     front_offset_x = frame_center_x - front_total_width / 2
 
@@ -835,7 +838,31 @@ def draw_door_in_frame(
         ox3, oy3 = dw - O + W, total_h - O + WT + mm_offset
         ox4, oy4 = dw - O + W, 0
 
-        if has_outer_portal:
+        if has_outer_landscape:
+            # 一门一景：左右景通高，上景只位于左右景之间；三个压框可独立调整。
+            left_w = max(float(p.get('trim_front', W) or 0), 0)
+            right_w = max(float(p.get('trim_front_right', left_w) or 0), 0)
+            top_h = max(float(p.get('trim_front_top', WT) or 0), 0)
+            left_overlap = max(float(p.get('outer_landscape_left_overlap', O) or 0), 0)
+            right_overlap = max(float(p.get('outer_landscape_right_overlap', O) or 0), 0)
+            top_overlap = max(float(p.get('outer_landscape_top_overlap', O) or 0), 0)
+            left_inner = left_overlap
+            right_inner = dw - right_overlap
+            top_inner = total_h - top_overlap + mm_offset
+            top_outer = top_inner + top_h
+            drawer.draw_poly(
+                [off((left_inner - left_w, 0)), off((left_inner, 0)), off((left_inner, top_outer)), off((left_inner - left_w, top_outer))],
+                'A-DOOR-TRIM',
+            )
+            drawer.draw_poly(
+                [off((right_inner, 0)), off((right_inner + right_w, 0)), off((right_inner + right_w, top_outer)), off((right_inner, top_outer))],
+                'A-DOOR-TRIM',
+            )
+            drawer.draw_poly(
+                [off((left_inner, top_inner)), off((left_inner, top_outer)), off((right_inner, top_outer)), off((right_inner, top_inner))],
+                'A-DOOR-TRIM',
+            )
+        elif has_outer_portal:
             # 外门头门柱不是连续包套：两侧门柱和上部门头分别为独立矩形。
             drawer.draw_poly([off((ox1, oy1)), off((ix1, iy1)), off((ix2, iy2)), off((ox1, iy2))], 'A-DOOR-TRIM')
             drawer.draw_poly([off((ix4, iy4)), off((ox4, oy4)), off((ox4, iy3)), off((ix3, iy3))], 'A-DOOR-TRIM')
@@ -875,7 +902,7 @@ def draw_door_in_frame(
 
         # ===================== 包边款式偏移线 =====================
         trim_style = p.get('trim_style_outer', '') if not is_back else p.get('trim_style_inner', '')
-        if trim_style and not has_outer_portal:
+        if trim_style and not has_outer_portal and not has_outer_landscape:
             # 包套上边高度 = total_h - O + W + mm_offset
             outer_top_y = total_h - O + WT + mm_offset
             inner_top_y = total_h - O + mm_offset

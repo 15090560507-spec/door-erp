@@ -215,6 +215,13 @@ def build_cad_params(req: CADRequest):
         pillar_w = req.outer_portal_pillar_width
         header_h = req.outer_portal_header_height
         frame_notes.append(f"外门头门柱：门柱宽/门头高/压框={pillar_w}/{header_h}/{overlap_front}mm")
+    elif req.has_outer_landscape:
+        frame_notes.append(
+            "外门套一门一景："
+            f"左景宽/压框={req.outer_landscape_left_width}/{req.outer_landscape_left_overlap}mm，"
+            f"右景宽/压框={req.outer_landscape_right_width}/{req.outer_landscape_right_overlap}mm，"
+            f"上景高/压框={req.outer_landscape_top_height}/{req.outer_landscape_top_overlap}mm"
+        )
 
     if req.has_inner:
         inner_w = req.trim_back_in
@@ -411,7 +418,7 @@ def build_cad_params(req: CADRequest):
     }
 
     # --- check_map ---
-    out_mark = "√" if req.has_outer else ""
+    out_mark = "√" if req.has_outer or req.has_outer_landscape else ""
     outer_portal_mark = "√" if req.has_outer_portal else ""
     in_mark = "√" if req.has_inner else ""
     nk_mark = "√" if req.sel_nk == "内开" else ""
@@ -450,8 +457,9 @@ def build_cad_params(req: CADRequest):
     }
 
     # --- draw_params ---
-    trim_f = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else 0)
-    trim_f_top = req.trim_front_in if req.has_outer else (req.outer_portal_header_height if req.has_outer_portal else 0)
+    trim_f = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_landscape_left_width if req.has_outer_landscape else 0))
+    trim_f_right = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_landscape_right_width if req.has_outer_landscape else 0))
+    trim_f_top = req.trim_front_in if req.has_outer else (req.outer_portal_header_height if req.has_outer_portal else (req.outer_landscape_top_height if req.has_outer_landscape else 0))
     trim_b = req.trim_back_in if req.has_inner else 0
 
     draw_params = {
@@ -462,11 +470,15 @@ def build_cad_params(req: CADRequest):
         "th_front": thf, "th_back": thb,
         "has_dj": is_hanging_threshold,
         "dj_height": req.dj_height,
-        "trim_front": trim_f, "trim_front_top": trim_f_top, "trim_back": trim_b, "trim_back_top": trim_b,
+        "trim_front": trim_f, "trim_front_right": trim_f_right, "trim_front_top": trim_f_top, "trim_back": trim_b, "trim_back_top": trim_b,
         "has_outer_portal": req.has_outer_portal,
+        "has_outer_landscape": req.has_outer_landscape,
         "overlap": req.overlap,
         "overlap_front": overlap_front,
         "overlap_back": overlap_back,
+        "outer_landscape_left_overlap": req.outer_landscape_left_overlap,
+        "outer_landscape_right_overlap": req.outer_landscape_right_overlap,
+        "outer_landscape_top_overlap": req.outer_landscape_top_overlap,
         "door_type": door_type,
         "mother_door_width": req.mother_door_width,
         "mid_door_width": req.mid_door_width,
@@ -716,6 +728,8 @@ def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
 @app.post("/api/tasks", response_model=TaskResponse)
 def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_roles(*ENTRY_ROLES))):
     """创建新任务（录入员提交订单）"""
+    if not str(req.params.get("st_val", "")).strip():
+        raise HTTPException(status_code=400, detail="锁体类型为必填项")
     task_id = str(uuid.uuid4())[:8]
     new_task = {
         "id": task_id,
@@ -766,6 +780,8 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
     if req.status is not None:
         update_data["status"] = req.status
     if req.params is not None:
+        if not str(req.params.get("st_val", "")).strip():
+            raise HTTPException(status_code=400, detail="锁体类型为必填项")
         update_data["params"] = req.params
         # 生成修改记录
         old_params = existing.get("params", {})

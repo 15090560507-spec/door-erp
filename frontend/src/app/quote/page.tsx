@@ -76,18 +76,29 @@ function createQuoteGroup(index = 0): QuoteDoorGroup {
 function calcAreas(params: DoorFormData) {
   const frameWidth = num(params.dw);
   const frameHeight = num(params.dh);
-  const frontOuterSideWidth = params.has_outer
+  const frontOuterLeftWidth = params.has_outer
     ? num(params.trim_front_in)
     : params.has_outer_portal
       ? num(params.outer_portal_pillar_width)
-      : 0;
+      : params.has_outer_landscape
+        ? num(params.outer_landscape_left_width)
+        : 0;
+  const frontOuterRightWidth = params.has_outer
+    ? num(params.trim_front_in)
+    : params.has_outer_portal
+      ? num(params.outer_portal_pillar_width)
+      : params.has_outer_landscape
+        ? num(params.outer_landscape_right_width)
+        : 0;
   const frontOuterTopHeight = params.has_outer
     ? num(params.trim_front_in)
     : params.has_outer_portal
       ? num(params.outer_portal_header_height)
-      : 0;
+      : params.has_outer_landscape
+        ? num(params.outer_landscape_top_height)
+        : 0;
   const innerTrimWidth = params.has_inner ? num(params.trim_back_in) : 0;
-  const outerWidth = frameWidth + (frontOuterSideWidth + innerTrimWidth) * 2;
+  const outerWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth + innerTrimWidth * 2;
   const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
   const frameArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
   const outerArea = outerWidth && outerHeight ? outerWidth * outerHeight * 0.000001 : 0;
