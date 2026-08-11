@@ -1897,6 +1897,19 @@ def run_integrated_system(
 
         all_attrs = {**base_attrs, **check_attrs}
 
+        # 新模板把 CPMC 作为模型空间的直接 ATTDEF；旧模板中的同一位置仍可能
+        # 在 ORDER_FORM 块定义中使用 ZZCL。两种定义都要写入，避免只更新 INSERT
+        # 属性而导致产品名称仍显示占位提示。
+        def update_attribute_definitions(layout):
+            for attdef in layout.query("ATTDEF"):
+                tag = attdef.dxf.tag.strip().upper()
+                if tag != "BZ" and tag in all_attrs:
+                    attdef.dxf.text = str(all_attrs[tag])
+
+        update_attribute_definitions(ms)
+        for block in doc.blocks:
+            update_attribute_definitions(block)
+
         for insert in ms.query('INSERT'):
             to_replace = []
             for attrib in insert.attribs:

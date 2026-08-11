@@ -1435,6 +1435,15 @@ def test_order_title_product_name_and_simple_products():
     check("material and product name map to CPMC", info["CPMC"] == "0.8mm的不锈钢镀铜门", info)
     check("legacy ZZCL keeps the same visible product name", info["ZZCL"] == info["CPMC"], info)
     check("normal product keeps door drawing", params["simple_product"] is False, params)
+    message, buffer = run_integrated_system(info, _checks, params)
+    check("normal product CAD generation returns buffer", buffer is not None, message)
+    if buffer:
+        product_doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        order_form = product_doc.blocks.get("ORDER_FORM")
+        block_cpmc = [entity.dxf.text for entity in order_form.query("ATTDEF") if entity.dxf.tag == "CPMC"]
+        block_title = [entity.dxf.text for entity in order_form.query("ATTDEF") if entity.dxf.tag == "TT"]
+        check("current template CPMC attribute is filled", block_cpmc == ["0.8mm的不锈钢镀铜门"], block_cpmc)
+        check("current template TT attribute is filled", block_title == ["杭州兰庭新贵门业"], block_title)
 
     simple_info, _simple_checks, simple_params = build_cad_params(CADRequest(
         product_name="牌匾",
