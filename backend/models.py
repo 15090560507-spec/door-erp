@@ -14,7 +14,11 @@ class CADRequest(BaseModel):
     sl: str = "1 樘"                    # 数量
     hhxd: str = "D"                     # 制单人
     dhrq: str = ""                      # 交期日期 "YYYY.MM.DD"
-    zzcl: str = "0.8的不锈钢镀铜"        # 制作材料
+    # zzcl 保留为旧任务兼容字段；新表单分别保存材料与产品名称。
+    zzcl: str = ""                       # 旧制作材料显示值
+    material: str = "0.8mm"              # 材料/厚度，例如 0.8mm
+    product_name: str = "不锈钢镀铜门"     # 产品名称（录入时必填）
+    order_title: str = "浙江西州将军铜门订货单"  # 订货单抬头，对应 TT
     ys: str = "2号色"                   # 颜色
     zmks: str = ""                      # 正面款式
     fmks: str = ""                      # 反面款式

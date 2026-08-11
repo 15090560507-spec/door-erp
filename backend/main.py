@@ -187,6 +187,12 @@ def build_cad_params(req: CADRequest):
     将 CADRequest 组装为 info_map, check_map, draw_params
     原封不动地从 door_26.py 的 generate_cad_trigger 逻辑提取
     """
+    # --- 产品名称：新表单将材料与产品拆开，旧 zzcl 仍可读取。 ---
+    product_name = (req.product_name or "").strip() or "不锈钢镀铜门"
+    material = (req.material or "").strip()
+    product_display = f"{material}的{product_name}" if material else ((req.zzcl or "").strip() or product_name)
+    is_simple_product = product_name in {"牌匾", "铝艺栅栏"}
+
     # --- 包套批注 ---
     def _format_handle_size(value: str):
         normalized = (value or "").lower().replace("×", "*").replace("x", "*")
@@ -352,7 +358,8 @@ def build_cad_params(req: CADRequest):
 
     # --- info_map ---
     info_map = {
-        "DHDW": req.dhdw, "GDMC": req.gdmc, "ZZCL": req.zzcl,
+        "TT": (req.order_title or "浙江西州将军铜门订货单").strip(),
+        "DHDW": req.dhdw, "GDMC": req.gdmc, "ZZCL": product_display, "CPMC": product_display,
         "DHRQ": req.dhrq, "DDH": req.ddh, "SL": req.sl,
         "YS": req.ys, "ZMLS": req.zmls, "FMLS": req.fmls,
         "ST": req.st_val, "ZWS": req.fingerprint_lock, "HYSL": req.hysl, "QH": qh_val,
@@ -416,6 +423,13 @@ def build_cad_params(req: CADRequest):
         "HANDLE_SIZE": req.handle_size,
         "FINGERPRINT_LOCK": req.fingerprint_lock,
     }
+
+    if is_simple_product:
+        for key in (
+            "ZMLS", "FMLS", "ST", "ZWS", "HYSL", "QH", "MSHD", "HYYS", "DXK", "GXK", "PXK", "DJ", "DJG",
+            "QC_HEIGHT", "MM_HEIGHT", "ZMKS", "FMKS", "TRIM_STYLE_OUTER", "TRIM_STYLE_INNER", "PANEL_PRESET",
+        ):
+            info_map[key] = "/"
 
     # --- check_map ---
     out_mark = "√" if req.has_outer or req.has_outer_landscape else ""
@@ -550,6 +564,7 @@ def build_cad_params(req: CADRequest):
         "handle_size": req.handle_size,
         "fingerprint_lock": req.fingerprint_lock,
         "enable_occlusion": req.enable_occlusion,
+        "simple_product": is_simple_product,
     }
 
     return info_map, check_map, draw_params
@@ -728,7 +743,10 @@ def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
 @app.post("/api/tasks", response_model=TaskResponse)
 def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_roles(*ENTRY_ROLES))):
     """创建新任务（录入员提交订单）"""
-    if not str(req.params.get("st_val", "")).strip():
+    product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
+    if not product_name:
+        raise HTTPException(status_code=400, detail="产品名称为必填项")
+    if product_name not in {"牌匾", "铝艺栅栏"} and not str(req.params.get("st_val", "")).strip():
         raise HTTPException(status_code=400, detail="锁体类型为必填项")
     task_id = str(uuid.uuid4())[:8]
     new_task = {
@@ -780,7 +798,10 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
     if req.status is not None:
         update_data["status"] = req.status
     if req.params is not None:
-        if not str(req.params.get("st_val", "")).strip():
+        product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
+        if not product_name:
+            raise HTTPException(status_code=400, detail="产品名称为必填项")
+        if product_name not in {"牌匾", "铝艺栅栏"} and not str(req.params.get("st_val", "")).strip():
             raise HTTPException(status_code=400, detail="锁体类型为必填项")
         update_data["params"] = req.params
         # 生成修改记录

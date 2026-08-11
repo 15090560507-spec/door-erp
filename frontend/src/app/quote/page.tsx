@@ -47,7 +47,11 @@ function num(value: unknown): number {
 }
 
 function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
-  return rows.map((item, index) => index === 0 ? item : { ...item, openDirection: "" });
+  return rows.map((item, index) => ({
+    ...item,
+    rowId: item.rowId || createEmptyQuoteItem().rowId,
+    openDirection: index === 0 ? item.openDirection : "",
+  }));
 }
 
 const DEFAULT_QUOTE_ROW_COUNT = 5;
@@ -98,12 +102,18 @@ function calcAreas(params: DoorFormData) {
         ? num(params.outer_landscape_top_height)
         : 0;
   const innerTrimWidth = params.has_inner ? num(params.trim_back_in) : 0;
-  const outerWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth + innerTrimWidth * 2;
-  const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
+  const frontOuterWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth;
+  const frontOuterHeight = frameHeight + frontOuterTopHeight;
+  const backOuterWidth = frameWidth + innerTrimWidth * 2;
+  const backOuterHeight = frameHeight + innerTrimWidth;
+  const outerWidth = Math.max(frontOuterWidth, backOuterWidth);
+  const outerHeight = Math.max(frontOuterHeight, backOuterHeight);
   const frameArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
   const outerArea = outerWidth && outerHeight ? outerWidth * outerHeight * 0.000001 : 0;
-  const trimArea = Math.max(0, outerArea - frameArea);
-  return { frameWidth, frameHeight, outerWidth, outerHeight, frameArea, outerArea, trimArea };
+  const frontTrimArea = Math.max(0, frontOuterWidth * frontOuterHeight * 0.000001 - frameArea);
+  const backTrimArea = Math.max(0, backOuterWidth * backOuterHeight * 0.000001 - frameArea);
+  const trimArea = frontTrimArea + backTrimArea;
+  return { frameWidth, frameHeight, outerWidth, outerHeight, frameArea, outerArea, frontTrimArea, backTrimArea, trimArea };
 }
 
 function rowFromAccessory(accessory: Accessory, productName = accessory.name, width: number | null = null, height: number | null = null, openDirection = ""): QuoteItem {
@@ -171,8 +181,9 @@ function buildHingeQuoteRow(accessories: Accessory[], hinge: string, doorType: s
 
 function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], pricingMode: QuotePricingMode, trimUnitPrice: number): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
-  const { frameWidth, frameHeight, outerWidth, outerHeight, trimArea } = calcAreas(params);
-  const material = findPriceItem(accessories, "制作材料", params.zzcl);
+  const { frameWidth, frameHeight, outerWidth, outerHeight, frontTrimArea, backTrimArea } = calcAreas(params);
+  const productDisplay = [params.material, params.product_name || params.zzcl].filter(Boolean).join("的");
+  const material = findPriceItem(accessories, "制作材料", params.material || params.zzcl || productDisplay);
   const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
   const lock = findPriceItem(accessories, "锁体", params.st_val);
   const packing = findPriceItem(accessories, "包装", params.sel_bz);
@@ -181,7 +192,7 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
   const rows: QuoteItem[] = [{
     accessoryId: style?.id ?? null,
     category: "门类组合",
-    productName: [params.door_type, params.zzcl, params.zmks, params.fmks].filter(Boolean).join(" "),
+    productName: [params.door_type, productDisplay, params.zmks, params.fmks].filter(Boolean).join(" "),
     width: (pricingMode === "outerArea" ? outerWidth : frameWidth) || null,
     height: (pricingMode === "outerArea" ? outerHeight : frameHeight) || null,
     quantity: null,
@@ -190,16 +201,18 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
     unitPrice: mainUnitPrice,
   }];
 
-  if (pricingMode === "framePlusTrim" && trimArea > 0) {
-    rows.push({
-      accessoryId: null,
-      productName: "门套面积",
-      width: null,
-      height: null,
-      quantity: Number(trimArea.toFixed(4)),
-      openDirection: direction,
-      unit: "m2",
-      unitPrice: trimUnitPrice,
+  if (pricingMode === "framePlusTrim") {
+    ([
+      ["正面门套面积", frontTrimArea],
+      ["反面门套面积", backTrimArea],
+    ] as const).filter(([, area]) => area > 0).forEach(([productName, area]) => {
+      rows.push({
+        ...createEmptyQuoteItem(),
+        productName,
+        quantity: Number(area.toFixed(4)),
+        unit: "m2",
+        unitPrice: trimUnitPrice,
+      });
     });
   }
 
@@ -337,7 +350,9 @@ export default function QuotePage() {
       .map((group, index) => ({
         ...group,
         groupName: group.groupName.trim() || `第${index + 1}樘门`,
-        items: normalizeQuoteRows(group.items).filter((item) => item.productName.trim()),
+        items: normalizeQuoteRows(group.items)
+          .filter((item) => item.productName.trim())
+          .map(({ rowId: _rowId, ...item }) => item),
       }))
       .filter((group) => group.items.length > 0);
     const items = cleanedGroups.flatMap((group) => group.items);

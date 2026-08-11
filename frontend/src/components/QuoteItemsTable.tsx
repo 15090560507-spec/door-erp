@@ -32,7 +32,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
     const next = items.map((item, i) => {
       if (i !== index) return item;
       if (field === "productName" && !String(value || "").trim()) {
-        return createEmptyQuoteItem();
+        return { ...createEmptyQuoteItem(), rowId: item.rowId };
       }
       const updated = { ...item, [field]: value };
       // Clear accessoryId when productName is manually changed
@@ -116,7 +116,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
         </thead>
         <tbody>
           {items.map((item, index) => (
-            <tr key={index} className="border-b border-[#E5E5EA]/30 hover:bg-[#F2F2F7]/50 transition-colors">
+            <tr key={item.rowId || `quote-row-${index}`} className="border-b border-[#E5E5EA]/30 hover:bg-[#F2F2F7]/50 transition-colors">
               {/* 品名型号 with search suggestions */}
               <td className="py-1.5 px-2 relative">
                 <input

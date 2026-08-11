@@ -23,7 +23,7 @@ def _resolve_project_root(module_file: str = __file__) -> Path:
 
 
 TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
-DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
+DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u4e0d\u542b\u6728\u7bb1\u3002"
 
 
 def _display_width(value) -> int:
@@ -92,6 +92,16 @@ def _apply_dynamic_layout(
         cell = ws[f"B{row}"]
         _enable_wrap(cell)
         _fit_row(ws, row, cell.value, product_capacity, 25, line_height=22)
+        alignment = copy(cell.alignment)
+        alignment.horizontal = "left"
+        alignment.vertical = "bottom"
+        cell.alignment = alignment
+        for column in "DEFGHIJ":
+            item_cell = ws[f"{column}{row}"]
+            alignment = copy(item_cell.alignment)
+            alignment.horizontal = "center"
+            alignment.vertical = "bottom"
+            item_cell.alignment = alignment
 
     ws.column_dimensions["H"].width = max(_column_width(ws, "H"), 11.5)
     ws.column_dimensions["I"].width = max(_column_width(ws, "I"), 9.5)
@@ -254,13 +264,17 @@ def generate_excel(quote: dict, output_path: str):
             items.append(item)
         if len(groups) > 1:
             display_rows.append(("subtotal", group, group_index))
-    while len(display_rows) < 8:
+    minimum_display_rows = 5
+    template_item_rows = 8
+    while len(display_rows) < minimum_display_rows:
         display_rows.append(("item", {}, -1))
 
-    extra_rows = max(0, len(display_rows) - 8)
     _unmerge_dynamic_rows(ws)
-    if extra_rows:
-        ws.insert_rows(17, amount=extra_rows)
+    if len(display_rows) < template_item_rows:
+        # 原模板有 8 行明细；正式报价至少保留 5 行，较少时删除尾部空行。
+        ws.delete_rows(9 + len(display_rows), amount=template_item_rows - len(display_rows))
+    elif len(display_rows) > template_item_rows:
+        ws.insert_rows(17, amount=len(display_rows) - template_item_rows)
 
     total_row = 9 + len(display_rows)
     amount_row = total_row + 1

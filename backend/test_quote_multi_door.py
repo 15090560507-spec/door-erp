@@ -132,9 +132,9 @@ class MultiDoorQuoteTests(unittest.TestCase):
         self.assertEqual(sheet["J11"].value, "=SUM(J9,J10)")
         self.assertEqual(sheet["A13"].value, "厨房门小计")
         self.assertEqual(sheet["J13"].value, "=SUM(J12)")
-        self.assertEqual(sheet["J17"].value, "=SUM(J11,J13)")
-        self.assertIn("J17", sheet["F18"].value)
-        self.assertIn("A1:J24", str(sheet.print_area).replace("$", ""))
+        self.assertEqual(sheet["J14"].value, "=SUM(J11,J13)")
+        self.assertIn("J14", sheet["F15"].value)
+        self.assertIn("A1:J21", str(sheet.print_area).replace("$", ""))
 
     def test_multi_door_html_hides_group_titles_but_keeps_subtotals(self):
         quote_path = self.root / "quote.json"

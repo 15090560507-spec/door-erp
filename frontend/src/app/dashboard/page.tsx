@@ -176,10 +176,12 @@ export default function DashboardPage() {
 
   const validateDoorForm = (data: DoorFormData): string | null => {
     const missing: string[] = [];
+    const isSimpleProduct = ["牌匾", "铝艺栅栏"].includes(data.product_name);
     if (!data.dhdw.trim()) missing.push("订货单位");
     if (!data.sl.trim()) missing.push("数量(樘)");
-    if (!data.zzcl.trim()) missing.push("制作材料");
+    if (!data.product_name.trim()) missing.push("产品名称");
     if (!data.ys.trim()) missing.push("颜色");
+    if (isSimpleProduct) return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
     if (!data.zmks.trim()) missing.push("正面款式");
     if (!data.fmks.trim()) missing.push("反面款式");
     if (!data.st_val.trim()) missing.push("锁体类型");
@@ -499,14 +501,14 @@ export default function DashboardPage() {
                     disabled={previewLoading || cadLoading}
                     className="w-full mb-2 py-2.5 rounded-lg bg-[#F2F2F7] text-[#1C1C1E] font-medium text-sm hover:bg-[#E5E5EA] transition-all disabled:opacity-50"
                   >
-                    {previewLoading ? "正在生成预览..." : "生成 DXF 预览"}
+                    {previewLoading ? "正在生成预览..." : "预览 DXF"}
                   </button>
                   <button
                     onClick={handleGenerateCad}
                     disabled={cadLoading}
                     className="w-full py-2.5 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-sm hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
                   >
-                    {cadLoading ? "生成中..." : "生成并下载 DXF 进行深化"}
+                    {cadLoading ? "生成中..." : "生成 DXF"}
                   </button>
                   {cadBlob && (
                     <button

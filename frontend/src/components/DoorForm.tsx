@@ -5,7 +5,7 @@ import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
-  MATERIALS, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
+  MATERIALS, MATERIAL_THICKNESSES, PRODUCT_NAMES, ORDER_TITLES, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
   TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
@@ -172,6 +172,19 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
   const trimArea = Math.max(0, outerArea - frameArea);
   const panelStyle = data.door_panel_style || "无造型";
+  const isSimpleProduct = ["牌匾", "铝艺栅栏"].includes(data.product_name);
+  const applyProductName = (product_name: string) => {
+    if (product_name === "庭院门") {
+      onChange({
+        ...data,
+        product_name,
+        left_gap: 0, right_gap: 0, top_gap: 0, bottom_gap: 0,
+        fw_top_str: "0", threshold_type: "吊脚", has_dj: true, dj_height: data.dj_height || 30,
+      });
+      return;
+    }
+    onChange({ ...data, product_name });
+  };
   const panelPreset = data.panel_preset || "";
   const hasChildPanel = ["子母门", "两定两开", "四开门", "折叠四开门"].includes(data.door_type);
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
@@ -387,6 +400,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       <div className="space-y-4">
         <Card title="订单基础信息">
           <div className="grid grid-cols-2 gap-3">
+            <Combobox label="订货单抬头" required value={data.order_title} options={ORDER_TITLES} onChange={(v) => set("order_title", v)} />
             <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
             <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
             <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
@@ -398,26 +412,30 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="材质与外观">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="制作材料" required value={data.zzcl} options={o("MATERIALS", MATERIALS)} onChange={(v) => set("zzcl", v)} />
+            <Combobox label="产品名称" required value={data.product_name} options={PRODUCT_NAMES} onChange={applyProductName} />
+            <Combobox label="材料" value={data.material} options={o("MATERIAL_THICKNESSES", MATERIAL_THICKNESSES)} onChange={(v) => set("material", v)} />
             <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
-            <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
-            <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
-            <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
-            <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
+            {!isSimpleProduct && <>
+              <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
+              <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
+              <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
+              <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
+            </>}
           </div>
-          <div className="mt-3 flex gap-6">
+          {!isSimpleProduct && <div className="mt-3 flex gap-6">
             {o("BZ_OPTIONS", BZ_OPTIONS).map((opt) => (
               <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
                 <input type="radio" name="bz" checked={data.sel_bz === opt} onChange={() => set("sel_bz", opt)} />
                 {opt}
               </label>
             ))}
-          </div>
+          </div>}
+          {isSimpleProduct && <p className="mt-3 text-[12px] text-[#8E8E93]">牌匾、铝艺栅栏只需录入产品名称、材料、颜色和数量；其他订货单字段自动以“/”占位。</p>}
         </Card>
       </div>
 
       {/* 中列：结构 + 尺寸 */}
-      <div className="space-y-4">
+      {!isSimpleProduct && <div className="space-y-4">
         <Card title="结构与开向">
           <Select
             label="门型"
@@ -620,10 +638,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             }} />
           )}
         </Card>
-      </div>
+      </div>}
 
       {/* 右列：五金 + 包套 + 批注 */}
-      <div className="space-y-4">
+      {!isSimpleProduct && <div className="space-y-4">
         <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
@@ -705,7 +723,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </Card>
 
         {children}
-      </div>
+      </div>}
     </div>
   );
 });

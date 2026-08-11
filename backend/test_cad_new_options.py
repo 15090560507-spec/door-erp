@@ -1042,13 +1042,8 @@ def test_new_defaults_fingerprint_and_transom_shape():
         arch_frame_bounds,
     )
     check(
-        "arched transom inner opening is a selectable closed polyline",
-        any(
-            len(list(entity.get_points("xy"))) > 16
-            and abs(poly_bounds(entity)[2] - 2880) < 0.01
-            and abs(poly_bounds(entity)[3] - 3210) < 0.01
-            for entity in arch_frame_polys
-        ),
+        "arched transom uses real arc entities instead of a segmented range polyline",
+        not any(len(list(entity.get_points("xy"))) > 16 for entity in arch_frame_polys),
         arch_frame_bounds,
     )
 
@@ -1428,6 +1423,30 @@ def test_outer_landscape_trim_with_occlusion():
     check("one-scene CAD preview supports occlusion", svg.startswith("<svg") and "cad-wipeout" in svg, svg[:180])
 
 
+def test_order_title_product_name_and_simple_products():
+    req = CADRequest(
+        order_title="杭州兰庭新贵门业",
+        material="0.8mm",
+        product_name="不锈钢镀铜门",
+        st_val="连体锁",
+    )
+    info, _checks, params = build_cad_params(req)
+    check("order title maps to TT", info["TT"] == "杭州兰庭新贵门业", info)
+    check("material and product name map to CPMC", info["CPMC"] == "0.8mm的不锈钢镀铜门", info)
+    check("legacy ZZCL keeps the same visible product name", info["ZZCL"] == info["CPMC"], info)
+    check("normal product keeps door drawing", params["simple_product"] is False, params)
+
+    simple_info, _simple_checks, simple_params = build_cad_params(CADRequest(
+        product_name="牌匾",
+        material="1.0mm",
+        ys="黑色",
+    ))
+    check("plaque uses simple-product drawing mode", simple_params["simple_product"] is True, simple_params)
+    check("plaque uses slash placeholders", simple_info["ST"] == "/" and simple_info["ZMLS"] == "/", simple_info)
+    message, buffer = run_integrated_system(simple_info, _simple_checks, simple_params)
+    check("plaque CAD generation returns buffer", buffer is not None, message)
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
@@ -1451,6 +1470,7 @@ if __name__ == "__main__":
     test_cad_preview_svg_renders()
     test_optional_structural_occlusion_keeps_source_geometry()
     test_outer_landscape_trim_with_occlusion()
+    test_order_title_product_name_and_simple_products()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

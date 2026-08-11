@@ -29,6 +29,8 @@ export interface AccessoryCreate {
 }
 
 export interface QuoteItem {
+  /** 仅用于前端编辑器的稳定行标识，不会写入报价数据。 */
+  rowId?: string;
   accessoryId: number | null;
   category?: string;
   productName: string;
@@ -169,6 +171,7 @@ export function normalizeOpenDirection(dir: string): string {
 
 export function createEmptyQuoteItem(): QuoteItem {
   return {
+    rowId: `quote-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     accessoryId: null,
     category: "",
     productName: "",

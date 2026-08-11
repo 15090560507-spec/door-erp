@@ -32,7 +32,11 @@ export interface DoorFormData {
   sl: string;
   hhxd: string;
   dhrq: string;
+  /** 旧任务兼容字段，新任务由 material + product_name 组合生成。 */
   zzcl: string;
+  material: string;
+  product_name: string;
+  order_title: string;
   ys: string;
   zmks: string;
   fmks: string;
@@ -222,6 +226,9 @@ export const MATERIALS = [
   "1.0的304不锈钢镀铜木纹板",
   "1.2的304不锈钢镀铜木纹板",
 ];
+export const MATERIAL_THICKNESSES = ["0.8mm", "1.0mm", "1.2mm", "1.5mm", "2.0mm"];
+export const PRODUCT_NAMES = ["不锈钢镀铜门", "纯铜门", "全铝门", "系统门", "庭院门", "铝艺栅栏", "牌匾"];
+export const ORDER_TITLES = ["浙江西州将军铜门订货单", "杭州兰庭新贵门业"];
 export const HANDLES = ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
 export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
 export const FINGERPRINT_LOCKS = ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"];
@@ -234,7 +241,7 @@ export const DOOR_PANEL_PRESETS = ["", "紫荆花款", "钱币款", "竖条款",
 export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
-  dhdw: "", gdmc: "", ys: "2号色", zzcl: "0.8的不锈钢镀铜",
+  dhdw: "", gdmc: "", ys: "2号色", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",
   zmks: "", fmks: "",
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,

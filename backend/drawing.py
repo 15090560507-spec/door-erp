@@ -266,10 +266,14 @@ class EzdxfDrawer:
     def draw_wipeout_polygon(self, points, layer="A-DOOR-MASK"):
         if len(points) < 3:
             return
-        wipeout = self.ms.add_wipeout(points)
-        wipeout.dxf.layer = layer
-        self.occlusion.register(wipeout, "hardware_mask")
-        return wipeout
+        try:
+            wipeout = self.ms.add_wipeout(points)
+            wipeout.dxf.layer = layer
+            self.occlusion.register(wipeout, "hardware_mask")
+            return wipeout
+        except Exception as exc:
+            logger.warning("Skip invalid hardware wipeout: %s", exc)
+            return None
 
     def draw_structural_mask(self, points, tier):
         return self.occlusion.add_mask(points, tier)
@@ -808,9 +812,6 @@ def draw_door_in_frame(
             arch_frame = arch_geometry(left_width, dw - right_width, inner_spring_y, inner_apex_y)
             if arch_frame:
                 draw_arch_geom(arch_frame, 'A-DOOR-FRAME')
-                arch_region = arch_poly_points(arch_frame)
-                if arch_region:
-                    drawer.draw_poly([off(point) for point in arch_region], 'A-DOOR-FRAME', closed=True)
                 outer_shape = arch_extended_shape(arch_frame, 0, dw, fw_top)
                 left_outer_top, right_outer_top = draw_arch_extended_to_x(arch_frame, 0, dw, 'A-DOOR-FRAME', fw_top)
                 draw_arch_band_mask(arch_frame, outer_shape, "frame")
@@ -1248,8 +1249,12 @@ def draw_door_in_frame(
     dims_h = []
     if trim_w > 0:
         dims_h.append(("含包套总宽", outer_left, outer_right, -400, True, "含包套总宽 <>"))
-        dims_h.append(("门套宽", ox1, ix1, -200, not has_outer_portal, None))
-        dims_h.append(("门柱宽", ox1, ix1, -200, has_outer_portal, None))
+        if has_outer_landscape:
+            dims_h.append(("左景宽", ox1, ix1, -200, True, None))
+            dims_h.append(("右景宽", ix4, ox4, -200, True, None))
+        else:
+            dims_h.append(("门套宽", ox1, ix1, -200, not has_outer_portal, None))
+            dims_h.append(("门柱宽", ox1, ix1, -200, has_outer_portal, None))
 
     should_mark_light = p.get("mark_light_size", False) or use_light_size
     should_draw_light_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
@@ -1823,9 +1828,11 @@ def run_integrated_system(
         ms = doc.modelspace()
 
         base_attrs = {
+            "TT": info.get("TT", ""),
             "DHDW": info.get("DHDW", ""),
             "GDMC": info.get("GDMC", ""),
             "ZZCL": info.get("ZZCL", ""),
+            "CPMC": info.get("CPMC", info.get("ZZCL", "")),
             "DHRQ": info.get("DHRQ", ""),
             "DDH": info.get("DDH", ""),
             "SL": info.get("SL", ""),
@@ -1956,8 +1963,12 @@ def run_integrated_system(
         lh = draw_p.get("light_h", 0)
 
         draw_started = time.perf_counter()
-        draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
-        draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
+        if draw_p.get("simple_product"):
+            # 牌匾、铝艺栅栏只输出订货单信息，不套用门框门板几何。
+            drawer.update_progress("简化产品无需绘制门体结构")
+        else:
+            draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
+            draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
         drawer.occlusion.apply()
         draw_elapsed = time.perf_counter() - draw_started
 

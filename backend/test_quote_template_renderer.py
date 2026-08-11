@@ -359,17 +359,19 @@ def test_optional_project_and_adaptive_excel_layout():
         check("quantity column is wide enough", float(sheet.column_dimensions["H"].width or 0) >= 11.5, str(sheet.column_dimensions["H"].width))
         check("quantity format avoids hash overflow", sheet["H10"].number_format == "0.####", sheet["H10"].number_format)
         check("detail amount is formula driven", sheet["J9"].value == '=IF(OR(H9="",I9=""),"",ROUND(H9*I9,0))', str(sheet["J9"].value))
-        check("quote total is formula driven", sheet["J17"].value == "=SUM(J9:J16)", str(sheet["J17"].value))
-        uppercase_formula = str(sheet["F18"].value)
+        check("quote total is formula driven", sheet["J14"].value == "=SUM(J9:J13)", str(sheet["J14"].value))
+        uppercase_formula = str(sheet["F15"].value)
         check(
             "uppercase amount references total with DBNum2",
-            uppercase_formula.startswith("=IF(") and "J17" in uppercase_formula and "ROUND" in uppercase_formula and "DBNum2" in uppercase_formula,
+            uppercase_formula.startswith("=IF(") and "J14" in uppercase_formula and "ROUND" in uppercase_formula and "DBNum2" in uppercase_formula,
             uppercase_formula,
         )
         check("workbook calculation mode is automatic", workbook.calculation.calcMode == "auto", str(workbook.calculation.calcMode))
         check("dynamic text uses Song font", sheet["B9"].font.name == "宋体", str(sheet["B9"].font.name))
         normalized_print_area = str(sheet.print_area).replace("$", "")
-        check("quote print area remains A1:J24", "A1:J24" in normalized_print_area, str(sheet.print_area))
+        check("quote print area follows five-row layout", "A1:J21" in normalized_print_area, str(sheet.print_area))
+        check("product name is left-bottom aligned", sheet["B9"].alignment.horizontal == "left" and sheet["B9"].alignment.vertical == "bottom", str(sheet["B9"].alignment))
+        check("other detail cells are center-bottom aligned", sheet["D9"].alignment.horizontal == "center" and sheet["D9"].alignment.vertical == "bottom", str(sheet["D9"].alignment))
         check(
             "Shanghai business clock uses UTC+8",
             backend_main.shanghai_now().utcoffset().total_seconds() == 8 * 60 * 60,
