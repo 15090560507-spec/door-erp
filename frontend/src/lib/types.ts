@@ -227,7 +227,7 @@ export const MATERIALS = [
   "1.2的304不锈钢镀铜木纹板",
 ];
 export const MATERIAL_THICKNESSES = ["0.8mm", "1.0mm", "1.2mm", "1.5mm", "2.0mm"];
-export const PRODUCT_NAMES = ["不锈钢镀铜门", "纯铜门", "全铝门", "系统门", "庭院门", "铝艺栅栏", "牌匾"];
+export const PRODUCT_NAMES = ["不锈钢镀铜门", "纯铜门", "全铝门", "系统门", "庭院门", "铝艺栅栏", "雨棚", "牌匾"];
 export const ORDER_TITLES = ["浙江西州将军铜门订货单", "杭州兰庭新贵门业"];
 export const HANDLES = ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
 export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];

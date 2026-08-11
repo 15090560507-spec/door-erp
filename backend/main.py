@@ -191,7 +191,7 @@ def build_cad_params(req: CADRequest):
     product_name = (req.product_name or "").strip() or "不锈钢镀铜门"
     material = (req.material or "").strip()
     product_display = f"{material}的{product_name}" if material else ((req.zzcl or "").strip() or product_name)
-    is_simple_product = product_name in {"牌匾", "铝艺栅栏"}
+    is_simple_product = product_name in {"牌匾", "铝艺栅栏", "雨棚"}
 
     # --- 包套批注 ---
     def _format_handle_size(value: str):
@@ -746,7 +746,7 @@ def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_rol
     product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
     if not product_name:
         raise HTTPException(status_code=400, detail="产品名称为必填项")
-    if product_name not in {"牌匾", "铝艺栅栏"} and not str(req.params.get("st_val", "")).strip():
+    if product_name not in {"牌匾", "铝艺栅栏", "雨棚"} and not str(req.params.get("st_val", "")).strip():
         raise HTTPException(status_code=400, detail="锁体类型为必填项")
     task_id = str(uuid.uuid4())[:8]
     new_task = {
@@ -801,7 +801,7 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
         product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
         if not product_name:
             raise HTTPException(status_code=400, detail="产品名称为必填项")
-        if product_name not in {"牌匾", "铝艺栅栏"} and not str(req.params.get("st_val", "")).strip():
+        if product_name not in {"牌匾", "铝艺栅栏", "雨棚"} and not str(req.params.get("st_val", "")).strip():
             raise HTTPException(status_code=400, detail="锁体类型为必填项")
         update_data["params"] = req.params
         # 生成修改记录

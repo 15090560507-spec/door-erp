@@ -1455,6 +1455,16 @@ def test_order_title_product_name_and_simple_products():
     message, buffer = run_integrated_system(simple_info, _simple_checks, simple_params)
     check("plaque CAD generation returns buffer", buffer is not None, message)
 
+    canopy_info, _canopy_checks, canopy_params = build_cad_params(CADRequest(
+        product_name="雨棚",
+        material="1.2mm",
+        ys="2号色",
+        dw=1800,
+        dh=600,
+    ))
+    check("canopy uses simple-product drawing mode", canopy_params["simple_product"] is True, canopy_params)
+    check("canopy uses slash placeholders", canopy_info["ST"] == "/" and canopy_info["ZMLS"] == "/", canopy_info)
+
 
 if __name__ == "__main__":
     test_cad_new_options_flow()

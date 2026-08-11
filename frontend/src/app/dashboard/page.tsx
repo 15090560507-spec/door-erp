@@ -176,12 +176,16 @@ export default function DashboardPage() {
 
   const validateDoorForm = (data: DoorFormData): string | null => {
     const missing: string[] = [];
-    const isSimpleProduct = ["牌匾", "铝艺栅栏"].includes(data.product_name);
+    const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
     if (!data.dhdw.trim()) missing.push("订货单位");
     if (!data.sl.trim()) missing.push("数量(樘)");
     if (!data.product_name.trim()) missing.push("产品名称");
     if (!data.ys.trim()) missing.push("颜色");
-    if (isSimpleProduct) return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
+    if (isSimpleProduct) {
+      if (!data.dw || data.dw <= 0) missing.push("宽度");
+      if (!data.dh || data.dh <= 0) missing.push("高度");
+      return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
+    }
     if (!data.zmks.trim()) missing.push("正面款式");
     if (!data.fmks.trim()) missing.push("反面款式");
     if (!data.st_val.trim()) missing.push("锁体类型");

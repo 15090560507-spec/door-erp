@@ -1977,7 +1977,7 @@ def run_integrated_system(
 
         draw_started = time.perf_counter()
         if draw_p.get("simple_product"):
-            # 牌匾、铝艺栅栏只输出订货单信息，不套用门框门板几何。
+            # 牌匾、铝艺栅栏、雨棚只输出订货单信息，不套用门框门板几何。
             drawer.update_progress("简化产品无需绘制门体结构")
         else:
             draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
