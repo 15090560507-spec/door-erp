@@ -41,6 +41,7 @@ data/images/
 data/render/
 data/*.db
 data/production_files/
+data/fulfillment_files/
 output/
 
 # ===================== IDE & OS =====================

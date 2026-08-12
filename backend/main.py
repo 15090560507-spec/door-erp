@@ -22,7 +22,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from config import DATA_DIR, JWT_SECRET, TEMPLATE_PATH
+from config import DATA_DIR, JWT_SECRET, LEGACY_PRODUCTION_ENABLED, TEMPLATE_PATH
 from database import UserDatabaseManager, TaskDatabaseManager, hash_password
 from auth import (
     ENTRY_ROLES,
@@ -48,6 +48,11 @@ from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
 from render_routes import render_router
+from fulfillment_routes import (
+    configure_task_repository as configure_fulfillment_tasks,
+    configure_user_repository as configure_fulfillment_users,
+    router as fulfillment_router,
+)
 from production_models import ProductionReleaseRequest
 from production_routes import (
     configure_task_repository,
@@ -79,12 +84,16 @@ app.add_middleware(
 
 app.include_router(quote_router)
 app.include_router(render_router)
-app.include_router(production_router)
+if LEGACY_PRODUCTION_ENABLED:
+    app.include_router(production_router)
+app.include_router(fulfillment_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
 task_db = TaskDatabaseManager()
 configure_task_repository(task_db)
+configure_fulfillment_tasks(task_db)
+configure_fulfillment_users(user_db)
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -670,6 +679,8 @@ def release_production_order(
     current_user: Dict = Depends(require_permissions("production.sales")),
 ):
     """冻结一份终审通过的图纸，并下达一樘门的本地生产订单。"""
+    if not LEGACY_PRODUCTION_ENABLED:
+        raise HTTPException(status_code=410, detail="旧生产流程已停用，请使用门樘履约中心下达生产")
     task = task_db.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="图纸任务不存在")
