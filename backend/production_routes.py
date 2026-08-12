@@ -26,7 +26,7 @@ from production_document_service import (
     render_xlsx,
 )
 from production_material_service import ProductionMaterialService
-from erpnext_bridge import bridge_status, sync_order_to_erpnext
+from erpnext_bridge import bridge_status, sync_order_to_erpnext, test_erpnext_connection
 from production_models import (
     BomReplaceRequest,
     CuttingSheetUpdate,
@@ -173,6 +173,12 @@ def dashboard(current_user: Dict = Depends(read_production)):
 def get_erpnext_bridge_status(current_user: Dict = Depends(read_production)):
     """Safe bridge status for the browser; never return credentials."""
     return bridge_status()
+
+
+@router.get("/erpnext/connection-test")
+def test_erpnext_bridge(current_user: Dict = Depends(read_production)):
+    """Run an authenticated, credential-safe ERPNext connectivity check."""
+    return test_erpnext_connection()
 
 
 @router.get("/pending-release")

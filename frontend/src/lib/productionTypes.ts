@@ -46,6 +46,10 @@ export interface ERPNextBridgeStatus {
   message: string;
 }
 
+export interface ERPNextConnectionStatus extends ERPNextBridgeStatus {
+  connected: boolean;
+}
+
 export interface PendingProductionTask {
   task_id: string;
   source_revision: string;

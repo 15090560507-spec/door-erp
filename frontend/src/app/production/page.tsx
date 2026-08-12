@@ -9,6 +9,7 @@ import ProductionOrderList from "@/components/production/ProductionOrderList";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getERPNextBridgeStatus,
+  testERPNextConnection,
   getPendingProductionTasks,
   getProductionOrder,
   getProductionOrders,
@@ -27,6 +28,7 @@ export default function ProductionPage() {
   const [bridge, setBridge] = useState<ERPNextBridgeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const [testingBridge, setTestingBridge] = useState(false);
 
   const notify = useCallback((message: string, error = false) => setNotice({ message, error }), []);
   const load = useCallback(async (nextFilters = filters) => {
@@ -55,6 +57,18 @@ export default function ProductionPage() {
     } catch (error) { notify(apiMessage(error, "刷新失败"), true); }
   };
   const applyFilters = (next: ProductionOrderFilters) => { setFilters({ ...next }); setSelectedId(null); };
+  const testBridge = async () => {
+    setTestingBridge(true);
+    try {
+      const result = await testERPNextConnection();
+      setBridge(result);
+      notify(result.message, !result.connected);
+    } catch (error) {
+      notify(apiMessage(error, "ERPNext 连接测试失败"), true);
+    } finally {
+      setTestingBridge(false);
+    }
+  };
 
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
     <TopNav />
@@ -64,9 +78,10 @@ export default function ProductionPage() {
         <button onClick={() => void refresh()} className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm">刷新</button>
       </header>
 
-      <section className={`border p-4 text-sm ${bridge?.configured && bridge?.enabled ? "border-[#B7E0BF] bg-[#F2FFF3]" : "border-[#F2D18B] bg-[#FFF9EB]"}`}>
-        <strong>ERPNext 集成：</strong>{bridge?.message || "正在读取配置"}
-        {bridge?.public_url && <a href={bridge.public_url} target="_blank" rel="noreferrer" className="ml-3 text-[#007AFF] hover:underline">打开 ERPNext</a>}
+      <section className={`flex flex-wrap items-center gap-3 border p-4 text-sm ${bridge?.configured && bridge?.enabled ? "border-[#B7E0BF] bg-[#F2FFF3]" : "border-[#F2D18B] bg-[#FFF9EB]"}`}>
+        <div className="flex-1"><strong>ERPNext 集成：</strong>{bridge?.message || "正在读取配置"}</div>
+        {bridge?.public_url && <a href={bridge.public_url} target="_blank" rel="noreferrer" className="text-[#007AFF] hover:underline">打开 ERPNext</a>}
+        <button disabled={testingBridge || !bridge?.configured || !bridge?.enabled} onClick={() => void testBridge()} className="h-8 border border-[#C7C7CC] bg-white px-3 text-xs disabled:cursor-not-allowed disabled:opacity-50">{testingBridge ? "正在测试..." : "测试连接"}</button>
       </section>
 
       <PendingReleaseList tasks={pendingTasks} canRelease onReleased={() => void refresh()} />

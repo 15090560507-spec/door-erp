@@ -40,7 +40,7 @@ def bridge_status() -> Dict[str, Any]:
         "enabled": ERPNEXT_ENABLED,
         "configured": configured,
         "public_url": ERPNEXT_PUBLIC_URL,
-        "message": "ERPNext 已就绪" if ERPNEXT_ENABLED and configured else "ERPNext 尚未配置或未启用",
+        "message": "ERPNext 已配置，尚未验证连接" if ERPNEXT_ENABLED and configured else "ERPNext 尚未配置或未启用",
     }
 
 
@@ -168,6 +168,24 @@ class ERPNextClient:
             data={"doctype": "Sales Order", "docname": sales_order, "is_private": "1"},
             files={"file": (filename, io.BytesIO(content), content_type)},
         )
+
+
+def test_erpnext_connection() -> Dict[str, Any]:
+    """Validate the saved server-side credentials without exposing them."""
+    status = bridge_status()
+    if not status["enabled"] or not status["configured"]:
+        return {**status, "connected": False}
+    try:
+        with ERPNextClient() as client:
+            response = client.request("GET", "/api/method/frappe.auth.get_logged_user")
+        user = str(response.get("message") or "")
+        return {
+            **status,
+            "connected": True,
+            "message": f"已连接 ERPNext，桥接账号：{user or '已验证'}",
+        }
+    except ERPNextBridgeError as exc:
+        return {**status, "connected": False, "message": str(exc)}
 
 
 def _order_item_name(order: Dict[str, Any]) -> str:

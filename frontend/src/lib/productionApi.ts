@@ -12,6 +12,7 @@ import type {
   ProductionOrder,
   ProductionOrderFilters,
   ERPNextBridgeStatus,
+  ERPNextConnectionStatus,
   ProductionSchedule,
   ProductionTimelineItem,
   PurchaseItem,
@@ -42,6 +43,11 @@ export async function getProductionOrder(id: number) {
 
 export async function getERPNextBridgeStatus() {
   const { data } = await api.get<ERPNextBridgeStatus>("/production/erpnext/status");
+  return data;
+}
+
+export async function testERPNextConnection() {
+  const { data } = await api.get<ERPNextConnectionStatus>("/production/erpnext/connection-test", { timeout: 120000 });
   return data;
 }
 
