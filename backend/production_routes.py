@@ -26,6 +26,7 @@ from production_document_service import (
     render_xlsx,
 )
 from production_material_service import ProductionMaterialService
+from erpnext_bridge import bridge_status, sync_order_to_erpnext
 from production_models import (
     BomReplaceRequest,
     CuttingSheetUpdate,
@@ -168,6 +169,12 @@ def dashboard(current_user: Dict = Depends(read_production)):
     return {"counts": counts}
 
 
+@router.get("/erpnext/status")
+def get_erpnext_bridge_status(current_user: Dict = Depends(read_production)):
+    """Safe bridge status for the browser; never return credentials."""
+    return bridge_status()
+
+
 @router.get("/pending-release")
 def list_pending_release(current_user: Dict = Depends(read_production)):
     return {"tasks": pending_release_tasks()}
@@ -200,6 +207,22 @@ def get_order(order_id: int, current_user: Dict = Depends(read_production)):
     order = _order_or_404(order_id)
     order["events"] = production_db.events(order_id)
     return {"order": order}
+
+
+@router.post("/orders/{order_id}/erpnext/sync")
+def sync_order(
+    order_id: int,
+    current_user: Dict = Depends(require_permissions("production.sales")),
+):
+    """Create or retry the idempotent ERPNext draft sales order sync."""
+    order = _order_or_404(order_id)
+    sync = sync_order_to_erpnext(production_db, order_id)
+    latest = _order_or_404(order_id)
+    if sync.get("status") == "已同步":
+        _event(order_id, "已同步 ERPNext", str(sync.get("erpnext_sales_order") or ""), current_user)
+        return {"order": latest, "sync": sync, "message": "已同步至 ERPNext 草稿订单"}
+    _event(order_id, "ERPNext 同步失败", str(sync.get("last_error") or ""), current_user)
+    return {"order": latest, "sync": sync, "message": "生产订单已冻结，ERPNext 同步尚未完成"}
 
 
 @router.get("/orders/{order_id}/timeline")

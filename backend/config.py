@@ -26,6 +26,22 @@ AI_CONFIG_FILE = os.path.join(DATA_DIR, 'ai_config.json')
 PRODUCTION_DB_FILE = os.path.join(DATA_DIR, 'production.db')
 PRODUCTION_FILES_DIR = os.path.join(DATA_DIR, 'production_files')
 
+# ERPNext integration. Credentials stay in the server environment only.
+ERPNEXT_ENABLED = os.environ.get("ERPNEXT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+ERPNEXT_BASE_URL = os.environ.get("ERPNEXT_BASE_URL", "").strip().rstrip("/")
+ERPNEXT_PUBLIC_URL = os.environ.get("ERPNEXT_PUBLIC_URL", ERPNEXT_BASE_URL).strip().rstrip("/")
+ERPNEXT_API_KEY = os.environ.get("ERPNEXT_API_KEY", "").strip()
+ERPNEXT_API_SECRET = os.environ.get("ERPNEXT_API_SECRET", "").strip()
+ERPNEXT_COMPANY = os.environ.get("ERPNEXT_COMPANY", "").strip()
+ERPNEXT_CUSTOMER_GROUP = os.environ.get("ERPNEXT_CUSTOMER_GROUP", "").strip()
+ERPNEXT_TERRITORY = os.environ.get("ERPNEXT_TERRITORY", "").strip()
+ERPNEXT_ITEM_GROUP = os.environ.get("ERPNEXT_ITEM_GROUP", "").strip()
+try:
+    ERPNEXT_TIMEOUT_SECONDS = max(10, int(os.environ.get("ERPNEXT_TIMEOUT_SECONDS", "90")))
+except ValueError:
+    ERPNEXT_TIMEOUT_SECONDS = 90
+ERPNEXT_VERIFY_TLS = os.environ.get("ERPNEXT_VERIFY_TLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(_base, 'template.dxf'))
 
 # ===================== 数据安全：备份与图片路径 =====================

@@ -9,7 +9,7 @@ interface Props {
 export default function ProductionOrderList({ orders, selectedId, onSelect }: Props) {
   return (
     <div className="overflow-x-auto border border-[#E5E5EA] bg-white">
-      <table className="min-w-[1220px] w-full table-fixed text-sm">
+      <table className="min-w-[1320px] w-full table-fixed text-sm">
         <colgroup>
           <col className="w-40" />
           <col className="w-48" />
@@ -21,10 +21,11 @@ export default function ProductionOrderList({ orders, selectedId, onSelect }: Pr
           <col className="w-32" />
           <col className="w-36" />
           <col className="w-36" />
+          <col className="w-36" />
         </colgroup>
         <thead className="bg-[#F7F7F9] text-left text-xs text-[#636366]">
           <tr>
-            {['生产单号', '客户/订货单位', '项目', '阶段', '进度', '缺料', '负责人', '状态', '要求交期', '最近更新'].map((label) => (
+            {['生产单号', '客户/订货单位', '项目', 'ERPNext', '阶段', '进度', '缺料', '负责人', '状态', '要求交期', '最近更新'].map((label) => (
               <th key={label} className="border-b border-[#E5E5EA] px-3 py-3 font-medium">{label}</th>
             ))}
           </tr>
@@ -39,6 +40,7 @@ export default function ProductionOrderList({ orders, selectedId, onSelect }: Pr
               <td className="px-3 py-3 font-semibold text-[#007AFF]">{order.order_no}</td>
               <td className="truncate px-3 py-3">{order.customer}</td>
               <td className="truncate px-3 py-3 text-[#636366]">{order.project || '-'}</td>
+              <td className="px-3 py-3"><ERPStatus order={order} /></td>
               <td className="px-3 py-3">{order.stage}</td>
               <td className="px-3 py-3"><Progress stage={order.stage} /></td>
               <td className={`px-3 py-3 ${order.shortage_status === '缺料' ? 'text-[#FF3B30]' : ''}`}>{order.shortage_status}</td>
@@ -53,6 +55,14 @@ export default function ProductionOrderList({ orders, selectedId, onSelect }: Pr
       {orders.length === 0 && <div className="px-5 py-12 text-center text-sm text-[#8E8E93]">暂无生产订单</div>}
     </div>
   );
+}
+
+function ERPStatus({ order }: { order: ProductionOrder }) {
+  const status = order.erpnext_sync?.status || order.erpnext_sync_status || '未同步';
+  const salesOrder = order.erpnext_sync?.erpnext_sales_order || order.erpnext_sales_order;
+  const url = order.erpnext_sync?.erpnext_url || order.erpnext_url;
+  const color = status === '已同步' ? 'bg-[#E7F7EA] text-[#248A3D]' : status === '同步失败' ? 'bg-[#FFF0F0] text-[#FF3B30]' : 'bg-[#FFF4D6] text-[#9A6700]';
+  return <div className="space-y-1"><span className={`inline-block px-2 py-1 text-xs ${color}`}>{status}</span>{salesOrder && <div className="truncate text-xs text-[#636366]" title={salesOrder}>{url ? <a href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="text-[#007AFF] hover:underline">{salesOrder}</a> : salesOrder}</div>}</div>;
 }
 
 const stages = ['BOM准备', '备料', '下料', '生产', '质检', '入库', '发货', '完成'];

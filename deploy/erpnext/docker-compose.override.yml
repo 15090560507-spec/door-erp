@@ -1,0 +1,12 @@
+services:
+  frontend:
+    networks:
+      default: {}
+      erp_gateway:
+        aliases:
+          - erpnext-frontend
+
+networks:
+  erp_gateway:
+    name: erp-gateway
+    external: true

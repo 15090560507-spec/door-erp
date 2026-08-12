@@ -66,3 +66,11 @@ services:
       fi;
       nginx -g 'daemon off;'"
     restart: unless-stopped
+    networks:
+      default:
+      erp_gateway:
+
+networks:
+  erp_gateway:
+    name: erp-gateway
+    external: true

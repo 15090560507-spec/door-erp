@@ -354,11 +354,30 @@ class ProductionDatabase:
                     FOREIGN KEY(finished_good_id) REFERENCES production_finished_goods(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS erpnext_syncs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL UNIQUE,
+                    idempotency_key TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT '待同步',
+                    erpnext_customer TEXT NOT NULL DEFAULT '',
+                    erpnext_item_code TEXT NOT NULL DEFAULT '',
+                    erpnext_sales_order TEXT NOT NULL DEFAULT '',
+                    erpnext_url TEXT NOT NULL DEFAULT '',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    last_synced_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(order_id) REFERENCES production_orders(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_production_requirement_status
                 ON production_material_requirements(status, created_at);
 
                 CREATE INDEX IF NOT EXISTS ix_production_reservation_material
                 ON production_inventory_reservations(material_id, status);
+                CREATE INDEX IF NOT EXISTS ix_erpnext_sync_status
+                ON erpnext_syncs(status, updated_at);
                 """
             )
             self._ensure_column(conn, "production_purchase_items", "requirement_item_id", "INTEGER")
@@ -494,7 +513,36 @@ class ProductionDatabase:
         order["include_quote"] = bool(order.get("include_quote"))
         order["cutting_started"] = bool(order.get("cutting_started"))
         order["direct_release"] = bool(order.get("direct_release"))
+        sync = self.get_erpnext_sync(order_id)
+        if sync:
+            order["erpnext_sync"] = sync
         return order
+
+    def ensure_erpnext_sync(self, order_id: int, idempotency_key: str) -> Dict[str, Any]:
+        now = production_now()
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO erpnext_syncs(order_id, idempotency_key, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(order_id) DO NOTHING
+                """,
+                (order_id, idempotency_key, now, now),
+            )
+        return self.get_erpnext_sync(order_id) or {}
+
+    def get_erpnext_sync(self, order_id: int) -> Optional[Dict[str, Any]]:
+        return self.fetch_one("SELECT * FROM erpnext_syncs WHERE order_id=?", (order_id,))
+
+    def update_erpnext_sync(self, order_id: int, **values: Any) -> None:
+        if not values:
+            return
+        values["updated_at"] = production_now()
+        assignments = ", ".join(f"{key}=?" for key in values)
+        self.execute(
+            f"UPDATE erpnext_syncs SET {assignments} WHERE order_id=?",
+            [*values.values(), order_id],
+        )
 
     def list_orders(
         self,
@@ -536,9 +584,15 @@ class ProductionDatabase:
             SELECT o.*, COALESCE(s.owner, '') AS owner,
                    COALESCE(s.producer, '') AS producer,
                    COALESCE(s.planned_start, '') AS planned_start,
-                   COALESCE(s.planned_end, '') AS planned_end
+                   COALESCE(s.planned_end, '') AS planned_end,
+                   COALESCE(es.status, '未同步') AS erpnext_sync_status,
+                   COALESCE(es.erpnext_sales_order, '') AS erpnext_sales_order,
+                   COALESCE(es.erpnext_url, '') AS erpnext_url,
+                   COALESCE(es.last_error, '') AS erpnext_last_error,
+                   COALESCE(es.last_synced_at, '') AS erpnext_last_synced_at
             FROM production_orders o
             LEFT JOIN production_schedules s ON s.order_id = o.id
+            LEFT JOIN erpnext_syncs es ON es.order_id = o.id
         """
         if where:
             sql += " WHERE " + " AND ".join(where)

@@ -56,6 +56,7 @@ from production_routes import (
     production_db,
 )
 from rendering.cad_line_art import export_dxf_line_art
+from erpnext_bridge import sync_order_to_erpnext
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -722,7 +723,14 @@ def release_production_order(
     except Exception as exc:
         logger.exception("Release production order failed")
         raise HTTPException(status_code=500, detail=f"下达生产失败：{exc}") from exc
-    return {"order": order, "message": "生产订单已下达"}
+    sync = sync_order_to_erpnext(production_db, int(order["id"]))
+    latest = production_db.get_order(int(order["id"])) or order
+    if sync.get("status") == "已同步":
+        return {"order": latest, "message": "生产订单已下达，并已同步至 ERPNext 草稿订单"}
+    return {
+        "order": latest,
+        "message": "生产订单已冻结；ERPNext 尚未同步，可在生产管理中重试",
+    }
 
 
 @app.post("/api/login", response_model=LoginResponse)

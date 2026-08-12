@@ -11,6 +11,7 @@ import type {
   ProductionOperation,
   ProductionOrder,
   ProductionOrderFilters,
+  ERPNextBridgeStatus,
   ProductionSchedule,
   ProductionTimelineItem,
   PurchaseItem,
@@ -37,6 +38,16 @@ export async function getPendingProductionTasks() {
 export async function getProductionOrder(id: number) {
   const { data } = await api.get<{ order: ProductionOrder }>(`/production/orders/${id}`);
   return data.order;
+}
+
+export async function getERPNextBridgeStatus() {
+  const { data } = await api.get<ERPNextBridgeStatus>("/production/erpnext/status");
+  return data;
+}
+
+export async function syncProductionOrderToERPNext(id: number) {
+  const { data } = await api.post<{ order: ProductionOrder; message: string }>(`/production/orders/${id}/erpnext/sync`);
+  return data;
 }
 
 export async function getProductionTimeline(id: number) {

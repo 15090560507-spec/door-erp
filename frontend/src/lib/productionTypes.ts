@@ -20,6 +20,30 @@ export interface ProductionOrder {
   task_snapshot?: Record<string, unknown>;
   quote_snapshot?: Record<string, unknown> | null;
   events?: ProductionEvent[];
+  erpnext_sync?: ERPNextSync;
+  erpnext_sync_status?: string;
+  erpnext_sales_order?: string;
+  erpnext_url?: string;
+  erpnext_last_error?: string;
+  erpnext_last_synced_at?: string;
+}
+
+export interface ERPNextSync {
+  status: "待同步" | "同步中" | "已同步" | "同步失败";
+  erpnext_customer: string;
+  erpnext_item_code: string;
+  erpnext_sales_order: string;
+  erpnext_url: string;
+  attempts: number;
+  last_error: string;
+  last_synced_at?: string | null;
+}
+
+export interface ERPNextBridgeStatus {
+  enabled: boolean;
+  configured: boolean;
+  public_url: string;
+  message: string;
 }
 
 export interface PendingProductionTask {
