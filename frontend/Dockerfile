@@ -27,10 +27,8 @@ COPY . .
 # 构建时注入 API 地址，Next.js 会在 bake 阶段内联 NEXT_PUBLIC_* 环境变量
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api
 ARG INTERNAL_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_ERPNEXT_URL=https://124.223.87.161:8443
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV INTERNAL_API_URL=${INTERNAL_API_URL}
-ENV NEXT_PUBLIC_ERPNEXT_URL=${NEXT_PUBLIC_ERPNEXT_URL}
 
 RUN npm run build
 
@@ -40,7 +38,6 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV INTERNAL_API_URL=http://localhost:8000
-ENV NEXT_PUBLIC_ERPNEXT_URL=https://124.223.87.161:8443
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001

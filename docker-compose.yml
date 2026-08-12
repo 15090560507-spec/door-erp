@@ -30,14 +30,12 @@ services:
         # 构建时注入：前端在浏览器中请求后端的地址
         NEXT_PUBLIC_API_URL: /api
         INTERNAL_API_URL: http://backend:8000
-        NEXT_PUBLIC_ERPNEXT_URL: ${NEXT_PUBLIC_ERPNEXT_URL:-https://124.223.87.161:8443}
     container_name: door-frontend
     expose:
       - "3000"
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:8000
-      - NEXT_PUBLIC_ERPNEXT_URL=${NEXT_PUBLIC_ERPNEXT_URL:-https://124.223.87.161:8443}
     depends_on:
       - backend
     restart: unless-stopped
@@ -51,11 +49,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8443:8443"
     environment:
       - HTTPS_HOST=124.223.87.161
     volumes:
-      # Mount the directory so Door ERP and ERPNext can have separate host rules.
       - ./deploy/nginx:/etc/nginx/conf.d:ro
       - ./deploy/nginx/certs:/etc/nginx/certs
       - ./deploy/nginx/acme:/var/www/acme
@@ -70,14 +66,3 @@ services:
       fi;
       nginx -g 'daemon off;'"
     restart: unless-stopped
-
-    # ERPNext is deliberately isolated in its own Compose project. This is the
-    # only shared network, used solely by Nginx to reverse-proxy its frontend.
-    networks:
-      default:
-      erp_gateway:
-
-networks:
-  erp_gateway:
-    name: erp-gateway
-    external: true

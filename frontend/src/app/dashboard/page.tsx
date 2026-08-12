@@ -17,7 +17,7 @@ import ClipboardUpload from "@/components/ClipboardUpload";
 import { Thumbnail } from "@/components/ImageModal";
 import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
-import ERPNextEntryButton from "@/components/ERPNextEntryButton";
+import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
 import { isLocalToday, localDateCompact } from "@/lib/dateTime";
 
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                       终审通过 (发车间)
                     </button>
                   </div>
-                  {activeTask.status === "已通过" && <ERPNextEntryButton />}
+                  {activeTask.status === "已通过" && <ProductionReleaseButton taskId={activeTask.id} />}
                 </div>
               </div>
             )}
