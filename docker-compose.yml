@@ -49,6 +49,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
     environment:
       - HTTPS_HOST=124.223.87.161
     volumes:

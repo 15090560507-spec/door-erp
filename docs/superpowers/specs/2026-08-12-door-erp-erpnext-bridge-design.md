@@ -37,7 +37,7 @@ ERPNext 负责客户、物料、BOM、请购、采购、库存、工单、领料
 ## 部署与入口
 
 - Door ERP 继续使用 `https://124.223.87.161/`。
-- ERPNext 使用已创建的独立站点 `https://erp.124.223.87.161.nip.io/`，只经 Nginx 的 80/443 访问，不暴露 8443。
+- ERPNext 保持已创建的站点名 `erp.124.223.87.161.nip.io`，临时公网入口使用 `https://124.223.87.161:8443/`；Door ERP 后端通过共享 Docker 网络连接代理，避免外部网络对 `nip.io` TLS 握手的重置。
 - Door ERP 的生产管理页面仅展示同步订单和状态；“进入 ERPNext 办理”在新标签打开 ERPNext 对应销售订单。
 - ERPNext 保持独立 Compose 项目、MariaDB、Redis、卷和备份。Door ERP 与 ERPNext 仅共享 Nginx 反向代理网络。
 
