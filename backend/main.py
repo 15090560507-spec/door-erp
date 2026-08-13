@@ -53,6 +53,7 @@ from fulfillment_routes import (
     configure_user_repository as configure_fulfillment_users,
     router as fulfillment_router,
 )
+from inventory_routes import router as inventory_router
 from production_models import ProductionReleaseRequest
 from production_routes import (
     configure_task_repository,
@@ -87,6 +88,7 @@ app.include_router(render_router)
 if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
 app.include_router(fulfillment_router)
+app.include_router(inventory_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()

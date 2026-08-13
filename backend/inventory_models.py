@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,10 +21,35 @@ class MaterialCreate(BaseModel):
     remark: str = ""
 
 
+class MaterialUpdate(MaterialCreate):
+    is_active: bool = True
+
+
+class WarehouseCreate(BaseModel):
+    code: str
+    name: str
+    warehouse_type: str = ""
+    remark: str = ""
+
+
 class LocationCreate(BaseModel):
     code: str
     name: str
     remark: str = ""
+
+
+class AdjustmentItem(BaseModel):
+    material_id: int
+    warehouse_id: int
+    location_id: int
+    quantity: float
+    unit: str
+    remark: str = ""
+
+
+class AdjustmentCreate(BaseModel):
+    remark: str = ""
+    items: List[AdjustmentItem]
 
 
 class InventoryTransactionCreate(BaseModel):

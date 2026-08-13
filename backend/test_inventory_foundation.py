@@ -192,6 +192,67 @@ def main() -> None:
         check("已确认库存流水不能直接修改", update_blocked)
         check("已确认库存流水不能物理删除", delete_blocked)
 
+        draft = service.create_adjustment(
+            [
+                {
+                    "material_id": material["id"],
+                    "warehouse_id": raw["id"],
+                    "location_id": location["id"],
+                    "quantity": 2,
+                    "unit": "张",
+                    "remark": "盘盈两张",
+                }
+            ],
+            "月度盘点",
+            "warehouse-a",
+        )
+        check("盘点调整先保存为草稿", draft["status"] == "草稿" and len(draft["items"]) == 1, str(draft))
+        confirmed = service.confirm_adjustment(draft["id"], "warehouse-a")
+        adjusted_balance = service.get_balance(material["id"], raw["id"], location["id"])
+        check("确认盘点后一次性生成流水", confirmed["status"] == "已确认" and adjusted_balance["on_hand"] == 12, str(confirmed))
+
+        duplicate_confirmation_blocked = False
+        try:
+            service.confirm_adjustment(draft["id"], "warehouse-a")
+        except RuntimeError:
+            duplicate_confirmation_blocked = True
+        check("盘点调整不能重复确认", duplicate_confirmation_blocked)
+
+        rollback_draft = service.create_adjustment(
+            [
+                {
+                    "material_id": material["id"],
+                    "warehouse_id": raw["id"],
+                    "location_id": location["id"],
+                    "quantity": 1,
+                    "unit": "张",
+                    "remark": "应被回滚",
+                },
+                {
+                    "material_id": material["id"],
+                    "warehouse_id": raw["id"],
+                    "location_id": location["id"],
+                    "quantity": -20,
+                    "unit": "张",
+                    "remark": "超量盘亏",
+                },
+            ],
+            "事务失败测试",
+            "warehouse-a",
+        )
+        atomic_rollback = False
+        try:
+            service.confirm_adjustment(rollback_draft["id"], "warehouse-a")
+        except ValueError:
+            after_failed_adjustment = service.get_balance(material["id"], raw["id"], location["id"])
+            unchanged_draft = service.get_adjustment(rollback_draft["id"])
+            atomic_rollback = after_failed_adjustment["on_hand"] == 12 and unchanged_draft["status"] == "草稿"
+        check("盘点任一行失败会回滚整张单", atomic_rollback)
+
+        materials = service.list_materials(q="铜板")
+        balances = service.list_balances(q="铜板", warehouse_id=raw["id"])
+        check("物料和库存总览支持查询", len(materials) == 1 and len(balances) == 1 and balances[0]["available"] == 12, str(balances))
+
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
