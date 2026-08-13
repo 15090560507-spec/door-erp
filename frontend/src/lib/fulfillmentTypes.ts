@@ -1,3 +1,5 @@
+import type { MaterialRequirement } from "./inventoryTypes";
+
 export interface PendingFulfillmentTask {
   task_id: string;
   source_revision: string;
@@ -50,6 +52,11 @@ export interface DoorUnitSummary {
 export interface FulfillmentComponent {
   id?: number;
   parent_id?: number | null;
+  material_id?: number | null;
+  material_code?: string | null;
+  material_name?: string | null;
+  material_specification?: string | null;
+  material_unit?: string | null;
   name: string;
   category: string;
   specification: string;
@@ -174,6 +181,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   events: FulfillmentEvent[];
   changes: FulfillmentChange[];
   supplies: FulfillmentSupply[];
+  material_requirement?: MaterialRequirement | null;
   inspections: FulfillmentInspection[];
   inventory_movements: InventoryMovement[];
   shipments: FulfillmentShipment[];

@@ -100,3 +100,60 @@ export interface AdjustmentItemPayload {
   unit: string;
   remark: string;
 }
+
+export interface MaterialRequirementSummary {
+  id: number;
+  requirement_no: string;
+  order_id: number;
+  door_unit_id: number;
+  technical_package_id: number;
+  production_no: string;
+  version: number;
+  due_date: string;
+  status: string;
+  item_count: number;
+  reserved_item_count: number;
+  shortage_item_count: number;
+  required_quantity: number;
+  reserved_quantity: number;
+  shortage_quantity: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InventoryReservation {
+  id: number;
+  requirement_item_id: number;
+  material_id: number;
+  warehouse_id: number;
+  location_id: number;
+  warehouse_name: string;
+  location_name: string;
+  quantity: number;
+  issued_quantity: number;
+  status: string;
+}
+
+export interface MaterialRequirementItem {
+  id: number;
+  requirement_id: number;
+  component_id?: number | null;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  required_quantity: number;
+  unit: string;
+  reserved_quantity: number;
+  purchased_quantity: number;
+  received_quantity: number;
+  issued_quantity: number;
+  returned_quantity: number;
+  shortage_quantity: number;
+  status: string;
+  reservations: InventoryReservation[];
+}
+
+export interface MaterialRequirement extends MaterialRequirementSummary {
+  items: MaterialRequirementItem[];
+}

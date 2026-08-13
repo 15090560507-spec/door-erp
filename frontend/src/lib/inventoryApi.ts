@@ -5,6 +5,8 @@ import type {
   InventoryMaterial,
   InventoryTransaction,
   InventoryWarehouse,
+  MaterialRequirement,
+  MaterialRequirementSummary,
   MaterialPayload,
 } from "./inventoryTypes";
 
@@ -60,5 +62,25 @@ export async function createInventoryAdjustment(payload: { remark: string; items
 
 export async function confirmInventoryAdjustment(id: number) {
   const { data } = await api.post<{ adjustment: { id: number; document_no: string; status: string }; message: string }>(`/inventory/adjustments/${id}/confirm`);
+  return data;
+}
+
+export async function getMaterialRequirements(params?: { q?: string; status?: string }) {
+  const { data } = await api.get<{ requirements: MaterialRequirementSummary[] }>("/inventory/requirements", { params });
+  return data.requirements;
+}
+
+export async function getMaterialRequirement(id: number) {
+  const { data } = await api.get<{ requirement: MaterialRequirement }>(`/inventory/requirements/${id}`);
+  return data.requirement;
+}
+
+export async function reallocateMaterialRequirement(id: number) {
+  const { data } = await api.post<{ requirement: MaterialRequirement; message: string }>(`/inventory/requirements/${id}/reallocate`);
+  return data;
+}
+
+export async function supplementMaterialRequirement(itemId: number, payload: { material_id: number; quantity: number; remark: string }) {
+  const { data } = await api.post<{ requirement: MaterialRequirement; message: string }>(`/inventory/requirement-items/${itemId}/supplement`, payload);
   return data;
 }
