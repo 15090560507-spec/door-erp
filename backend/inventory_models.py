@@ -66,3 +66,9 @@ class InventoryTransactionCreate(BaseModel):
     door_unit_id: Optional[int] = None
     production_no: str = ""
     remark: str = ""
+
+
+class RequirementSupplement(BaseModel):
+    material_id: int
+    quantity: float = Field(gt=0)
+    remark: str = ""

@@ -177,12 +177,90 @@ class InventoryDatabase:
                     UNIQUE(source_table, source_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS material_requirements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_no TEXT NOT NULL UNIQUE,
+                    order_id INTEGER NOT NULL,
+                    door_unit_id INTEGER NOT NULL,
+                    technical_package_id INTEGER NOT NULL UNIQUE,
+                    production_no TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    due_date TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '有缺口',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    confirmed_at TEXT NOT NULL,
+                    frozen_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS material_requirement_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_id INTEGER NOT NULL,
+                    component_id INTEGER,
+                    material_id INTEGER NOT NULL,
+                    material_code TEXT NOT NULL,
+                    material_name TEXT NOT NULL,
+                    specification TEXT NOT NULL DEFAULT '',
+                    required_quantity REAL NOT NULL,
+                    unit TEXT NOT NULL,
+                    reserved_quantity REAL NOT NULL DEFAULT 0,
+                    purchased_quantity REAL NOT NULL DEFAULT 0,
+                    received_quantity REAL NOT NULL DEFAULT 0,
+                    issued_quantity REAL NOT NULL DEFAULT 0,
+                    returned_quantity REAL NOT NULL DEFAULT 0,
+                    shortage_quantity REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT '全部缺料',
+                    sequence_no INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_id) REFERENCES material_requirements(id) ON DELETE CASCADE,
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS inventory_reservations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_item_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    warehouse_id INTEGER NOT NULL,
+                    location_id INTEGER NOT NULL,
+                    quantity REAL NOT NULL,
+                    issued_quantity REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT '有效',
+                    due_date TEXT NOT NULL DEFAULT '',
+                    production_no TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_item_id) REFERENCES material_requirement_items(id) ON DELETE CASCADE,
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id),
+                    FOREIGN KEY(warehouse_id) REFERENCES inventory_warehouses(id),
+                    FOREIGN KEY(location_id) REFERENCES inventory_locations(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS material_component_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    component_name TEXT NOT NULL,
+                    component_category TEXT NOT NULL DEFAULT '',
+                    component_specification TEXT NOT NULL DEFAULT '',
+                    material_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(component_name, component_category, component_specification),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_inventory_material_search
                     ON inventory_materials(name, category, specification, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_material
                     ON inventory_transactions(material_id, warehouse_id, location_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_production
                     ON inventory_transactions(production_no, door_unit_id, created_at);
+                CREATE INDEX IF NOT EXISTS ix_material_requirements_status_due
+                    ON material_requirements(status, due_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_material_requirement_items_material
+                    ON material_requirement_items(material_id, status, requirement_id);
+                CREATE INDEX IF NOT EXISTS ix_inventory_reservations_material
+                    ON inventory_reservations(material_id, status, due_date, created_at);
 
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions

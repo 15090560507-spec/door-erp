@@ -9,19 +9,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import get_current_user
 from inventory_database import InventoryDatabase
-from inventory_models import AdjustmentCreate, LocationCreate, MaterialCreate, MaterialUpdate, WarehouseCreate
+from inventory_models import AdjustmentCreate, LocationCreate, MaterialCreate, MaterialUpdate, RequirementSupplement, WarehouseCreate
 from inventory_service import InventoryService
+from requirement_service import RequirementService
 
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 inventory_db = InventoryDatabase()
 inventory_service = InventoryService(inventory_db)
+requirement_service = RequirementService(inventory_db)
 
 
 def configure_inventory_database(database: InventoryDatabase) -> None:
-    global inventory_db, inventory_service
+    global inventory_db, inventory_service, requirement_service
     inventory_db = database
     inventory_service = InventoryService(database)
+    requirement_service = RequirementService(database)
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -159,5 +162,49 @@ def confirm_adjustment(adjustment_id: int, current_user: Dict = Depends(get_curr
             str(current_user.get("uid") or ""),
         )
         return {"adjustment": document, "message": "盘点调整已确认并入账"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/requirements")
+def list_requirements(
+    q: str = Query(""),
+    status: str = Query(""),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"requirements": requirement_service.list_requirements(q=q, status=status)}
+
+
+@router.get("/requirements/{requirement_id}")
+def get_requirement(requirement_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"requirement": requirement_service.get_requirement(requirement_id)}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/requirements/{requirement_id}/reallocate")
+def reallocate_requirement(requirement_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {
+            "requirement": requirement_service.reallocate_requirement(requirement_id),
+            "message": "库存预留已按交期重新分配",
+        }
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/requirement-items/{item_id}/supplement")
+def supplement_requirement(item_id: int, req: RequirementSupplement, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {
+            "requirement": requirement_service.supplement_item(
+                item_id,
+                material_id=req.material_id,
+                quantity=req.quantity,
+                remark=req.remark,
+            ),
+            "message": "补料需求已建立",
+        }
     except Exception as exc:
         raise _error(exc) from exc

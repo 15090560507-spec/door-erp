@@ -11,6 +11,8 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from config import FULFILLMENT_DB_FILE, FULFILLMENT_FILES_DIR
+from inventory_database import InventoryDatabase
+from requirement_service import RequirementService
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -55,6 +57,8 @@ class FulfillmentDatabase:
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         os.makedirs(files_dir, exist_ok=True)
         self._initialize()
+        self.inventory_db = InventoryDatabase(db_path)
+        self.requirement_service = RequirementService(self.inventory_db)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
@@ -143,6 +147,7 @@ class FulfillmentDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     technical_package_id INTEGER NOT NULL,
                     parent_id INTEGER,
+                    material_id INTEGER,
                     name TEXT NOT NULL,
                     category TEXT NOT NULL DEFAULT '其他',
                     specification TEXT NOT NULL DEFAULT '',
@@ -333,6 +338,9 @@ class FulfillmentDatabase:
                 );
                 """
             )
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_components)").fetchall()}
+            if "material_id" not in columns:
+                conn.execute("ALTER TABLE fulfillment_components ADD COLUMN material_id INTEGER")
 
     def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -481,7 +489,14 @@ class FulfillmentDatabase:
         package = self.fetch_one("SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1", (door_id,))
         if package:
             package["product_snapshot"] = json_loads(package.pop("product_snapshot_json", ""), {})
-            package["components"] = self.fetch_all("SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
+            package["components"] = self.fetch_all(
+                """SELECT c.*, m.code AS material_code, m.name AS material_name,
+                          m.specification AS material_specification, m.unit AS material_unit
+                   FROM fulfillment_components c
+                   LEFT JOIN inventory_materials m ON m.id=c.material_id
+                   WHERE c.technical_package_id=? ORDER BY c.sequence_no, c.id""",
+                (package["id"],),
+            )
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
         door["unfinished_work_packages"] = [
             {"id": item["id"], "name": item["name"], "status": item["status"]}
@@ -494,6 +509,15 @@ class FulfillmentDatabase:
         door["supplies"] = self.fetch_all(
             "SELECT * FROM fulfillment_supplies WHERE door_unit_id=? AND technical_package_id=? ORDER BY id",
             (door_id, package["id"] if package else -1),
+        )
+        requirement = self.fetch_one(
+            "SELECT id FROM material_requirements WHERE technical_package_id=? ORDER BY id DESC LIMIT 1",
+            (package["id"] if package else -1,),
+        )
+        door["material_requirement"] = (
+            self.requirement_service.get_requirement(int(requirement["id"]))
+            if requirement
+            else None
         )
         door["inspections"] = self.fetch_all("SELECT * FROM fulfillment_inspections WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
         door["inventory_movements"] = self.fetch_all("SELECT * FROM fulfillment_inventory_movements WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
@@ -538,9 +562,9 @@ class FulfillmentDatabase:
             for sequence, item in enumerate(payload.components, start=1):
                 parent_id = component_ids.get(item.parent_id or -1)
                 cursor = conn.execute(
-                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (package_id, parent_id, item.name.strip(), item.category, item.specification, item.quantity, item.unit, item.acquisition_method, item.remark, sequence),
+                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, material_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (package_id, parent_id, item.material_id, item.name.strip(), item.category, item.specification, item.quantity, item.unit, item.acquisition_method, item.remark, sequence),
                 )
                 if item.id is not None:
                     component_ids[item.id] = int(cursor.lastrowid)
@@ -572,6 +596,12 @@ class FulfillmentDatabase:
             work_count = conn.execute("SELECT COUNT(*) AS total FROM fulfillment_work_packages WHERE technical_package_id=?", (package_id,)).fetchone()["total"]
             if not components or not work_count:
                 raise ValueError("技术包必须至少包含一个构件和一个工作包")
+            requirement = self.requirement_service.create_for_package(
+                conn=conn,
+                door_id=door_id,
+                package_id=package_id,
+                created_by=str(user.get("uid") or ""),
+            )
             conn.execute("UPDATE fulfillment_technical_packages SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?", (str(user.get("uid") or ""), now, now, package_id))
             conn.execute("UPDATE fulfillment_work_packages SET status='待排单', updated_at=? WHERE technical_package_id=? AND status='草稿'", (now, package_id))
             conn.execute(
@@ -586,7 +616,7 @@ class FulfillmentDatabase:
                 (door_id, package_id, now, package_id),
             )
             conn.execute("UPDATE fulfillment_door_units SET status='备料与加工中', active_version=?, technical_uid=?, updated_at=? WHERE id=?", (int(package["version"]), str(user.get("uid") or ""), now, door_id))
-            self.add_event(conn, order_id=None, door_unit_id=door_id, entity_type="technical_package", entity_id=package_id, action="确认技术包", detail=f"冻结 V{package['version']} 并释放工作包", user=user)
+            self.add_event(conn, order_id=None, door_unit_id=door_id, entity_type="technical_package", entity_id=package_id, action="确认技术包", detail=f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}，释放工作包", user=user)
         return self.get_door_unit(door_id) or {}
 
     def update_work_package(self, work_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
@@ -774,6 +804,7 @@ class FulfillmentDatabase:
             source = conn.execute("SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1", (door_id,)).fetchone()
             if not source or source["status"] != "已确认":
                 raise RuntimeError("只有已确认技术包才能发起生产变更")
+            self.requirement_service.freeze_for_package(conn, int(source["id"]))
             next_version = int(source["version"]) + 1
             change_no = f"BG{now[:10].replace('-', '')}{door_id:04d}{next_version:02d}"
             change_cursor = conn.execute(
@@ -795,9 +826,9 @@ class FulfillmentDatabase:
             old_to_new: Dict[int, int] = {}
             for component in conn.execute("SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():
                 cursor = conn.execute(
-                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
-                       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (new_package_id, component["name"], component["category"], component["specification"], component["quantity"], component["unit"], component["acquisition_method"], component["remark"], component["sequence_no"]),
+                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, material_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
+                       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (new_package_id, component["material_id"], component["name"], component["category"], component["specification"], component["quantity"], component["unit"], component["acquisition_method"], component["remark"], component["sequence_no"]),
                 )
                 old_to_new[int(component["id"])] = int(cursor.lastrowid)
             for work in conn.execute("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():

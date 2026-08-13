@@ -15,6 +15,7 @@ class FulfillmentReleaseRequest(BaseModel):
 class ComponentInput(BaseModel):
     id: Optional[int] = None
     parent_id: Optional[int] = None
+    material_id: Optional[int] = None
     name: str
     category: str = "其他"
     specification: str = ""
