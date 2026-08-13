@@ -8,6 +8,9 @@ import type {
   MaterialRequirement,
   MaterialRequirementSummary,
   MaterialPayload,
+  PurchaseOrder,
+  PurchaseReceipt,
+  PurchaseShortage,
 } from "./inventoryTypes";
 
 export async function getInventoryMaterials(params?: {
@@ -82,5 +85,78 @@ export async function reallocateMaterialRequirement(id: number) {
 
 export async function supplementMaterialRequirement(itemId: number, payload: { material_id: number; quantity: number; remark: string }) {
   const { data } = await api.post<{ requirement: MaterialRequirement; message: string }>(`/inventory/requirement-items/${itemId}/supplement`, payload);
+  return data;
+}
+
+export async function getPurchaseShortages(q = "") {
+  const { data } = await api.get<{ shortages: PurchaseShortage[] }>("/inventory/purchasing/shortages", { params: { q } });
+  return data.shortages;
+}
+
+export async function getPurchaseOrders(params?: { q?: string; status?: string }) {
+  const { data } = await api.get<{ orders: PurchaseOrder[] }>("/inventory/purchasing/orders", { params });
+  return data.orders;
+}
+
+export async function getPurchaseOrder(id: number) {
+  const { data } = await api.get<{ order: PurchaseOrder }>(`/inventory/purchasing/orders/${id}`);
+  return data.order;
+}
+
+export async function createPurchaseOrder(payload: {
+  supplier: string;
+  expected_date: string;
+  remark: string;
+  items: Array<{
+    material_id: number;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    remark: string;
+    allocations: Array<{ requirement_item_id: number; quantity: number }>;
+  }>;
+}) {
+  const { data } = await api.post<{ order: PurchaseOrder; message: string }>("/inventory/purchasing/orders", payload);
+  return data;
+}
+
+export async function confirmPurchaseOrder(id: number) {
+  const { data } = await api.post<{ order: PurchaseOrder; message: string }>(`/inventory/purchasing/orders/${id}/confirm`);
+  return data;
+}
+
+export async function cancelPurchaseOrder(id: number) {
+  const { data } = await api.post<{ order: PurchaseOrder; message: string }>(`/inventory/purchasing/orders/${id}/cancel`);
+  return data;
+}
+
+export async function createPurchaseReceipt(orderId: number, payload: {
+  arrival_date: string;
+  remark: string;
+  items: Array<{ purchase_order_item_id: number; quantity: number }>;
+}) {
+  const { data } = await api.post<{ receipt: PurchaseReceipt; message: string }>(`/inventory/purchasing/orders/${orderId}/receipts`, payload);
+  return data;
+}
+
+export async function getPurchaseReceipts(status = "") {
+  const { data } = await api.get<{ receipts: PurchaseReceipt[] }>("/inventory/receipts", { params: { status } });
+  return data.receipts;
+}
+
+export async function getPurchaseReceipt(id: number) {
+  const { data } = await api.get<{ receipt: PurchaseReceipt }>(`/inventory/receipts/${id}`);
+  return data.receipt;
+}
+
+export async function inspectPurchaseReceiptItem(id: number, payload: {
+  qualified_quantity: number;
+  concession_quantity: number;
+  rejected_quantity: number;
+  warehouse_id: number;
+  location_id: number;
+  remark: string;
+}) {
+  const { data } = await api.post<{ receipt: PurchaseReceipt; message: string }>(`/inventory/receipt-items/${id}/inspect`, payload);
   return data;
 }

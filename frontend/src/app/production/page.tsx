@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/TopNav";
-import FulfillmentSupplyWorkbench from "@/components/FulfillmentSupplyWorkbench";
 import InventoryWorkspace from "@/components/inventory/InventoryWorkspace";
 import MasterDataWorkspace from "@/components/inventory/MasterDataWorkspace";
+import PurchasingCenter from "@/components/inventory/PurchasingCenter";
 import SupplyRequirements from "@/components/inventory/SupplyRequirements";
 import { useAuth } from "@/hooks/useAuth";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
@@ -144,7 +144,7 @@ export default function ProductionPage() {
       </section>
       </>}
       {workspace === "requirements" && <SupplyRequirements notify={notify} />}
-      {workspace === "purchase" && <FulfillmentSupplyWorkbench scope="purchase" notify={notify} />}
+      {workspace === "purchase" && <PurchasingCenter notify={notify} />}
       {workspace === "warehouse" && <InventoryWorkspace notify={notify} />}
       {workspace === "finished" && <StageNotice title="成品与发货" message="阶段五将在这里统一管理成品库存、财务放行、发货和签收。当前门樘详情中的质检、入库与发货功能继续可用。" />}
       {workspace === "master" && <MasterDataWorkspace notify={notify} />}

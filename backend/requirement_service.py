@@ -188,8 +188,15 @@ class RequirementService:
                 preferred_location_id=item["default_location_id"],
                 now=now,
             )
-            shortage = max(0.0, float(item["required_quantity"] or 0) - issued - reserved - float(item["purchased_quantity"] or 0))
-            status = "已预留" if shortage <= EPSILON else ("部分缺料" if reserved > EPSILON else "全部缺料")
+            purchased_in_transit = max(
+                0.0,
+                float(item["purchased_quantity"] or 0) - float(item["received_quantity"] or 0),
+            )
+            shortage = max(0.0, float(item["required_quantity"] or 0) - issued - reserved - purchased_in_transit)
+            if shortage <= EPSILON:
+                status = "采购覆盖" if purchased_in_transit > EPSILON else "已预留"
+            else:
+                status = "部分缺料" if reserved > EPSILON or purchased_in_transit > EPSILON else "全部缺料"
             conn.execute(
                 """UPDATE material_requirement_items
                    SET reserved_quantity=?, shortage_quantity=?, status=?, updated_at=? WHERE id=?""",
@@ -201,9 +208,14 @@ class RequirementService:
                 "SELECT COALESCE(SUM(shortage_quantity), 0) AS total FROM material_requirement_items WHERE requirement_id=?",
                 (requirement_id,),
             ).fetchone()["total"] or 0)
+            in_transit = float(conn.execute(
+                """SELECT COALESCE(SUM(MAX(0, purchased_quantity-received_quantity)), 0) AS total
+                   FROM material_requirement_items WHERE requirement_id=?""",
+                (requirement_id,),
+            ).fetchone()["total"] or 0)
             conn.execute(
                 "UPDATE material_requirements SET status=?, updated_at=? WHERE id=?",
-                ("已预留" if shortage <= EPSILON else "有缺口", now, requirement_id),
+                ("有缺口" if shortage > EPSILON else ("采购覆盖" if in_transit > EPSILON else "已预留"), now, requirement_id),
             )
 
     @staticmethod

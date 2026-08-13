@@ -72,3 +72,44 @@ class RequirementSupplement(BaseModel):
     material_id: int
     quantity: float = Field(gt=0)
     remark: str = ""
+
+
+class PurchaseAllocationInput(BaseModel):
+    requirement_item_id: int
+    quantity: float = Field(gt=0)
+
+
+class PurchaseOrderItemInput(BaseModel):
+    material_id: int
+    quantity: float = Field(gt=0)
+    unit: str
+    unit_price: float = Field(default=0, ge=0)
+    remark: str = ""
+    allocations: List[PurchaseAllocationInput]
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier: str
+    expected_date: str = ""
+    remark: str = ""
+    items: List[PurchaseOrderItemInput]
+
+
+class PurchaseReceiptItemInput(BaseModel):
+    purchase_order_item_id: int
+    quantity: float = Field(gt=0)
+
+
+class PurchaseReceiptCreate(BaseModel):
+    arrival_date: str = ""
+    remark: str = ""
+    items: List[PurchaseReceiptItemInput]
+
+
+class IncomingInspectionCreate(BaseModel):
+    qualified_quantity: float = Field(default=0, ge=0)
+    concession_quantity: float = Field(default=0, ge=0)
+    rejected_quantity: float = Field(default=0, ge=0)
+    warehouse_id: int
+    location_id: int
+    remark: str = ""

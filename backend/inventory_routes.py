@@ -9,8 +9,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import get_current_user
 from inventory_database import InventoryDatabase
-from inventory_models import AdjustmentCreate, LocationCreate, MaterialCreate, MaterialUpdate, RequirementSupplement, WarehouseCreate
+from inventory_models import (
+    AdjustmentCreate,
+    IncomingInspectionCreate,
+    LocationCreate,
+    MaterialCreate,
+    MaterialUpdate,
+    PurchaseOrderCreate,
+    PurchaseReceiptCreate,
+    RequirementSupplement,
+    WarehouseCreate,
+)
 from inventory_service import InventoryService
+from purchasing_service import PurchasingService
 from requirement_service import RequirementService
 
 
@@ -18,13 +29,15 @@ router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 inventory_db = InventoryDatabase()
 inventory_service = InventoryService(inventory_db)
 requirement_service = RequirementService(inventory_db)
+purchasing_service = PurchasingService(inventory_db)
 
 
 def configure_inventory_database(database: InventoryDatabase) -> None:
-    global inventory_db, inventory_service, requirement_service
+    global inventory_db, inventory_service, requirement_service, purchasing_service
     inventory_db = database
     inventory_service = InventoryService(database)
     requirement_service = RequirementService(database)
+    purchasing_service = PurchasingService(database)
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -206,5 +219,95 @@ def supplement_requirement(item_id: int, req: RequirementSupplement, current_use
             ),
             "message": "补料需求已建立",
         }
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/purchasing/shortages")
+def list_purchase_shortages(q: str = Query(""), current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"shortages": purchasing_service.list_shortages(q=q)}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/purchasing/orders")
+def list_purchase_orders(
+    status: str = Query(""), q: str = Query(""), current_user: Dict = Depends(get_current_user)
+):
+    return {"orders": purchasing_service.list_orders(status=status, q=q)}
+
+
+@router.post("/purchasing/orders", status_code=201)
+def create_purchase_order(req: PurchaseOrderCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        order = purchasing_service.create_order(req.model_dump(), str(current_user.get("uid") or ""))
+        return {"order": order, "message": "采购单草稿已创建"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/purchasing/orders/{order_id}")
+def get_purchase_order(order_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"order": purchasing_service.get_order(order_id)}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/purchasing/orders/{order_id}/confirm")
+def confirm_purchase_order(order_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        order = purchasing_service.confirm_order(order_id, str(current_user.get("uid") or ""))
+        return {"order": order, "message": "采购单已确认，需求缺口已进入采购覆盖"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/purchasing/orders/{order_id}/cancel")
+def cancel_purchase_order(order_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"order": purchasing_service.cancel_order(order_id), "message": "采购单已取消，未到货数量已释放"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/purchasing/orders/{order_id}/receipts", status_code=201)
+def create_purchase_receipt(
+    order_id: int, req: PurchaseReceiptCreate, current_user: Dict = Depends(get_current_user)
+):
+    try:
+        receipt = purchasing_service.create_receipt(order_id, req.model_dump(), str(current_user.get("uid") or ""))
+        return {"receipt": receipt, "message": "到货已登记，等待仓库来料检验"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/receipts")
+def list_purchase_receipts(status: str = Query(""), current_user: Dict = Depends(get_current_user)):
+    return {"receipts": purchasing_service.list_receipts(status=status)}
+
+
+@router.get("/receipts/{receipt_id}")
+def get_purchase_receipt(receipt_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"receipt": purchasing_service.get_receipt(receipt_id)}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/receipt-items/{receipt_item_id}/inspect")
+def inspect_purchase_receipt_item(
+    receipt_item_id: int,
+    req: IncomingInspectionCreate,
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        receipt = purchasing_service.inspect_receipt_item(
+            receipt_item_id,
+            req.model_dump(),
+            str(current_user.get("uid") or ""),
+        )
+        return {"receipt": receipt, "message": "来料检验已完成，接收数量已正式入库"}
     except Exception as exc:
         raise _error(exc) from exc

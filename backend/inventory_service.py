@@ -442,11 +442,21 @@ class InventoryService:
                 ORDER BY m.category, m.code, w.code, l.code""",
             params,
         )
+        in_transit_rows = self.db.fetch_all(
+            """SELECT i.material_id,
+                      COALESCE(SUM(MAX(0, i.ordered_quantity-i.received_quantity-i.rejected_quantity-i.cancelled_quantity)), 0) AS quantity
+               FROM purchase_order_items i
+               JOIN purchase_orders o ON o.id=i.purchase_order_id
+               WHERE o.status IN ('已下单', '部分到货')
+                 AND i.status NOT IN ('已完成', '已取消')
+               GROUP BY i.material_id"""
+        )
+        in_transit_by_material = {int(item["material_id"]): float(item["quantity"] or 0) for item in in_transit_rows}
         for row in rows:
             row["on_hand"] = float(row["on_hand"] or 0)
             row["reserved"] = float(row["reserved"] or 0)
             row["available"] = float(row["available"] or 0)
-            row["purchase_in_transit"] = 0.0
+            row["purchase_in_transit"] = in_transit_by_material.get(int(row["material_id"]), 0.0)
             row["subcontract_in_transit"] = row["on_hand"] if row["warehouse_code"] == "SUBCONTRACT" else 0.0
         return rows
 

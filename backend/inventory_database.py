@@ -249,6 +249,120 @@ class InventoryDatabase:
                     FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS purchase_demands (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requirement_item_id INTEGER NOT NULL UNIQUE,
+                    material_id INTEGER NOT NULL,
+                    demand_quantity REAL NOT NULL DEFAULT 0,
+                    unit TEXT NOT NULL,
+                    due_date TEXT NOT NULL DEFAULT '',
+                    production_no TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '待采购',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_item_id) REFERENCES material_requirement_items(id),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_no TEXT NOT NULL UNIQUE,
+                    supplier TEXT NOT NULL,
+                    expected_date TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '草稿',
+                    total_amount REAL NOT NULL DEFAULT 0,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    confirmed_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    confirmed_at TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_order_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    purchase_order_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    material_code TEXT NOT NULL,
+                    material_name TEXT NOT NULL,
+                    specification TEXT NOT NULL DEFAULT '',
+                    ordered_quantity REAL NOT NULL,
+                    received_quantity REAL NOT NULL DEFAULT 0,
+                    rejected_quantity REAL NOT NULL DEFAULT 0,
+                    cancelled_quantity REAL NOT NULL DEFAULT 0,
+                    unit TEXT NOT NULL,
+                    unit_price REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT '草稿',
+                    remark TEXT NOT NULL DEFAULT '',
+                    sequence_no INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_allocations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    purchase_order_item_id INTEGER NOT NULL,
+                    requirement_item_id INTEGER NOT NULL,
+                    allocated_quantity REAL NOT NULL,
+                    received_quantity REAL NOT NULL DEFAULT 0,
+                    cancelled_quantity REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT '草稿',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(purchase_order_item_id, requirement_item_id),
+                    FOREIGN KEY(purchase_order_item_id) REFERENCES purchase_order_items(id) ON DELETE CASCADE,
+                    FOREIGN KEY(requirement_item_id) REFERENCES material_requirement_items(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_no TEXT NOT NULL UNIQUE,
+                    purchase_order_id INTEGER NOT NULL,
+                    supplier TEXT NOT NULL,
+                    arrival_date TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '待检',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(purchase_order_id) REFERENCES purchase_orders(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_receipt_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_id INTEGER NOT NULL,
+                    purchase_order_item_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    received_quantity REAL NOT NULL,
+                    qualified_quantity REAL NOT NULL DEFAULT 0,
+                    concession_quantity REAL NOT NULL DEFAULT 0,
+                    rejected_quantity REAL NOT NULL DEFAULT 0,
+                    inbound_quantity REAL NOT NULL DEFAULT 0,
+                    unit TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT '待检',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(receipt_id) REFERENCES purchase_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(purchase_order_item_id) REFERENCES purchase_order_items(id),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS incoming_inspections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_item_id INTEGER NOT NULL UNIQUE,
+                    result TEXT NOT NULL,
+                    qualified_quantity REAL NOT NULL DEFAULT 0,
+                    concession_quantity REAL NOT NULL DEFAULT 0,
+                    rejected_quantity REAL NOT NULL DEFAULT 0,
+                    inspector_uid TEXT NOT NULL DEFAULT '',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(receipt_item_id) REFERENCES purchase_receipt_items(id)
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_inventory_material_search
                     ON inventory_materials(name, category, specification, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_material
@@ -261,6 +375,14 @@ class InventoryDatabase:
                     ON material_requirement_items(material_id, status, requirement_id);
                 CREATE INDEX IF NOT EXISTS ix_inventory_reservations_material
                     ON inventory_reservations(material_id, status, due_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_purchase_demands_status_due
+                    ON purchase_demands(status, due_date, material_id);
+                CREATE INDEX IF NOT EXISTS ix_purchase_orders_status_date
+                    ON purchase_orders(status, expected_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_purchase_allocations_requirement
+                    ON purchase_allocations(requirement_item_id, status);
+                CREATE INDEX IF NOT EXISTS ix_purchase_receipts_status_date
+                    ON purchase_receipts(status, arrival_date, created_at);
 
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions

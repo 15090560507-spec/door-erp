@@ -157,3 +157,93 @@ export interface MaterialRequirementItem {
 export interface MaterialRequirement extends MaterialRequirementSummary {
   items: MaterialRequirementItem[];
 }
+
+export interface PurchaseShortage {
+  id: number;
+  requirement_item_id: number;
+  requirement_id: number;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  demand_quantity: number;
+  unit: string;
+  due_date: string;
+  production_no: string;
+  default_supplier: string;
+  status: string;
+}
+
+export interface PurchaseAllocation {
+  id: number;
+  requirement_item_id: number;
+  allocated_quantity: number;
+  received_quantity: number;
+  cancelled_quantity: number;
+  status: string;
+  requirement_no: string;
+  production_no: string;
+  due_date: string;
+}
+
+export interface PurchaseOrderItem {
+  id: number;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  ordered_quantity: number;
+  received_quantity: number;
+  rejected_quantity: number;
+  cancelled_quantity: number;
+  unit: string;
+  unit_price: number;
+  status: string;
+  allocations: PurchaseAllocation[];
+}
+
+export interface PurchaseOrder {
+  id: number;
+  order_no: string;
+  supplier: string;
+  expected_date: string;
+  status: string;
+  total_amount: number;
+  remark: string;
+  item_count?: number;
+  ordered_quantity?: number;
+  received_quantity?: number;
+  items?: PurchaseOrderItem[];
+  created_at: string;
+}
+
+export interface PurchaseReceiptItem {
+  id: number;
+  purchase_order_item_id: number;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  received_quantity: number;
+  qualified_quantity: number;
+  concession_quantity: number;
+  rejected_quantity: number;
+  inbound_quantity: number;
+  unit: string;
+  status: string;
+}
+
+export interface PurchaseReceipt {
+  id: number;
+  receipt_no: string;
+  purchase_order_id: number;
+  order_no: string;
+  supplier: string;
+  arrival_date: string;
+  status: string;
+  remark: string;
+  item_count?: number;
+  received_quantity?: number;
+  items?: PurchaseReceiptItem[];
+  created_at: string;
+}
