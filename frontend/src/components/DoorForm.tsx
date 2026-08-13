@@ -6,7 +6,7 @@ import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
   MATERIALS, MATERIAL_THICKNESSES, PRODUCT_NAMES, ORDER_TITLES, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
-  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS,
+  TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS, GLASS_LINE_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 
@@ -280,6 +280,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillBKey,
     fillCKey,
     discRadiusKey,
+    b2GlassStyleKey,
   }: {
     title: string;
     styleKey: keyof DoorFormData;
@@ -297,6 +298,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillBKey: keyof DoorFormData;
     fillCKey: keyof DoorFormData;
     discRadiusKey: keyof DoorFormData;
+    b2GlassStyleKey: keyof DoorFormData;
   }) => (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
@@ -373,6 +375,12 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               value={(data[middleKey] as number) ?? 180}
               type="number"
               onChange={(v) => setField(middleKey, Number(v))}
+            />
+            <Select
+              label={`${title}B2玻璃线条`}
+              value={(data[b2GlassStyleKey] as string) || "无线条"}
+              options={GLASS_LINE_STYLES}
+              onChange={(v) => setField(b2GlassStyleKey, v)}
             />
           </>
         )}
@@ -492,6 +500,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <>
                 <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
                 <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
+                {data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗" && (
+                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} onChange={(v) => set("qc_glass_style", v)} />
+                )}
               </>
             )}
             {data.has_mm && (
@@ -593,6 +604,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "panel_fill_b",
                   fillCKey: "panel_fill_c",
                   discRadiusKey: "panel_disc_radius",
+                  b2GlassStyleKey: "panel_b2_glass_style",
                 })}
                 {renderPanelControls({
                   title: "反面门板",
@@ -611,6 +623,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "back_panel_fill_b",
                   fillCKey: "back_panel_fill_c",
                   discRadiusKey: "back_panel_disc_radius",
+                  b2GlassStyleKey: "back_panel_b2_glass_style",
                 })}
                 {hasChildPanel && renderPanelControls({
                   title: "子门门板",
@@ -629,10 +642,18 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "child_panel_fill_b",
                   fillCKey: "child_panel_fill_c",
                   discRadiusKey: "child_panel_disc_radius",
+                  b2GlassStyleKey: "child_panel_b2_glass_style",
                 })}
               </>
             )}
           </div>
+          {(data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗") ||
+          [data.door_panel_style, data.back_door_panel_style, data.child_door_panel_style].some(usesHPanel) ? (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="玻璃线条边距(mm)" value={data.glass_line_inset} type="number" onChange={(v) => set("glass_line_inset", Number(v))} />
+              <Input label="玻璃线条间距(mm)" value={data.glass_line_spacing} type="number" onChange={(v) => set("glass_line_spacing", Number(v))} />
+            </div>
+          ) : null}
         </details>
 
         <Card title="边框与下槛截面">

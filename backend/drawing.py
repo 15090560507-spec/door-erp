@@ -50,6 +50,7 @@ HATCH_SAMPLE_LABELS = {
     "竖条": ("竖条", "2039"),
     "斜实虚": ("斜实虚", "斜 实+虚"),
     "正实虚": ("正实虚", "正 实+虚"),
+    "玻璃填充": ("玻璃填充",),
 }
 
 HATCH_FALLBACKS = {
@@ -60,6 +61,7 @@ HATCH_FALLBACKS = {
     "竖条": {"pattern_name": "ANSI31", "scale": 15, "angle": 45, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
     "斜实虚": {"pattern_name": "ANSI33", "scale": 6, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
     "正实虚": {"pattern_name": "ANSI33", "scale": 6, "angle": 315, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
+    "玻璃填充": {"pattern_name": "ANSI31", "scale": 35, "angle": 0, "color": 9, "solid_fill": 0, "hatch_style": 1, "pattern_type": 1},
 }
 
 
@@ -1376,6 +1378,108 @@ def draw_door_in_frame(
     panel_style_default = back_panel_style if is_back else front_panel_style
     hatch_library = _build_hatch_library(drawer.doc)
 
+    def draw_glass_template_rect(
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        style: str,
+        orientation: str,
+    ) -> None:
+        """在矩形玻璃区生成真实线段；横气窗与竖向门板采用不同分格方向。"""
+        style = str(style or "无线条").strip()
+        if style in ("", "无", "无线条"):
+            return
+
+        left, right = sorted((float(x1), float(x2)))
+        bottom, top = sorted((float(y1), float(y2)))
+        width = right - left
+        height = top - bottom
+        if width <= 8 or height <= 8:
+            return
+
+        requested_inset = max(1.0, float(p.get("glass_line_inset", 20) or 20))
+        inset = min(requested_inset, width / 6, height / 6)
+        ix1, ix2 = left + inset, right - inset
+        iy1, iy2 = bottom + inset, top - inset
+        inner_width = ix2 - ix1
+        inner_height = iy2 - iy1
+        if inner_width <= 2 or inner_height <= 2:
+            return
+
+        if style != "单圈外围线(封闭)":
+            drawer.draw_hatch_rect(
+                *off((ix1, iy1)),
+                *off((ix2, iy2)),
+                hatch_library.get("玻璃填充"),
+            )
+
+        def line(ax: float, ay: float, bx: float, by: float) -> None:
+            drawer.draw_line(off((ax, ay)), off((bx, by)), "A-DOOR-PANEL")
+
+        def frame(ax1: float, ay1: float, ax2: float, ay2: float) -> None:
+            drawer.draw_poly(
+                [off((ax1, ay1)), off((ax2, ay1)), off((ax2, ay2)), off((ax1, ay2))],
+                "A-DOOR-PANEL",
+            )
+
+        def corner_diagonals() -> None:
+            line(left, bottom, ix1, iy1)
+            line(right, bottom, ix2, iy1)
+            line(right, top, ix2, iy2)
+            line(left, top, ix1, iy2)
+
+        frame(ix1, iy1, ix2, iy2)
+        if style in ("单圈外围线", "单圈外围线(封闭)"):
+            corner_diagonals()
+            return
+
+        requested_spacing = max(1.0, float(p.get("glass_line_spacing", 20) or 20))
+        spacing = min(requested_spacing, inner_width / 8, inner_height / 8)
+
+        if style == "双边框":
+            corner_diagonals()
+            if inner_width > spacing * 2 + 2 and inner_height > spacing * 2 + 2:
+                frame(ix1 + spacing, iy1 + spacing, ix2 - spacing, iy2 - spacing)
+            return
+
+        if style == "四角回纹":
+            corner_diagonals()
+            leg = min(max(spacing * 3, 40), inner_width / 3, inner_height / 3)
+            for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                cx = ix1 + spacing if sx == 1 else ix2 - spacing
+                cy = iy1 + spacing if sy == 1 else iy2 - spacing
+                line(cx, cy + sy * leg, cx, cy)
+                line(cx, cy, cx + sx * leg, cy)
+            return
+
+        if style not in ("六格线条", "八格线条"):
+            return
+
+        divisions = 3 if style == "六格线条" else 4
+        if orientation == "horizontal":
+            # 气窗通常横向较长：横向分 3/4 列，纵向分 2 行。
+            line(ix1, (iy1 + iy2) / 2, ix2, (iy1 + iy2) / 2)
+            for index in range(1, divisions):
+                x = ix1 + inner_width * index / divisions
+                line(x, iy1, x, iy2)
+        else:
+            # 门板 B2 通常竖向较长：横向分 2 列，纵向分 3/4 行。
+            line((ix1 + ix2) / 2, iy1, (ix1 + ix2) / 2, iy2)
+            for index in range(1, divisions):
+                y = iy1 + inner_height * index / divisions
+                line(ix1, y, ix2, y)
+
+    if qc_choice == "玻璃" and qc_h > 0 and not is_arch_qc:
+        draw_glass_template_rect(
+            left_width,
+            mid_frame_top,
+            dw - right_width,
+            top_frame_bottom,
+            p.get("qc_glass_style", "无线条"),
+            "horizontal",
+        )
+
     front_fill_presets = {
         "紫荆花款": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("紫荆花", "竖条", "")},
         "钱币款": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("钱币款", "竖条", "")},
@@ -1408,6 +1512,7 @@ def draw_door_in_frame(
 
     def panel_settings(group: str, style: str) -> Dict[str, float | str]:
         prefix = "" if group == "front" else f"{group}_panel_"
+        b2_style_key = "panel_b2_glass_style" if group == "front" else f"{group}_panel_b2_glass_style"
         return {
             "style": style,
             "lock_offset_x": float(p.get(f"{prefix}lock_offset_x", p.get("panel_lock_offset_x", 180)) or 0),
@@ -1422,6 +1527,7 @@ def draw_door_in_frame(
             "fill_b": str(p.get(f"{prefix}fill_b", p.get("panel_fill_b", "")) or ""),
             "fill_c": str(p.get(f"{prefix}fill_c", p.get("panel_fill_c", "")) or ""),
             "disc_radius": float(p.get(f"{prefix}disc_radius", p.get("panel_disc_radius", 120)) or 0),
+            "b2_glass_style": str(p.get(b2_style_key, "无线条") or "无线条"),
         }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
@@ -1606,7 +1712,21 @@ def draw_door_in_frame(
                 for y in (plus_a_y, plus_b_y):
                     if panel_y_bot < y < panel_y_top and all(abs(y - exists) > 1 for exists in y_lines):
                         y_lines.append(y)
-            for y in sorted(y_lines):
+            sorted_y_lines = sorted(y_lines)
+            if len(sorted_y_lines) >= 2:
+                if panel_style == "H+型布局":
+                    b2_bottom, b2_top = sorted_y_lines[-2], sorted_y_lines[-1]
+                else:
+                    b2_bottom, b2_top = sorted_y_lines[0], sorted_y_lines[-1]
+                draw_glass_template_rect(
+                    bx1,
+                    b2_bottom,
+                    bx2,
+                    b2_top,
+                    str(settings.get("b2_glass_style", "无线条")),
+                    "vertical",
+                )
+            for y in sorted_y_lines:
                 draw_panel_line(bx1, y, bx2, y)
 
     def parse_handle_size(value: str) -> Optional[Tuple[float, float]]:

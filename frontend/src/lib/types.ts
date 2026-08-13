@@ -98,6 +98,7 @@ export interface DoorFormData {
   has_mm: boolean;
   has_pillar: boolean;
   qc_height: number;
+  qc_glass_style: string;
   mm_height: number;
   pillar_width_str: string;
   sm: string;
@@ -120,6 +121,7 @@ export interface DoorFormData {
   panel_fill_b: string;
   panel_fill_c: string;
   panel_disc_radius: number;
+  panel_b2_glass_style: string;
   back_panel_lock_offset_x: number;
   back_panel_hinge_offset_y: number;
   back_panel_middle_offset_z: number;
@@ -132,6 +134,7 @@ export interface DoorFormData {
   back_panel_fill_b: string;
   back_panel_fill_c: string;
   back_panel_disc_radius: number;
+  back_panel_b2_glass_style: string;
   child_panel_lock_offset_x: number;
   child_panel_hinge_offset_y: number;
   child_panel_middle_offset_z: number;
@@ -144,6 +147,9 @@ export interface DoorFormData {
   child_panel_fill_b: string;
   child_panel_fill_c: string;
   child_panel_disc_radius: number;
+  child_panel_b2_glass_style: string;
+  glass_line_inset: number;
+  glass_line_spacing: number;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -239,6 +245,7 @@ export const DOOR_STYLES = ["平板"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
 export const DOOR_PANEL_PRESETS = ["", "紫荆花款", "钱币款", "竖条款", "流星雨款", "四方纳福款"];
 export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
+export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "六格线条", "八格线条"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",
@@ -250,21 +257,22 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
   panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
-  panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120,
+  panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120, panel_b2_glass_style: "无线条",
   back_panel_lock_offset_x: 180, back_panel_hinge_offset_y: 100,
   back_panel_middle_offset_z: 180, back_panel_plus_offset_a: 350, back_panel_plus_offset_b: 100,
   back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100,
-  back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120,
+  back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120, back_panel_b2_glass_style: "无线条",
   child_panel_lock_offset_x: 180, child_panel_hinge_offset_y: 100,
   child_panel_middle_offset_z: 180, child_panel_plus_offset_a: 350, child_panel_plus_offset_b: 100,
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
-  child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
+  child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120, child_panel_b2_glass_style: "无线条",
+  glass_line_inset: 20, glass_line_spacing: 20,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400,
   has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",
-  sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400,
+  sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400, qc_glass_style: "无线条",
   is_arch_door: false, arch_spring_height: 1800,
   is_integrated_door: false, integrated_panel_height: 300,
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,

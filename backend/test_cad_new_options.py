@@ -266,6 +266,105 @@ def test_door_panel_style_lines():
     check("H+ panel style draws extra panel lines", len(panel_lines) >= 6, f"line count: {len(panel_lines)}")
 
 
+def test_rectangular_glass_line_templates():
+    transom_req = CADRequest(
+        dw=1800,
+        dh=2200,
+        sel_qc="玻璃",
+        qc_shape="矩形气窗",
+        qc_height=400,
+        qc_glass_style="六格线条",
+        fingerprint_lock="无",
+        sel_hys="暗合页",
+    )
+    transom_info, transom_checks, transom_params = build_cad_params(transom_req)
+    check("transom glass style passes to info map", transom_info["QC_GLASS_STYLE"] == "六格线条", transom_info)
+    check("transom glass style passes to drawing", transom_params["qc_glass_style"] == "六格线条", transom_params)
+    transom_msg, transom_buffer = run_integrated_system(transom_info, transom_checks, transom_params)
+    check("horizontal transom glass CAD generation returns buffer", transom_buffer is not None, transom_msg)
+    if transom_buffer:
+        transom_doc = ezdxf.read(io.StringIO(transom_buffer.getvalue()))
+        glass_lines = [
+            entity for entity in transom_doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        horizontal_grid_lines = [
+            entity for entity in glass_lines
+            if abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) < 0.01
+            and abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) > 1000
+        ]
+        vertical_grid_lines = [
+            entity for entity in glass_lines
+            if abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
+            and 250 < abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) < 400
+        ]
+        check(
+            "wide transom six-grid uses 3 columns by 2 rows",
+            len(horizontal_grid_lines) >= 2 and len(vertical_grid_lines) >= 4,
+            f"horizontal={len(horizontal_grid_lines)}, vertical={len(vertical_grid_lines)}",
+        )
+        glass_hatches = [
+            entity for entity in transom_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        check("transom grid includes glass hatch in both views", len(glass_hatches) >= 2, len(glass_hatches))
+
+    panel_req = CADRequest(
+        door_panel_style="H+型布局",
+        panel_b2_glass_style="八格线条",
+        back_door_panel_style="H型布局",
+        back_panel_b2_glass_style="单圈外围线(封闭)",
+        glass_line_inset=20,
+        glass_line_spacing=20,
+        fingerprint_lock="无",
+        sel_hys="暗合页",
+    )
+    panel_info, panel_checks, panel_params = build_cad_params(panel_req)
+    check("front B2 glass style passes to drawing", panel_params["panel_b2_glass_style"] == "八格线条", panel_params)
+    check("back B2 glass style passes independently", panel_params["back_panel_b2_glass_style"] == "单圈外围线(封闭)", panel_params)
+    panel_msg, panel_buffer = run_integrated_system(panel_info, panel_checks, panel_params)
+    check("H/H+ B2 glass CAD generation returns buffer", panel_buffer is not None, panel_msg)
+    if panel_buffer:
+        panel_doc = ezdxf.read(io.StringIO(panel_buffer.getvalue()))
+        panel_hatches = [
+            entity for entity in panel_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        check(
+            "closed back B2 stays unfilled while front B2 is hatched",
+            len(panel_hatches) == 1,
+            len(panel_hatches),
+        )
+
+    for style in ("无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "六格线条", "八格线条"):
+        style_req = CADRequest(
+            dw=1800,
+            dh=2200,
+            sel_qc="玻璃",
+            qc_shape="矩形气窗",
+            qc_height=400,
+            qc_glass_style=style,
+            fingerprint_lock="无",
+            sel_hys="暗合页",
+        )
+        style_info, style_checks, style_params = build_cad_params(style_req)
+        style_msg, style_buffer = run_integrated_system(style_info, style_checks, style_params)
+        check(f"rectangular transom style {style} generates CAD", style_buffer is not None, style_msg)
+        if not style_buffer:
+            continue
+        style_doc = ezdxf.read(io.StringIO(style_buffer.getvalue()))
+        style_hatches = [
+            entity for entity in style_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        expected_hatches = 0 if style in ("无线条", "单圈外围线(封闭)") else 2
+        check(
+            f"rectangular transom style {style} uses expected glass fill",
+            len(style_hatches) == expected_hatches,
+            len(style_hatches),
+        )
+
+
 def test_disc_panel_style_draws_semicircle():
     req = CADRequest(
         door_panel_style="\u5706\u76d8\u9020\u578b",
@@ -1472,6 +1571,7 @@ if __name__ == "__main__":
     test_split_handle_uses_directional_blocks()
     test_back_a1022_handle_direction_blocks()
     test_door_panel_style_lines()
+    test_rectangular_glass_line_templates()
     test_disc_panel_style_draws_semicircle()
     test_pillar_handle_title_and_three_column_panel()
     test_panel_hatch_presets_and_masks()
