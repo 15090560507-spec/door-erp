@@ -273,6 +273,15 @@ def test_rectangular_glass_line_templates():
             if entity.dxf.layer == "A-DOOR-PANEL"
         ]
 
+    def duplicate_line_segments(entities):
+        counts = {}
+        for entity in entities:
+            start = (round(float(entity.dxf.start.x), 3), round(float(entity.dxf.start.y), 3))
+            end = (round(float(entity.dxf.end.x), 3), round(float(entity.dxf.end.y), 3))
+            key = tuple(sorted((start, end)))
+            counts[key] = counts.get(key, 0) + 1
+        return [key for key, count in counts.items() if count > 1]
+
     def centers_of_paired_coordinates(values, expected_gap=15):
         ordered = sorted(set(round(float(value), 3) for value in values))
         centers = []
@@ -426,6 +435,56 @@ def test_rectangular_glass_line_templates():
                 if entity.dxf.name == "HJ01"
             ]
             check("glass flower style imports four real HJ01 blocks per view", len(flower_blocks) == 8, len(flower_blocks))
+            flower_xs = sorted(round(float(entity.dxf.insert.x), 3) for entity in flower_blocks)
+            flower_ys = sorted(round(float(entity.dxf.insert.y), 3) for entity in flower_blocks)
+            check(
+                "glass flower style places two flowers on each side of both views",
+                len(set(flower_xs)) == 4 and len(set(flower_ys)) == 2,
+                f"xs={flower_xs}, ys={flower_ys}",
+            )
+            check(
+                "glass flower style mirrors left and right HJ01 blocks",
+                len({round(abs(float(entity.dxf.xscale)), 3) for entity in flower_blocks}) == 1
+                and all(float(entity.dxf.xscale) > 0 for entity in flower_blocks),
+                [float(entity.dxf.xscale) for entity in flower_blocks],
+            )
+
+            flower_lines = layer_lines(style_doc)
+            diagonal_lines = [
+                entity for entity in flower_lines
+                if abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) > 20
+                and abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) > 20
+            ]
+            check(
+                "glass flower style draws four X squares per view",
+                len(diagonal_lines) >= 16,
+                len(diagonal_lines),
+            )
+            duplicates = duplicate_line_segments(flower_lines)
+            check(
+                "glass flower style has no coincident line entities",
+                not duplicates,
+                str(duplicates[:8]),
+            )
+
+        if style == "四角回纹":
+            return_lines = layer_lines(style_doc)
+            diagonal_lines = [
+                entity for entity in return_lines
+                if abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) > 5
+                and abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) > 5
+            ]
+            check(
+                "four-corner return style keeps only frame miter diagonals",
+                len(diagonal_lines) == 16,
+                len(diagonal_lines),
+            )
+            duplicates = duplicate_line_segments(return_lines)
+            check(
+                "four-corner return style has no coincident line entities",
+                not duplicates,
+                str(duplicates[:8]),
+            )
 
 
 def test_disc_panel_style_draws_semicircle():

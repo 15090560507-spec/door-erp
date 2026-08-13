@@ -1475,6 +1475,49 @@ def draw_door_in_frame(
                 center_y = iy1 + inner_height * index / rows
                 paired_horizontal(center_y, ix1, ix2)
 
+        def mitered_frame(
+            outer_left: float,
+            outer_bottom: float,
+            outer_right: float,
+            outer_top: float,
+            frame_width: float,
+        ) -> tuple[float, float, float, float]:
+            """绘制带四角斜接线的框，返回内口边界。"""
+            inner_left = outer_left + frame_width
+            inner_bottom = outer_bottom + frame_width
+            inner_right = outer_right - frame_width
+            inner_top = outer_top - frame_width
+            frame(outer_left, outer_bottom, outer_right, outer_top)
+            frame(inner_left, inner_bottom, inner_right, inner_top)
+            line(outer_left, outer_bottom, inner_left, inner_bottom)
+            line(outer_right, outer_bottom, inner_right, inner_bottom)
+            line(outer_right, outer_top, inner_right, inner_top)
+            line(outer_left, outer_top, inner_left, inner_top)
+            return inner_left, inner_bottom, inner_right, inner_top
+
+        def x_square(
+            square_left: float,
+            square_bottom: float,
+            square_right: float,
+            square_top: float,
+            *,
+            omit_left: bool = False,
+            omit_right: bool = False,
+            omit_bottom: bool = False,
+            omit_top: bool = False,
+        ) -> None:
+            """绘制角方框；与外围框共边时不重复生成实体。"""
+            if not omit_left:
+                line(square_left, square_bottom, square_left, square_top)
+            if not omit_right:
+                line(square_right, square_bottom, square_right, square_top)
+            if not omit_bottom:
+                line(square_left, square_bottom, square_right, square_bottom)
+            if not omit_top:
+                line(square_left, square_top, square_right, square_top)
+            line(square_left, square_bottom, square_right, square_top)
+            line(square_left, square_top, square_right, square_bottom)
+
         frame(ix1, iy1, ix2, iy2)
         corner_diagonals()
         if style in ("单圈外围线", "单圈外围线(封闭)"):
@@ -1496,27 +1539,50 @@ def draw_door_in_frame(
             return
 
         if style == "双边框+花件":
-            border_center = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
-            if border_center <= band_width:
+            # 结构来自模板：左右各一条窄带，四角放带 X 的方框，
+            # 两侧中部各放两个 HJ01。竖线在方框和花件处断开。
+            channel_width = min(65.0, inner_width / 4, inner_height / 6)
+            side_gap = min(20.0, channel_width / 3)
+            if channel_width <= side_gap * 2:
                 return
-            paired_vertical(ix1 + border_center, iy1, iy2)
-            paired_vertical(ix2 - border_center, iy1, iy2)
-            paired_horizontal(iy1 + border_center, ix1, ix2)
-            paired_horizontal(iy2 - border_center, ix1, ix2)
             if not _ensure_glass_template_block(drawer.doc, "HJ01"):
                 return
 
-            # 模板花件约 68x66mm，按窄边留量限制缩放；四边中点保持镜像对称。
-            flower_extent = 68.0
-            flower_scale = min(1.0, max(0.35, min(inner_width, inner_height) / (flower_extent * 4)))
-            flower_offset = border_center + max(35.0, 45.0 * flower_scale)
-            positions = (
-                ((ix1 + ix2) / 2, iy1 + flower_offset, 0),
-                ((ix1 + ix2) / 2, iy2 - flower_offset, 180),
-                (ix1 + flower_offset, (iy1 + iy2) / 2, 270),
-                (ix2 - flower_offset, (iy1 + iy2) / 2, 90),
+            left_inner = ix1 + channel_width
+            right_inner = ix2 - channel_width
+            opening_left = left_inner + side_gap
+            opening_right = right_inner - side_gap
+            bottom_square_top = iy1 + channel_width
+            top_square_bottom = iy2 - channel_width
+
+            x_square(ix1, iy1, left_inner, bottom_square_top, omit_left=True, omit_bottom=True)
+            x_square(right_inner, iy1, ix2, bottom_square_top, omit_right=True, omit_bottom=True)
+            x_square(ix1, top_square_bottom, left_inner, iy2, omit_left=True, omit_top=True)
+            x_square(right_inner, top_square_bottom, ix2, iy2, omit_right=True, omit_top=True)
+
+            # 第三条竖线围出中央开口；上下横线止于开口边，不压到角方框。
+            line(opening_left, iy1, opening_left, iy2)
+            line(opening_right, iy1, opening_right, iy2)
+            line(opening_left, bottom_square_top, opening_right, bottom_square_top)
+            line(opening_left, bottom_square_top + side_gap, opening_right, bottom_square_top + side_gap)
+            line(opening_left, top_square_bottom, opening_right, top_square_bottom)
+            line(opening_left, top_square_bottom - side_gap, opening_right, top_square_bottom - side_gap)
+
+            flower_size = channel_width
+            # HJ01 实际包围宽约 68mm，按真实外廓缩放，避免压到两侧竖线。
+            flower_scale = flower_size / 68.0
+            flower_group_height = flower_size * 2 + side_gap
+            flower_group_bottom = (iy1 + iy2 - flower_group_height) / 2
+            lower_flower_top = flower_group_bottom + flower_size
+            upper_flower_bottom = lower_flower_top + side_gap
+            flower_group_top = upper_flower_bottom + flower_size
+            flower_centers = (
+                (ix1 + channel_width / 2, flower_group_top - flower_size / 2, 0),
+                (ix1 + channel_width / 2, flower_group_bottom + flower_size / 2, 180),
+                (ix2 - channel_width / 2, flower_group_top - flower_size / 2, 0),
+                (ix2 - channel_width / 2, flower_group_bottom + flower_size / 2, 180),
             )
-            for flower_x, flower_y, rotation in positions:
+            for flower_x, flower_y, rotation in flower_centers:
                 drawer.insert_custom_block(
                     "HJ01",
                     off((flower_x, flower_y)),
@@ -1525,29 +1591,75 @@ def draw_door_in_frame(
                     yscale=flower_scale,
                     rotation=rotation,
                 )
+
+            # 每个花件形成独立方格，两个方格及其上下各留 20mm 分隔带。
+            flower_lower_separator = flower_group_bottom - side_gap
+            flower_upper_separator = flower_group_top + side_gap
+            for side_left, side_right in ((ix1, left_inner), (right_inner, ix2)):
+                line(side_left, flower_lower_separator, side_right, flower_lower_separator)
+                line(side_left, flower_group_bottom, side_right, flower_group_bottom)
+                line(side_left, lower_flower_top, side_right, lower_flower_top)
+                line(side_left, upper_flower_bottom, side_right, upper_flower_bottom)
+                line(side_left, flower_group_top, side_right, flower_group_top)
+                line(side_left, flower_upper_separator, side_right, flower_upper_separator)
+
+            # 花件方格的内侧竖边单独成段，避免与上下通长线重复覆盖。
+            for channel_inner_x in (left_inner, right_inner):
+                line(channel_inner_x, flower_group_bottom, channel_inner_x, lower_flower_top)
+                line(channel_inner_x, upper_flower_bottom, channel_inner_x, flower_group_top)
+
+            vertical_segments = (
+                (bottom_square_top + side_gap, flower_lower_separator),
+                (flower_upper_separator, top_square_bottom - side_gap),
+            )
+            for x_pos in (left_inner, right_inner):
+                for segment_bottom, segment_top in vertical_segments:
+                    if segment_top > segment_bottom:
+                        line(x_pos, segment_bottom, x_pos, segment_top)
             return
 
         if style == "四角回纹":
-            # 两道内框及四角对称回纹均取整数尺寸，消除模板手绘误差。
-            outer_step = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
-            inner_step = min(outer_step + band_width, inner_width / 3, inner_height / 3)
-            if inner_step <= outer_step:
+            # 模板由外圈、内圈和四组回折线组成。各段只连接到框边，
+            # 不使用贯穿式双线，避免与内外框相互重叠。
+            frame_gap = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
+            if frame_gap <= band_width:
                 return
-            frame(ix1 + outer_step, iy1 + outer_step, ix2 - outer_step, iy2 - outer_step)
-            frame(ix1 + inner_step, iy1 + inner_step, ix2 - inner_step, iy2 - inner_step)
+            ring_outer_left = ix1 + frame_gap
+            ring_outer_bottom = iy1 + frame_gap
+            ring_outer_right = ix2 - frame_gap
+            ring_outer_top = iy2 - frame_gap
+            ring_inner_left, ring_inner_bottom, ring_inner_right, ring_inner_top = mitered_frame(
+                ring_outer_left,
+                ring_outer_bottom,
+                ring_outer_right,
+                ring_outer_top,
+                band_width,
+            )
 
-            arm = min(50.0, inner_width / 6, inner_height / 6)
+            return_depth = min(65.0, (ring_inner_right - ring_inner_left) / 4, (ring_inner_top - ring_inner_bottom) / 4)
+            inner_return = max(band_width, return_depth - band_width)
             for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                ring_x = ring_inner_left if sx == 1 else ring_inner_right
+                ring_y = ring_inner_bottom if sy == 1 else ring_inner_top
                 outer_x = ix1 if sx == 1 else ix2
                 outer_y = iy1 if sy == 1 else iy2
-                first_x = outer_x + sx * outer_step
-                first_y = outer_y + sy * outer_step
-                second_x = outer_x + sx * inner_step
-                second_y = outer_y + sy * inner_step
-                line(outer_x, first_y, first_x, first_y)
-                line(first_x, outer_y, first_x, first_y)
-                line(outer_x, second_y, second_x + sx * arm, second_y)
-                line(second_x, outer_y, second_x, second_y + sy * arm)
+
+                first_x = ring_x + sx * return_depth
+                second_x = ring_x + sx * inner_return
+                first_y = ring_y + sy * return_depth
+                second_y = ring_y + sy * inner_return
+
+                # 外侧桥接双线，终点恰好落在内圈外缘。
+                line(first_x, outer_y, first_x, ring_outer_bottom if sy == 1 else ring_outer_top)
+                line(second_x, outer_y, second_x, ring_outer_bottom if sy == 1 else ring_outer_top)
+                line(outer_x, first_y, ring_outer_left if sx == 1 else ring_outer_right, first_y)
+                line(outer_x, second_y, ring_outer_left if sx == 1 else ring_outer_right, second_y)
+
+                # 内口回折线从内圈边缘开始，不穿越框体。
+                line(ring_x, first_y, first_x, first_y)
+                line(first_x, ring_y, first_x, first_y)
+                line(ring_x, second_y, second_x, second_y)
+                line(second_x, ring_y, second_x, second_y)
             return
 
         if style not in ("六格线条", "八格线条"):
