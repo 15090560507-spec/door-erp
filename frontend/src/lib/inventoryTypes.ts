@@ -247,3 +247,120 @@ export interface PurchaseReceipt {
   items?: PurchaseReceiptItem[];
   created_at: string;
 }
+
+export interface PendingMaterialIssue {
+  reservation_id: number;
+  requirement_item_id: number;
+  requirement_id: number;
+  order_id: number;
+  door_unit_id: number;
+  production_no: string;
+  due_date: string;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  unit: string;
+  warehouse_id: number;
+  location_id: number;
+  warehouse_name: string;
+  location_name: string;
+  available_quantity: number;
+}
+
+export interface MaterialFlowItem {
+  id: number;
+  requirement_item_id?: number | null;
+  reservation_id?: number | null;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  source_warehouse_id?: number | null;
+  source_location_id?: number | null;
+  target_warehouse_id?: number | null;
+  target_location_id?: number | null;
+  source_warehouse_name?: string;
+  source_location_name?: string;
+  target_warehouse_name?: string;
+  target_location_name?: string;
+  quantity: number;
+  unit: string;
+  remark: string;
+}
+
+export interface MaterialFlowOrder {
+  id: number;
+  document_no: string;
+  document_type: string;
+  requirement_id?: number | null;
+  production_no: string;
+  status: string;
+  remark: string;
+  item_count?: number;
+  total_quantity?: number;
+  items?: MaterialFlowItem[];
+  created_at: string;
+}
+
+export interface SubcontractItem {
+  id: number;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  source_warehouse_id: number;
+  source_location_id: number;
+  transit_warehouse_id: number;
+  transit_location_id: number;
+  sent_quantity: number;
+  returned_quantity: number;
+  accepted_quantity: number;
+  rejected_quantity: number;
+  unit: string;
+  production_no: string;
+  status: string;
+}
+
+export interface SubcontractOrder {
+  id: number;
+  subcontract_no: string;
+  supplier: string;
+  work_package: string;
+  expected_return_date: string;
+  status: string;
+  remark: string;
+  item_count?: number;
+  sent_quantity?: number;
+  returned_quantity?: number;
+  pending_quantity?: number;
+  items?: SubcontractItem[];
+  created_at: string;
+}
+
+export interface SubcontractReceiptItem {
+  id: number;
+  subcontract_item_id: number;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  specification: string;
+  production_no: string;
+  returned_quantity: number;
+  accepted_quantity: number;
+  rejected_quantity: number;
+  unit: string;
+  status: string;
+}
+
+export interface SubcontractReceipt {
+  id: number;
+  receipt_no: string;
+  subcontract_order_id: number;
+  subcontract_no: string;
+  supplier: string;
+  return_date: string;
+  status: string;
+  item_count?: number;
+  items?: SubcontractReceiptItem[];
+}

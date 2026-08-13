@@ -113,3 +113,100 @@ class IncomingInspectionCreate(BaseModel):
     warehouse_id: int
     location_id: int
     remark: str = ""
+
+
+class MaterialIssueItemInput(BaseModel):
+    requirement_item_id: int
+    reservation_id: int
+    quantity: float = Field(gt=0)
+    remark: str = ""
+
+
+class MaterialIssueCreate(BaseModel):
+    requirement_id: int
+    remark: str = ""
+    items: List[MaterialIssueItemInput]
+
+
+class MaterialReturnItemInput(BaseModel):
+    requirement_item_id: int
+    material_id: int
+    warehouse_id: int
+    location_id: int
+    quantity: float = Field(gt=0)
+    unit: str
+    remark: str = ""
+
+
+class MaterialReturnCreate(BaseModel):
+    requirement_id: int
+    remark: str = ""
+    items: List[MaterialReturnItemInput]
+
+
+class StockTransferItemInput(BaseModel):
+    material_id: int
+    source_warehouse_id: int
+    source_location_id: int
+    target_warehouse_id: int
+    target_location_id: int
+    quantity: float = Field(gt=0)
+    unit: str
+    remark: str = ""
+
+
+class StockTransferCreate(BaseModel):
+    remark: str = ""
+    items: List[StockTransferItemInput]
+
+
+class StockScrapItemInput(BaseModel):
+    material_id: int
+    warehouse_id: int
+    location_id: int
+    quantity: float = Field(gt=0)
+    unit: str
+    remark: str = ""
+
+
+class StockScrapCreate(BaseModel):
+    production_no: str = ""
+    remark: str = ""
+    items: List[StockScrapItemInput]
+
+
+class SubcontractSendItemInput(BaseModel):
+    material_id: int
+    source_warehouse_id: int
+    source_location_id: int
+    quantity: float = Field(gt=0)
+    unit: str
+    production_no: str = ""
+    remark: str = ""
+
+
+class SubcontractSendCreate(BaseModel):
+    supplier: str
+    work_package: str = ""
+    expected_return_date: str = ""
+    remark: str = ""
+    items: List[SubcontractSendItemInput]
+
+
+class SubcontractReceiptItemInput(BaseModel):
+    subcontract_item_id: int
+    quantity: float = Field(gt=0)
+
+
+class SubcontractReceiptCreate(BaseModel):
+    return_date: str = ""
+    remark: str = ""
+    items: List[SubcontractReceiptItemInput]
+
+
+class SubcontractInspectionCreate(BaseModel):
+    accepted_quantity: float = Field(default=0, ge=0)
+    rejected_quantity: float = Field(default=0, ge=0)
+    warehouse_id: int
+    location_id: int
+    remark: str = ""

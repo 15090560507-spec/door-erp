@@ -363,6 +363,109 @@ class InventoryDatabase:
                     FOREIGN KEY(receipt_item_id) REFERENCES purchase_receipt_items(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS material_flow_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_no TEXT NOT NULL UNIQUE,
+                    document_type TEXT NOT NULL,
+                    requirement_id INTEGER,
+                    order_id INTEGER,
+                    door_unit_id INTEGER,
+                    production_no TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '已确认',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    confirmed_at TEXT NOT NULL,
+                    FOREIGN KEY(requirement_id) REFERENCES material_requirements(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS material_flow_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    flow_order_id INTEGER NOT NULL,
+                    requirement_item_id INTEGER,
+                    reservation_id INTEGER,
+                    material_id INTEGER NOT NULL,
+                    source_warehouse_id INTEGER,
+                    source_location_id INTEGER,
+                    target_warehouse_id INTEGER,
+                    target_location_id INTEGER,
+                    quantity REAL NOT NULL,
+                    unit TEXT NOT NULL,
+                    remark TEXT NOT NULL DEFAULT '',
+                    sequence_no INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(flow_order_id) REFERENCES material_flow_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(requirement_item_id) REFERENCES material_requirement_items(id),
+                    FOREIGN KEY(reservation_id) REFERENCES inventory_reservations(id),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS subcontract_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subcontract_no TEXT NOT NULL UNIQUE,
+                    supplier TEXT NOT NULL,
+                    work_package TEXT NOT NULL DEFAULT '',
+                    expected_return_date TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '外协中',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS subcontract_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subcontract_order_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    source_warehouse_id INTEGER NOT NULL,
+                    source_location_id INTEGER NOT NULL,
+                    transit_warehouse_id INTEGER NOT NULL,
+                    transit_location_id INTEGER NOT NULL,
+                    sent_quantity REAL NOT NULL,
+                    returned_quantity REAL NOT NULL DEFAULT 0,
+                    accepted_quantity REAL NOT NULL DEFAULT 0,
+                    rejected_quantity REAL NOT NULL DEFAULT 0,
+                    unit TEXT NOT NULL,
+                    production_no TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '外协中',
+                    remark TEXT NOT NULL DEFAULT '',
+                    sequence_no INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(subcontract_order_id) REFERENCES subcontract_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS subcontract_receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_no TEXT NOT NULL UNIQUE,
+                    subcontract_order_id INTEGER NOT NULL,
+                    return_date TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '待检',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(subcontract_order_id) REFERENCES subcontract_orders(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS subcontract_receipt_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_id INTEGER NOT NULL,
+                    subcontract_item_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    returned_quantity REAL NOT NULL,
+                    accepted_quantity REAL NOT NULL DEFAULT 0,
+                    rejected_quantity REAL NOT NULL DEFAULT 0,
+                    target_warehouse_id INTEGER,
+                    target_location_id INTEGER,
+                    unit TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT '待检',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(receipt_id) REFERENCES subcontract_receipts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(subcontract_item_id) REFERENCES subcontract_items(id),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_inventory_material_search
                     ON inventory_materials(name, category, specification, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_material
@@ -383,6 +486,16 @@ class InventoryDatabase:
                     ON purchase_allocations(requirement_item_id, status);
                 CREATE INDEX IF NOT EXISTS ix_purchase_receipts_status_date
                     ON purchase_receipts(status, arrival_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_material_flow_orders_type_date
+                    ON material_flow_orders(document_type, created_at);
+                CREATE INDEX IF NOT EXISTS ix_material_flow_orders_production
+                    ON material_flow_orders(production_no, created_at);
+                CREATE INDEX IF NOT EXISTS ix_subcontract_orders_status_date
+                    ON subcontract_orders(status, expected_return_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_subcontract_items_production
+                    ON subcontract_items(production_no, status);
+                CREATE INDEX IF NOT EXISTS ix_subcontract_receipts_status_date
+                    ON subcontract_receipts(status, return_date, created_at);
 
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions

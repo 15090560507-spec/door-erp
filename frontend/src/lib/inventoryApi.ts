@@ -11,6 +11,10 @@ import type {
   PurchaseOrder,
   PurchaseReceipt,
   PurchaseShortage,
+  MaterialFlowOrder,
+  PendingMaterialIssue,
+  SubcontractOrder,
+  SubcontractReceipt,
 } from "./inventoryTypes";
 
 export async function getInventoryMaterials(params?: {
@@ -158,5 +162,106 @@ export async function inspectPurchaseReceiptItem(id: number, payload: {
   remark: string;
 }) {
   const { data } = await api.post<{ receipt: PurchaseReceipt; message: string }>(`/inventory/receipt-items/${id}/inspect`, payload);
+  return data;
+}
+
+export async function getPendingMaterialIssues(q = "") {
+  const { data } = await api.get<{ items: PendingMaterialIssue[] }>("/inventory/material-flow/pending-issues", { params: { q } });
+  return data.items;
+}
+
+export async function getMaterialFlowOrders(params?: { document_type?: string; production_no?: string }) {
+  const { data } = await api.get<{ orders: MaterialFlowOrder[] }>("/inventory/material-flow/orders", { params });
+  return data.orders;
+}
+
+export async function getMaterialFlowOrder(id: number) {
+  const { data } = await api.get<{ order: MaterialFlowOrder }>(`/inventory/material-flow/orders/${id}`);
+  return data.order;
+}
+
+export async function issueMaterials(payload: {
+  requirement_id: number;
+  remark: string;
+  items: Array<{ requirement_item_id: number; reservation_id: number; quantity: number; remark: string }>;
+}) {
+  const { data } = await api.post<{ order: MaterialFlowOrder; message: string }>("/inventory/material-flow/issues", payload);
+  return data;
+}
+
+export async function returnMaterials(payload: {
+  requirement_id: number;
+  remark: string;
+  items: Array<{ requirement_item_id: number; material_id: number; warehouse_id: number; location_id: number; quantity: number; unit: string; remark: string }>;
+}) {
+  const { data } = await api.post<{ order: MaterialFlowOrder; message: string }>("/inventory/material-flow/returns", payload);
+  return data;
+}
+
+export async function transferInventory(payload: {
+  remark: string;
+  items: Array<{ material_id: number; source_warehouse_id: number; source_location_id: number; target_warehouse_id: number; target_location_id: number; quantity: number; unit: string; remark: string }>;
+}) {
+  const { data } = await api.post<{ order: MaterialFlowOrder; message: string }>("/inventory/material-flow/transfers", payload);
+  return data;
+}
+
+export async function scrapInventory(payload: {
+  production_no: string;
+  remark: string;
+  items: Array<{ material_id: number; warehouse_id: number; location_id: number; quantity: number; unit: string; remark: string }>;
+}) {
+  const { data } = await api.post<{ order: MaterialFlowOrder; message: string }>("/inventory/material-flow/scraps", payload);
+  return data;
+}
+
+export async function getSubcontractOrders(status = "") {
+  const { data } = await api.get<{ orders: SubcontractOrder[] }>("/inventory/subcontracts", { params: { status } });
+  return data.orders;
+}
+
+export async function getSubcontractOrder(id: number) {
+  const { data } = await api.get<{ order: SubcontractOrder }>(`/inventory/subcontracts/${id}`);
+  return data.order;
+}
+
+export async function sendSubcontract(payload: {
+  supplier: string;
+  work_package: string;
+  expected_return_date: string;
+  remark: string;
+  items: Array<{ material_id: number; source_warehouse_id: number; source_location_id: number; quantity: number; unit: string; production_no: string; remark: string }>;
+}) {
+  const { data } = await api.post<{ order: SubcontractOrder; message: string }>("/inventory/subcontracts", payload);
+  return data;
+}
+
+export async function receiveSubcontract(id: number, payload: {
+  return_date: string;
+  remark: string;
+  items: Array<{ subcontract_item_id: number; quantity: number }>;
+}) {
+  const { data } = await api.post<{ receipt: SubcontractReceipt; message: string }>(`/inventory/subcontracts/${id}/receipts`, payload);
+  return data;
+}
+
+export async function getSubcontractReceipts(status = "") {
+  const { data } = await api.get<{ receipts: SubcontractReceipt[] }>("/inventory/subcontract-receipts", { params: { status } });
+  return data.receipts;
+}
+
+export async function getSubcontractReceipt(id: number) {
+  const { data } = await api.get<{ receipt: SubcontractReceipt }>(`/inventory/subcontract-receipts/${id}`);
+  return data.receipt;
+}
+
+export async function inspectSubcontractReceipt(id: number, payload: {
+  accepted_quantity: number;
+  rejected_quantity: number;
+  warehouse_id: number;
+  location_id: number;
+  remark: string;
+}) {
+  const { data } = await api.post<{ receipt: SubcontractReceipt; message: string }>(`/inventory/subcontract-receipt-items/${id}/inspect`, payload);
   return data;
 }
