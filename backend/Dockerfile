@@ -40,6 +40,7 @@ COPY backend/ .
 COPY quote-template-pdf/ /app/quote-template-pdf/
 COPY template.xlsx .
 COPY template.dxf .
+COPY template-glass-patterns.dxf .
 
 EXPOSE 8000
 

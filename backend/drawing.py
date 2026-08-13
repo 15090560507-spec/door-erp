@@ -11,17 +11,19 @@ import time
 from typing import Any, Dict, Tuple, Optional, Callable, Union
 
 import ezdxf
+from ezdxf.addons import Importer
 from ezdxf.disassemble import recursive_decompose
 
 from cad_occlusion import CadOcclusionManager, structural_group_for_layer
 
-from config import CONFIG, TEMPLATE_PATH
+from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
 from utils import parse_dim_str, parse_gap_str
 
 
 # ===================== 模板缓存 =====================
 # 启动时加载一次 template.dxf 到内存，避免每次请求重复磁盘 I/O
 _template_text: Optional[str] = None
+_glass_template_text: Optional[str] = None
 logger = logging.getLogger(__name__)
 DIMENSION_SPACING_DELTA = 40
 VIEW_TRIM_EDGE_GAP = 1200
@@ -40,6 +42,31 @@ def _get_cached_template() -> Optional[str]:
     if _template_text is None:
         _load_template()
     return _template_text
+
+
+def _ensure_glass_template_block(doc, block_name: str) -> bool:
+    """按需导入玻璃花件真块；普通线条样式不承担额外解析成本。"""
+    global _glass_template_text
+    if block_name in doc.blocks:
+        return True
+    if _glass_template_text is None:
+        if not os.path.exists(GLASS_TEMPLATE_PATH):
+            logger.warning("Glass template DXF not found: %s", GLASS_TEMPLATE_PATH)
+            return False
+        with open(GLASS_TEMPLATE_PATH, "r", encoding="utf-8") as source:
+            _glass_template_text = source.read()
+    try:
+        source_doc = ezdxf.read(io.StringIO(_glass_template_text))
+        if block_name not in source_doc.blocks:
+            logger.warning("Glass template block %s not found", block_name)
+            return False
+        importer = Importer(source_doc, doc)
+        importer.import_blocks([block_name])
+        importer.finalize()
+        return block_name in doc.blocks
+    except Exception as exc:
+        logger.warning("Failed to import glass template block %s: %s", block_name, exc)
+        return False
 
 
 HATCH_SAMPLE_LABELS = {
@@ -1386,7 +1413,7 @@ def draw_door_in_frame(
         style: str,
         orientation: str,
     ) -> None:
-        """在矩形玻璃区生成真实线段；横气窗与竖向门板采用不同分格方向。"""
+        """按玻璃花枝模板生成规则化线条，横气窗自动旋转分格方向。"""
         style = str(style or "无线条").strip()
         if style in ("", "无", "无线条"):
             return
@@ -1398,7 +1425,7 @@ def draw_door_in_frame(
         if width <= 8 or height <= 8:
             return
 
-        requested_inset = max(1.0, float(p.get("glass_line_inset", 20) or 20))
+        requested_inset = round(max(1.0, float(p.get("glass_line_inset", 20) or 20)))
         inset = min(requested_inset, width / 6, height / 6)
         ix1, ix2 = left + inset, right - inset
         iy1, iy2 = bottom + inset, top - inset
@@ -1429,46 +1456,109 @@ def draw_door_in_frame(
             line(right, top, ix2, iy2)
             line(left, top, ix1, iy2)
 
+        def paired_vertical(center_x: float, y_start: float, y_end: float) -> None:
+            half = band_width / 2
+            line(center_x - half, y_start, center_x - half, y_end)
+            line(center_x + half, y_start, center_x + half, y_end)
+
+        def paired_horizontal(center_y: float, x_start: float, x_end: float) -> None:
+            half = band_width / 2
+            line(x_start, center_y - half, x_end, center_y - half)
+            line(x_start, center_y + half, x_end, center_y + half)
+
+        def divided_grid(columns: int, rows: int) -> None:
+            """分隔中心严格均分，并以模板中的 15mm 双线表达花枝线带。"""
+            for index in range(1, columns):
+                center_x = ix1 + inner_width * index / columns
+                paired_vertical(center_x, iy1, iy2)
+            for index in range(1, rows):
+                center_y = iy1 + inner_height * index / rows
+                paired_horizontal(center_y, ix1, ix2)
+
         frame(ix1, iy1, ix2, iy2)
+        corner_diagonals()
         if style in ("单圈外围线", "单圈外围线(封闭)"):
-            corner_diagonals()
             return
 
-        requested_spacing = max(1.0, float(p.get("glass_line_spacing", 20) or 20))
+        requested_spacing = round(max(1.0, float(p.get("glass_line_spacing", 20) or 20)))
         spacing = min(requested_spacing, inner_width / 8, inner_height / 8)
+        band_width = min(15.0, inner_width / 16, inner_height / 16)
 
         if style == "双边框":
-            corner_diagonals()
-            if inner_width > spacing * 2 + 2 and inner_height > spacing * 2 + 2:
-                frame(ix1 + spacing, iy1 + spacing, ix2 - spacing, iy2 - spacing)
+            # 模板不是简单的两个矩形，而是四边各一条 15mm 线带。
+            border_center = max(spacing * 2.5, 50.0)
+            border_center = min(border_center, inner_width / 4, inner_height / 4)
+            if border_center > band_width:
+                paired_vertical(ix1 + border_center, iy1, iy2)
+                paired_vertical(ix2 - border_center, iy1, iy2)
+                paired_horizontal(iy1 + border_center, ix1, ix2)
+                paired_horizontal(iy2 - border_center, ix1, ix2)
+            return
+
+        if style == "双边框+花件":
+            border_center = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
+            if border_center <= band_width:
+                return
+            paired_vertical(ix1 + border_center, iy1, iy2)
+            paired_vertical(ix2 - border_center, iy1, iy2)
+            paired_horizontal(iy1 + border_center, ix1, ix2)
+            paired_horizontal(iy2 - border_center, ix1, ix2)
+            if not _ensure_glass_template_block(drawer.doc, "HJ01"):
+                return
+
+            # 模板花件约 68x66mm，按窄边留量限制缩放；四边中点保持镜像对称。
+            flower_extent = 68.0
+            flower_scale = min(1.0, max(0.35, min(inner_width, inner_height) / (flower_extent * 4)))
+            flower_offset = border_center + max(35.0, 45.0 * flower_scale)
+            positions = (
+                ((ix1 + ix2) / 2, iy1 + flower_offset, 0),
+                ((ix1 + ix2) / 2, iy2 - flower_offset, 180),
+                (ix1 + flower_offset, (iy1 + iy2) / 2, 270),
+                (ix2 - flower_offset, (iy1 + iy2) / 2, 90),
+            )
+            for flower_x, flower_y, rotation in positions:
+                drawer.insert_custom_block(
+                    "HJ01",
+                    off((flower_x, flower_y)),
+                    layer="A-DOOR-PANEL",
+                    xscale=flower_scale,
+                    yscale=flower_scale,
+                    rotation=rotation,
+                )
             return
 
         if style == "四角回纹":
-            corner_diagonals()
-            leg = min(max(spacing * 3, 40), inner_width / 3, inner_height / 3)
+            # 两道内框及四角对称回纹均取整数尺寸，消除模板手绘误差。
+            outer_step = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
+            inner_step = min(outer_step + band_width, inner_width / 3, inner_height / 3)
+            if inner_step <= outer_step:
+                return
+            frame(ix1 + outer_step, iy1 + outer_step, ix2 - outer_step, iy2 - outer_step)
+            frame(ix1 + inner_step, iy1 + inner_step, ix2 - inner_step, iy2 - inner_step)
+
+            arm = min(50.0, inner_width / 6, inner_height / 6)
             for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
-                cx = ix1 + spacing if sx == 1 else ix2 - spacing
-                cy = iy1 + spacing if sy == 1 else iy2 - spacing
-                line(cx, cy + sy * leg, cx, cy)
-                line(cx, cy, cx + sx * leg, cy)
+                outer_x = ix1 if sx == 1 else ix2
+                outer_y = iy1 if sy == 1 else iy2
+                first_x = outer_x + sx * outer_step
+                first_y = outer_y + sy * outer_step
+                second_x = outer_x + sx * inner_step
+                second_y = outer_y + sy * inner_step
+                line(outer_x, first_y, first_x, first_y)
+                line(first_x, outer_y, first_x, first_y)
+                line(outer_x, second_y, second_x + sx * arm, second_y)
+                line(second_x, outer_y, second_x, second_y + sy * arm)
             return
 
         if style not in ("六格线条", "八格线条"):
             return
 
-        divisions = 3 if style == "六格线条" else 4
         if orientation == "horizontal":
-            # 气窗通常横向较长：横向分 3/4 列，纵向分 2 行。
-            line(ix1, (iy1 + iy2) / 2, ix2, (iy1 + iy2) / 2)
-            for index in range(1, divisions):
-                x = ix1 + inner_width * index / divisions
-                line(x, iy1, x, iy2)
+            # 矩形气窗横向较长：六格为 3 列 2 行，八格为 4 列 2 行。
+            divided_grid(3 if style == "六格线条" else 4, 2)
         else:
-            # 门板 B2 通常竖向较长：横向分 2 列，纵向分 3/4 行。
-            line((ix1 + ix2) / 2, iy1, (ix1 + ix2) / 2, iy2)
-            for index in range(1, divisions):
-                y = iy1 + inner_height * index / divisions
-                line(ix1, y, ix2, y)
+            # 门板 B2 竖向较长：六格为 2 列 3 行，八格为 2 列 4 行。
+            divided_grid(2, 3 if style == "六格线条" else 4)
 
     if qc_choice == "玻璃" and qc_h > 0 and not is_arch_qc:
         draw_glass_template_rect(

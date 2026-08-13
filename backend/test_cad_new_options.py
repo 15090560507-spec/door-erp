@@ -267,6 +267,20 @@ def test_door_panel_style_lines():
 
 
 def test_rectangular_glass_line_templates():
+    def layer_lines(doc):
+        return [
+            entity for entity in doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+
+    def centers_of_paired_coordinates(values, expected_gap=15):
+        ordered = sorted(set(round(float(value), 3) for value in values))
+        centers = []
+        for first, second in zip(ordered, ordered[1:]):
+            if abs((second - first) - expected_gap) < 0.05:
+                centers.append((first + second) / 2)
+        return centers
+
     transom_req = CADRequest(
         dw=1800,
         dh=2200,
@@ -309,6 +323,37 @@ def test_rectangular_glass_line_templates():
         ]
         check("transom grid includes glass hatch in both views", len(glass_hatches) >= 2, len(glass_hatches))
 
+        vertical_xs = [
+            entity.dxf.start.x for entity in layer_lines(transom_doc)
+            if abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
+            and abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) > 200
+        ]
+        horizontal_ys = [
+            entity.dxf.start.y for entity in layer_lines(transom_doc)
+            if abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) < 0.01
+            and abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) > 500
+        ]
+        transom_x_centers = centers_of_paired_coordinates(vertical_xs)
+        transom_y_centers = centers_of_paired_coordinates(horizontal_ys)
+        check(
+            "transom six-grid uses two vertical 15mm divider bands",
+            len(transom_x_centers) >= 4,
+            transom_x_centers,
+        )
+        check(
+            "transom six-grid uses one horizontal 15mm divider band",
+            len(transom_y_centers) >= 1,
+            transom_y_centers,
+        )
+        if len(transom_x_centers) >= 4:
+            front_centers = sorted(transom_x_centers)[:2]
+            back_centers = sorted(transom_x_centers)[-2:]
+            check(
+                "transom six-grid divider centers are equally spaced in both views",
+                abs((front_centers[1] - front_centers[0]) - (back_centers[1] - back_centers[0])) < 0.05,
+                f"front={front_centers}, back={back_centers}",
+            )
+
     panel_req = CADRequest(
         door_panel_style="H+型布局",
         panel_b2_glass_style="八格线条",
@@ -335,8 +380,20 @@ def test_rectangular_glass_line_templates():
             len(panel_hatches) == 1,
             len(panel_hatches),
         )
+        front_panel_lines = layer_lines(panel_doc)
+        long_vertical_xs = [
+            entity.dxf.start.x for entity in front_panel_lines
+            if abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
+            and abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) > 300
+        ]
+        panel_band_centers = centers_of_paired_coordinates(long_vertical_xs)
+        check(
+            "vertical B2 eight-grid uses a centered 15mm divider band in both views",
+            len(panel_band_centers) >= 1,
+            panel_band_centers,
+        )
 
-    for style in ("无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "六格线条", "八格线条"):
+    for style in ("无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "双边框+花件", "六格线条", "八格线条"):
         style_req = CADRequest(
             dw=1800,
             dh=2200,
@@ -363,6 +420,12 @@ def test_rectangular_glass_line_templates():
             len(style_hatches) == expected_hatches,
             len(style_hatches),
         )
+        if style == "双边框+花件":
+            flower_blocks = [
+                entity for entity in style_doc.modelspace().query("INSERT")
+                if entity.dxf.name == "HJ01"
+            ]
+            check("glass flower style imports four real HJ01 blocks per view", len(flower_blocks) == 8, len(flower_blocks))
 
 
 def test_disc_panel_style_draws_semicircle():

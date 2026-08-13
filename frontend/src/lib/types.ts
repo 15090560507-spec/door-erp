@@ -245,7 +245,7 @@ export const DOOR_STYLES = ["平板"];
 export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
 export const DOOR_PANEL_PRESETS = ["", "紫荆花款", "钱币款", "竖条款", "流星雨款", "四方纳福款"];
 export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
-export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "六格线条", "八格线条"];
+export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "双边框+花件", "六格线条", "八格线条"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "2号色", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",

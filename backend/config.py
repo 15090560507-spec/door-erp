@@ -46,6 +46,10 @@ except ValueError:
 ERPNEXT_VERIFY_TLS = os.environ.get("ERPNEXT_VERIFY_TLS", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(_base, 'template.dxf'))
+GLASS_TEMPLATE_PATH = os.environ.get(
+    "GLASS_TEMPLATE_PATH",
+    os.path.join(_base, 'template-glass-patterns.dxf'),
+)
 
 # ===================== 数据安全：备份与图片路径 =====================
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
