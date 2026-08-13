@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/TopNav";
 import FulfillmentSupplyWorkbench from "@/components/FulfillmentSupplyWorkbench";
+import InventoryWorkspace from "@/components/inventory/InventoryWorkspace";
+import MasterDataWorkspace from "@/components/inventory/MasterDataWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import {
   confirmTechnicalPackage,
@@ -51,7 +53,7 @@ export default function ProductionPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; error: boolean } | null>(null);
-  const [workspace, setWorkspace] = useState<"orders" | "purchase" | "warehouse">("orders");
+  const [workspace, setWorkspace] = useState<"orders" | "requirements" | "purchase" | "warehouse" | "finished" | "master">("orders");
 
   const notify = useCallback((message: string, error = false) => setNotice({ title: error ? "操作失败" : "操作成功", message, error }), []);
   const loadAll = useCallback(async () => {
@@ -101,8 +103,8 @@ export default function ProductionPage() {
         <button className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm" onClick={() => void refresh()}>刷新</button>
       </header>
 
-      <nav className="flex border border-[#D1D1D6] bg-white">
-        {([['orders','门樘履约'],['purchase','采购'],['warehouse','仓库']] as const).map(([key,label]) => <button key={key} onClick={() => setWorkspace(key)} className={`h-11 min-w-28 border-r border-[#E5E5EA] px-5 text-sm ${workspace === key ? "bg-[#007AFF] text-white" : "bg-white text-[#3C3C43]"}`}>{label}</button>)}
+      <nav className="flex overflow-x-auto border border-[#D1D1D6] bg-white">
+        {([['orders','门樘履约'],['requirements','供应需求'],['purchase','采购中心'],['warehouse','仓库中心'],['finished','成品与发货'],['master','基础资料']] as const).map(([key,label]) => <button key={key} onClick={() => setWorkspace(key)} className={`h-11 shrink-0 min-w-28 border-r border-[#E5E5EA] px-5 text-sm ${workspace === key ? "bg-[#007AFF] text-white" : "bg-white text-[#3C3C43]"}`}>{label}</button>)}
       </nav>
 
       {workspace === "orders" && <><section className="grid grid-cols-2 gap-px border border-[#D1D1D6] bg-[#D1D1D6] md:grid-cols-4 xl:grid-cols-12">
@@ -135,8 +137,11 @@ export default function ProductionPage() {
         </div>
       </section>
       </>}
+      {workspace === "requirements" && <StageNotice title="供应需求" message="阶段二将在这里集中汇总全部门樘的采购、外协和库存缺口，并支持合并办理。" />}
       {workspace === "purchase" && <FulfillmentSupplyWorkbench scope="purchase" notify={notify} />}
-      {workspace === "warehouse" && <FulfillmentSupplyWorkbench scope="warehouse" notify={notify} />}
+      {workspace === "warehouse" && <InventoryWorkspace notify={notify} />}
+      {workspace === "finished" && <StageNotice title="成品与发货" message="阶段五将在这里统一管理成品库存、财务放行、发货和签收。当前门樘详情中的质检、入库与发货功能继续可用。" />}
+      {workspace === "master" && <MasterDataWorkspace notify={notify} />}
     </main>
     <datalist id="fulfillment-people">{people.map((person)=><option key={person.uid} value={person.uid}>{person.name} · {person.role}</option>)}</datalist>
     {busy && <div className="fixed bottom-5 right-5 z-40 border border-[#D1D1D6] bg-white px-4 py-3 text-sm shadow-lg">正在处理...</div>}
@@ -147,6 +152,10 @@ export default function ProductionPage() {
 function Metric({ label, value, accent, danger, warning }: { label: string; value: number; accent?: boolean; danger?: boolean; warning?: boolean }) {
   const tone = accent ? "text-[#007AFF]" : danger ? "text-[#C62828]" : warning ? "text-[#A05A00]" : "text-[#1C1C1E]";
   return <div className="bg-white px-3 py-3"><div className="truncate text-xs text-[#636366]">{label}</div><div className={`mt-1 text-xl font-semibold ${tone}`}>{value}</div></div>;
+}
+
+function StageNotice({ title, message }: { title: string; message: string }) {
+  return <section className="border border-[#D1D1D6] bg-white p-6"><h2 className="font-semibold">{title}</h2><p className="mt-2 text-sm text-[#636366]">{message}</p></section>;
 }
 
 function PendingPanel({ tasks, busy, onRelease }: { tasks: PendingFulfillmentTask[]; busy: boolean; onRelease: (task: PendingFulfillmentTask, form: { due_date: string; sales_note: string; door_count: number; owner_uid: string }) => Promise<void> }) {
