@@ -24,6 +24,7 @@ from fulfillment_models import (
     SupplyAction,
     TechnicalPackageUpdate,
     WorkPackageAction,
+    WorkPackageBatchAction,
 )
 
 
@@ -193,6 +194,23 @@ def confirm_technical_package(door_id: int, current_user: Dict = Depends(get_cur
 def update_work_package(work_id: int, req: WorkPackageAction, current_user: Dict = Depends(get_current_user)):
     try:
         return {"door_unit": fulfillment_db.update_work_package(work_id, req, current_user), "message": "工作包已更新"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/work-packages/batch")
+def batch_work_packages(door_id: int, req: WorkPackageBatchAction, current_user: Dict = Depends(get_current_user)):
+    try:
+        door, changed = fulfillment_db.batch_work_packages(door_id, req, current_user)
+        return {"door_unit": door, "changed": changed, "message": f"已批量更新 {changed} 个工作包"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.get("/supplies/workbench")
+def supply_workbench(scope: str = Query("purchase"), q: str = Query(""), current_user: Dict = Depends(get_current_user)):
+    try:
+        return {"supplies": fulfillment_db.list_supply_workbench(scope.strip(), q.strip())}
     except Exception as exc:
         raise _translate_error(exc) from exc
 

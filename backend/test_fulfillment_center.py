@@ -156,6 +156,37 @@ def main() -> None:
         changed = response.json().get("door_unit", {})
         check("生产变更生成 V2 草稿而非覆盖 V1", response.status_code == 200 and changed.get("technical_package", {}).get("version") == 2 and changed.get("technical_package", {}).get("status") == "草稿", response.text)
 
+        response = client.put(f"/api/fulfillment/door-units/{door_id}/technical-package", headers=headers(), json=update_payload)
+        response = client.post(f"/api/fulfillment/door-units/{door_id}/technical-package/confirm", headers=headers())
+        current_works = response.json().get("door_unit", {}).get("technical_package", {}).get("work_packages", [])
+        skippable_id = next(item["id"] for item in current_works if not item["inspection_required"])
+        response = client.post(
+            f"/api/fulfillment/door-units/{door_id}/work-packages/batch", headers=headers(),
+            json={"work_ids": [skippable_id], "action": "跳过", "executor_uid": "worker-a", "remark": ""},
+        )
+        check("跳过工作包必须记录原因", response.status_code == 400, response.text)
+        response = client.post(
+            f"/api/fulfillment/door-units/{door_id}/work-packages/batch", headers=headers(),
+            json={"work_ids": [skippable_id], "action": "跳过", "executor_uid": "worker-a", "remark": "客户取消该项"},
+        )
+        check("工作包可带审计原因受控跳过", response.status_code == 200 and response.json().get("changed") == 1, response.text)
+        response = client.post(
+            f"/api/fulfillment/door-units/{door_id}/work-packages/batch", headers=headers(),
+            json={"work_ids": [item["id"] for item in current_works if not item["inspection_required"]], "action": "确认完成", "executor_uid": "worker-a", "remark": "批量完成"},
+        )
+        inspected_ids = [item["id"] for item in current_works if item["inspection_required"]]
+        if inspected_ids:
+            client.post(f"/api/fulfillment/door-units/{door_id}/work-packages/batch", headers=headers(), json={"work_ids": inspected_ids, "action": "提交质检", "executor_uid": "worker-a", "remark": "批量送检"})
+            response = client.post(f"/api/fulfillment/door-units/{door_id}/work-packages/batch", headers=headers(), json={"work_ids": inspected_ids, "action": "确认完成", "executor_uid": "worker-a", "remark": "检验完成"})
+        check("工作包支持受控批量快捷流转", response.status_code == 200 and response.json().get("door_unit", {}).get("status") == "待成品质检", response.text)
+        response = client.post(f"/api/fulfillment/door-units/{door_id}/inspections", headers=headers(), json={"inspection_type": "成品质检", "result": "合格", "target_name": changed["production_no"], "quantity": 1, "defect_detail": "", "remark": "当前版本总检"})
+        check("成品质检只校验当前技术版本工作包", response.status_code == 200 and response.json().get("door_unit", {}).get("status") == "待成品入库", response.text)
+
+        response = client.get("/api/fulfillment/supplies/workbench?scope=purchase", headers=headers())
+        check("采购工作台集中展示当前版本外购事项", response.status_code == 200 and isinstance(response.json().get("supplies"), list), response.text)
+        response = client.get("/api/fulfillment/supplies/workbench?scope=warehouse", headers=headers())
+        check("仓库工作台独立展示待检入库发料事项", response.status_code == 200 and isinstance(response.json().get("supplies"), list), response.text)
+
         closed_loop_id = doors[1]["id"]
         response = client.put(f"/api/fulfillment/door-units/{closed_loop_id}/technical-package", headers=headers(), json=update_payload)
         check("第二樘可独立维护技术包", response.status_code == 200, response.text)
@@ -202,7 +233,8 @@ def main() -> None:
         check("签收后门樘履约完成", response.status_code == 200 and response.json()["door_unit"]["status"] == "已签收", response.text)
 
         response = client.get("/api/fulfillment/dashboard", headers=headers())
-        check("履约看板汇总门樘与异常", response.status_code == 200 and response.json().get("status_counts", {}).get("技术准备中", 0) >= 1, response.text)
+        status_counts = response.json().get("status_counts", {}) if response.status_code == 200 else {}
+        check("履约看板汇总门樘与异常", response.status_code == 200 and sum(status_counts.values()) >= 2, response.text)
     finally:
         fulfillment_routes.fulfillment_db = old_db
         fulfillment_routes.task_repository = old_tasks

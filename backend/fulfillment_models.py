@@ -57,6 +57,13 @@ class WorkPackageAction(BaseModel):
     remark: str = ""
 
 
+class WorkPackageBatchAction(BaseModel):
+    work_ids: List[int] = Field(min_length=1)
+    action: str
+    executor_uid: str = ""
+    remark: str = ""
+
+
 class ExceptionCreate(BaseModel):
     category: str
     title: str

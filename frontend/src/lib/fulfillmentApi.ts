@@ -5,6 +5,7 @@ import type {
   FulfillmentDashboard,
   FulfillmentOrder,
   FulfillmentWorkPackage,
+  FulfillmentWorkbenchSupply,
   PendingFulfillmentTask,
   FulfillmentPerson,
 } from "./fulfillmentTypes";
@@ -57,6 +58,16 @@ export async function confirmTechnicalPackage(doorId: number) {
 export async function updateFulfillmentWorkPackage(workId: number, payload: { status: string; executor_uid: string; actual_quantity?: number; remark: string }) {
   const { data } = await api.put<{ door_unit: DoorUnitDetail; message: string }>(`/fulfillment/work-packages/${workId}`, payload);
   return data;
+}
+
+export async function batchFulfillmentWorkPackages(doorId: number, payload: { work_ids: number[]; action: string; executor_uid: string; remark: string }) {
+  const { data } = await api.post<{ door_unit: DoorUnitDetail; changed: number; message: string }>(`/fulfillment/door-units/${doorId}/work-packages/batch`, payload);
+  return data;
+}
+
+export async function getFulfillmentSupplyWorkbench(scope: "purchase" | "warehouse", q = "") {
+  const { data } = await api.get<{ supplies: FulfillmentWorkbenchSupply[] }>("/fulfillment/supplies/workbench", { params: { scope, q } });
+  return data.supplies;
 }
 
 export async function createFulfillmentException(doorId: number, payload: { category: string; title: string; detail: string; severity: string; owner_uid: string }) {

@@ -132,6 +132,16 @@ export interface FulfillmentSupply {
   unit_cost: number; status: string; remark: string;
 }
 
+export interface FulfillmentWorkbenchSupply extends FulfillmentSupply {
+  door_unit_id: number;
+  production_no: string;
+  door_status: string;
+  order_no: string;
+  customer: string;
+  project: string;
+  inspection_passed: number;
+}
+
 export interface FulfillmentInspection {
   id: number; inspection_type: string; target_name: string; quantity: number;
   result: string; defect_detail: string; remark: string; inspector_uid: string; created_at: string;
@@ -168,6 +178,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   inventory_movements: InventoryMovement[];
   shipments: FulfillmentShipment[];
   payroll_drafts: PayrollDraft[];
+  unfinished_work_packages: Array<{ id: number; name: string; status: string }>;
   paid_amount: number;
   allocated_payment: number;
   available_payment: number;
