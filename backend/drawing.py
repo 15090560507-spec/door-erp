@@ -1271,7 +1271,15 @@ def draw_door_in_frame(
     rad90 = math.radians(90)
 
     if trim_w > 0:
-        outer_left, outer_right, outer_bottom, outer_top = ox1, ox4, 0, oy3
+        if has_outer_landscape:
+            landscape_left_inner = max(float(p.get('outer_landscape_left_overlap', O) or 0), 0)
+            landscape_right_inner = dw - max(float(p.get('outer_landscape_right_overlap', O) or 0), 0)
+            landscape_left_outer = landscape_left_inner - max(float(p.get('trim_front', W) or 0), 0)
+            landscape_right_outer = landscape_right_inner + max(float(p.get('trim_front_right', W) or 0), 0)
+            landscape_top_outer = total_h - max(float(p.get('outer_landscape_top_overlap', O) or 0), 0) + max(float(p.get('trim_front_top', WT) or 0), 0) + mm_offset
+            outer_left, outer_right, outer_bottom, outer_top = landscape_left_outer, landscape_right_outer, 0, landscape_top_outer
+        else:
+            outer_left, outer_right, outer_bottom, outer_top = ox1, ox4, 0, oy3
     else:
         outer_left, outer_right, outer_bottom, outer_top = 0, dw, 0, dh
 
@@ -1279,8 +1287,8 @@ def draw_door_in_frame(
     if trim_w > 0:
         dims_h.append(("含包套总宽", outer_left, outer_right, -400, True, "含包套总宽 <>"))
         if has_outer_landscape:
-            dims_h.append(("左景宽", ox1, ix1, -200, True, None))
-            dims_h.append(("右景宽", ix4, ox4, -200, True, None))
+            dims_h.append(("左景宽", landscape_left_outer, landscape_left_inner, -200, True, None))
+            dims_h.append(("右景宽", landscape_right_inner, landscape_right_outer, -200, True, None))
         else:
             dims_h.append(("门套宽", ox1, ix1, -200, not has_outer_portal, None))
             dims_h.append(("门柱宽", ox1, ix1, -200, has_outer_portal, None))

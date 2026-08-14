@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef, useId } from "react";
 import type { QuoteItem } from "@/lib/quoteTypes";
-import { createEmptyQuoteItem, normalizeOpenDirection, UNIT_OPTIONS } from "@/lib/quoteTypes";
+import {
+  createEmptyQuoteItem,
+  normalizeOpenDirection,
+  quoteItemAmountText,
+  quoteItemQuantityText,
+  UNIT_OPTIONS,
+} from "@/lib/quoteTypes";
 import { getAccessories } from "@/lib/quoteApi";
 import type { Accessory } from "@/lib/quoteTypes";
 
@@ -91,7 +97,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
 
   return (
     <div ref={containerRef} className="overflow-x-auto pb-1">
-      <table className="w-full min-w-[1000px] table-fixed text-[13px]">
+      <table className="w-full min-w-[1120px] table-fixed text-[13px]">
         <colgroup>
           <col className="w-[320px]" />
           <col className="w-[90px]" />
@@ -100,6 +106,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
           <col className="w-[85px]" />
           <col className="w-[110px]" />
           <col className="w-[110px]" />
+          <col className="w-[120px]" />
           <col className="w-[70px]" />
         </colgroup>
         <thead>
@@ -111,6 +118,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">单位</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">数量</th>
             <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">单价</th>
+            <th className="text-left py-2 px-2 font-medium text-[#8E8E93]">总金额</th>
             <th className="text-center py-2 px-2 font-medium text-[#8E8E93]">操作</th>
           </tr>
         </thead>
@@ -195,9 +203,10 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                 <input
                   type="number"
                   step="0.0001"
-                  value={item.quantity ?? ""}
+                  value={item.quantity ?? quoteItemQuantityText(item)}
                   onChange={(e) => updateItem(index, "quantity", e.target.value ? Number(e.target.value) : null)}
                   placeholder="自动"
+                  title={item.quantity === null || item.quantity === undefined ? "自动计算数量" : "手动数量"}
                   className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors placeholder:text-[#C7C7CC]"
                 />
               </td>
@@ -210,6 +219,9 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   onChange={(e) => updateItem(index, "unitPrice", e.target.value ? Number(e.target.value) : 0)}
                   className="w-full px-2 py-1.5 text-[13px] bg-transparent border border-transparent rounded-md focus:border-[#007AFF] focus:bg-white focus:outline-none transition-colors"
                 />
+              </td>
+              <td className="py-1.5 px-4 text-right font-medium tabular-nums text-[#1C1C1E]">
+                {quoteItemAmountText(item)}
               </td>
               <td className="py-1.5 px-2 text-center">
                 <button

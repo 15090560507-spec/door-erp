@@ -1,6 +1,7 @@
 "use client";
 
-import type { QuoteDoorGroup, QuoteItem } from "@/lib/quoteTypes";
+import type { QuoteDoorGroup } from "@/lib/quoteTypes";
+import { quoteItemAmountText, quoteItemQuantityText } from "@/lib/quoteTypes";
 import { toChineseAmount } from "@/lib/toChineseAmount";
 
 interface Props {
@@ -16,44 +17,6 @@ function numberText(value: number | null | undefined, digits?: number) {
   return digits === undefined ? String(value) : Number(value).toFixed(digits);
 }
 
-function isAreaUnit(unit: string) {
-  const normalized = (unit || "").toLowerCase();
-  return normalized.includes("m2") || normalized.includes("㎡") || normalized.includes("m²");
-}
-
-function quoteQuantity(item: QuoteItem) {
-  if (!item.productName.trim()) return "";
-  if (item.quantity !== null && item.quantity !== undefined) {
-    const explicit = Number(item.quantity);
-    if (Number.isFinite(explicit) && explicit > 0) {
-      return isAreaUnit(item.unit) ? explicit.toFixed(4) : String(explicit);
-    }
-  }
-  if (!isAreaUnit(item.unit)) return "1";
-  const width = Number(item.width || 0);
-  const height = Number(item.height || 0);
-  if (!width || !height) return "";
-  return (width * height * 0.000001).toFixed(4);
-}
-
-function quoteAmount(item: QuoteItem) {
-  const qty = Number(quoteQuantity(item));
-  const unitPrice = Number(item.unitPrice || 0);
-  const hasAnyValue = Boolean(
-    item.productName.trim() ||
-    item.width ||
-    item.height ||
-    item.openDirection.trim() ||
-    item.unit.trim() ||
-    item.unitPrice
-  );
-
-  if (!hasAnyValue) return "";
-  if (!qty && !unitPrice) return "0";
-  if (!qty || !Number.isFinite(unitPrice)) return "";
-  return String(Math.round(qty * unitPrice));
-}
-
 export default function QuotePreview({ customerName, projectName, quoteDate, noticeText, doorGroups }: Props) {
   const groups = doorGroups.length ? doorGroups : [{
     groupName: "第1樘门",
@@ -65,7 +28,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
   const itemCount = groups.reduce((count, group) => count + group.items.length, 0);
   const emptyRows = Math.max(0, 8 - itemCount);
   const groupTotals = groups.map((group) => group.items.reduce((sum, item) => {
-    const amount = Number(quoteAmount(item));
+    const amount = Number(quoteItemAmountText(item));
     return Number.isFinite(amount) ? sum + amount : sum;
   }, 0));
   const total = groupTotals.reduce((sum, amount) => sum + amount, 0);
@@ -153,9 +116,9 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                       <td className={itemCell}>{numberText(item.height)}</td>
                       <td className={itemCell}>{itemIndex === 0 ? item.openDirection : ""}</td>
                       <td className={itemCell}>{item.unit}</td>
-                      <td className={itemCell}>{quoteQuantity(item)}</td>
+                      <td className={itemCell}>{quoteItemQuantityText(item)}</td>
                       <td className={itemCell}>{numberText(item.unitPrice)}</td>
-                      <td className={itemCell}>{quoteAmount(item)}</td>
+                      <td className={itemCell}>{quoteItemAmountText(item)}</td>
                     </tr>
                   );
                 });

@@ -13,7 +13,7 @@ sys.path.insert(0, BACKEND_DIR)
 from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
 from models import CADRequest
 from drawing import EzdxfDrawer, _build_hatch_library, _hatch_bounds, run_integrated_system
-from cad_preview import render_dxf_svg
+from cad_preview import _collect_entity, render_dxf_svg
 
 
 PASSED = 0
@@ -1551,6 +1551,36 @@ def test_cad_preview_svg_renders():
     view_width = float(view_box.group(1).split()[2]) if view_box else 0
     check("preview SVG crops to front and back views", 0 < view_width < 7000, view_box.group(1) if view_box else svg[:120])
 
+    mirrored_req = CADRequest(
+        door_type="四开门",
+        sel_kx="左开",
+        sel_nk="内开",
+        dw=1800,
+        mid_door_width=500,
+        fingerprint_lock="安志杰AF-12",
+        zmls="无",
+        fmls="无",
+    )
+    mirrored_info, mirrored_checks, mirrored_params = build_cad_params(mirrored_req)
+    mirrored_msg, mirrored_buffer = run_integrated_system(mirrored_info, mirrored_checks, mirrored_params)
+    check("left-opening four-door preview CAD generation returns buffer", mirrored_buffer is not None, mirrored_msg)
+    if mirrored_buffer:
+        mirrored_doc = ezdxf.read(io.StringIO(mirrored_buffer.getvalue()))
+        fingerprint_inserts = [
+            entity for entity in mirrored_doc.modelspace().query('INSERT[name=="AZJ"]')
+            if abs(float(entity.dxf.insert.x)) < 1000
+        ]
+        primitives = []
+        if fingerprint_inserts:
+            _collect_entity(fingerprint_inserts[0], primitives)
+        preview_x_values = [x for primitive in primitives for x, _y in primitive.points]
+        check(
+            "mirrored fingerprint preview stays around its DXF insertion point",
+            bool(fingerprint_inserts and preview_x_values)
+            and max(abs(x - float(fingerprint_inserts[0].dxf.insert.x)) for x in preview_x_values) < 200,
+            (float(fingerprint_inserts[0].dxf.insert.x) if fingerprint_inserts else None, preview_x_values[:8]),
+        )
+
 
 def test_optional_structural_occlusion_keeps_source_geometry():
     base_req = CADRequest(
@@ -1640,6 +1670,18 @@ def test_outer_landscape_trim_with_occlusion():
     check("one-scene CAD generation supports occlusion", buffer is not None, message)
     if not buffer:
         return
+    landscape_doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    landscape_width_dims = sorted(
+        round(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)), 2)
+        for entity in landscape_doc.modelspace().query("DIMENSION")
+        if abs(float(entity.dxf.angle)) < 0.01
+        and round(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)), 2) in {150.0, 180.0}
+    )
+    check(
+        "one-scene left and right width dimensions use independent inputs",
+        landscape_width_dims[:2] == [150.0, 180.0],
+        landscape_width_dims,
+    )
     svg = render_dxf_svg(buffer.getvalue())
     check("one-scene CAD preview supports occlusion", svg.startswith("<svg") and "cad-wipeout" in svg, svg[:180])
 

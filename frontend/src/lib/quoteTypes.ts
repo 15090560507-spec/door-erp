@@ -184,4 +184,42 @@ export function createEmptyQuoteItem(): QuoteItem {
   };
 }
 
+export function isAreaQuoteUnit(unit: string): boolean {
+  const normalized = (unit || "").toLowerCase();
+  return normalized.includes("m2") || normalized.includes("㎡") || normalized.includes("m²");
+}
+
+export function quoteItemQuantityText(item: QuoteItem): string {
+  if (!item.productName.trim()) return "";
+  if (item.quantity !== null && item.quantity !== undefined) {
+    const explicit = Number(item.quantity);
+    if (Number.isFinite(explicit) && explicit > 0) {
+      return isAreaQuoteUnit(item.unit) ? explicit.toFixed(4) : String(explicit);
+    }
+  }
+  if (!isAreaQuoteUnit(item.unit)) return "1";
+  const width = Number(item.width || 0);
+  const height = Number(item.height || 0);
+  if (!width || !height) return "";
+  return (width * height * 0.000001).toFixed(4);
+}
+
+export function quoteItemAmountText(item: QuoteItem): string {
+  const quantity = Number(quoteItemQuantityText(item));
+  const unitPrice = Number(item.unitPrice || 0);
+  const hasAnyValue = Boolean(
+    item.productName.trim() ||
+    item.width ||
+    item.height ||
+    item.openDirection.trim() ||
+    item.unit.trim() ||
+    item.unitPrice
+  );
+
+  if (!hasAnyValue) return "";
+  if (!quantity && !unitPrice) return "0";
+  if (!quantity || !Number.isFinite(unitPrice)) return "";
+  return String(Math.round(quantity * unitPrice));
+}
+
 export const UNIT_OPTIONS = ["m²", "件", "套", "个", "组", "樘", "把", "支", "块", "条", "根", "台"];

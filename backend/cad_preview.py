@@ -138,9 +138,11 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
                 if len(points) > 1 and points[0] == points[-1]:
                     points.pop()
             except Exception:
-                points = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+                points = [_point(point) for point in entity.vertices_in_wcs()]
         else:
-            points = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+            # Mirrored block references can carry an inverted OCS extrusion.
+            # Reading raw XY values moves the geometry to the opposite panel.
+            points = [_point(point) for point in entity.vertices_in_wcs()]
         if len(points) >= 2:
             primitives.append(Primitive("polyline", layer, points, {"closed": bool(entity.closed)}))
     elif kind == "POLYLINE":
@@ -169,7 +171,7 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
             )
         )
     elif kind == "CIRCLE":
-        center = _point(entity.dxf.center)
+        center = _point(entity.ocs().to_wcs(entity.dxf.center))
         radius = float(entity.dxf.radius)
         primitives.append(
             Primitive(
