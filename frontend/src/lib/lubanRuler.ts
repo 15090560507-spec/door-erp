@@ -20,7 +20,7 @@ export const LUBAN_BIG_SECTIONS = [
   { name: "本", auspicious: true },
 ] as const;
 
-const SMALL_WORDS = [
+export const LUBAN_SMALL_WORDS = [
   "财德", "宝库", "六合", "迎福",
   "退财", "公事", "牢执", "孤寡",
   "长库", "劫财", "官鬼", "失脱",
@@ -31,17 +31,29 @@ const SMALL_WORDS = [
   "财至", "登科", "进宝", "兴旺",
 ] as const;
 
+export const LUBAN_SMALL_SEGMENTS = LUBAN_SMALL_WORDS.map((smallWord, index) => {
+  const segmentLength = LUBAN_CYCLE / LUBAN_SMALL_WORDS.length;
+  const bigSection = LUBAN_BIG_SECTIONS[Math.floor(index / 4)];
+  return {
+    smallWord,
+    bigWord: bigSection.name,
+    auspicious: bigSection.auspicious,
+    intervalStart: index * segmentLength,
+    intervalEnd: (index + 1) * segmentLength,
+  };
+});
+
 export function lubanResult(value: number): LubanResult | null {
   if (!Number.isFinite(value) || value < 0) return null;
   const cyclePosition = ((value % LUBAN_CYCLE) + LUBAN_CYCLE) % LUBAN_CYCLE;
-  const segmentLength = LUBAN_CYCLE / 32;
+  const segmentLength = LUBAN_CYCLE / LUBAN_SMALL_WORDS.length;
   const index = Math.min(31, Math.floor(cyclePosition / segmentLength));
   const bigSection = LUBAN_BIG_SECTIONS[Math.floor(index / 4)];
   return {
     millimeters: value,
     cyclePosition,
     bigWord: bigSection.name,
-    smallWord: SMALL_WORDS[index],
+    smallWord: LUBAN_SMALL_WORDS[index],
     auspicious: bigSection.auspicious,
     intervalStart: index * segmentLength,
     intervalEnd: (index + 1) * segmentLength,

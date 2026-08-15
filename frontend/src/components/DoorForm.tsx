@@ -10,6 +10,7 @@ import {
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 import LubanRulerModal from "@/components/LubanRulerModal";
+import { lubanResult } from "@/lib/lubanRuler";
 
 interface Props {
   data: DoorFormData;
@@ -24,6 +25,28 @@ function maxSectionValue(value: string | number, fallback = 0) {
     .map((part) => Number(part.trim()))
     .filter(Number.isFinite);
   return values.length ? Math.max(...values) : fallback;
+}
+
+function sectionValues(value: string | number, fallback = 0) {
+  const values = String(value ?? "")
+    .split("/")
+    .map((part) => Number(part.trim()))
+    .filter(Number.isFinite);
+  return values.length ? values : [fallback];
+}
+
+function LubanInlineResult({ label, value }: { label: string; value: number }) {
+  const result = lubanResult(value);
+  if (!result || value <= 0) {
+    return <div className="mt-1.5 text-[11px] text-[#8E8E93]">{label}：未计算</div>;
+  }
+  return (
+    <div className={`mt-1.5 flex min-h-8 items-center gap-2 rounded-md px-2.5 py-1.5 text-[11px] ${result.auspicious ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF3B30]/10 text-[#C9342D]"}`}>
+      <span className="tabular-nums">{label} {Number(value.toFixed(1))}mm</span>
+      <strong className="text-[15px]">{result.bigWord}</strong>
+      <span>{result.smallWord} · {result.auspicious ? "吉" : "凶"}</span>
+    </div>
+  );
 }
 
 const Input = memo(function Input({ label, value, onChange, placeholder, type = "text", required }: {
@@ -202,6 +225,19 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const calculatedLightHeight = data.use_light_size
     ? Number(data.light_h || 0)
     : Math.max(0, frameHeight - maxSectionValue(data.fw_top_str) - calculatedThreshold);
+  const legacyMidClearWidth = (() => {
+    const leafWidth = Number(data.mid_door_width || 0);
+    const gap = Number(data.middle_gap || 0);
+    if (!data.has_pillar) return Math.max(0, leafWidth * 2 + gap);
+    const pillarValues = sectionValues(data.pillar_width_str, 55);
+    const pillarSmall = Math.min(...pillarValues);
+    const pillarBig = Math.max(...pillarValues);
+    const frontPillarWidth = data.sel_nk === "内开" ? pillarBig : pillarSmall;
+    return Math.max(0, pillarSmall + leafWidth * 2 + gap * 3 - frontPillarWidth);
+  })();
+  const displayedMidClearWidth = Number(data.mid_clear_width || 0) > 0
+    ? Number(data.mid_clear_width)
+    : legacyMidClearWidth;
   const panelStyle = data.door_panel_style || "无造型";
   const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
   const applyProductName = (product_name: string) => {
@@ -625,13 +661,25 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="grid grid-cols-2 gap-3 mt-3">
             {data.use_light_size ? (
               <>
-                <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
-                <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
+                <div>
+                  <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
+                  <LubanInlineResult label="见光宽" value={calculatedLightWidth} />
+                </div>
+                <div>
+                  <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
+                  <LubanInlineResult label="见光高" value={calculatedLightHeight} />
+                </div>
               </>
             ) : (
               <>
-                <Input label="洞口总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-                <Input label="洞口总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+                <div>
+                  <Input label="洞口总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+                  <LubanInlineResult label="见光宽" value={calculatedLightWidth} />
+                </div>
+                <div>
+                  <Input label="洞口总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+                  <LubanInlineResult label="见光高" value={calculatedLightHeight} />
+                </div>
               </>
             )}
           </div>
@@ -639,7 +687,12 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="母门单扇宽" value={data.mother_door_width} type="number" onChange={(v) => set("mother_door_width", Number(v))} />
           )}
           {["四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
-            <Input label="中门单扇宽" value={data.mid_door_width} type="number" onChange={(v) => set("mid_door_width", Number(v))} />
+            <Input
+              label="中门内空宽"
+              value={displayedMidClearWidth}
+              type="number"
+              onChange={(v) => set("mid_clear_width", Number(v))}
+            />
           )}
         </Card>
 
@@ -758,7 +811,20 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="边框与下槛截面">
           <div className="mb-3">
-            <Select label="门框工艺" value={data.frame_process || "新工艺"} options={["新工艺", "老工艺"]} onChange={switchFrameProcess} />
+            <div className="mb-1 text-[13px] font-medium text-[#8E8E93]">门框工艺</div>
+            <div className="flex flex-wrap gap-6">
+              {["新工艺", "老工艺"].map((option) => (
+                <label key={option} className="flex cursor-pointer items-center gap-1.5 text-[13px] font-medium text-[#8E8E93]">
+                  <input
+                    type="radio"
+                    name="frame_process"
+                    checked={(data.frame_process || "新工艺") === option}
+                    onChange={() => switchFrameProcess(option)}
+                  />
+                  {option}
+                </label>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="左框宽 (小/大)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
@@ -879,8 +945,6 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       </div>}
       <LubanRulerModal
         open={lubanOpen}
-        width={calculatedLightWidth}
-        height={calculatedLightHeight}
         onClose={() => setLubanOpen(false)}
       />
     </div>

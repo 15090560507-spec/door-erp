@@ -54,6 +54,7 @@ export interface DoorFormData {
   light_h: number;
   mother_door_width: number;
   mid_door_width: number;
+  mid_clear_width: number;
   fw_left_str: string;
   fw_right_str: string;
   fw_top_str: string;
@@ -256,7 +257,7 @@ export const ORDER_TITLES = ["浙江西州将军铜门订货单", "杭州兰庭�
 export const HANDLES = ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
 export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
 export const FINGERPRINT_LOCKS = ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"];
-export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"];
+export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_STYLES = ["平板"];
@@ -290,7 +291,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   glass_line_inset: 20, glass_line_spacing: 20,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),
-  door_type: "单门", mother_door_width: 600, mid_door_width: 400,
+  door_type: "单门", mother_door_width: 600, mid_door_width: 400, mid_clear_width: 0,
   has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",
   sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400, qc_glass_style: "无线条",

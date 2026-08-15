@@ -10,10 +10,11 @@ import ezdxf
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
 
-from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS
+from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS, _resolve_mid_door_width
 from models import CADRequest
 from drawing import EzdxfDrawer, _build_hatch_library, _hatch_bounds, run_integrated_system
 from cad_preview import _collect_entity, render_dxf_svg
+from config import CONFIG
 
 
 PASSED = 0
@@ -1237,6 +1238,79 @@ def test_light_width_uses_pillar_inner_edges():
         )
 
 
+def test_middle_clear_width_input_and_new_hidden_hinges():
+    no_pillar_req = CADRequest(
+        door_type="四开门",
+        dw=2400,
+        middle_gap=4,
+        mid_clear_width=1000,
+        has_pillar=False,
+    )
+    check(
+        "no-pillar middle clear width resolves leaf width",
+        _resolve_mid_door_width(no_pillar_req, "四开门") == 498,
+        _resolve_mid_door_width(no_pillar_req, "四开门"),
+    )
+    info, checks, params = build_cad_params(no_pillar_req)
+    check("resolved no-pillar leaf width reaches CAD params", params["mid_door_width"] == 498, params)
+    message, buffer = run_integrated_system(info, checks, params)
+    check("no-pillar middle clear-width CAD generation returns buffer", buffer is not None, message)
+    if buffer:
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        dims = [
+            entity for entity in doc.modelspace().query("DIMENSION")
+            if entity.dxf.text == "中门内空宽 <>" and abs(float(entity.dxf.angle)) < 0.01
+        ]
+        measured = abs(float(dims[0].dxf.defpoint3.x) - float(dims[0].dxf.defpoint2.x)) if dims else 0
+        check("no-pillar middle clear dimension equals input", len(dims) == 1 and abs(measured - 1000) < 0.01, measured)
+
+    two_fixed_req = CADRequest(
+        door_type="两定两开",
+        dw=2400,
+        middle_gap=4,
+        mid_clear_width=820,
+        has_pillar=False,
+    )
+    check(
+        "two-fixed middle clear width resolves leaf width",
+        _resolve_mid_door_width(two_fixed_req, "两定两开") == 408,
+        _resolve_mid_door_width(two_fixed_req, "两定两开"),
+    )
+    _, _, two_fixed_params = build_cad_params(two_fixed_req)
+    check("resolved two-fixed leaf width reaches CAD params", two_fixed_params["mid_door_width"] == 408, two_fixed_params)
+
+    pillar_req = CADRequest(
+        door_type="四开门",
+        dw=2400,
+        middle_gap=2,
+        mid_clear_width=900,
+        has_pillar=True,
+        pillar_width_str="55/85",
+        sel_nk="内开",
+    )
+    check(
+        "pillar middle clear width resolves leaf width",
+        _resolve_mid_door_width(pillar_req, "四开门") == 462,
+        _resolve_mid_door_width(pillar_req, "四开门"),
+    )
+    info, checks, params = build_cad_params(pillar_req)
+    message, buffer = run_integrated_system(info, checks, params)
+    check("pillar middle clear-width CAD generation returns buffer", buffer is not None, message)
+    if buffer:
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        dims = [
+            entity for entity in doc.modelspace().query("DIMENSION")
+            if entity.dxf.text == "中门内空宽 <>" and abs(float(entity.dxf.angle)) < 0.01
+        ]
+        measured = abs(float(dims[0].dxf.defpoint3.x) - float(dims[0].dxf.defpoint2.x)) if dims else 0
+        check("pillar middle clear dimension equals input", len(dims) == 1 and abs(measured - 900) < 0.01, measured)
+
+    hinge_options = _DEFAULT_DROPDOWN_OPTIONS["HINGES"]
+    for hinge_name in ("半钢暗合页", "全钢暗合页"):
+        check(f"{hinge_name} is a default hinge option", hinge_name in hinge_options, hinge_options)
+        check(f"{hinge_name} maps to hidden hinge block", CONFIG.HINGE_TYPES.get(hinge_name) == "暗合页块", CONFIG.HINGE_TYPES)
+
+
 def test_new_defaults_fingerprint_and_transom_shape():
     default_req = CADRequest()
     check("default top gap is 3mm", default_req.top_gap == 3, default_req.top_gap)
@@ -1836,6 +1910,7 @@ if __name__ == "__main__":
     test_middle_door_dimension_text_and_transom_light_height()
     test_transom_pillar_lintel_label_and_view_gap()
     test_light_width_uses_pillar_inner_edges()
+    test_middle_clear_width_input_and_new_hidden_hinges()
     test_new_defaults_fingerprint_and_transom_shape()
     test_integrated_door_sections_and_dimensions()
     test_cad_preview_svg_renders()

@@ -205,6 +205,27 @@ async def startup_preload_template():
 
 
 # ===================== 辅助函数：表单参数组装 =====================
+def _resolve_mid_door_width(req: CADRequest, door_type: str) -> float:
+    """Convert the user-facing middle clear width to the legacy leaf width."""
+    clear_width = float(req.mid_clear_width or 0)
+    if door_type not in {"两定两开", "四开门"} or clear_width <= 0:
+        return float(req.mid_door_width)
+
+    middle_gap = max(float(req.middle_gap or 0), 0)
+    if req.has_pillar:
+        pillar_parts = parse_dim_str(req.pillar_width_str, 55, 85)
+        pillar_small = min(pillar_parts[0], pillar_parts[1])
+        pillar_big = max(pillar_parts[0], pillar_parts[1])
+        front_pillar_width = pillar_big if req.sel_nk == "内开" else pillar_small
+        leaf_width = (clear_width - pillar_small - 3 * middle_gap + front_pillar_width) / 2
+    else:
+        leaf_width = (clear_width - middle_gap) / 2
+
+    if leaf_width <= 0:
+        raise ValueError("中门内空宽过小，请检查中缝和立柱尺寸")
+    return leaf_width
+
+
 def build_cad_params(req: CADRequest):
     """
     将 CADRequest 组装为 info_map, check_map, draw_params
@@ -292,6 +313,7 @@ def build_cad_params(req: CADRequest):
     else:
         final_note = current_note
     door_type = "四开门" if req.door_type == "折叠四开门" else req.door_type
+    resolved_mid_door_width = _resolve_mid_door_width(req, door_type)
 
     # --- 框宽解析 ---
     fw_left_str = req.fw_left_str
@@ -405,7 +427,8 @@ def build_cad_params(req: CADRequest):
         "ST": req.st_val, "ZWS": req.fingerprint_lock, "HYSL": req.hysl, "QH": qh_val,
         "MSHD": mshd_val, "HHXD": req.hhxd, "BZ": final_note,
         "DOOR_TYPE": door_type, "MOTHER_DOOR_WIDTH": req.mother_door_width,
-        "MID_DOOR_WIDTH": req.mid_door_width, "PILLAR_WIDTH_STR": req.pillar_width_str,
+        "MID_DOOR_WIDTH": resolved_mid_door_width, "MID_CLEAR_WIDTH": req.mid_clear_width or 0,
+        "PILLAR_WIDTH_STR": req.pillar_width_str,
         "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
@@ -548,7 +571,8 @@ def build_cad_params(req: CADRequest):
         "outer_landscape_top_overlap": req.outer_landscape_top_overlap,
         "door_type": door_type,
         "mother_door_width": req.mother_door_width,
-        "mid_door_width": req.mid_door_width,
+        "mid_door_width": resolved_mid_door_width,
+        "mid_clear_width": req.mid_clear_width or 0,
         "pillar_width_str": req.pillar_width_str,
         "has_pillar": req.has_pillar,
         "kx": req.sel_kx, "nk": req.sel_nk,
@@ -1017,7 +1041,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
     "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
     "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
-    "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "北京暗合页", "明合页暗装", "明合页"],
+    "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页"],
     "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"],
     "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
     "THRESHOLD_OPTIONS": ["高低槛", "平底槛", "吊脚"],

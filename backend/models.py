@@ -36,6 +36,7 @@ class CADRequest(BaseModel):
     light_h: int = 0                    # 见光高
     mother_door_width: int = 600        # 母门单扇宽
     mid_door_width: int = 400           # 中门单扇宽
+    mid_clear_width: Optional[float] = None  # 中门内空宽；缺失时兼容旧 mid_door_width
     fw_left_str: str = "55/85"          # 左框宽 (小/大，按开向分配)
     fw_right_str: str = "55/62"         # 右框宽 (小/大，按开向分配)
     fw_top_str: str = "55/75"           # 上框宽 (小/大，按开向分配)

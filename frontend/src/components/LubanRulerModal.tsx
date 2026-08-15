@@ -1,40 +1,13 @@
 "use client";
 
-import { LUBAN_BIG_SECTIONS, LUBAN_CYCLE, lubanResult } from "@/lib/lubanRuler";
+import { LUBAN_BIG_SECTIONS, LUBAN_CYCLE, LUBAN_SMALL_SEGMENTS } from "@/lib/lubanRuler";
 
 interface Props {
   open: boolean;
-  width: number;
-  height: number;
   onClose: () => void;
 }
 
-function ResultCard({ label, value }: { label: string; value: number }) {
-  const result = lubanResult(value);
-  return (
-    <div className="rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[12px] text-[#8E8E93]">{label}</div>
-          <div className="mt-1 text-[24px] font-semibold tabular-nums text-[#1C1C1E]">{value > 0 ? `${value} mm` : "未计算"}</div>
-        </div>
-        {result && value > 0 && (
-          <div className={`min-w-24 rounded-md px-3 py-2 text-center ${result.auspicious ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF3B30]/10 text-[#C9342D]"}`}>
-            <div className="text-[22px] font-semibold">{result.bigWord}</div>
-            <div className="text-[12px]">{result.smallWord} · {result.auspicious ? "吉" : "凶"}</div>
-          </div>
-        )}
-      </div>
-      {result && value > 0 && (
-        <div className="mt-3 text-[11px] text-[#8E8E93]">
-          本周期位置 {result.cyclePosition.toFixed(1)}mm，对应区间 {result.intervalStart.toFixed(1)}-{result.intervalEnd.toFixed(1)}mm
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function LubanRulerModal({ open, width, height, onClose }: Props) {
+export default function LubanRulerModal({ open, onClose }: Props) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
@@ -46,18 +19,24 @@ export default function LubanRulerModal({ open, width, height, onClose }: Props)
           </div>
           <button type="button" onClick={onClose} aria-label="关闭" className="text-[22px] leading-none text-[#8E8E93] hover:text-[#1C1C1E]">×</button>
         </div>
-        <div className="space-y-4 p-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <ResultCard label="见光宽" value={width} />
-            <ResultCard label="见光高" value={height} />
-          </div>
-          <div>
-            <div className="mb-2 flex items-center justify-between text-[12px] text-[#8E8E93]"><span>一个完整周期</span><span>0-{LUBAN_CYCLE}mm</span></div>
-            <div className="grid grid-cols-8 overflow-hidden rounded-md border border-[#E5E5EA]">
-              {LUBAN_BIG_SECTIONS.map((section, index) => (
-                <div key={section.name} className={`min-w-0 px-1 py-3 text-center ${section.auspicious ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF3B30]/10 text-[#C9342D]"}`}>
-                  <div className="font-semibold">{section.name}</div>
-                  <div className="mt-1 text-[10px]">{(index * LUBAN_CYCLE / 8).toFixed(1)}-{((index + 1) * LUBAN_CYCLE / 8).toFixed(1)}</div>
+        <div className="p-5">
+          <div className="mb-2 flex items-center justify-between text-[12px] text-[#8E8E93]"><span>一个完整周期</span><span>0-{LUBAN_CYCLE}mm</span></div>
+          <div className="overflow-x-auto rounded-md border border-[#E5E5EA]">
+            <div className="grid min-w-[920px] grid-cols-8">
+              {LUBAN_BIG_SECTIONS.map((section, sectionIndex) => (
+                <div key={section.name} className="border-r border-[#E5E5EA] last:border-r-0">
+                  <div className={`px-2 py-2 text-center ${section.auspicious ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF3B30]/10 text-[#C9342D]"}`}>
+                    <div className="text-[18px] font-semibold">{section.name}</div>
+                    <div className="text-[10px]">{section.auspicious ? "吉" : "凶"}</div>
+                  </div>
+                  {LUBAN_SMALL_SEGMENTS.slice(sectionIndex * 4, sectionIndex * 4 + 4).map((segment) => (
+                    <div key={segment.smallWord} className="border-t border-[#E5E5EA] px-1.5 py-2 text-center">
+                      <div className="text-[13px] font-medium text-[#1C1C1E]">{segment.smallWord}</div>
+                      <div className="mt-0.5 whitespace-nowrap text-[9px] tabular-nums text-[#8E8E93]">
+                        {segment.intervalStart.toFixed(1)}-{segment.intervalEnd.toFixed(1)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
