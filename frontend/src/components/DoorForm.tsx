@@ -225,6 +225,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const calculatedLightHeight = data.use_light_size
     ? Number(data.light_h || 0)
     : Math.max(0, frameHeight - maxSectionValue(data.fw_top_str) - calculatedThreshold);
+  const showLubanInline = Boolean(data.use_light_size || data.mark_light_size);
   const legacyMidClearWidth = (() => {
     const leafWidth = Number(data.mid_door_width || 0);
     const gap = Number(data.middle_gap || 0);
@@ -663,22 +664,22 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <>
                 <div>
                   <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
-                  <LubanInlineResult label="见光宽" value={calculatedLightWidth} />
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} />}
                 </div>
                 <div>
                   <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
-                  <LubanInlineResult label="见光高" value={calculatedLightHeight} />
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} />}
                 </div>
               </>
             ) : (
               <>
                 <div>
                   <Input label="洞口总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-                  <LubanInlineResult label="见光宽" value={calculatedLightWidth} />
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} />}
                 </div>
                 <div>
                   <Input label="洞口总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
-                  <LubanInlineResult label="见光高" value={calculatedLightHeight} />
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} />}
                 </div>
               </>
             )}
@@ -945,6 +946,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       </div>}
       <LubanRulerModal
         open={lubanOpen}
+        width={calculatedLightWidth}
+        height={calculatedLightHeight}
         onClose={() => setLubanOpen(false)}
       />
     </div>
