@@ -234,16 +234,30 @@ def build_cad_params(req: CADRequest):
 
     overlap_front = req.overlap_front if req.overlap_front is not None else req.overlap
     overlap_back = req.overlap_back if req.overlap_back is not None else req.overlap
+    overlap_front_lr = req.overlap_front_lr if req.overlap_front_lr is not None else overlap_front
+    overlap_front_top = req.overlap_front_top if req.overlap_front_top is not None else overlap_front
+    overlap_back_lr = req.overlap_back_lr if req.overlap_back_lr is not None else overlap_back
+    overlap_back_top = req.overlap_back_top if req.overlap_back_top is not None else overlap_back
     current_note = req.sm
     frame_notes = []
 
     if req.has_outer:
         outer_w = req.trim_front_in
-        frame_notes.append(f"外门套宽/压墙/压框={outer_w}/{outer_w - overlap_front}/{overlap_front}mm")
+        frame_notes.append(
+            f"外门套宽/压墙/左右压框/上压框={outer_w}/{outer_w - overlap_front_lr}/"
+            f"{overlap_front_lr}/{overlap_front_top}mm"
+        )
     elif req.has_outer_portal:
         pillar_w = req.outer_portal_pillar_width
         header_h = req.outer_portal_header_height
         frame_notes.append(f"外门头门柱：门柱宽/门头高/压框={pillar_w}/{header_h}/{overlap_front}mm")
+    elif req.has_outer_portal2:
+        frame_notes.append(
+            "外门头门柱："
+            f"门柱宽/门头高/左右压框/上压框={req.outer_portal2_pillar_width}/"
+            f"{req.outer_portal2_header_height}/{req.outer_portal2_lr_overlap}/"
+            f"{req.outer_portal2_top_overlap}mm"
+        )
     elif req.has_outer_landscape:
         frame_notes.append(
             "外门套一门一景："
@@ -254,7 +268,10 @@ def build_cad_params(req: CADRequest):
 
     if req.has_inner:
         inner_w = req.trim_back_in
-        frame_notes.append(f"内门套宽/压墙/压框={inner_w}/{inner_w - overlap_back}/{overlap_back}mm")
+        frame_notes.append(
+            f"内门套宽/压墙/左右压框/上压框={inner_w}/{inner_w - overlap_back_lr}/"
+            f"{overlap_back_lr}/{overlap_back_top}mm"
+        )
 
     if req.handle_size.strip():
         handle_label, _handle_pair = _format_handle_size(req.handle_size)
@@ -462,7 +479,7 @@ def build_cad_params(req: CADRequest):
 
     # --- check_map ---
     out_mark = "√" if req.has_outer or req.has_outer_landscape else ""
-    outer_portal_mark = "√" if req.has_outer_portal else ""
+    outer_portal_mark = "√" if req.has_outer_portal or req.has_outer_portal2 else ""
     in_mark = "√" if req.has_inner else ""
     nk_mark = "√" if req.sel_nk == "内开" else ""
     wk_mark = "√" if req.sel_nk == "外开" else ""
@@ -500,9 +517,9 @@ def build_cad_params(req: CADRequest):
     }
 
     # --- draw_params ---
-    trim_f = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_landscape_left_width if req.has_outer_landscape else 0))
-    trim_f_right = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_landscape_right_width if req.has_outer_landscape else 0))
-    trim_f_top = req.trim_front_in if req.has_outer else (req.outer_portal_header_height if req.has_outer_portal else (req.outer_landscape_top_height if req.has_outer_landscape else 0))
+    trim_f = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_portal2_pillar_width if req.has_outer_portal2 else (req.outer_landscape_left_width if req.has_outer_landscape else 0)))
+    trim_f_right = req.trim_front_in if req.has_outer else (req.outer_portal_pillar_width if req.has_outer_portal else (req.outer_portal2_pillar_width if req.has_outer_portal2 else (req.outer_landscape_right_width if req.has_outer_landscape else 0)))
+    trim_f_top = req.trim_front_in if req.has_outer else (req.outer_portal_header_height if req.has_outer_portal else (req.outer_portal2_header_height if req.has_outer_portal2 else (req.outer_landscape_top_height if req.has_outer_landscape else 0)))
     trim_b = req.trim_back_in if req.has_inner else 0
 
     draw_params = {
@@ -515,10 +532,17 @@ def build_cad_params(req: CADRequest):
         "dj_height": req.dj_height,
         "trim_front": trim_f, "trim_front_right": trim_f_right, "trim_front_top": trim_f_top, "trim_back": trim_b, "trim_back_top": trim_b,
         "has_outer_portal": req.has_outer_portal,
+        "has_outer_portal2": req.has_outer_portal2,
         "has_outer_landscape": req.has_outer_landscape,
         "overlap": req.overlap,
         "overlap_front": overlap_front,
         "overlap_back": overlap_back,
+        "overlap_front_lr": overlap_front_lr,
+        "overlap_front_top": overlap_front_top,
+        "overlap_back_lr": overlap_back_lr,
+        "overlap_back_top": overlap_back_top,
+        "outer_portal2_lr_overlap": req.outer_portal2_lr_overlap,
+        "outer_portal2_top_overlap": req.outer_portal2_top_overlap,
         "outer_landscape_left_overlap": req.outer_landscape_left_overlap,
         "outer_landscape_right_overlap": req.outer_landscape_right_overlap,
         "outer_landscape_top_overlap": req.outer_landscape_top_overlap,
@@ -567,6 +591,8 @@ def build_cad_params(req: CADRequest):
         "panel_fill_b": req.panel_fill_b,
         "panel_fill_c": req.panel_fill_c,
         "panel_disc_radius": req.panel_disc_radius,
+        "panel_horizontal_a_height": req.panel_horizontal_a_height,
+        "panel_horizontal_b_height": req.panel_horizontal_b_height,
         "panel_b2_glass_style": req.panel_b2_glass_style,
         "back_panel_lock_offset_x": req.back_panel_lock_offset_x,
         "back_panel_hinge_offset_y": req.back_panel_hinge_offset_y,
@@ -580,6 +606,8 @@ def build_cad_params(req: CADRequest):
         "back_panel_fill_b": req.back_panel_fill_b,
         "back_panel_fill_c": req.back_panel_fill_c,
         "back_panel_disc_radius": req.back_panel_disc_radius,
+        "back_panel_horizontal_a_height": req.back_panel_horizontal_a_height,
+        "back_panel_horizontal_b_height": req.back_panel_horizontal_b_height,
         "back_panel_b2_glass_style": req.back_panel_b2_glass_style,
         "child_panel_lock_offset_x": req.child_panel_lock_offset_x,
         "child_panel_hinge_offset_y": req.child_panel_hinge_offset_y,
@@ -593,6 +621,8 @@ def build_cad_params(req: CADRequest):
         "child_panel_fill_b": req.child_panel_fill_b,
         "child_panel_fill_c": req.child_panel_fill_c,
         "child_panel_disc_radius": req.child_panel_disc_radius,
+        "child_panel_horizontal_a_height": req.child_panel_horizontal_a_height,
+        "child_panel_horizontal_b_height": req.child_panel_horizontal_b_height,
         "child_panel_b2_glass_style": req.child_panel_b2_glass_style,
         "glass_line_inset": req.glass_line_inset,
         "glass_line_spacing": req.glass_line_spacing,

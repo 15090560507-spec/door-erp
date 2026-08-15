@@ -808,7 +808,7 @@ def test_frame_defaults_and_single_back_mirror():
 
     req = CADRequest(
         door_type="单门",
-        fw_left_str="55/62",
+        fw_left_str="50/62",
         fw_right_str="55/85",
         fw_top_str="55/75",
         th_str="55/75",
@@ -829,15 +829,102 @@ def test_frame_defaults_and_single_back_mirror():
     for entity in frame_polys:
         x1, x2, y1, y2 = poly_bounds(entity)
         if x1 > 1500 and abs(y1) < 0.01 and abs(y2 - req.dh) < 0.01:
-            if abs((x2 - x1) - 85) < 0.01:
+            if abs((x2 - x1) - 55) < 0.01:
                 back_left_frames.append(entity)
-            if abs((x2 - x1) - 62) < 0.01:
+            if abs((x2 - x1) - 50) < 0.01:
                 back_right_frames.append(entity)
     check(
-        "single back view mirrors front left/right frame widths",
+        "single back view mirrors back-side left/right frame widths",
         len(back_left_frames) >= 1 and len(back_right_frames) >= 1,
-        f"back 85-width frames: {len(back_left_frames)}, back 62-width frames: {len(back_right_frames)}",
+        f"back 55-width frames: {len(back_left_frames)}, back 50-width frames: {len(back_right_frames)}",
     )
+
+
+def test_large_board_horizontal_panels_and_outer_portal2():
+    large_req = CADRequest(
+        door_panel_style="大板布局",
+        panel_fill_a="竖条",
+        back_door_panel_style="大板布局",
+        back_panel_fill_a="钱币款",
+        fingerprint_lock="无",
+        zmls="无",
+        fmls="无",
+    )
+    large_info, large_checks, large_params = build_cad_params(large_req)
+    large_msg, large_buffer = run_integrated_system(large_info, large_checks, large_params)
+    check("large-board panel CAD generation returns buffer", large_buffer is not None, large_msg)
+    if large_buffer:
+        large_doc = ezdxf.read(io.StringIO(large_buffer.getvalue()))
+        panel_hatches = [
+            entity for entity in large_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        check("large-board panel fills the full panel in both views", len(panel_hatches) >= 2, len(panel_hatches))
+
+    horizontal_req = CADRequest(
+        dh=2400,
+        door_panel_style="三横式",
+        panel_horizontal_a_height=1000,
+        panel_horizontal_b_height=300,
+        panel_fill_a="竖条",
+        panel_fill_b="钱币款",
+        panel_fill_c="四方纳福",
+        fingerprint_lock="无",
+        zmls="无",
+        fmls="无",
+    )
+    horizontal_info, horizontal_checks, horizontal_params = build_cad_params(horizontal_req)
+    check(
+        "horizontal panel heights pass to drawing",
+        horizontal_params["panel_horizontal_a_height"] == 1000
+        and horizontal_params["panel_horizontal_b_height"] == 300,
+        horizontal_params,
+    )
+    horizontal_msg, horizontal_buffer = run_integrated_system(horizontal_info, horizontal_checks, horizontal_params)
+    check("three-horizontal panel CAD generation returns buffer", horizontal_buffer is not None, horizontal_msg)
+
+    invalid_req = horizontal_req.model_copy(update={
+        "panel_horizontal_a_height": 2000,
+        "panel_horizontal_b_height": 500,
+    })
+    invalid_info, invalid_checks, invalid_params = build_cad_params(invalid_req)
+    invalid_msg, invalid_buffer = run_integrated_system(invalid_info, invalid_checks, invalid_params)
+    check(
+        "invalid horizontal panel heights block CAD generation with a clear message",
+        invalid_buffer is None and "分区高度无效" in invalid_msg,
+        invalid_msg,
+    )
+
+    portal_req = CADRequest(
+        has_outer=False,
+        has_outer_portal=False,
+        has_outer_landscape=False,
+        has_outer_portal2=True,
+        outer_portal2_pillar_width=180,
+        outer_portal2_header_height=260,
+        outer_portal2_lr_overlap=25,
+        outer_portal2_top_overlap=30,
+        fingerprint_lock="无",
+    )
+    portal_info, portal_checks, portal_params = build_cad_params(portal_req)
+    check("outer portal2 is marked as a portal", portal_checks["OUTER_PORTAL"] == "√", portal_checks)
+    check(
+        "outer portal2 preserves independent geometry settings",
+        portal_params["has_outer_portal2"] is True
+        and portal_params["trim_front"] == 180
+        and portal_params["trim_front_right"] == 180
+        and portal_params["trim_front_top"] == 260
+        and portal_params["outer_portal2_lr_overlap"] == 25
+        and portal_params["outer_portal2_top_overlap"] == 30,
+        portal_params,
+    )
+    check(
+        "outer portal2 note hides the form-only number suffix",
+        "外门头门柱：" in portal_info["BZ"] and "外门头门柱2" not in portal_info["BZ"],
+        portal_info["BZ"],
+    )
+    portal_msg, portal_buffer = run_integrated_system(portal_info, portal_checks, portal_params)
+    check("outer portal2 CAD generation returns buffer", portal_buffer is not None, portal_msg)
 
 
 def test_dimension_spacing_and_trim_width_text():
@@ -1743,6 +1830,7 @@ if __name__ == "__main__":
     test_double_door_sized_handles_draw_on_front_only()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
+    test_large_board_horizontal_panels_and_outer_portal2()
     test_dimension_spacing_and_trim_width_text()
     test_outer_portal_draws_separate_rectangles_and_header_dimension()
     test_middle_door_dimension_text_and_transom_light_height()

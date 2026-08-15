@@ -39,6 +39,9 @@ class CADRequest(BaseModel):
     fw_left_str: str = "55/85"          # 左框宽 (小/大，按开向分配)
     fw_right_str: str = "55/62"         # 右框宽 (小/大，按开向分配)
     fw_top_str: str = "55/75"           # 上框宽 (小/大，按开向分配)
+    frame_process: str = "新工艺"        # 新工艺/老工艺
+    new_frame_settings: Dict[str, Any] = Field(default_factory=dict)
+    old_frame_settings: Dict[str, Any] = Field(default_factory=dict)
     threshold_type: str = "高低槛"      # 下槛方案
     th_str: str = "55/75"               # 下槛高度 (低/高)
     pdk: str = "60"                     # 平底槛厚度
@@ -53,14 +56,23 @@ class CADRequest(BaseModel):
     hysl: str = "3个/扇"                # 合页数量
     has_outer: bool = True              # 外包套
     has_outer_portal: bool = False      # 外门头门柱（与外包套互斥）
+    has_outer_portal2: bool = False     # 外门头门柱2（门头位于两柱之间）
     has_outer_landscape: bool = False   # 外门套一门一景（与外包套、门头门柱互斥）
     has_inner: bool = False             # 内包套
     overlap: int = 20                   # 压框
     overlap_front: int = 20             # 正面包套压框
     overlap_back: int = 20              # 反面包套压框
+    overlap_front_lr: Optional[int] = None  # 外包套左右压框；空值回退 overlap_front
+    overlap_front_top: Optional[int] = None # 外包套上压框；空值回退 overlap_front
+    overlap_back_lr: Optional[int] = None   # 内包套左右压框；空值回退 overlap_back
+    overlap_back_top: Optional[int] = None  # 内包套上压框；空值回退 overlap_back
     trim_front_in: int = 160            # 外包套宽
     outer_portal_pillar_width: int = 160 # 外门柱宽度
     outer_portal_header_height: int = 220 # 外门头高度
+    outer_portal2_pillar_width: int = 160 # 外门头门柱2门柱宽度
+    outer_portal2_header_height: int = 220 # 外门头门柱2门头高度
+    outer_portal2_lr_overlap: int = 20     # 外门头门柱2左右压框
+    outer_portal2_top_overlap: int = 20    # 外门头门柱2上压框
     outer_landscape_left_width: int = 160  # 一门一景左景宽
     outer_landscape_right_width: int = 160 # 一门一景右景宽
     outer_landscape_top_height: int = 160  # 一门一景上景高
@@ -103,6 +115,8 @@ class CADRequest(BaseModel):
     panel_fill_b: str = ""              # B区填充
     panel_fill_c: str = ""              # C区填充
     panel_disc_radius: int = 120        # 圆盘造型半径
+    panel_horizontal_a_height: int = 1000 # 两横/三横 A 区高度
+    panel_horizontal_b_height: int = 300  # 三横 B 区高度
     panel_b2_glass_style: str = "无线条" # 正面 H/H+ B2 玻璃线条
     back_panel_lock_offset_x: int = 180
     back_panel_hinge_offset_y: int = 100
@@ -116,6 +130,8 @@ class CADRequest(BaseModel):
     back_panel_fill_b: str = ""
     back_panel_fill_c: str = ""
     back_panel_disc_radius: int = 120
+    back_panel_horizontal_a_height: int = 1000
+    back_panel_horizontal_b_height: int = 300
     back_panel_b2_glass_style: str = "无线条"
     child_panel_lock_offset_x: int = 180
     child_panel_hinge_offset_y: int = 100
@@ -129,6 +145,8 @@ class CADRequest(BaseModel):
     child_panel_fill_b: str = ""
     child_panel_fill_c: str = ""
     child_panel_disc_radius: int = 120
+    child_panel_horizontal_a_height: int = 1000
+    child_panel_horizontal_b_height: int = 300
     child_panel_b2_glass_style: str = "无线条"
     glass_line_inset: int = 20          # 玻璃线条距区域边界
     glass_line_spacing: int = 20        # 双线及回纹间距

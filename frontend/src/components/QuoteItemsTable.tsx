@@ -22,6 +22,10 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const unitOptionsId = useId();
+  const totalAmount = items.reduce((sum, item) => {
+    const amount = Number(quoteItemAmountText(item));
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -237,6 +241,13 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-[#1C1C1E] bg-[#F2F2F7]/70">
+            <td colSpan={7} className="px-3 py-2 text-right text-[13px] font-semibold text-[#1C1C1E]">总价</td>
+            <td className="px-4 py-2 text-right text-[14px] font-semibold tabular-nums text-[#1C1C1E]">{totalAmount}</td>
+            <td />
+          </tr>
+        </tfoot>
       </table>
       <button
         type="button"

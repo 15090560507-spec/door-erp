@@ -97,6 +97,20 @@ class MultiDoorQuoteTests(unittest.TestCase):
         self.assertEqual([item["groupIndex"] for item in loaded["items"]], [0, 0, 1])
         self.assertEqual(loaded["doorGroups"][0]["items"][1]["openDirection"], "")
 
+    def test_quote_list_includes_door_type_size_summary(self):
+        manager = self.quote_manager()
+        manager.create(_multi_door_quote())
+
+        summaries = manager.get_all(limit=50)
+
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0]["doorSummary"], "子母门 0.8纯铜 紫荆花款 竖条款")
+        self.assertEqual(summaries[0]["doorWidth"], 1600)
+        self.assertEqual(summaries[0]["doorHeight"], 2600)
+        self.assertEqual(summaries[0]["doorCount"], 2)
+        self.assertNotIn("items", summaries[0])
+        self.assertNotIn("doorGroups", summaries[0])
+
     def test_legacy_quote_is_wrapped_as_one_door_group(self):
         manager = self.quote_manager()
         created = manager.create({

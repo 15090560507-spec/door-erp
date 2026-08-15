@@ -57,6 +57,9 @@ export interface DoorFormData {
   fw_left_str: string;
   fw_right_str: string;
   fw_top_str: string;
+  frame_process: string;
+  new_frame_settings: Record<string, string | number | boolean>;
+  old_frame_settings: Record<string, string | number | boolean>;
   threshold_type: string;
   th_str: string;
   pdk: string;
@@ -71,14 +74,23 @@ export interface DoorFormData {
   hysl: string;
   has_outer: boolean;
   has_outer_portal: boolean;
+  has_outer_portal2: boolean;
   has_outer_landscape: boolean;
   has_inner: boolean;
   overlap: number;
   overlap_front: number;
   overlap_back: number;
+  overlap_front_lr: number;
+  overlap_front_top: number;
+  overlap_back_lr: number;
+  overlap_back_top: number;
   trim_front_in: number;
   outer_portal_pillar_width: number;
   outer_portal_header_height: number;
+  outer_portal2_pillar_width: number;
+  outer_portal2_header_height: number;
+  outer_portal2_lr_overlap: number;
+  outer_portal2_top_overlap: number;
   outer_landscape_left_width: number;
   outer_landscape_right_width: number;
   outer_landscape_top_height: number;
@@ -121,6 +133,8 @@ export interface DoorFormData {
   panel_fill_b: string;
   panel_fill_c: string;
   panel_disc_radius: number;
+  panel_horizontal_a_height: number;
+  panel_horizontal_b_height: number;
   panel_b2_glass_style: string;
   back_panel_lock_offset_x: number;
   back_panel_hinge_offset_y: number;
@@ -134,6 +148,8 @@ export interface DoorFormData {
   back_panel_fill_b: string;
   back_panel_fill_c: string;
   back_panel_disc_radius: number;
+  back_panel_horizontal_a_height: number;
+  back_panel_horizontal_b_height: number;
   back_panel_b2_glass_style: string;
   child_panel_lock_offset_x: number;
   child_panel_hinge_offset_y: number;
@@ -147,6 +163,8 @@ export interface DoorFormData {
   child_panel_fill_b: string;
   child_panel_fill_c: string;
   child_panel_disc_radius: number;
+  child_panel_horizontal_a_height: number;
+  child_panel_horizontal_b_height: number;
   child_panel_b2_glass_style: string;
   glass_line_inset: number;
   glass_line_spacing: number;
@@ -242,7 +260,7 @@ export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_STYLES = ["平板"];
-export const DOOR_PANEL_STYLES = ["无造型", "两列式布局", "三列式布局", "H型布局", "H+型布局", "圆盘造型"];
+export const DOOR_PANEL_STYLES = ["无造型", "大板布局", "两列式布局", "三列式布局", "两横式", "三横式", "H型布局", "H+型布局", "圆盘造型"];
 export const DOOR_PANEL_PRESETS = ["", "紫荆花款", "钱币款", "竖条款", "流星雨款", "四方纳福款"];
 export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "四方纳福", "竖条", "斜实虚", "正实虚"];
 export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "双边框+花件", "六格线条", "八格线条"];
@@ -257,15 +275,18 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
   panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
-  panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120, panel_b2_glass_style: "无线条",
+  panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120,
+  panel_horizontal_a_height: 1000, panel_horizontal_b_height: 300, panel_b2_glass_style: "无线条",
   back_panel_lock_offset_x: 180, back_panel_hinge_offset_y: 100,
   back_panel_middle_offset_z: 180, back_panel_plus_offset_a: 350, back_panel_plus_offset_b: 100,
   back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100,
-  back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120, back_panel_b2_glass_style: "无线条",
+  back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120,
+  back_panel_horizontal_a_height: 1000, back_panel_horizontal_b_height: 300, back_panel_b2_glass_style: "无线条",
   child_panel_lock_offset_x: 180, child_panel_hinge_offset_y: 100,
   child_panel_middle_offset_z: 180, child_panel_plus_offset_a: 350, child_panel_plus_offset_b: 100,
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
-  child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120, child_panel_b2_glass_style: "无线条",
+  child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
+  child_panel_horizontal_a_height: 1000, child_panel_horizontal_b_height: 300, child_panel_b2_glass_style: "无线条",
   glass_line_inset: 20, glass_line_spacing: 20,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),
@@ -278,13 +299,17 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,
   integrated_glass_height: 500,
   has_mm: false, mm_height: 200,
-  has_outer: true, has_outer_portal: false, has_outer_landscape: false, trim_front_in: 160,
+  has_outer: true, has_outer_portal: false, has_outer_portal2: false, has_outer_landscape: false, trim_front_in: 160,
   outer_portal_pillar_width: 160, outer_portal_header_height: 220,
+  outer_portal2_pillar_width: 160, outer_portal2_header_height: 220,
+  outer_portal2_lr_overlap: 20, outer_portal2_top_overlap: 20,
   outer_landscape_left_width: 160, outer_landscape_right_width: 160, outer_landscape_top_height: 160,
   outer_landscape_left_overlap: 20, outer_landscape_right_overlap: 20, outer_landscape_top_overlap: 20,
   has_inner: false, trim_back_in: 140,
   dw: 900, dh: 2100, overlap: 20, overlap_front: 20, overlap_back: 20,
+  overlap_front_lr: 20, overlap_front_top: 20, overlap_back_lr: 20, overlap_back_top: 20,
   fw_left_str: "55/85", fw_right_str: "55/62", fw_top_str: "55/75",
+  frame_process: "新工艺", new_frame_settings: {}, old_frame_settings: {},
   th_str: "55/75", threshold_type: "高低槛", has_dj: false, dj_height: 0,
   left_gap: 2, right_gap: 2, top_gap: 3, bottom_gap: 5, middle_gap: 2,
   enable_occlusion: false,

@@ -202,6 +202,19 @@ class QuoteDatabaseManager:
             result = []
             for q in quotes_sorted[:limit]:
                 summary = {k: v for k, v in q.items() if k not in ("items", "doorGroups")}
+                groups = q.get("doorGroups") or [{"items": q.get("items") or []}]
+                main_items = []
+                for group in groups:
+                    item = next((row for row in group.get("items", []) if str(row.get("productName", "")).strip()), None)
+                    if item:
+                        main_items.append(item)
+                first_item = main_items[0] if main_items else {}
+                summary.update({
+                    "doorSummary": first_item.get("productName", ""),
+                    "doorWidth": first_item.get("width"),
+                    "doorHeight": first_item.get("height"),
+                    "doorCount": len(groups),
+                })
                 result.append(summary)
             return result
 

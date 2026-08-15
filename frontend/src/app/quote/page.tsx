@@ -305,7 +305,7 @@ export default function QuotePage() {
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
   const [doorGroups, setDoorGroups] = useState<QuoteDoorGroup[]>([createQuoteGroup()]);
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
-  const [rememberQuote, setRememberQuote] = useState(false);
+  const [rememberQuote, setRememberQuote] = useState(true);
 
   // Modal state
   const [accessoryOpen, setAccessoryOpen] = useState(false);
@@ -639,7 +639,7 @@ export default function QuotePage() {
     setQuoteDate(localDateYmd());
     setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
     setDoorGroups([createQuoteGroup()]);
-    setRememberQuote(false);
+    setRememberQuote(true);
     setLastQuoteId(null);
     setStatus("表单已清空");
   }

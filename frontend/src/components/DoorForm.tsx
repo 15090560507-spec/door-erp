@@ -9,12 +9,21 @@ import {
   TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS, GLASS_LINE_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
+import LubanRulerModal from "@/components/LubanRulerModal";
 
 interface Props {
   data: DoorFormData;
   onChange: (data: DoorFormData) => void;
   readOnly?: boolean;
   children?: React.ReactNode;
+}
+
+function maxSectionValue(value: string | number, fallback = 0) {
+  const values = String(value ?? "")
+    .split("/")
+    .map((part) => Number(part.trim()))
+    .filter(Number.isFinite);
+  return values.length ? Math.max(...values) : fallback;
 }
 
 const Input = memo(function Input({ label, value, onChange, placeholder, type = "text", required }: {
@@ -81,6 +90,7 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
 }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
+  const [filtering, setFiltering] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -94,7 +104,9 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filtered = options.filter((o) => o.toLowerCase().includes(inputValue.toLowerCase()));
+  const filtered = filtering
+    ? options.filter((o) => o.toLowerCase().includes(inputValue.toLowerCase()))
+    : options;
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -105,15 +117,16 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
         ref={inputRef}
         type="text"
         value={inputValue}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => { setInputValue(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => { setFiltering(false); setOpen(true); }}
+        onClick={() => { setFiltering(false); setOpen(true); }}
+        onChange={(e) => { setInputValue(e.target.value); onChange(e.target.value); setFiltering(true); setOpen(true); }}
         onKeyDown={(e) => { if (e.key === "Escape" || e.key === "Enter") { setOpen(false); inputRef.current?.blur(); } }}
         className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
       />
       {open && filtered.length > 0 && (
         <ul className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-[#C7C7CC] rounded-md shadow-lg">
           {filtered.map((o) => (
-            <li key={o} onMouseDown={(e) => { e.preventDefault(); setInputValue(o); onChange(o); setOpen(false); }}
+            <li key={o} onMouseDown={(e) => { e.preventDefault(); setInputValue(o); onChange(o); setFiltering(false); setOpen(false); }}
               className="px-3 py-2 text-sm cursor-pointer hover:bg-[#F2F2F7] transition-colors">
               {o}
             </li>
@@ -126,6 +139,7 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
 
 const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: Props) {
   const [opts, setOpts] = useState<Record<string, string[]> | null>(null);
+  const [lubanOpen, setLubanOpen] = useState(false);
 
   useEffect(() => {
     loadDropdownOptions().then(setOpts);
@@ -148,6 +162,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     ? Number(data.trim_front_in || 0)
     : data.has_outer_portal
       ? Number(data.outer_portal_pillar_width || 0)
+      : data.has_outer_portal2
+        ? Number(data.outer_portal2_pillar_width || 0)
       : data.has_outer_landscape
         ? Number(data.outer_landscape_left_width || 0)
         : 0;
@@ -155,6 +171,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     ? Number(data.trim_front_in || 0)
     : data.has_outer_portal
       ? Number(data.outer_portal_pillar_width || 0)
+      : data.has_outer_portal2
+        ? Number(data.outer_portal2_pillar_width || 0)
       : data.has_outer_landscape
         ? Number(data.outer_landscape_right_width || 0)
         : 0;
@@ -162,6 +180,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     ? Number(data.trim_front_in || 0)
     : data.has_outer_portal
       ? Number(data.outer_portal_header_height || 0)
+      : data.has_outer_portal2
+        ? Number(data.outer_portal2_header_height || 0)
       : data.has_outer_landscape
         ? Number(data.outer_landscape_top_height || 0)
         : 0;
@@ -171,6 +191,17 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const frameArea = frameWidth > 0 && frameHeight > 0 ? frameWidth * frameHeight / 1000000 : 0;
   const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
   const trimArea = Math.max(0, outerArea - frameArea);
+  const calculatedLightWidth = data.use_light_size
+    ? Number(data.light_w || 0)
+    : Math.max(0, frameWidth - maxSectionValue(data.fw_left_str) - maxSectionValue(data.fw_right_str));
+  const calculatedThreshold = data.threshold_type === "吊脚"
+    ? 0
+    : data.threshold_type === "平底槛"
+      ? Number(data.pdk || 0)
+      : maxSectionValue(data.th_str);
+  const calculatedLightHeight = data.use_light_size
+    ? Number(data.light_h || 0)
+    : Math.max(0, frameHeight - maxSectionValue(data.fw_top_str) - calculatedThreshold);
   const panelStyle = data.door_panel_style || "无造型";
   const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
   const applyProductName = (product_name: string) => {
@@ -200,6 +231,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const childPanelStyles = ["", ...DOOR_PANEL_STYLES];
   const usesOffsetX = (style: string) => ["两列式布局", "H型布局", "H+型布局"].includes(style);
   const usesThreeColumnPanel = (style: string) => style === "三列式布局";
+  const usesHorizontalPanel = (style: string) => ["两横式", "三横式"].includes(style);
   const usesHPanel = (style: string) => ["H型布局", "H+型布局"].includes(style);
   const usesHPlusPanel = (style: string) => style === "H+型布局";
   const usesDiscPanel = (style: string) => style === "圆盘造型";
@@ -247,6 +279,17 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     });
   };
   const applyFrameDefaults = (next: DoorFormData): DoorFormData => {
+    if (next.frame_process === "老工艺") {
+      return {
+        ...next,
+        fw_left_str: "55/70",
+        fw_right_str: "55/70",
+        fw_top_str: "55/70",
+        th_str: "55/70",
+        threshold_type: "高低槛",
+        has_dj: false,
+      };
+    }
     if (next.door_type === "单门") {
       const rightOpen = next.sel_kx !== "左开";
       return {
@@ -262,6 +305,27 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     }
     return next;
   };
+  const frameSettingKeys = [
+    "fw_left_str", "fw_right_str", "fw_top_str", "threshold_type", "th_str", "pdk", "has_dj", "dj_height",
+  ] as const;
+  const snapshotFrameSettings = () => Object.fromEntries(frameSettingKeys.map((key) => [key, data[key]]));
+  const switchFrameProcess = (nextProcess: string) => {
+    if (nextProcess === data.frame_process) return;
+    const currentStoreKey = data.frame_process === "老工艺" ? "old_frame_settings" : "new_frame_settings";
+    const targetStoreKey = nextProcess === "老工艺" ? "old_frame_settings" : "new_frame_settings";
+    const savedTarget = data[targetStoreKey] || {};
+    let next: DoorFormData = {
+      ...data,
+      [currentStoreKey]: snapshotFrameSettings(),
+      frame_process: nextProcess,
+    };
+    if (Object.keys(savedTarget).length) {
+      next = { ...next, ...savedTarget } as DoorFormData;
+    } else {
+      next = applyFrameDefaults(next);
+    }
+    onChange(next);
+  };
 
   const renderPanelControls = ({
     title,
@@ -276,6 +340,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey,
     threeBKey,
     threeCKey,
+    horizontalAKey,
+    horizontalBKey,
     fillAKey,
     fillBKey,
     fillCKey,
@@ -294,6 +360,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     threeAKey: keyof DoorFormData;
     threeBKey: keyof DoorFormData;
     threeCKey: keyof DoorFormData;
+    horizontalAKey: keyof DoorFormData;
+    horizontalBKey: keyof DoorFormData;
     fillAKey: keyof DoorFormData;
     fillBKey: keyof DoorFormData;
     fillCKey: keyof DoorFormData;
@@ -338,7 +406,25 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             />
           </>
         )}
-        {(style === "两列式布局" || style === "三列式布局") && (
+        {usesHorizontalPanel(style) && (
+          <>
+            <Input
+              label={`${title}A区高度(mm)`}
+              value={(data[horizontalAKey] as number) ?? 1000}
+              type="number"
+              onChange={(v) => setField(horizontalAKey, Number(v))}
+            />
+            {style === "三横式" && (
+              <Input
+                label={`${title}B区高度(mm)`}
+                value={(data[horizontalBKey] as number) ?? 300}
+                type="number"
+                onChange={(v) => setField(horizontalBKey, Number(v))}
+              />
+            )}
+          </>
+        )}
+        {(["大板布局", "两列式布局", "三列式布局", "两横式", "三横式"].includes(style)) && (
           <>
             <Select
               label={`${title}A区填充`}
@@ -346,13 +432,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               options={PANEL_FILL_OPTIONS}
               onChange={(v) => setField(fillAKey, v)}
             />
-            <Select
-              label={`${title}B区填充`}
-              value={(data[fillBKey] as string) || ""}
-              options={PANEL_FILL_OPTIONS}
-              onChange={(v) => setField(fillBKey, v)}
-            />
-            {style === "三列式布局" && (
+            {style !== "大板布局" && <Select
+                label={`${title}B区填充`}
+                value={(data[fillBKey] as string) || ""}
+                options={PANEL_FILL_OPTIONS}
+                onChange={(v) => setField(fillBKey, v)}
+              />}
+            {(style === "三列式布局" || style === "三横式") && (
               <Select
                 label={`${title}C区填充`}
                 value={(data[fillCKey] as string) || ""}
@@ -419,9 +505,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         <Card title="订单基础信息">
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="订货单抬头" required value={data.order_title} options={ORDER_TITLES} onChange={(v) => set("order_title", v)} />
+            <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
             <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
             <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
-            <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
             <Input label="交期" type="date" value={(data.dhrq || "").replace(/\./g, "-")} onChange={(v) => set("dhrq", v)} />
             <Input label="数量(樘)" required value={data.sl} onChange={(v) => set("sl", v)} />
             <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
@@ -432,13 +518,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="产品名称" required value={data.product_name} options={PRODUCT_NAMES} onChange={applyProductName} />
             <Combobox label="材料" value={data.material} options={o("MATERIAL_THICKNESSES", MATERIAL_THICKNESSES)} onChange={(v) => set("material", v)} />
-            <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
             {!isSimpleProduct && <>
               <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
               <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
+              <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
               <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
               <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
             </>}
+            {isSimpleProduct && <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />}
           </div>
           {!isSimpleProduct && <div className="mt-3 flex gap-6">
             {o("BZ_OPTIONS", BZ_OPTIONS).map((opt) => (
@@ -527,6 +614,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             {!data.use_light_size && (
               <Checkbox label="标注见光尺寸" checked={data.mark_light_size} onChange={(v) => set("mark_light_size", v)} />
             )}
+            <button
+              type="button"
+              onClick={() => setLubanOpen(true)}
+              className="rounded-md border border-[#007AFF]/30 bg-[#007AFF]/5 px-3 py-1.5 text-[12px] font-medium text-[#007AFF] hover:bg-[#007AFF]/10"
+            >
+              鲁班尺
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             {data.use_light_size ? (
@@ -600,6 +694,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   threeAKey: "panel_three_col_a",
                   threeBKey: "panel_three_col_b",
                   threeCKey: "panel_three_col_c",
+                  horizontalAKey: "panel_horizontal_a_height",
+                  horizontalBKey: "panel_horizontal_b_height",
                   fillAKey: "panel_fill_a",
                   fillBKey: "panel_fill_b",
                   fillCKey: "panel_fill_c",
@@ -619,6 +715,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   threeAKey: "back_panel_three_col_a",
                   threeBKey: "back_panel_three_col_b",
                   threeCKey: "back_panel_three_col_c",
+                  horizontalAKey: "back_panel_horizontal_a_height",
+                  horizontalBKey: "back_panel_horizontal_b_height",
                   fillAKey: "back_panel_fill_a",
                   fillBKey: "back_panel_fill_b",
                   fillCKey: "back_panel_fill_c",
@@ -638,6 +736,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   threeAKey: "child_panel_three_col_a",
                   threeBKey: "child_panel_three_col_b",
                   threeCKey: "child_panel_three_col_c",
+                  horizontalAKey: "child_panel_horizontal_a_height",
+                  horizontalBKey: "child_panel_horizontal_b_height",
                   fillAKey: "child_panel_fill_a",
                   fillBKey: "child_panel_fill_b",
                   fillCKey: "child_panel_fill_c",
@@ -657,6 +757,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </details>
 
         <Card title="边框与下槛截面">
+          <div className="mb-3">
+            <Select label="门框工艺" value={data.frame_process || "新工艺"} options={["新工艺", "老工艺"]} onChange={switchFrameProcess} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="左框宽 (小/大)" value={data.fw_left_str} onChange={(v) => set("fw_left_str", v)} />
             <Input label="右框宽 (小/大)" value={data.fw_right_str} onChange={(v) => set("fw_right_str", v)} />
@@ -694,16 +797,17 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </Card>
 
         <Card title="包套与附加件">
-          <div className="flex gap-4 mb-3">
-            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => onChange({ ...data, has_outer: v, has_outer_portal: v ? false : data.has_outer_portal, has_outer_landscape: v ? false : data.has_outer_landscape })} />
-            <Checkbox label="外门头门柱" checked={data.has_outer_portal} onChange={(v) => onChange({ ...data, has_outer_portal: v, has_outer: v ? false : data.has_outer, has_outer_landscape: v ? false : data.has_outer_landscape })} />
-            <Checkbox label="一门一景" checked={data.has_outer_landscape} onChange={(v) => onChange({ ...data, has_outer_landscape: v, has_outer: v ? false : data.has_outer, has_outer_portal: v ? false : data.has_outer_portal })} />
-            <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
+          <div className="flex flex-wrap gap-4 mb-3">
+            <Checkbox label="外包套" checked={data.has_outer} onChange={(v) => onChange({ ...data, has_outer: v, has_outer_portal: v ? false : data.has_outer_portal, has_outer_portal2: v ? false : data.has_outer_portal2, has_outer_landscape: v ? false : data.has_outer_landscape })} />
+            <Checkbox label="外门头门柱" checked={data.has_outer_portal} onChange={(v) => onChange({ ...data, has_outer_portal: v, has_outer: v ? false : data.has_outer, has_outer_portal2: v ? false : data.has_outer_portal2, has_outer_landscape: v ? false : data.has_outer_landscape })} />
+            <Checkbox label="外门头门柱2" checked={data.has_outer_portal2} onChange={(v) => onChange({ ...data, has_outer_portal2: v, has_outer: v ? false : data.has_outer, has_outer_portal: v ? false : data.has_outer_portal, has_outer_landscape: v ? false : data.has_outer_landscape })} />
+            <Checkbox label="一门一景" checked={data.has_outer_landscape} onChange={(v) => onChange({ ...data, has_outer_landscape: v, has_outer: v ? false : data.has_outer, has_outer_portal: v ? false : data.has_outer_portal, has_outer_portal2: v ? false : data.has_outer_portal2 })} />
           </div>
           {data.has_outer && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Input label="外包套宽" required value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
-              <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
+              <Input label="左右压框" value={data.overlap_front_lr} type="number" onChange={(v) => set("overlap_front_lr", Number(v))} />
+              <Input label="上压框" value={data.overlap_front_top} type="number" onChange={(v) => set("overlap_front_top", Number(v))} />
               <Combobox label="外包套款式" required value={data.trim_style_outer} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_outer", v)} />
             </div>
           )}
@@ -711,7 +815,15 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <div className="grid grid-cols-3 gap-3">
               <Input label="门柱宽度" required value={data.outer_portal_pillar_width} type="number" onChange={(v) => set("outer_portal_pillar_width", Number(v))} />
               <Input label="门头高度" required value={data.outer_portal_header_height} type="number" onChange={(v) => set("outer_portal_header_height", Number(v))} />
-              <Input label="正面压框" value={data.overlap_front} type="number" onChange={(v) => set("overlap_front", Number(v))} />
+              <Input label="压框" value={data.overlap_front_lr} type="number" onChange={(v) => onChange({ ...data, overlap_front_lr: Number(v), overlap_front_top: Number(v) })} />
+            </div>
+          )}
+          {data.has_outer_portal2 && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Input label="门柱宽度" required value={data.outer_portal2_pillar_width} type="number" onChange={(v) => set("outer_portal2_pillar_width", Number(v))} />
+              <Input label="门头高度" required value={data.outer_portal2_header_height} type="number" onChange={(v) => set("outer_portal2_header_height", Number(v))} />
+              <Input label="左右压框" value={data.outer_portal2_lr_overlap} type="number" onChange={(v) => set("outer_portal2_lr_overlap", Number(v))} />
+              <Input label="上压框" value={data.outer_portal2_top_overlap} type="number" onChange={(v) => set("outer_portal2_top_overlap", Number(v))} />
             </div>
           )}
           {data.has_outer_landscape && (
@@ -724,10 +836,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Input label="上景压框" value={data.outer_landscape_top_overlap} type="number" onChange={(v) => set("outer_landscape_top_overlap", Number(v))} />
             </div>
           )}
+          <div className="mt-4 border-t border-[#E5E5EA] pt-3">
+            <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
+          </div>
           {data.has_inner && (
-            <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <Input label="内包套宽" required value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
-              <Input label="反面压框" value={data.overlap_back} type="number" onChange={(v) => set("overlap_back", Number(v))} />
+              <Input label="左右压框" value={data.overlap_back_lr} type="number" onChange={(v) => set("overlap_back_lr", Number(v))} />
+              <Input label="上压框" value={data.overlap_back_top} type="number" onChange={(v) => set("overlap_back_top", Number(v))} />
               <Combobox label="内包套款式" required value={data.trim_style_inner} options={["", ...o("TRIM_STYLES", TRIM_STYLES)]} onChange={(v) => set("trim_style_inner", v)} />
             </div>
           )}
@@ -761,6 +877,12 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         {children}
       </div>}
+      <LubanRulerModal
+        open={lubanOpen}
+        width={calculatedLightWidth}
+        height={calculatedLightHeight}
+        onClose={() => setLubanOpen(false)}
+      />
     </div>
   );
 });

@@ -10,6 +10,29 @@ interface Props {
   onLoad: (quote: QuoteResponse) => void;
 }
 
+function quoteDoorSummary(quote: QuoteResponse) {
+  if (quote.doorSummary) {
+    const count = quote.doorCount || 1;
+    return {
+      name: count > 1 ? `${quote.doorSummary} 等${count}樘` : quote.doorSummary,
+      size: quote.doorWidth && quote.doorHeight ? `${quote.doorWidth} x ${quote.doorHeight}` : "尺寸未填",
+      searchText: `${quote.doorSummary} ${quote.doorWidth || ""} ${quote.doorHeight || ""}`,
+    };
+  }
+  const groups = quote.doorGroups?.length ? quote.doorGroups : [{ items: quote.items || [] }];
+  const mainItems = groups
+    .map((group) => group.items.find((item) => item.productName?.trim()))
+    .filter(Boolean);
+  const first = mainItems[0];
+  const name = first?.productName?.trim() || "未填写门型";
+  const size = first?.width && first?.height ? `${first.width} x ${first.height}` : "尺寸未填";
+  return {
+    name: groups.length > 1 ? `${name} 等${groups.length}樘` : name,
+    size,
+    searchText: mainItems.map((item) => `${item?.productName || ""} ${item?.width || ""} ${item?.height || ""}`).join(" "),
+  };
+}
+
 export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
   const [quotes, setQuotes] = useState<QuoteResponse[]>([]);
   const [status, setStatus] = useState("");
@@ -71,7 +94,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
 
   const filteredQuotes = quotes.filter((quote) => {
     const query = keyword.trim().toLowerCase();
-    const matchesKeyword = !query || [quote.customerName, quote.projectName, String(quote.id)]
+    const summary = quoteDoorSummary(quote);
+    const matchesKeyword = !query || [quote.customerName, quote.projectName, String(quote.id), summary.searchText]
       .join(" ").toLowerCase().includes(query);
     return matchesKeyword && (!quoteDate || quote.quoteDate === quoteDate);
   });
@@ -136,11 +160,14 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                 />
                 <span className="w-16">全选</span>
                 <span className="w-20">报价单</span>
-                <span className="min-w-40 flex-1">客户/项目</span>
+                <span className="min-w-36 flex-1">客户/项目</span>
+                <span className="w-44">门型/尺寸</span>
                 <span className="w-28">报价日期</span>
                 <span className="w-16">操作</span>
               </label>
-              {filteredQuotes.map((quote) => (
+              {filteredQuotes.map((quote) => {
+                const summary = quoteDoorSummary(quote);
+                return (
                 <div
                   key={quote.id}
                   className="flex items-center px-3 py-2.5 hover:bg-[#F2F2F7]/50 transition-colors group border-b border-[#F2F2F7] last:border-b-0"
@@ -161,6 +188,10 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                   >
                     <span className="w-20 shrink-0 text-[13px] font-medium text-[#1C1C1E]">#{quote.id}</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[#1C1C1E]">{[quote.customerName, quote.projectName].filter(Boolean).join(" / ") || "未命名报价"}</span>
+                    <span className="w-44 shrink-0 pr-3 text-[11px] text-[#3A3A3C]">
+                      <span className="block truncate">{summary.name}</span>
+                      <span className="block text-[#8E8E93]">{summary.size}</span>
+                    </span>
                     <span className="w-28 shrink-0 text-[11px] text-[#8E8E93]">{quote.quoteDate || "-"}</span>
                   </button>
                   <button
@@ -173,7 +204,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                     删除
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

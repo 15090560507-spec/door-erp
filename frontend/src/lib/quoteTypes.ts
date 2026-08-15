@@ -92,6 +92,10 @@ export interface QuoteResponse {
   createdAt: string;
   items: QuoteItemResponse[];
   doorGroups?: QuoteDoorGroupResponse[];
+  doorSummary?: string;
+  doorWidth?: number | null;
+  doorHeight?: number | null;
+  doorCount?: number;
 }
 
 export interface QuoteListResponse {
