@@ -556,11 +556,19 @@ def draw_door_in_frame(
     # 面板基准：以开启侧门框为参照计算尺寸和位置，正反面绘制完全一致
     # 外开→正面框为基准, 内开→背面框为基准
     # 无缝侧门框更宽→面板与框自然重叠（物理正确）
-    if is_back and door_type == "单门":
-        ref_left = left_width
-        ref_right = right_width
-        ref_fw_top = fw_top
-        ref_th = th
+    # 单门背面视图左右镜像：基准框宽同样左右对调，保证正反面门板大小一致，
+    # 且宽框一侧覆盖门板（门框遮挡门板）。
+    if door_type == "单门":
+        if nk_choice == "外开":
+            ref_left = p['right_width_front'] if is_back else p['left_width_front']
+            ref_right = p['left_width_front'] if is_back else p['right_width_front']
+            ref_fw_top = p['fw_top_front']
+            ref_th = p['th_front']
+        else:
+            ref_left = p['right_width_back'] if is_back else p['left_width_back']
+            ref_right = p['left_width_back'] if is_back else p['right_width_back']
+            ref_fw_top = p['fw_top_back']
+            ref_th = p['th_back']
     elif nk_choice == "外开":
         ref_left = p['left_width_front']
         ref_right = p['right_width_front']
@@ -2071,7 +2079,9 @@ def draw_door_in_frame(
             return [(px2 - distance, -1, "ZBPLS")]
 
         if door_type == "单门":
-            return add_target(0, "left" if door_open_dir == "右开" else "right")
+            # 背面视图左右镜像：锁边位置与正面、与其他拉手保持一致
+            # （右开锁边在物理左侧，背面视图中表现为右侧）。
+            return add_target(0, "right" if door_open_dir == "右开" else "left")
 
         if door_type == "对开门" and len(panel_positions) >= 2:
             return add_target(0, "right") if door_open_dir == "右开" else add_target(1, "left")
@@ -2124,7 +2134,7 @@ def draw_door_in_frame(
 
     if current_handle == "背包拉手" and not current_sized_handle:
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):
-            draw_block_mask("BBLS", hx, 1050, xscale=toward_hinge)
+            draw_block_mask("BBLS", hx, panel_y_bot + 1000, xscale=toward_hinge)
 
     if handle_size and current_sized_handle:
         handle_w, handle_h = handle_size
@@ -2170,7 +2180,7 @@ def draw_door_in_frame(
 
     if current_handle == "背包拉手" and not current_sized_handle:
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):
-            drawer.insert_custom_block("BBLS", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
+            drawer.insert_custom_block("BBLS", off((hx, panel_y_bot + 1000)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
     if handle_size and current_sized_handle:
         handle_w, handle_h = handle_size

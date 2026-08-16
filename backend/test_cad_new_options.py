@@ -841,6 +841,124 @@ def test_frame_defaults_and_single_back_mirror():
     )
 
 
+def test_single_door_front_back_panel_consistent_and_frame_overlap():
+    """单门正反面门板大小必须一致；宽框一侧左右框必须压住门板（门框遮挡门板）。"""
+    DW = 900
+
+    def view_geometry(nk: str):
+        req = CADRequest(
+            door_type="单门",
+            sel_nk=nk,
+            fw_left_str="55/85",
+            fw_right_str="55/62",
+            fw_top_str="55/75",
+            th_str="55/75",
+            zmls="无",
+            fmls="无",
+        )
+        info, checks, draw_params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, draw_params)
+        check(f"single {nk} panel CAD generation returns buffer", buffer is not None, msg)
+        if not buffer:
+            return None
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        panels = [
+            poly_bounds(entity) for entity in doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-PANEL" and poly_bounds(entity)[3] - poly_bounds(entity)[2] > 1500
+        ]
+        frames = [
+            poly_bounds(entity) for entity in doc.modelspace().query("LWPOLYLINE")
+            if entity.dxf.layer == "A-DOOR-FRAME"
+        ]
+        geometry = {}
+        for label, min_x, max_x in (("front", -10 ** 9, 1500), ("back", 1500, 10 ** 9)):
+            view_frames = [b for b in frames if min_x <= b[0] < max_x]
+            view_panels = [b for b in panels if min_x <= b[0] < max_x]
+            if not view_frames or not view_panels:
+                geometry[label] = None
+                continue
+            origin = min(b[0] for b in view_frames)
+            side_frames = [
+                b for b in view_frames
+                if (b[1] - b[0]) < 300 and (b[3] - b[2]) > 1500
+            ]
+            left_frame = min(
+                (b for b in side_frames if abs(b[0] - origin) < 0.5),
+                key=lambda b: b[0],
+                default=None,
+            )
+            right_frame = min(
+                (b for b in side_frames if abs(b[1] - (origin + DW)) < 0.5),
+                key=lambda b: b[0],
+                default=None,
+            )
+            panel = max(view_panels, key=lambda b: b[1] - b[0])
+            geometry[label] = {
+                "panel": (panel[0] - origin, panel[1] - origin),
+                "left_frame_width": (left_frame[1] - left_frame[0]) if left_frame else None,
+                "right_frame_width": (right_frame[1] - right_frame[0]) if right_frame else None,
+            }
+        return geometry
+
+    outer_geom = view_geometry("外开")
+    inner_geom = view_geometry("内开")
+
+    for label, geom in (("outer-open", outer_geom), ("inner-open", inner_geom)):
+        ok = bool(geom and geom["front"] and geom["back"] and geom["front"]["panel"] and geom["back"]["panel"])
+        if ok:
+            front_width = geom["front"]["panel"][1] - geom["front"]["panel"][0]
+            back_width = geom["back"]["panel"][1] - geom["back"]["panel"][0]
+            ok = abs(front_width - back_width) < 0.01
+        check(
+            f"{label} single door front/back panels have identical width",
+            ok,
+            str(geom),
+        )
+
+    # 宽框一侧（外开→背面，内开→正面）必须压住门板；小框一侧保持门缝间隙。
+    if outer_geom and outer_geom["back"] and outer_geom["back"]["left_frame_width"] is not None:
+        px1, px2 = outer_geom["back"]["panel"]
+        check(
+            "outer-open single back big frame overlaps panel on both sides",
+            px1 < outer_geom["back"]["left_frame_width"]
+            and px2 > DW - outer_geom["back"]["right_frame_width"],
+            str(outer_geom["back"]),
+        )
+    else:
+        check("outer-open single back big frame overlaps panel on both sides", False, str(outer_geom))
+    if outer_geom and outer_geom["front"] and outer_geom["front"]["left_frame_width"] is not None:
+        px1, px2 = outer_geom["front"]["panel"]
+        check(
+            "outer-open single front small frame keeps panel gap",
+            px1 > outer_geom["front"]["left_frame_width"]
+            and px2 < DW - outer_geom["front"]["right_frame_width"],
+            str(outer_geom["front"]),
+        )
+    else:
+        check("outer-open single front small frame keeps panel gap", False, str(outer_geom))
+
+    if inner_geom and inner_geom["front"] and inner_geom["front"]["left_frame_width"] is not None:
+        px1, px2 = inner_geom["front"]["panel"]
+        check(
+            "inner-open single front big frame overlaps panel on both sides",
+            px1 < inner_geom["front"]["left_frame_width"]
+            and px2 > DW - inner_geom["front"]["right_frame_width"],
+            str(inner_geom["front"]),
+        )
+    else:
+        check("inner-open single front big frame overlaps panel on both sides", False, str(inner_geom))
+    if inner_geom and inner_geom["back"] and inner_geom["back"]["left_frame_width"] is not None:
+        px1, px2 = inner_geom["back"]["panel"]
+        check(
+            "inner-open single back small frame keeps panel gap",
+            px1 > inner_geom["back"]["left_frame_width"]
+            and px2 < DW - inner_geom["back"]["right_frame_width"],
+            str(inner_geom["back"]),
+        )
+    else:
+        check("inner-open single back small frame keeps panel gap", False, str(inner_geom))
+
+
 def test_large_board_horizontal_panels_and_outer_portal2():
     large_req = CADRequest(
         door_panel_style="大板布局",
@@ -1676,13 +1794,13 @@ def test_back_backpack_handle_stays_near_lock_edge():
     double_right_result = bbls_x_for("右开", "对开门")
     double_left_result = bbls_x_for("左开", "对开门")
     check(
-        "right-open single back backpack handle is on lock side",
-        bool(right_result and right_result[0] < right_result[1]),
+        "right-open single back backpack handle is on lock side (mirrored back view: lock edge on view right)",
+        bool(right_result and right_result[0] > right_result[1]),
         str(right_result),
     )
     check(
-        "left-open single back backpack handle is on lock side",
-        bool(left_result and left_result[0] > left_result[1]),
+        "left-open single back backpack handle is on lock side (mirrored back view: lock edge on view left)",
+        bool(left_result and left_result[0] < left_result[1]),
         str(left_result),
     )
     check(
@@ -1904,6 +2022,7 @@ if __name__ == "__main__":
     test_double_door_sized_handles_draw_on_front_only()
     test_back_backpack_handle_stays_near_lock_edge()
     test_frame_defaults_and_single_back_mirror()
+    test_single_door_front_back_panel_consistent_and_frame_overlap()
     test_large_board_horizontal_panels_and_outer_portal2()
     test_dimension_spacing_and_trim_width_text()
     test_outer_portal_draws_separate_rectangles_and_header_dimension()
