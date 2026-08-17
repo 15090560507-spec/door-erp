@@ -488,6 +488,7 @@ def build_cad_params(req: CADRequest):
         "PANEL_FILL_C": req.panel_fill_c,
         "PANEL_DISC_RADIUS": req.panel_disc_radius,
         "PANEL_B2_GLASS_STYLE": req.panel_b2_glass_style,
+        "PANEL_B4_GLASS_STYLE": req.panel_b4_glass_style,
         "BACK_PANEL_LOCK_OFFSET_X": req.back_panel_lock_offset_x,
         "BACK_PANEL_HINGE_OFFSET_Y": req.back_panel_hinge_offset_y,
         "BACK_PANEL_MIDDLE_OFFSET_Z": req.back_panel_middle_offset_z,
@@ -501,6 +502,7 @@ def build_cad_params(req: CADRequest):
         "BACK_PANEL_FILL_C": req.back_panel_fill_c,
         "BACK_PANEL_DISC_RADIUS": req.back_panel_disc_radius,
         "BACK_PANEL_B2_GLASS_STYLE": req.back_panel_b2_glass_style,
+        "BACK_PANEL_B4_GLASS_STYLE": req.back_panel_b4_glass_style,
         "CHILD_PANEL_LOCK_OFFSET_X": req.child_panel_lock_offset_x,
         "CHILD_PANEL_HINGE_OFFSET_Y": req.child_panel_hinge_offset_y,
         "CHILD_PANEL_MIDDLE_OFFSET_Z": req.child_panel_middle_offset_z,
@@ -514,6 +516,7 @@ def build_cad_params(req: CADRequest):
         "CHILD_PANEL_FILL_C": req.child_panel_fill_c,
         "CHILD_PANEL_DISC_RADIUS": req.child_panel_disc_radius,
         "CHILD_PANEL_B2_GLASS_STYLE": req.child_panel_b2_glass_style,
+        "CHILD_PANEL_B4_GLASS_STYLE": req.child_panel_b4_glass_style,
         "GLASS_LINE_INSET": req.glass_line_inset,
         "GLASS_LINE_SPACING": req.glass_line_spacing,
         "HANDLE_SIZE": req.handle_size,
@@ -645,6 +648,7 @@ def build_cad_params(req: CADRequest):
         "panel_horizontal_a_height": req.panel_horizontal_a_height,
         "panel_horizontal_b_height": req.panel_horizontal_b_height,
         "panel_b2_glass_style": req.panel_b2_glass_style,
+        "panel_b4_glass_style": req.panel_b4_glass_style,
         "back_panel_lock_offset_x": req.back_panel_lock_offset_x,
         "back_panel_hinge_offset_y": req.back_panel_hinge_offset_y,
         "back_panel_middle_offset_z": req.back_panel_middle_offset_z,
@@ -660,6 +664,7 @@ def build_cad_params(req: CADRequest):
         "back_panel_horizontal_a_height": req.back_panel_horizontal_a_height,
         "back_panel_horizontal_b_height": req.back_panel_horizontal_b_height,
         "back_panel_b2_glass_style": req.back_panel_b2_glass_style,
+        "back_panel_b4_glass_style": req.back_panel_b4_glass_style,
         "child_panel_lock_offset_x": req.child_panel_lock_offset_x,
         "child_panel_hinge_offset_y": req.child_panel_hinge_offset_y,
         "child_panel_middle_offset_z": req.child_panel_middle_offset_z,
@@ -675,6 +680,7 @@ def build_cad_params(req: CADRequest):
         "child_panel_horizontal_a_height": req.child_panel_horizontal_a_height,
         "child_panel_horizontal_b_height": req.child_panel_horizontal_b_height,
         "child_panel_b2_glass_style": req.child_panel_b2_glass_style,
+        "child_panel_b4_glass_style": req.child_panel_b4_glass_style,
         "glass_line_inset": req.glass_line_inset,
         "glass_line_spacing": req.glass_line_spacing,
         "handle_size": req.handle_size,
@@ -1076,7 +1082,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "KX_OPTIONS": ["左开", "右开"],
     "NK_OPTIONS": ["内开", "外开"],
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
-    "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"],
+    "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手", "铝雕圆形拉手", "铝雕滑盖圆环拉手"],
     "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
     "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
     "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页"],
@@ -1124,11 +1130,26 @@ def _merge_dropdown_options(configured: dict) -> dict:
         if key not in all_keys:
             all_keys.append(key)
 
+    # 锁体类型只保留真正的锁体：过滤掉历史误录入的合页/拉手/指纹锁/包装/气窗等选项
+    other_category_values = set()
+    for other_key in ("HINGES", "HANDLES", "FINGERPRINT_LOCKS", "BZ_OPTIONS", "QC_OPTIONS", "THRESHOLD_OPTIONS", "TRIM_STYLES"):
+        for value in _DEFAULT_DROPDOWN_OPTIONS.get(other_key, []):
+            other_category_values.add(value)
+    lock_noise_keywords = ("合页", "拉手", "指纹", "气窗", "全包", "木箱", "包套")
+
     for key in all_keys:
         values = []
         for value in _DEFAULT_DROPDOWN_OPTIONS.get(key, []) + configured.get(key, []):
             text = _normalize_dropdown_value(key, value)
-            if (text or key in _EMPTY_ALLOWED_DROPDOWNS) and text not in values:
+            if not (text or key in _EMPTY_ALLOWED_DROPDOWNS):
+                continue
+            if key == "LOCKS" and text not in _DEFAULT_DROPDOWN_OPTIONS.get("LOCKS", []):
+                noisy = text in other_category_values or any(
+                    text.startswith(item) for item in other_category_values if item
+                ) or any(word in text for word in lock_noise_keywords)
+                if noisy:
+                    continue
+            if text not in values:
                 values.append(text)
         merged[key] = values
     return merged

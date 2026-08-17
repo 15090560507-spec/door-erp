@@ -1768,6 +1768,10 @@ def draw_door_in_frame(
                 p.get("panel_horizontal_b_height", 300),
             ) or 0),
             "b2_glass_style": str(p.get(b2_style_key, "无线条") or "无线条"),
+            "b4_glass_style": str(p.get(
+                "panel_b4_glass_style" if group == "front" else f"{group}_panel_b4_glass_style",
+                "无线条",
+            ) or "无线条"),
         }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
@@ -1990,8 +1994,10 @@ def draw_door_in_frame(
             if len(sorted_y_lines) >= 2:
                 if panel_style == "H+型布局":
                     b2_bottom, b2_top = sorted_y_lines[-2], sorted_y_lines[-1]
+                    b4_bottom, b4_top = sorted_y_lines[0], sorted_y_lines[1]
                 else:
                     b2_bottom, b2_top = sorted_y_lines[0], sorted_y_lines[-1]
+                    b4_bottom = b4_top = None
                 draw_glass_template_rect(
                     bx1,
                     b2_bottom,
@@ -2000,6 +2006,15 @@ def draw_door_in_frame(
                     str(settings.get("b2_glass_style", "无线条")),
                     "vertical",
                 )
+                if b4_bottom is not None and b4_top is not None:
+                    draw_glass_template_rect(
+                        bx1,
+                        b4_bottom,
+                        bx2,
+                        b4_top,
+                        str(settings.get("b4_glass_style", "无线条")),
+                        "vertical",
+                    )
             for y in sorted_y_lines:
                 draw_panel_line(bx1, y, bx2, y)
 
@@ -2101,6 +2116,9 @@ def draw_door_in_frame(
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
     non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手"}
     current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
+    # 半圆拉手：铝雕圆形拉手/铝雕滑盖圆环拉手。直径方向贴合门板锁边，圆弧向板内凸出。
+    semicircle_handles = {"铝雕圆形拉手", "铝雕滑盖圆环拉手"}
+    current_semicircle = str(current_handle).strip() in semicircle_handles
 
     def draw_mask(cx: float, cy: float, width: float, height: float):
         drawer.draw_wipeout_rect(
@@ -2136,10 +2154,18 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):
             draw_block_mask("BBLS", hx, panel_y_bot + 1000, xscale=toward_hinge)
 
-    if handle_size and current_sized_handle:
+    if handle_size and current_sized_handle and not current_semicircle:
         handle_w, handle_h = handle_size
         for hx, _toward_hinge, _hblock in sized_handle_targets(110):
             draw_mask(hx, 1200, handle_w, handle_h)
+
+    if current_semicircle and handle_size:
+        # 半圆拉手遮罩：半径取小值、直径取大值（如 150*300 → 半径150、直径300）
+        radius = float(min(handle_size))
+        diameter = float(max(handle_size))
+        for hx, toward_hinge, _hblock in handle_targets(60):
+            edge_x = hx - toward_hinge * 60
+            draw_mask(edge_x + toward_hinge * radius / 2, 1200, radius + 4, diameter + 4)
 
     if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
@@ -2182,7 +2208,27 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):
             drawer.insert_custom_block("BBLS", off((hx, panel_y_bot + 1000)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
-    if handle_size and current_sized_handle:
+    if current_semicircle and handle_size:
+        # 半圆拉手绘制：单门一个半圆贴锁边；对开门左右扇各一个，直径贴合锁边；
+        # 150*300 → 150 为半径，300 为直径。
+        radius = float(min(handle_size))
+        diameter = float(max(handle_size))
+        y_center = 1200
+        for hx, toward_hinge, _hblock in handle_targets(60):
+            edge_x = hx - toward_hinge * 60
+            # 直径线（沿锁边竖直）
+            drawer.draw_line(
+                off((edge_x, y_center - diameter / 2)),
+                off((edge_x, y_center + diameter / 2)),
+                "A-DOOR-PANEL",
+            )
+            # 圆弧向门板内侧凸出
+            if toward_hinge >= 0:
+                drawer.draw_arc(off((edge_x, y_center)), radius, -90, 90, "A-DOOR-PANEL")
+            else:
+                drawer.draw_arc(off((edge_x, y_center)), radius, 90, 270, "A-DOOR-PANEL")
+
+    if handle_size and current_sized_handle and not current_semicircle:
         handle_w, handle_h = handle_size
         for hx, _toward_hinge, _hblock in sized_handle_targets(110):
             y_center = 1200

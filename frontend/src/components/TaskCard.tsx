@@ -22,12 +22,16 @@ export default function TaskCard({
   const confirmStatus = task.confirm_status || "未确认";
   const quoted = quoteStatus === "已报价";
   const confirmed = confirmStatus === "已确认";
+  const showToggles = Boolean(onToggleQuoteStatus || onToggleConfirmStatus);
 
   return (
     <div className="flex items-stretch gap-2 mb-2 animate-fade-in group">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onClick(task)}
-        className="flex-1 text-left bg-white border border-[#E5E5EA] rounded-xl px-5 py-3.5
+        onKeyDown={(e) => { if (e.key === "Enter") onClick(task); }}
+        className="flex-1 text-left bg-white border border-[#E5E5EA] rounded-xl px-5 py-3.5 cursor-pointer
           shadow-sm hover:shadow-md hover:border-[#007AFF]/30 hover:-translate-y-0.5
           active:scale-[0.98] transition-all duration-200"
       >
@@ -43,38 +47,41 @@ export default function TaskCard({
           {task.size && <span>{task.size}</span>}
           <span className="ml-auto">{task.date}</span>
         </div>
-      </button>
 
-      {(onToggleQuoteStatus || onToggleConfirmStatus) && (
-        <div className="flex flex-col justify-center gap-1 flex-shrink-0 px-0.5">
-          {onToggleQuoteStatus && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleQuoteStatus(task); }}
-              title={`点击切换为${quoted ? "未报价" : "已报价"}`}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-all duration-200 ${
-                quoted
-                  ? "bg-[#E5F9E5] text-[#248A3D] border-[#9BD9A8] hover:bg-[#D3F3D3]"
-                  : "bg-[#FFF8E5] text-[#B25E00] border-[#F2D38B] hover:bg-[#FFF0C7]"
-              }`}
-            >
-              {quoteStatus}
-            </button>
-          )}
-          {onToggleConfirmStatus && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleConfirmStatus(task); }}
-              title={`点击切换为${confirmed ? "未确认" : "已确认"}`}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-all duration-200 ${
-                confirmed
-                  ? "bg-[#E5F0FF] text-[#007AFF] border-[#A9CDF7] hover:bg-[#D8E9FF]"
-                  : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE] hover:bg-[#E9E9ED]"
-              }`}
-            >
-              {confirmStatus}
-            </button>
-          )}
-        </div>
-      )}
+        {/* 未报价/已报价、未确认/已确认：卡片内部右下角，上下排列 */}
+        {showToggles && (
+          <div className="mt-2 pt-2 border-t border-[#F2F2F7] flex justify-end">
+            <div className="flex flex-col items-end gap-1">
+              {onToggleQuoteStatus && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleQuoteStatus(task); }}
+                  title={`点击切换为${quoted ? "未报价" : "已报价"}`}
+                  className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold border transition-all duration-200 ${
+                    quoted
+                      ? "bg-[#E5F9E5] text-[#248A3D] border-[#9BD9A8] hover:bg-[#D3F3D3]"
+                      : "bg-[#FFF8E5] text-[#B25E00] border-[#F2D38B] hover:bg-[#FFF0C7]"
+                  }`}
+                >
+                  {quoteStatus}
+                </button>
+              )}
+              {onToggleConfirmStatus && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleConfirmStatus(task); }}
+                  title={`点击切换为${confirmed ? "未确认" : "已确认"}`}
+                  className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold border transition-all duration-200 ${
+                    confirmed
+                      ? "bg-[#E5F0FF] text-[#007AFF] border-[#A9CDF7] hover:bg-[#D8E9FF]"
+                      : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE] hover:bg-[#E9E9ED]"
+                  }`}
+                >
+                  {confirmStatus}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {onDelete && (
         <button

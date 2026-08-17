@@ -10,7 +10,7 @@ import ezdxf
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
 
-from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS, _resolve_mid_door_width
+from main import build_cad_params, _DEFAULT_DROPDOWN_OPTIONS, _resolve_mid_door_width, _merge_dropdown_options
 from models import CADRequest
 from drawing import EzdxfDrawer, _build_hatch_library, _hatch_bounds, run_integrated_system
 from cad_preview import _collect_entity, render_dxf_svg
@@ -2008,6 +2008,90 @@ def test_order_title_product_name_and_simple_products():
     check("canopy uses slash placeholders", canopy_info["ST"] == "/" and canopy_info["ZMLS"] == "/", canopy_info)
 
 
+def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
+    # ===================== 半圆拉手：铝雕圆形拉手 / 铝雕滑盖圆环拉手 =====================
+    single_req = CADRequest(
+        door_type="单门",
+        sel_kx="右开",
+        sel_nk="内开",
+        zmls="铝雕圆形拉手",
+        fmls="无",
+        handle_size="150*300",
+        fingerprint_lock="无",
+    )
+    info, checks, draw_params = build_cad_params(single_req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("semicircle single CAD generation returns buffer", buffer is not None, msg)
+    if buffer:
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        panel_arcs = [
+            entity for entity in doc.modelspace().query("ARC")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        # 单门正面一个半圆（背面 fmls=无 不画）
+        check("single door draws one semicircle arc", len(panel_arcs) == 1, f"arcs={len(panel_arcs)}")
+        panel_lines = [
+            entity for entity in doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+            and abs(abs(entity.dxf.start.y - entity.dxf.end.y) - 300) < 0.01
+        ]
+        check("single door draws 300mm diameter line", len(panel_lines) >= 1, f"lines={len(panel_lines)}")
+
+    double_req = CADRequest(
+        door_type="对开门",
+        sel_kx="右开",
+        sel_nk="内开",
+        zmls="铝雕滑盖圆环拉手",
+        fmls="铝雕滑盖圆环拉手",
+        handle_size="150*300",
+        fingerprint_lock="无",
+    )
+    info2, checks2, draw_params2 = build_cad_params(double_req)
+    msg2, buffer2 = run_integrated_system(info2, checks2, draw_params2)
+    check("semicircle double CAD generation returns buffer", buffer2 is not None, msg2)
+    if buffer2:
+        doc2 = ezdxf.read(io.StringIO(buffer2.getvalue()))
+        panel_arcs2 = [
+            entity for entity in doc2.modelspace().query("ARC")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        # 对开门正反面各 2 个半圆（左右扇各一个），共 4 个
+        check("double door draws 4 semicircle arcs (2 per view)", len(panel_arcs2) == 4, f"arcs={len(panel_arcs2)}")
+
+    # ===================== B4 玻璃线条参数贯通 =====================
+    b4_req = CADRequest(
+        door_panel_style="H+型布局",
+        panel_b2_glass_style="双线",
+        panel_b4_glass_style="回纹",
+        back_door_panel_style="H+型布局",
+        back_panel_b2_glass_style="单线",
+        back_panel_b4_glass_style="双线",
+        fingerprint_lock="无",
+    )
+    _b4_info, _b4_checks, b4_params = build_cad_params(b4_req)
+    check("panel B4 glass style passes to drawing", b4_params.get("panel_b4_glass_style") == "回纹", str(b4_params.get("panel_b4_glass_style")))
+    check("back panel B4 glass style passes to drawing", b4_params.get("back_panel_b4_glass_style") == "双线", str(b4_params.get("back_panel_b4_glass_style")))
+    b4_msg, b4_buffer = run_integrated_system(_b4_info, _b4_checks, b4_params)
+    check("B4 glass style CAD generation returns buffer", b4_buffer is not None, b4_msg)
+
+    # ===================== 锁体类型下拉清理 =====================
+    merged = _merge_dropdown_options({
+        "LOCKS": ["葫芦头合页", "铝雕滑盖拉手150*300", "Q3指纹锁", "全包", "圆弧气窗", "标准锁体", "某自定义锁"],
+    })
+    locks = merged.get("LOCKS", [])
+    check(
+        "lock dropdown drops hinge/handle/fingerprint/packing noise",
+        all(item in locks for item in ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"])
+        and "葫芦头合页" not in locks
+        and "铝雕滑盖拉手150*300" not in locks
+        and "Q3指纹锁" not in locks
+        and "圆弧气窗" not in locks
+        and "某自定义锁" in locks,
+        str(locks),
+    )
+    check("new semicircle handle names in dropdown defaults", "铝雕圆形拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"] and "铝雕滑盖圆环拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"], str(_DEFAULT_DROPDOWN_OPTIONS["HANDLES"]))
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
@@ -2036,6 +2120,7 @@ if __name__ == "__main__":
     test_optional_structural_occlusion_keeps_source_geometry()
     test_outer_landscape_trim_with_occlusion()
     test_order_title_product_name_and_simple_products()
+    test_semicircle_handles_b4_glass_and_lock_dropdown_filter()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:

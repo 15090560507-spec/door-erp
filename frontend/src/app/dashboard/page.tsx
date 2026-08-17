@@ -1030,8 +1030,8 @@ export default function DashboardPage() {
                         setActiveTaskId(task.id);
                       }}
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
-                      onToggleQuoteStatus={module === "任务总览" ? toggleTaskQuoteStatus : undefined}
-                      onToggleConfirmStatus={module === "任务总览" ? toggleTaskConfirmStatus : undefined}
+                      onToggleQuoteStatus={toggleTaskQuoteStatus}
+                      onToggleConfirmStatus={toggleTaskConfirmStatus}
                     />
                   ))}
                   {total > PAGE_SIZE && (

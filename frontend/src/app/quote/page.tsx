@@ -189,13 +189,17 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
   const packing = findPriceItem(accessories, "包装", params.sel_bz);
   const mainUnitPrice = num(style?.unitPrice) + num(material?.unitPrice) + num(lock?.unitPrice);
 
+  // 规则：门的面积不足 2㎡ 时，按 2㎡ 计算（自动变成两平方米）
+  const rawDoorArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
+  const effectiveDoorArea = rawDoorArea > 0 && rawDoorArea < 2 ? 2 : null;
+
   const rows: QuoteItem[] = [{
     accessoryId: style?.id ?? null,
     category: "门类组合",
     productName: [params.door_type, productDisplay, params.zmks, params.fmks].filter(Boolean).join(" "),
     width: (pricingMode === "outerArea" ? outerWidth : frameWidth) || null,
     height: (pricingMode === "outerArea" ? outerHeight : frameHeight) || null,
-    quantity: null,
+    quantity: effectiveDoorArea,
     openDirection: direction,
     unit: "m2",
     unitPrice: mainUnitPrice,

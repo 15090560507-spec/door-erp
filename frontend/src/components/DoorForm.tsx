@@ -384,6 +384,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillCKey,
     discRadiusKey,
     b2GlassStyleKey,
+    b4GlassStyleKey,
   }: {
     title: string;
     styleKey: keyof DoorFormData;
@@ -404,133 +405,154 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillCKey: keyof DoorFormData;
     discRadiusKey: keyof DoorFormData;
     b2GlassStyleKey: keyof DoorFormData;
+    b4GlassStyleKey: keyof DoorFormData;
   }) => (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
-        <Select
-          label={`${title}样式`}
-          value={style}
-          options={styleOptions}
-          onChange={(v) => setField(styleKey, v)}
-        />
-        {usesOffsetX(style) && (
-          <Input
-            label={`${title}锁边偏移X(mm)`}
-            value={(data[lockKey] as number) ?? 180}
-            type="number"
-            onChange={(v) => setField(lockKey, Number(v))}
+        {/* 第一行：门板样式选择 */}
+        <div className="col-span-2">
+          <Select
+            label={`${title}样式`}
+            value={style}
+            options={styleOptions}
+            onChange={(v) => setField(styleKey, v)}
           />
-        )}
-        {usesThreeColumnPanel(style) && (
-          <>
+        </div>
+        {/* 左侧：宽（尺寸参数） */}
+        <div className="space-y-3">
+          {usesOffsetX(style) && (
             <Input
-              label={`${title}A锁边区宽(mm)`}
-              value={(data[threeAKey] as number) ?? 0}
+              label={`${title}锁边偏移X(mm)`}
+              value={(data[lockKey] as number) ?? 180}
               type="number"
-              onChange={(v) => setField(threeAKey, Number(v))}
+              onChange={(v) => setField(lockKey, Number(v))}
             />
-            <Input
-              label={`${title}B中间区宽(mm)`}
-              value={(data[threeBKey] as number) ?? 0}
-              type="number"
-              onChange={(v) => setField(threeBKey, Number(v))}
-            />
-            <Input
-              label={`${title}C合页区宽(mm)`}
-              value={(data[threeCKey] as number) ?? 0}
-              type="number"
-              onChange={(v) => setField(threeCKey, Number(v))}
-            />
-          </>
-        )}
-        {usesHorizontalPanel(style) && (
-          <>
-            <Input
-              label={`${title}A区高度(mm)`}
-              value={(data[horizontalAKey] as number) ?? 1000}
-              type="number"
-              onChange={(v) => setField(horizontalAKey, Number(v))}
-            />
-            {style === "三横式" && (
+          )}
+          {usesThreeColumnPanel(style) && (
+            <>
               <Input
-                label={`${title}B区高度(mm)`}
-                value={(data[horizontalBKey] as number) ?? 300}
+                label={`${title}A锁边区宽(mm)`}
+                value={(data[threeAKey] as number) ?? 0}
                 type="number"
-                onChange={(v) => setField(horizontalBKey, Number(v))}
+                onChange={(v) => setField(threeAKey, Number(v))}
               />
-            )}
-          </>
-        )}
-        {(["大板布局", "两列式布局", "三列式布局", "两横式", "三横式"].includes(style)) && (
-          <>
-            <Select
-              label={`${title}A区填充`}
-              value={(data[fillAKey] as string) || ""}
-              options={PANEL_FILL_OPTIONS}
-              onChange={(v) => setField(fillAKey, v)}
-            />
-            {style !== "大板布局" && <Select
-                label={`${title}B区填充`}
-                value={(data[fillBKey] as string) || ""}
-                options={PANEL_FILL_OPTIONS}
-                onChange={(v) => setField(fillBKey, v)}
-              />}
-            {(style === "三列式布局" || style === "三横式") && (
+              <Input
+                label={`${title}B中间区宽(mm)`}
+                value={(data[threeBKey] as number) ?? 0}
+                type="number"
+                onChange={(v) => setField(threeBKey, Number(v))}
+              />
+              <Input
+                label={`${title}C合页区宽(mm)`}
+                value={(data[threeCKey] as number) ?? 0}
+                type="number"
+                onChange={(v) => setField(threeCKey, Number(v))}
+              />
+            </>
+          )}
+          {usesHorizontalPanel(style) && (
+            <>
+              <Input
+                label={`${title}A区高度(mm)`}
+                value={(data[horizontalAKey] as number) ?? 1000}
+                type="number"
+                onChange={(v) => setField(horizontalAKey, Number(v))}
+              />
+              {style === "三横式" && (
+                <Input
+                  label={`${title}B区高度(mm)`}
+                  value={(data[horizontalBKey] as number) ?? 300}
+                  type="number"
+                  onChange={(v) => setField(horizontalBKey, Number(v))}
+                />
+              )}
+            </>
+          )}
+          {usesHPanel(style) && (
+            <>
+              <Input
+                label={`${title}合页边偏移Y(mm)`}
+                value={(data[hingeKey] as number) ?? 100}
+                type="number"
+                onChange={(v) => setField(hingeKey, Number(v))}
+              />
+              <Input
+                label={`${title}中区上下偏移Z(mm)`}
+                value={(data[middleKey] as number) ?? 180}
+                type="number"
+                onChange={(v) => setField(middleKey, Number(v))}
+              />
+            </>
+          )}
+          {usesHPlusPanel(style) && (
+            <>
+              <Input
+                label={`${title}H+上偏移A(mm)`}
+                value={(data[plusAKey] as number) ?? 350}
+                type="number"
+                onChange={(v) => setField(plusAKey, Number(v))}
+              />
+              <Input
+                label={`${title}H+上偏移B(mm)`}
+                value={(data[plusBKey] as number) ?? 100}
+                type="number"
+                onChange={(v) => setField(plusBKey, Number(v))}
+              />
+            </>
+          )}
+          {/* B2/B4 玻璃线条：放在 H+上偏移B 后面（H 型同样可用） */}
+          {usesHPanel(style) && (
+            <>
               <Select
-                label={`${title}C区填充`}
-                value={(data[fillCKey] as string) || ""}
-                options={PANEL_FILL_OPTIONS}
-                onChange={(v) => setField(fillCKey, v)}
+                label={`${title}B2玻璃线条`}
+                value={(data[b2GlassStyleKey] as string) || "无线条"}
+                options={GLASS_LINE_STYLES}
+                onChange={(v) => setField(b2GlassStyleKey, v)}
               />
-            )}
-          </>
-        )}
-        {usesHPanel(style) && (
-          <>
+              <Select
+                label={`${title}B4玻璃线条`}
+                value={(data[b4GlassStyleKey] as string) || "无线条"}
+                options={GLASS_LINE_STYLES}
+                onChange={(v) => setField(b4GlassStyleKey, v)}
+              />
+            </>
+          )}
+          {usesDiscPanel(style) && (
             <Input
-              label={`${title}合页边偏移Y(mm)`}
-              value={(data[hingeKey] as number) ?? 100}
+              label={`${title}圆盘半径(mm)`}
+              value={(data[discRadiusKey] as number) ?? 120}
               type="number"
-              onChange={(v) => setField(hingeKey, Number(v))}
+              onChange={(v) => setField(discRadiusKey, Number(v))}
             />
-            <Input
-              label={`${title}中区上下偏移Z(mm)`}
-              value={(data[middleKey] as number) ?? 180}
-              type="number"
-              onChange={(v) => setField(middleKey, Number(v))}
-            />
-            <Select
-              label={`${title}B2玻璃线条`}
-              value={(data[b2GlassStyleKey] as string) || "无线条"}
-              options={GLASS_LINE_STYLES}
-              onChange={(v) => setField(b2GlassStyleKey, v)}
-            />
-          </>
-        )}
-        {usesHPlusPanel(style) && (
-          <>
-            <Input
-              label={`${title}H+上偏移A(mm)`}
-              value={(data[plusAKey] as number) ?? 350}
-              type="number"
-              onChange={(v) => setField(plusAKey, Number(v))}
-            />
-            <Input
-              label={`${title}H+上偏移B(mm)`}
-              value={(data[plusBKey] as number) ?? 100}
-              type="number"
-              onChange={(v) => setField(plusBKey, Number(v))}
-            />
-          </>
-        )}
-        {usesDiscPanel(style) && (
-          <Input
-            label={`${title}圆盘半径(mm)`}
-            value={(data[discRadiusKey] as number) ?? 120}
-            type="number"
-            onChange={(v) => setField(discRadiusKey, Number(v))}
-          />
-        )}
+          )}
+        </div>
+        {/* 右侧：填充选项 */}
+        <div className="space-y-3">
+          {(["大板布局", "两列式布局", "三列式布局", "两横式", "三横式"].includes(style)) && (
+            <>
+              <Select
+                label={`${title}A区填充`}
+                value={(data[fillAKey] as string) || ""}
+                options={PANEL_FILL_OPTIONS}
+                onChange={(v) => setField(fillAKey, v)}
+              />
+              {style !== "大板布局" && <Select
+                  label={`${title}B区填充`}
+                  value={(data[fillBKey] as string) || ""}
+                  options={PANEL_FILL_OPTIONS}
+                  onChange={(v) => setField(fillBKey, v)}
+                />}
+              {(style === "三列式布局" || style === "三横式") && (
+                <Select
+                  label={`${title}C区填充`}
+                  value={(data[fillCKey] as string) || ""}
+                  options={PANEL_FILL_OPTIONS}
+                  onChange={(v) => setField(fillCKey, v)}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -755,6 +777,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillCKey: "panel_fill_c",
                   discRadiusKey: "panel_disc_radius",
                   b2GlassStyleKey: "panel_b2_glass_style",
+                  b4GlassStyleKey: "panel_b4_glass_style",
                 })}
                 {renderPanelControls({
                   title: "反面门板",
@@ -776,6 +799,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillCKey: "back_panel_fill_c",
                   discRadiusKey: "back_panel_disc_radius",
                   b2GlassStyleKey: "back_panel_b2_glass_style",
+                  b4GlassStyleKey: "back_panel_b4_glass_style",
                 })}
                 {hasChildPanel && renderPanelControls({
                   title: "子门门板",
@@ -797,6 +821,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillCKey: "child_panel_fill_c",
                   discRadiusKey: "child_panel_disc_radius",
                   b2GlassStyleKey: "child_panel_b2_glass_style",
+                  b4GlassStyleKey: "child_panel_b4_glass_style",
                 })}
               </>
             )}

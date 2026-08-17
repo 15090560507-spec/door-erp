@@ -119,6 +119,7 @@ class CADRequest(BaseModel):
     panel_horizontal_a_height: int = 1000 # 两横/三横 A 区高度
     panel_horizontal_b_height: int = 300  # 三横 B 区高度
     panel_b2_glass_style: str = "无线条" # 正面 H/H+ B2 玻璃线条
+    panel_b4_glass_style: str = "无线条" # 正面 H+ B4 玻璃线条
     back_panel_lock_offset_x: int = 180
     back_panel_hinge_offset_y: int = 100
     back_panel_middle_offset_z: int = 180
@@ -134,6 +135,7 @@ class CADRequest(BaseModel):
     back_panel_horizontal_a_height: int = 1000
     back_panel_horizontal_b_height: int = 300
     back_panel_b2_glass_style: str = "无线条"
+    back_panel_b4_glass_style: str = "无线条"
     child_panel_lock_offset_x: int = 180
     child_panel_hinge_offset_y: int = 100
     child_panel_middle_offset_z: int = 180
@@ -149,6 +151,7 @@ class CADRequest(BaseModel):
     child_panel_horizontal_a_height: int = 1000
     child_panel_horizontal_b_height: int = 300
     child_panel_b2_glass_style: str = "无线条"
+    child_panel_b4_glass_style: str = "无线条"
     glass_line_inset: int = 20          # 玻璃线条距区域边界
     glass_line_spacing: int = 20        # 双线及回纹间距
     left_gap: int = 2                   # 左门缝
