@@ -298,7 +298,10 @@ def build_cad_params(req: CADRequest):
     elif req.has_outer_portal:
         pillar_w = req.outer_portal_pillar_width
         header_h = req.outer_portal_header_height
-        frame_notes.append(f"外门头门柱：门柱宽/门头高/压框={pillar_w}/{header_h}/{overlap_front}mm")
+        frame_notes.append(
+            "外门头门柱："
+            f"门柱宽/门头高/左右压框/上压框={pillar_w}/{header_h}/{overlap_front_lr}/{overlap_front_top}mm"
+        )
     elif req.has_outer_portal2:
         frame_notes.append(
             "外门头门柱："
@@ -683,6 +686,8 @@ def build_cad_params(req: CADRequest):
         "child_panel_b4_glass_style": req.child_panel_b4_glass_style,
         "glass_line_inset": req.glass_line_inset,
         "glass_line_spacing": req.glass_line_spacing,
+        "back_glass_line_inset": req.back_glass_line_inset,
+        "back_glass_line_spacing": req.back_glass_line_spacing,
         "handle_size": req.handle_size,
         "fingerprint_lock": req.fingerprint_lock,
         "enable_occlusion": req.enable_occlusion,

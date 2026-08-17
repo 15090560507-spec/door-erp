@@ -1442,8 +1442,14 @@ def draw_door_in_frame(
         y2: float,
         style: str,
         orientation: str,
+        inset: Optional[float] = None,
+        spacing: Optional[float] = None,
     ) -> None:
-        """按玻璃花枝模板生成规则化线条，横气窗自动旋转分格方向。"""
+        """按玻璃花枝模板生成规则化线条，横气窗自动旋转分格方向。
+
+        inset/spacing 传入时优先使用（可按正面/反面独立设置），
+        未传入时回退到全局 glass_line_inset / glass_line_spacing。
+        """
         style = str(style or "无线条").strip()
         if style in ("", "无", "无线条"):
             return
@@ -1455,7 +1461,9 @@ def draw_door_in_frame(
         if width <= 8 or height <= 8:
             return
 
-        requested_inset = round(max(1.0, float(p.get("glass_line_inset", 20) or 20)))
+        requested_inset = round(max(1.0, float(
+            inset if inset is not None else p.get("glass_line_inset", 20)
+        ) or 1.0))
         inset = min(requested_inset, width / 6, height / 6)
         ix1, ix2 = left + inset, right - inset
         iy1, iy2 = bottom + inset, top - inset
@@ -1553,7 +1561,9 @@ def draw_door_in_frame(
         if style in ("单圈外围线", "单圈外围线(封闭)"):
             return
 
-        requested_spacing = round(max(1.0, float(p.get("glass_line_spacing", 20) or 20)))
+        requested_spacing = round(max(1.0, float(
+            spacing if spacing is not None else p.get("glass_line_spacing", 20)
+        ) or 1.0))
         spacing = min(requested_spacing, inner_width / 8, inner_height / 8)
         band_width = min(15.0, inner_width / 16, inner_height / 16)
 
@@ -1703,6 +1713,13 @@ def draw_door_in_frame(
             divided_grid(2, 3 if style == "六格线条" else 4)
 
     if qc_choice == "玻璃" and qc_h > 0 and not is_arch_qc:
+        # 玻璃线条边距/间距按正反面独立：反面未单独设置时回退正面值
+        if is_back:
+            qc_inset = float(p.get("back_glass_line_inset", 0) or 0)
+            qc_spacing = float(p.get("back_glass_line_spacing", 0) or 0)
+        else:
+            qc_inset = 0
+            qc_spacing = 0
         draw_glass_template_rect(
             left_width,
             mid_frame_top,
@@ -1710,6 +1727,8 @@ def draw_door_in_frame(
             top_frame_bottom,
             p.get("qc_glass_style", "无线条"),
             "horizontal",
+            qc_inset if qc_inset > 0 else None,
+            qc_spacing if qc_spacing > 0 else None,
         )
 
     front_fill_presets = {
@@ -1742,6 +1761,14 @@ def draw_door_in_frame(
     back_preset = detect_panel_preset(str(p.get("fmks", ""))) or front_preset
     force_panel_preset = bool(explicit_panel_preset)
 
+    def _group_glass_value(group: str, front_key: str, back_key: str) -> float:
+        """玻璃线条边距/间距按面取值：反面未单独设置(0)时回退正面值。"""
+        front_value = float(p.get(front_key, 20) or 20)
+        if group == "back":
+            back_value = float(p.get(back_key, 0) or 0)
+            return back_value if back_value > 0 else front_value
+        return front_value
+
     def panel_settings(group: str, style: str) -> Dict[str, float | str]:
         prefix = "" if group == "front" else f"{group}_panel_"
         b2_style_key = "panel_b2_glass_style" if group == "front" else f"{group}_panel_b2_glass_style"
@@ -1772,6 +1799,8 @@ def draw_door_in_frame(
                 "panel_b4_glass_style" if group == "front" else f"{group}_panel_b4_glass_style",
                 "无线条",
             ) or "无线条"),
+            "glass_line_inset": _group_glass_value(group, "glass_line_inset", "back_glass_line_inset"),
+            "glass_line_spacing": _group_glass_value(group, "glass_line_spacing", "back_glass_line_spacing"),
         }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
@@ -2005,6 +2034,8 @@ def draw_door_in_frame(
                     b2_top,
                     str(settings.get("b2_glass_style", "无线条")),
                     "vertical",
+                    float(settings.get("glass_line_inset", 20) or 20),
+                    float(settings.get("glass_line_spacing", 20) or 20),
                 )
                 if b4_bottom is not None and b4_top is not None:
                     draw_glass_template_rect(
@@ -2014,6 +2045,8 @@ def draw_door_in_frame(
                         b4_top,
                         str(settings.get("b4_glass_style", "无线条")),
                         "vertical",
+                        float(settings.get("glass_line_inset", 20) or 20),
+                        float(settings.get("glass_line_spacing", 20) or 20),
                     )
             for y in sorted_y_lines:
                 draw_panel_line(bx1, y, bx2, y)
@@ -2160,12 +2193,12 @@ def draw_door_in_frame(
             draw_mask(hx, 1200, handle_w, handle_h)
 
     if current_semicircle and handle_size:
-        # 半圆拉手遮罩：半径取小值、直径取大值（如 150*300 → 半径150、直径300）
+        # 半圆拉手遮罩：半径取小值、直径取大值（如 150*300 → 半径150、直径300）。
+        # 位置与其他带尺寸拉手一致（距锁边 110mm）。
         radius = float(min(handle_size))
         diameter = float(max(handle_size))
-        for hx, toward_hinge, _hblock in handle_targets(60):
-            edge_x = hx - toward_hinge * 60
-            draw_mask(edge_x + toward_hinge * radius / 2, 1200, radius + 4, diameter + 4)
+        for hx, toward_hinge, _hblock in sized_handle_targets(110):
+            draw_mask(hx, 1200, radius + 4, diameter + 4)
 
     if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
@@ -2209,24 +2242,24 @@ def draw_door_in_frame(
             drawer.insert_custom_block("BBLS", off((hx, panel_y_bot + 1000)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
     if current_semicircle and handle_size:
-        # 半圆拉手绘制：单门一个半圆贴锁边；对开门左右扇各一个，直径贴合锁边；
+        # 半圆拉手绘制：单门一个半圆；对开门左右扇各一个。
+        # 直径边竖直、距锁边 110mm（与其他带尺寸拉手一致），圆弧向门板内侧凸出；
         # 150*300 → 150 为半径，300 为直径。
         radius = float(min(handle_size))
         diameter = float(max(handle_size))
         y_center = 1200
-        for hx, toward_hinge, _hblock in handle_targets(60):
-            edge_x = hx - toward_hinge * 60
-            # 直径线（沿锁边竖直）
+        for hx, toward_hinge, _hblock in sized_handle_targets(110):
+            # 直径线（竖直，平行于锁边）
             drawer.draw_line(
-                off((edge_x, y_center - diameter / 2)),
-                off((edge_x, y_center + diameter / 2)),
+                off((hx, y_center - diameter / 2)),
+                off((hx, y_center + diameter / 2)),
                 "A-DOOR-PANEL",
             )
             # 圆弧向门板内侧凸出
             if toward_hinge >= 0:
-                drawer.draw_arc(off((edge_x, y_center)), radius, -90, 90, "A-DOOR-PANEL")
+                drawer.draw_arc(off((hx, y_center)), radius, -90, 90, "A-DOOR-PANEL")
             else:
-                drawer.draw_arc(off((edge_x, y_center)), radius, 90, 270, "A-DOOR-PANEL")
+                drawer.draw_arc(off((hx, y_center)), radius, 90, 270, "A-DOOR-PANEL")
 
     if handle_size and current_sized_handle and not current_semicircle:
         handle_w, handle_h = handle_size

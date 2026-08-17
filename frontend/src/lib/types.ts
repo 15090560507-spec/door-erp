@@ -172,6 +172,8 @@ export interface DoorFormData {
   child_panel_b4_glass_style: string;
   glass_line_inset: number;
   glass_line_spacing: number;
+  back_glass_line_inset: number;
+  back_glass_line_spacing: number;
   left_gap: number;
   right_gap: number;
   top_gap: number;
@@ -293,7 +295,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
   child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
   child_panel_horizontal_a_height: 1000, child_panel_horizontal_b_height: 300, child_panel_b2_glass_style: "无线条", child_panel_b4_glass_style: "无线条",
-  glass_line_inset: 20, glass_line_spacing: 20,
+  glass_line_inset: 20, glass_line_spacing: 20, back_glass_line_inset: 0, back_glass_line_spacing: 0,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400, mid_clear_width: 0,

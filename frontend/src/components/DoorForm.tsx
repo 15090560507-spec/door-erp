@@ -385,6 +385,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     discRadiusKey,
     b2GlassStyleKey,
     b4GlassStyleKey,
+    insetKey,
+    spacingKey,
   }: {
     title: string;
     styleKey: keyof DoorFormData;
@@ -406,6 +408,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     discRadiusKey: keyof DoorFormData;
     b2GlassStyleKey: keyof DoorFormData;
     b4GlassStyleKey: keyof DoorFormData;
+    insetKey?: keyof DoorFormData;
+    spacingKey?: keyof DoorFormData;
   }) => (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
@@ -500,23 +504,6 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               />
             </>
           )}
-          {/* B2/B4 玻璃线条：放在 H+上偏移B 后面（H 型同样可用） */}
-          {usesHPanel(style) && (
-            <>
-              <Select
-                label={`${title}B2玻璃线条`}
-                value={(data[b2GlassStyleKey] as string) || "无线条"}
-                options={GLASS_LINE_STYLES}
-                onChange={(v) => setField(b2GlassStyleKey, v)}
-              />
-              <Select
-                label={`${title}B4玻璃线条`}
-                value={(data[b4GlassStyleKey] as string) || "无线条"}
-                options={GLASS_LINE_STYLES}
-                onChange={(v) => setField(b4GlassStyleKey, v)}
-              />
-            </>
-          )}
           {usesDiscPanel(style) && (
             <Input
               label={`${title}圆盘半径(mm)`}
@@ -526,7 +513,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             />
           )}
         </div>
-        {/* 右侧：填充选项 */}
+        {/* 右侧：填充选项 + B2/B4 玻璃线条（放在偏移数据的右侧）+ 玻璃线条边距/间距 */}
         <div className="space-y-3">
           {(["大板布局", "两列式布局", "三列式布局", "两横式", "三横式"].includes(style)) && (
             <>
@@ -550,6 +537,40 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   onChange={(v) => setField(fillCKey, v)}
                 />
               )}
+            </>
+          )}
+          {usesHPanel(style) && (
+            <>
+              <Select
+                label={`${title}B2玻璃线条`}
+                value={(data[b2GlassStyleKey] as string) || "无线条"}
+                options={GLASS_LINE_STYLES}
+                onChange={(v) => setField(b2GlassStyleKey, v)}
+              />
+              {usesHPlusPanel(style) && (
+                <Select
+                  label={`${title}B4玻璃线条`}
+                  value={(data[b4GlassStyleKey] as string) || "无线条"}
+                  options={GLASS_LINE_STYLES}
+                  onChange={(v) => setField(b4GlassStyleKey, v)}
+                />
+              )}
+            </>
+          )}
+          {insetKey !== undefined && spacingKey !== undefined && (
+            <>
+              <Input
+                label={`${title}玻璃线条边距(mm)`}
+                value={(data[insetKey] as number) ?? 0}
+                type="number"
+                onChange={(v) => setField(insetKey, Number(v))}
+              />
+              <Input
+                label={`${title}玻璃线条间距(mm)`}
+                value={(data[spacingKey] as number) ?? 0}
+                type="number"
+                onChange={(v) => setField(spacingKey, Number(v))}
+              />
             </>
           )}
         </div>
@@ -778,6 +799,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   discRadiusKey: "panel_disc_radius",
                   b2GlassStyleKey: "panel_b2_glass_style",
                   b4GlassStyleKey: "panel_b4_glass_style",
+                  insetKey: "glass_line_inset",
+                  spacingKey: "glass_line_spacing",
                 })}
                 {renderPanelControls({
                   title: "反面门板",
@@ -800,6 +823,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   discRadiusKey: "back_panel_disc_radius",
                   b2GlassStyleKey: "back_panel_b2_glass_style",
                   b4GlassStyleKey: "back_panel_b4_glass_style",
+                  insetKey: "back_glass_line_inset",
+                  spacingKey: "back_glass_line_spacing",
                 })}
                 {hasChildPanel && renderPanelControls({
                   title: "子门门板",
@@ -826,13 +851,6 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               </>
             )}
           </div>
-          {(data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗") ||
-          [data.door_panel_style, data.back_door_panel_style, data.child_door_panel_style].some(usesHPanel) ? (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="玻璃线条边距(mm)" value={data.glass_line_inset} type="number" onChange={(v) => set("glass_line_inset", Number(v))} />
-              <Input label="玻璃线条间距(mm)" value={data.glass_line_spacing} type="number" onChange={(v) => set("glass_line_spacing", Number(v))} />
-            </div>
-          ) : null}
         </details>
 
         <Card title="边框与下槛截面">
@@ -904,10 +922,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             </div>
           )}
           {data.has_outer_portal && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Input label="门柱宽度" required value={data.outer_portal_pillar_width} type="number" onChange={(v) => set("outer_portal_pillar_width", Number(v))} />
               <Input label="门头高度" required value={data.outer_portal_header_height} type="number" onChange={(v) => set("outer_portal_header_height", Number(v))} />
-              <Input label="压框" value={data.overlap_front_lr} type="number" onChange={(v) => onChange({ ...data, overlap_front_lr: Number(v), overlap_front_top: Number(v) })} />
+              <Input label="左右压框" value={data.overlap_front_lr} type="number" onChange={(v) => set("overlap_front_lr", Number(v))} />
+              <Input label="上压框" value={data.overlap_front_top} type="number" onChange={(v) => set("overlap_front_top", Number(v))} />
             </div>
           )}
           {data.has_outer_portal2 && (

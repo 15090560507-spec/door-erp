@@ -154,6 +154,8 @@ class CADRequest(BaseModel):
     child_panel_b4_glass_style: str = "无线条"
     glass_line_inset: int = 20          # 玻璃线条距区域边界
     glass_line_spacing: int = 20        # 双线及回纹间距
+    back_glass_line_inset: int = 0      # 反面玻璃线条边距；0=沿用正面
+    back_glass_line_spacing: int = 0    # 反面玻璃线条间距；0=沿用正面
     left_gap: int = 2                   # 左门缝
     right_gap: int = 2                  # 右门缝
     top_gap: int = 3                    # 上门缝

@@ -41,25 +41,17 @@ export default function TaskCard({
           </span>
           <span className="text-[13px] text-[#8E8E93] truncate">- {task.project}</span>
           <StatusBadge status={task.status} />
-        </div>
-        <div className="flex items-center gap-2 text-[12px] text-[#8E8E93] mt-1.5">
-          <span className="bg-[#F2F2F7] px-2 py-0.5 rounded font-medium">{task.door_type}</span>
-          {task.size && <span>{task.size}</span>}
-          <span className="ml-auto">{task.date}</span>
-        </div>
-
-        {/* 未报价/已报价、未确认/已确认：卡片内部右下角，上下排列 */}
-        {showToggles && (
-          <div className="mt-2 pt-2 border-t border-[#F2F2F7] flex justify-end">
-            <div className="flex flex-col items-end gap-1">
+          {/* 未报价/已报价、未确认/已确认：时间上方的空白处，上下排列 */}
+          {showToggles && (
+            <div className="ml-auto flex flex-col items-end gap-0.5 flex-shrink-0 pl-2">
               {onToggleQuoteStatus && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onToggleQuoteStatus(task); }}
                   title={`点击切换为${quoted ? "未报价" : "已报价"}`}
-                  className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold border transition-all duration-200 ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all duration-200 ${
                     quoted
                       ? "bg-[#E5F9E5] text-[#248A3D] border-[#9BD9A8] hover:bg-[#D3F3D3]"
-                      : "bg-[#FFF8E5] text-[#B25E00] border-[#F2D38B] hover:bg-[#FFF0C7]"
+                      : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE] hover:bg-[#E9E9ED]"
                   }`}
                 >
                   {quoteStatus}
@@ -69,7 +61,7 @@ export default function TaskCard({
                 <button
                   onClick={(e) => { e.stopPropagation(); onToggleConfirmStatus(task); }}
                   title={`点击切换为${confirmed ? "未确认" : "已确认"}`}
-                  className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold border transition-all duration-200 ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all duration-200 ${
                     confirmed
                       ? "bg-[#E5F0FF] text-[#007AFF] border-[#A9CDF7] hover:bg-[#D8E9FF]"
                       : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE] hover:bg-[#E9E9ED]"
@@ -79,8 +71,13 @@ export default function TaskCard({
                 </button>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-[12px] text-[#8E8E93] mt-1.5">
+          <span className="bg-[#F2F2F7] px-2 py-0.5 rounded font-medium">{task.door_type}</span>
+          {task.size && <span>{task.size}</span>}
+          <span className="ml-auto">{task.date}</span>
+        </div>
       </div>
 
       {onDelete && (
