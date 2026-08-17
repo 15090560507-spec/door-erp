@@ -11,7 +11,7 @@ import type {
 } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
 import { createQuote, getAccessories, rememberQuoteItems } from "@/lib/quoteApi";
-import { api, getTask, getTasks } from "@/lib/api";
+import { api, getTask, getTasks, updateTask } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
 import QuotePreview from "@/components/QuotePreview";
@@ -387,12 +387,23 @@ export default function QuotePage() {
     if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
     if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
     if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
+    // 保存前弹窗确认一次：提醒核对尺寸是否调整
+    if (!window.confirm("请确认尺寸是否有调整")) return;
 
     setSaving(true);
     setStatus("");
     try {
       const quote = await createQuote(form);
       setLastQuoteId(quote.id);
+      // 联动：报价保存成功后，把关联任务的报价状态置为 已报价
+      const quotedTaskIds = (form.doorGroups || [])
+        .map((group) => group.taskId)
+        .filter((id): id is string => Boolean(id && id.trim()));
+      if (quotedTaskIds.length > 0) {
+        await Promise.allSettled(
+          quotedTaskIds.map((id) => updateTask(id, { quote_status: "已报价" }))
+        );
+      }
       let remembered = 0;
       try {
         remembered = await rememberCurrentQuote(form.items);

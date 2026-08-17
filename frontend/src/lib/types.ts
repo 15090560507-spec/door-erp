@@ -204,6 +204,8 @@ export interface TaskItem {
   drawing_img_b64: string | null;
   review_feedback: string;
   history: HistoryEntry[];
+  quote_status?: string;
+  confirm_status?: string;
 }
 
 export interface TaskListResponse {

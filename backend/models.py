@@ -220,6 +220,8 @@ class TaskUpdateRequest(BaseModel):
     review_feedback: Optional[str] = None
     ref_text: Optional[str] = None
     ref_images: Optional[List[str]] = None
+    quote_status: Optional[str] = None   # 未报价 / 已报价
+    confirm_status: Optional[str] = None  # 未确认 / 已确认
 
 
 class TaskResponse(BaseModel):
@@ -237,6 +239,8 @@ class TaskResponse(BaseModel):
     drawing_img_b64: Optional[str] = None
     review_feedback: str = ""
     history: List[HistoryEntry] = []
+    quote_status: str = "未报价"
+    confirm_status: str = "未确认"
 
 
 class TaskListResponse(BaseModel):

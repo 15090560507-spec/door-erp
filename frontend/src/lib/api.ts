@@ -124,6 +124,7 @@ export async function getAllTasks(): Promise<TaskListResponse> {
 export async function getTasks(params?: {
   date?: string;
   status?: string;
+  q?: string;
   limit?: number;
   offset?: number;
 }): Promise<TaskListResponse> {
@@ -154,6 +155,8 @@ export async function updateTask(
     review_feedback?: string;
     ref_text?: string;
     ref_images?: string[];
+    quote_status?: string;
+    confirm_status?: string;
   }
 ): Promise<TaskItem> {
   const { data } = await api.put<TaskItem>(`/tasks/${taskId}`, update);

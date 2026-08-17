@@ -47,6 +47,8 @@ export default function DashboardPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterQ, setFilterQ] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -57,6 +59,11 @@ export default function DashboardPage() {
   const moduleRef = useRef(module);
   moduleRef.current = module;
 
+  // 搜索防抖：输入 300ms 后生效
+  const searchQRef = useRef(searchQ);
+  searchQRef.current = searchQ;
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // setTimeout 清理：防止组件卸载后更新状态
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,6 +72,7 @@ export default function DashboardPage() {
     return () => {
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
   }, []);
 
@@ -72,7 +80,7 @@ export default function DashboardPage() {
     setLoading(true);
     const m = moduleRef.current;
     try {
-      let params: { status?: string; date?: string; limit: number; offset: number } = {
+      let params: { status?: string; date?: string; q?: string; limit: number; offset: number } = {
         limit: PAGE_SIZE,
         offset: p * PAGE_SIZE,
       };
@@ -90,6 +98,7 @@ export default function DashboardPage() {
         params.status = "待终审,已通过";
       }
       if (date) params.date = date;
+      if (searchQRef.current) params.q = searchQRef.current;
       const res = await getTasks(params);
       setTasks(res.tasks);
       setTotal(res.total);
@@ -119,7 +128,7 @@ export default function DashboardPage() {
     setPage(0);
     fetchTasks(filterDate, filterStatus, 0);
     fetchStatusCounts(filterDate);
-  }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, module]); // module 变化时重新触发
+  }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, searchQ, module]); // module/搜索词变化时重新触发
 
   // 切换模块时自动返回任务列表（保留表单数据以便返回继续编辑）
   useEffect(() => {
@@ -172,6 +181,46 @@ export default function DashboardPage() {
     setMessage({ text, type });
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
+  };
+
+  // 搜索输入防抖：300ms 后生效
+  const handleSearchChange = (value: string) => {
+    setFilterQ(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setPage(0);
+      setSearchQ(value);
+    }, 300);
+  };
+
+  const clearSearch = () => {
+    setFilterQ("");
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    setPage(0);
+    setSearchQ("");
+  };
+
+  // 未报价/已报价、未确认/已确认 切换（录入模块卡片 + 任务总览）
+  const toggleTaskQuoteStatus = async (task: TaskItem) => {
+    const next = (task.quote_status || "未报价") === "已报价" ? "未报价" : "已报价";
+    try {
+      const updated = await updateTask(task.id, { quote_status: next });
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
+      flash(`已切换为${next}`, "success");
+    } catch {
+      flash("报价状态更新失败", "error");
+    }
+  };
+
+  const toggleTaskConfirmStatus = async (task: TaskItem) => {
+    const next = (task.confirm_status || "未确认") === "已确认" ? "未确认" : "已确认";
+    try {
+      const updated = await updateTask(task.id, { confirm_status: next });
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
+      flash(`已切换为${next}`, "success");
+    } catch {
+      flash("确认状态更新失败", "error");
+    }
   };
 
   const validateDoorForm = (data: DoorFormData): string | null => {
@@ -750,6 +799,13 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center gap-3 mb-4">
                   <h4 className="text-lg font-semibold text-[#1C1C1E] mr-auto">已录入表单</h4>
                   <input
+                    type="text"
+                    value={filterQ}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    placeholder="搜索客户/项目/订单号"
+                    className="px-3 py-1.5 text-sm w-52 rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                  />
+                  <input
                     type="date"
                     value={filterDate ? filterDate.replace(/\./g, "-") : ""}
                     onChange={(e) => {
@@ -770,9 +826,9 @@ export default function DashboardPage() {
                     <option value="待修改">待修改</option>
                     <option value="已通过">已通过</option>
                   </select>
-                  {(filterDate || filterStatus) && (
+                  {(filterDate || filterStatus || filterQ) && (
                     <button
-                      onClick={() => { setFilterDate(""); setFilterStatus(""); }}
+                      onClick={() => { setFilterDate(""); setFilterStatus(""); clearSearch(); }}
                       className="px-3 py-1.5 text-xs text-[#007AFF] font-medium hover:underline"
                     >
                       清除筛选
@@ -791,6 +847,8 @@ export default function DashboardPage() {
                         task={t}
                         onClick={(task) => setActiveTaskId(task.id)}
                         onDelete={handleDeleteTask}
+                        onToggleQuoteStatus={toggleTaskQuoteStatus}
+                        onToggleConfirmStatus={toggleTaskConfirmStatus}
                       />
                     ))}
                     {total > PAGE_SIZE && (
@@ -889,6 +947,13 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center gap-3 mb-4 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-3">
                 <label className="text-[13px] font-medium text-[#8E8E93]">筛选:</label>
                 <input
+                  type="text"
+                  value={filterQ}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="搜索客户/项目/订单号"
+                  className="px-3 py-1.5 text-sm w-56 rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
+                />
+                <input
                   type="date"
                   value={filterDate ? filterDate.replace(/\./g, "-") : ""}
                   onChange={(e) => {
@@ -909,9 +974,9 @@ export default function DashboardPage() {
                   <option value="待修改">待修改</option>
                   <option value="已通过">已通过</option>
                 </select>
-                {(filterDate || filterStatus) && (
+                {(filterDate || filterStatus || filterQ) && (
                   <button
-                    onClick={() => { setFilterDate(""); setFilterStatus(""); }}
+                    onClick={() => { setFilterDate(""); setFilterStatus(""); clearSearch(); }}
                     className="px-3 py-1.5 text-xs text-[#007AFF] font-medium hover:underline"
                   >
                     清除筛选
@@ -965,6 +1030,8 @@ export default function DashboardPage() {
                         setActiveTaskId(task.id);
                       }}
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
+                      onToggleQuoteStatus={module === "任务总览" ? toggleTaskQuoteStatus : undefined}
+                      onToggleConfirmStatus={module === "任务总览" ? toggleTaskConfirmStatus : undefined}
                     />
                   ))}
                   {total > PAGE_SIZE && (

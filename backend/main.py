@@ -123,6 +123,33 @@ def normalize_task_date(value: Optional[str]) -> str:
     return text.replace("-", ".").replace("/", ".")
 
 
+def _task_summary_from_params(params: Dict) -> Dict:
+    """从表单参数推导汇总表字段（时间/客户/项目/门型/尺寸）。
+
+    表单参数修改后必须重新推导，保证汇总表与表单内容始终一致。
+    """
+    return {
+        "date": normalize_task_date(params.get("dhrq", "")) or shanghai_now().strftime("%Y.%m.%d"),
+        "customer": str(params.get("dhdw", "") or ""),
+        "project": str(params.get("gdmc", "") or ""),
+        "door_type": str(params.get("door_type", "") or ""),
+        "size": f"{params.get('dw', 0)} x {params.get('dh', 0)} (洞口)",
+    }
+
+
+def _task_matches_query(task: Dict, query: str) -> bool:
+    """搜索检索：客户/项目/订单号/编号/时间 中包含关键词即命中。"""
+    text = query.strip().lower()
+    if not text:
+        return True
+    params = task.get("params") or {}
+    haystack = " ".join(str(value) for value in (
+        task.get("customer"), task.get("project"), task.get("date"), task.get("id"),
+        params.get("dhdw"), params.get("gdmc"), params.get("ddh"), params.get("order_title"),
+    ) if value)
+    return text in haystack.lower()
+
+
 def _cad_cache_key(req: CADRequest) -> str:
     try:
         template_version = os.stat(TEMPLATE_PATH).st_mtime_ns
@@ -870,10 +897,11 @@ def reset_password(uid: str, req: ResetPasswordRequest, current_user: Dict = Dep
 @app.get("/api/tasks", response_model=TaskListResponse)
 def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YYYY.MM.DD"),
                status: Optional[str] = Query(None, description="按状态筛选"),
+               q: Optional[str] = Query(None, description="搜索关键词：客户/项目/订单号/编号"),
                limit: int = Query(50, ge=1, le=200, description="每页条数"),
                offset: int = Query(0, ge=0, description="偏移量"),
                current_user: Dict = Depends(get_current_user)):
-    """获取任务列表，支持按日期/状态筛选 + 分页（不返回 Base64 图片数据以优化性能）"""
+    """获取任务列表，支持按日期/状态筛选 + 关键词搜索 + 分页（不返回 Base64 图片数据以优化性能）"""
     all_tasks = task_db.load_all_tasks()
     filtered = []
     status_set = set(s.strip() for s in status.split(",")) if status else None
@@ -882,6 +910,8 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
         if normalized_date and normalize_task_date(t.get("date")) != normalized_date:
             continue
         if status_set and t.get("status") not in status_set:
+            continue
+        if q and not _task_matches_query(t, q):
             continue
         t = dict(t)
         t.pop("ref_img_b64", None)
@@ -912,18 +942,16 @@ def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_rol
     task_id = str(uuid.uuid4())[:8]
     new_task = {
         "id": task_id,
-        "date": req.params.get("dhrq", shanghai_now().strftime("%Y.%m.%d")),
+        **_task_summary_from_params(req.params),
         "status": "待绘制",
-        "customer": req.params.get("dhdw", ""),
-        "project": req.params.get("gdmc", ""),
-        "door_type": req.params.get("door_type", ""),
-        "size": f"{req.params.get('dw', 0)} x {req.params.get('dh', 0)} (洞口)",
         "params": req.params,
         "ref_text": req.ref_text,
         "ref_images": req.ref_images,
         "drawing_img_b64": None,
         "review_feedback": "",
         "history": [],
+        "quote_status": "未报价",
+        "confirm_status": "未确认",
     }
     try:
         task_db.add_task(new_task)
@@ -965,6 +993,8 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
         if product_name not in {"牌匾", "铝艺栅栏", "雨棚"} and not str(req.params.get("st_val", "")).strip():
             raise HTTPException(status_code=400, detail="锁体类型为必填项")
         update_data["params"] = req.params
+        # 表单修改后同步刷新汇总表字段（时间/客户/项目/门型/尺寸），避免汇总表停留旧值
+        update_data.update(_task_summary_from_params(req.params))
         # 生成修改记录
         old_params = existing.get("params", {})
         history_entry = _build_history(old_params, req.params, current_user.get("name", current_user.get("uid", "")))
@@ -979,6 +1009,14 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
         update_data["ref_text"] = req.ref_text
     if req.ref_images is not None:
         update_data["ref_images"] = req.ref_images
+    if req.quote_status is not None:
+        if req.quote_status not in {"未报价", "已报价"}:
+            raise HTTPException(status_code=400, detail="报价状态只能是 未报价 或 已报价")
+        update_data["quote_status"] = req.quote_status
+    if req.confirm_status is not None:
+        if req.confirm_status not in {"未确认", "已确认"}:
+            raise HTTPException(status_code=400, detail="确认状态只能是 未确认 或 已确认")
+        update_data["confirm_status"] = req.confirm_status
 
     try:
         task_db.update_task(task_id, update_data)
