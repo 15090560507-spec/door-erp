@@ -424,14 +424,6 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </div>
         {/* 左侧：宽（尺寸参数） */}
         <div className="space-y-3">
-          {usesOffsetX(style) && (
-            <Input
-              label={`${title}锁边偏移X(mm)`}
-              value={(data[lockKey] as number) ?? 180}
-              type="number"
-              onChange={(v) => setField(lockKey, Number(v))}
-            />
-          )}
           {usesThreeColumnPanel(style) && (
             <>
               <Input
@@ -472,37 +464,50 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               )}
             </>
           )}
-          {usesHPanel(style) && (
-            <>
-              <Input
-                label={`${title}合页边偏移Y(mm)`}
-                value={(data[hingeKey] as number) ?? 100}
-                type="number"
-                onChange={(v) => setField(hingeKey, Number(v))}
-              />
-              <Input
-                label={`${title}中区上下偏移Z(mm)`}
-                value={(data[middleKey] as number) ?? 180}
-                type="number"
-                onChange={(v) => setField(middleKey, Number(v))}
-              />
-            </>
-          )}
-          {usesHPlusPanel(style) && (
-            <>
-              <Input
-                label={`${title}H+上偏移A(mm)`}
-                value={(data[plusAKey] as number) ?? 350}
-                type="number"
-                onChange={(v) => setField(plusAKey, Number(v))}
-              />
-              <Input
-                label={`${title}H+上偏移B(mm)`}
-                value={(data[plusBKey] as number) ?? 100}
-                type="number"
-                onChange={(v) => setField(plusBKey, Number(v))}
-              />
-            </>
+          {/* 偏移参数区：淡色背景区分 */}
+          {(usesOffsetX(style) || usesHPanel(style) || usesHPlusPanel(style)) && (
+            <div className="rounded-md bg-[#EAF3FF] p-2 space-y-3">
+              {usesOffsetX(style) && (
+                <Input
+                  label={`${title}锁边偏移X(mm)`}
+                  value={(data[lockKey] as number) ?? 180}
+                  type="number"
+                  onChange={(v) => setField(lockKey, Number(v))}
+                />
+              )}
+              {usesHPanel(style) && (
+                <>
+                  <Input
+                    label={`${title}合页边偏移Y(mm)`}
+                    value={(data[hingeKey] as number) ?? 100}
+                    type="number"
+                    onChange={(v) => setField(hingeKey, Number(v))}
+                  />
+                  <Input
+                    label={`${title}中区上下偏移Z(mm)`}
+                    value={(data[middleKey] as number) ?? 180}
+                    type="number"
+                    onChange={(v) => setField(middleKey, Number(v))}
+                  />
+                </>
+              )}
+              {usesHPlusPanel(style) && (
+                <>
+                  <Input
+                    label={`${title}H+上偏移A(mm)`}
+                    value={(data[plusAKey] as number) ?? 350}
+                    type="number"
+                    onChange={(v) => setField(plusAKey, Number(v))}
+                  />
+                  <Input
+                    label={`${title}H+上偏移B(mm)`}
+                    value={(data[plusBKey] as number) ?? 100}
+                    type="number"
+                    onChange={(v) => setField(plusBKey, Number(v))}
+                  />
+                </>
+              )}
+            </div>
           )}
           {usesDiscPanel(style) && (
             <Input
@@ -555,22 +560,23 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   onChange={(v) => setField(b4GlassStyleKey, v)}
                 />
               )}
-            </>
-          )}
-          {insetKey !== undefined && spacingKey !== undefined && (
-            <>
-              <Input
-                label={`${title}玻璃线条边距(mm)`}
-                value={(data[insetKey] as number) ?? 0}
-                type="number"
-                onChange={(v) => setField(insetKey, Number(v))}
-              />
-              <Input
-                label={`${title}玻璃线条间距(mm)`}
-                value={(data[spacingKey] as number) ?? 0}
-                type="number"
-                onChange={(v) => setField(spacingKey, Number(v))}
-              />
+              {/* 玻璃线条边距/间距仅在 H / H+ 布局显示，正反面可独立设置 */}
+              {insetKey !== undefined && spacingKey !== undefined && (
+                <>
+                  <Input
+                    label={`${title}玻璃线条边距(mm)`}
+                    value={(data[insetKey] as number) ?? 0}
+                    type="number"
+                    onChange={(v) => setField(insetKey, Number(v))}
+                  />
+                  <Input
+                    label={`${title}玻璃线条间距(mm)`}
+                    value={(data[spacingKey] as number) ?? 0}
+                    type="number"
+                    onChange={(v) => setField(spacingKey, Number(v))}
+                  />
+                </>
+              )}
             </>
           )}
         </div>
@@ -717,11 +723,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             ) : (
               <>
                 <div>
-                  <Input label="洞口总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+                  <Input label="总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
                   {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} />}
                 </div>
                 <div>
-                  <Input label="洞口总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+                  <Input label="总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
                   {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} />}
                 </div>
               </>

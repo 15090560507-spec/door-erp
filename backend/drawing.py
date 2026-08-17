@@ -2149,9 +2149,15 @@ def draw_door_in_frame(
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
     non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手"}
     current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
-    # 半圆拉手：铝雕圆形拉手/铝雕滑盖圆环拉手。直径方向贴合门板锁边，圆弧向板内凸出。
-    semicircle_handles = {"铝雕圆形拉手", "铝雕滑盖圆环拉手"}
+    # 半圆拉手：铝雕圆形拉手/铝雕滑盖圆环拉手。直径方向平行于门板锁边，圆弧向板内凸出。
+    semicircle_handles = {"铝雕圆形拉手", "铝雕滑盖圆环拉手", "铝雕圆形滑盖拉手"}
     current_semicircle = str(current_handle).strip() in semicircle_handles
+
+    def semicircle_size():
+        """半圆拉手尺寸：150*300 → 半径150、直径300；未填时默认 150*300。"""
+        if handle_size:
+            return float(min(handle_size)), float(max(handle_size))
+        return 150.0, 300.0
 
     def draw_mask(cx: float, cy: float, width: float, height: float):
         drawer.draw_wipeout_rect(
@@ -2192,11 +2198,10 @@ def draw_door_in_frame(
         for hx, _toward_hinge, _hblock in sized_handle_targets(110):
             draw_mask(hx, 1200, handle_w, handle_h)
 
-    if current_semicircle and handle_size:
+    if current_semicircle:
         # 半圆拉手遮罩：半径取小值、直径取大值（如 150*300 → 半径150、直径300）。
         # 位置与其他带尺寸拉手一致（距锁边 110mm）。
-        radius = float(min(handle_size))
-        diameter = float(max(handle_size))
+        radius, diameter = semicircle_size()
         for hx, toward_hinge, _hblock in sized_handle_targets(110):
             draw_mask(hx, 1200, radius + 4, diameter + 4)
 
@@ -2241,12 +2246,11 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in backpack_handle_targets(60):
             drawer.insert_custom_block("BBLS", off((hx, panel_y_bot + 1000)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
-    if current_semicircle and handle_size:
+    if current_semicircle:
         # 半圆拉手绘制：单门一个半圆；对开门左右扇各一个。
         # 直径边竖直、距锁边 110mm（与其他带尺寸拉手一致），圆弧向门板内侧凸出；
-        # 150*300 → 150 为半径，300 为直径。
-        radius = float(min(handle_size))
-        diameter = float(max(handle_size))
+        # 150*300 → 150 为半径，300 为直径；未填尺寸时默认 150*300。
+        radius, diameter = semicircle_size()
         y_center = 1200
         for hx, toward_hinge, _hblock in sized_handle_targets(110):
             # 直径线（竖直，平行于锁边）

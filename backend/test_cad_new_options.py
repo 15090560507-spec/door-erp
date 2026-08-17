@@ -2058,6 +2058,27 @@ def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
         # 对开门正反面各 2 个半圆（左右扇各一个），共 4 个
         check("double door draws 4 semicircle arcs (2 per view)", len(panel_arcs2) == 4, f"arcs={len(panel_arcs2)}")
 
+    # 不填拉手尺寸时按默认 150*300 绘制
+    default_size_req = CADRequest(
+        door_type="单门",
+        sel_kx="右开",
+        sel_nk="内开",
+        zmls="铝雕圆形拉手",
+        fmls="无",
+        handle_size="",
+        fingerprint_lock="无",
+    )
+    _info3, _checks3, _params3 = build_cad_params(default_size_req)
+    msg3, buffer3 = run_integrated_system(_info3, _checks3, _params3)
+    check("semicircle without size CAD generation returns buffer", buffer3 is not None, msg3)
+    if buffer3:
+        doc3 = ezdxf.read(io.StringIO(buffer3.getvalue()))
+        panel_arcs3 = [
+            entity for entity in doc3.modelspace().query("ARC")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        check("semicircle without size still draws one arc (default 150*300)", len(panel_arcs3) == 1, f"arcs={len(panel_arcs3)}")
+
     # ===================== B4 玻璃线条参数贯通 =====================
     b4_req = CADRequest(
         door_panel_style="H+型布局",
