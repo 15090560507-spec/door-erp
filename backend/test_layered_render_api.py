@@ -81,6 +81,8 @@ if psd_url:
     path = psd_url.split("/api", 1)[1]
     resp = client.get(f"/api{path}", headers=HEADERS)
     check("psd file downloadable", resp.status_code == 200 and resp.content[:4] == b"8BPS", f"status={resp.status_code}")
+    resp = client.get(f"/api{path}", params={"download": "1", "name": "测试客户-分层效果图.psd"}, headers=HEADERS)
+    check("download param sets attachment header", resp.status_code == 200 and "attachment" in resp.headers.get("content-disposition", ""), str(resp.headers.get("content-disposition", "")))
 
 # 历史列表
 resp = client.get("/api/layered-render/records", headers=HEADERS)

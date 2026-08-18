@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -180,8 +182,18 @@ def update_line_art_crop(extraction_id: str, data: LineArtCropUpdate, current_us
 
 
 @render_router.get("/api/render/files/{path:path}")
-def get_render_file(path: str, current_user: dict = Depends(get_current_user)):
-    return FileResponse(file_response_path(path))
+def get_render_file(
+    path: str,
+    download: str = "",
+    name: str = "",
+    current_user: dict = Depends(get_current_user),
+):
+    """返回渲染文件；download=1 时按附件下载（带原始文件名）。"""
+    response = FileResponse(file_response_path(path))
+    if download:
+        safe_name = "".join(ch for ch in (name or os.path.basename(path)) if ch not in '\\/:*?"<>|').strip() or "download"
+        response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(safe_name)}"
+    return response
 
 
 def _parse_string_list(raw: str) -> list[str]:

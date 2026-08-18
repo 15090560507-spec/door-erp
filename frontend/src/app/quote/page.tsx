@@ -391,8 +391,6 @@ export default function QuotePage() {
     if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
     if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
     if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
-    // 保存前弹窗确认一次：提醒核对尺寸是否调整
-    if (!window.confirm("请确认尺寸是否有调整")) return;
 
     setSaving(true);
     setStatus("");
@@ -416,7 +414,7 @@ export default function QuotePage() {
         showFeedback("error", "报价已保存", `已保存 #${quote.id}，但报价记忆写入失败`);
         return;
       }
-      showFeedback("success", "保存成功", `已保存 #${quote.id}${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}`);
+      showFeedback("success", "保存成功", `报价单 #${quote.id} 已保存${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}。请确认尺寸是否有调整。`);
     } catch (err: unknown) {
       const error = err as { userMessage?: string; message?: string };
       showFeedback("error", "保存失败", error?.userMessage || error?.message || "保存失败");

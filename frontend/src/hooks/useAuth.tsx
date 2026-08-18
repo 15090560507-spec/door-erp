@@ -1,13 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { UserInfo, ModuleName } from "@/lib/types";
 import { MODULE_OPTIONS } from "@/lib/types";
 
 interface AuthCtx {
   user: UserInfo | null;
-  module: ModuleName;
   loading: boolean;
   login: (uid: string, pwd: string) => Promise<boolean>;
   logout: () => void;
@@ -39,18 +38,26 @@ function clearAuthCookie() {
 
 const AuthContext = createContext<AuthCtx>({
   user: null,
-  module: "图纸信息录入",
   loading: true,
   login: async () => false,
   logout: () => {},
   setModule: () => {},
 });
 
+// 模块单独拆成一个 context：切换模块只重渲染 TopNav 与依赖模块内容的页面，
+// 避免所有消费 useAuth 的页面（效果渲染/生产管理等大页面）跟着重渲染造成卡顿。
+const ModuleContext = createContext<ModuleName>("图纸信息录入");
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [module, setModule] = useState<ModuleName>("图纸信息录入");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const changeModule = useCallback((m: ModuleName) => {
+    setModule(m);
+    S.setModule(m);
+  }, []);
 
   // 监听 401 事件：API 拦截器检测到 token 过期时触发
   useEffect(() => {
@@ -118,18 +125,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
     return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loginFn = async (uid: string, pwd: string): Promise<boolean> => {
+  const loginFn = useCallback(async (uid: string, pwd: string): Promise<boolean> => {
     try {
       const { login: apiLogin } = await import("@/lib/api");
       const res = await apiLogin(uid, pwd);
       if (res.success && res.user && res.token) {
         setUser(res.user);
-        setModule("图纸信息录入");
         S.setToken(res.token);
         S.setUser(res.user);
         S.setModule("图纸信息录入");
+        setModule("图纸信息录入");
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;
@@ -138,27 +145,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return false;
     }
-  };
+  }, [router]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     S.clear();
     clearAuthCookie();
     router.push("/");
-  };
+  }, [router]);
 
-  const changeModule = (m: ModuleName) => {
-    setModule(m);
-    S.setModule(m);
-  };
+  const authValue = useMemo<AuthCtx>(
+    () => ({ user, loading, login: loginFn, logout, setModule: changeModule }),
+    [user, loading, loginFn, logout, changeModule]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, module, loading, login: loginFn, logout, setModule: changeModule }}>
-      {children}
-    </AuthContext.Provider>
+    <ModuleContext.Provider value={module}>
+      <AuthContext.Provider value={authValue}>
+        {children}
+      </AuthContext.Provider>
+    </ModuleContext.Provider>
   );
 }
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+/** 当前模块（只应被需要按模块切换内容的组件使用，如 TopNav、任务工作台）。 */
+export function useModule() {
+  return useContext(ModuleContext);
 }

@@ -243,7 +243,7 @@ export interface LayeredRenderRecord {
 }
 
 // ===================== 模块 =====================
-export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "任务总览" | "生产管理" | "分层效果图";
+export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "任务总览" | "生产管理";
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
@@ -255,7 +255,6 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "报价系统", module: "报价系统" },
   { title: "生产管理", module: "生产管理" },
   { title: "任务总览", module: "任务总览" },
-  { title: "分层效果图", module: "分层效果图" },
 ];
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];

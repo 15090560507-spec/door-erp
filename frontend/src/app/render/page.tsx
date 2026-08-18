@@ -2,6 +2,7 @@
 
 import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
 import LineArtCropEditor from "@/components/LineArtCropEditor";
+import LayeredRenderPanel from "@/components/LayeredRenderPanel";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { getTasks } from "@/lib/api";
 import type { TaskItem } from "@/lib/types";
@@ -859,6 +860,8 @@ export default function RenderPage() {
           </div>
         </div>
       </section>
+
+      <LayeredRenderPanel />
     </div>
   );
 }

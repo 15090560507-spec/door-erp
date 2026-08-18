@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, useModule } from "@/hooks/useAuth";
 import { MODULE_OPTIONS } from "@/lib/types";
 
 export default function TopNav() {
-  const { user, module, setModule, logout } = useAuth();
+  const { user, setModule, logout } = useAuth();
+  const module = useModule();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -32,8 +33,6 @@ export default function TopNav() {
                     router.push("/quote");
                   } else if (item.module === "效果渲染") {
                     router.push("/render");
-                  } else if (item.module === "分层效果图") {
-                    router.push("/layered-render");
                   } else if (item.module === "生产管理") {
                     router.push("/production");
                   } else if (pathname !== "/dashboard") {

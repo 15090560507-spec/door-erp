@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask,
   generateCad, generateCadPreview, downloadCadBlob,
@@ -27,7 +27,8 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
 }
 
 export default function DashboardPage() {
-  const { module, user } = useAuth();
+  const module = useModule();
+  const { user } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
