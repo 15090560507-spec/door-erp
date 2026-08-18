@@ -1,3 +1,23 @@
+export type LubanRulerKind = "regular" | "gugong";
+
+export interface LubanRulerVersion {
+  key: LubanRulerKind;
+  label: string;
+  cycle: number;
+  description: string;
+}
+
+export const LUBAN_RULER_VERSIONS: LubanRulerVersion[] = [
+  { key: "regular", label: "常规鲁班尺", cycle: 429, description: "429mm 周期" },
+  { key: "gugong", label: "故宫鲁班尺", cycle: 460.8, description: "460.8mm 周期" },
+];
+
+export const DEFAULT_LUBAN_RULER_KIND: LubanRulerKind = "regular";
+
+export function lubanRulerVersion(kind: LubanRulerKind): LubanRulerVersion {
+  return LUBAN_RULER_VERSIONS.find((version) => version.key === kind) ?? LUBAN_RULER_VERSIONS[0];
+}
+
 export interface LubanResult {
   millimeters: number;
   cyclePosition: number;
@@ -25,7 +45,6 @@ export interface LubanAdjustment {
   interval: LubanContinuousInterval;
 }
 
-export const LUBAN_CYCLE = 429;
 export const LUBAN_BIG_SECTIONS = [
   { name: "财", auspicious: true },
   { name: "病", auspicious: false },
@@ -48,21 +67,13 @@ export const LUBAN_SMALL_WORDS = [
   "财至", "登科", "进宝", "兴旺",
 ] as const;
 
-export const LUBAN_SEGMENT_LENGTH = LUBAN_CYCLE / LUBAN_SMALL_WORDS.length;
+export function lubanSegmentLength(kind: LubanRulerKind): number {
+  return lubanRulerVersion(kind).cycle / LUBAN_SMALL_WORDS.length;
+}
 
-export const LUBAN_SMALL_SEGMENTS = LUBAN_SMALL_WORDS.map((smallWord, index) => {
-  const bigSection = LUBAN_BIG_SECTIONS[Math.floor(index / 4)];
-  return {
-    smallWord,
-    bigWord: bigSection.name,
-    auspicious: bigSection.auspicious,
-    intervalStart: index * LUBAN_SEGMENT_LENGTH,
-    intervalEnd: (index + 1) * LUBAN_SEGMENT_LENGTH,
-  };
-});
-
-export function lubanIntervalAtIndex(index: number): LubanContinuousInterval | null {
+export function lubanIntervalAtIndex(index: number, kind: LubanRulerKind): LubanContinuousInterval | null {
   if (!Number.isInteger(index) || index < 0) return null;
+  const segmentLength = lubanSegmentLength(kind);
   const intervalIndex = index % LUBAN_SMALL_WORDS.length;
   const cycleIndex = Math.floor(index / LUBAN_SMALL_WORDS.length);
   const bigSection = LUBAN_BIG_SECTIONS[Math.floor(intervalIndex / 4)];
@@ -73,35 +84,35 @@ export function lubanIntervalAtIndex(index: number): LubanContinuousInterval | n
     bigWord: bigSection.name,
     smallWord: LUBAN_SMALL_WORDS[intervalIndex],
     auspicious: bigSection.auspicious,
-    intervalStart: index * LUBAN_SEGMENT_LENGTH,
-    intervalEnd: (index + 1) * LUBAN_SEGMENT_LENGTH,
+    intervalStart: index * segmentLength,
+    intervalEnd: (index + 1) * segmentLength,
   };
 }
 
-export function lubanContinuousResult(value: number): LubanContinuousInterval | null {
+export function lubanContinuousResult(value: number, kind: LubanRulerKind = DEFAULT_LUBAN_RULER_KIND): LubanContinuousInterval | null {
   if (!Number.isFinite(value) || value < 0) return null;
-  return lubanIntervalAtIndex(Math.floor(value / LUBAN_SEGMENT_LENGTH));
+  return lubanIntervalAtIndex(Math.floor(value / lubanSegmentLength(kind)), kind);
 }
 
-export function lubanNearbyIntervals(value: number, radius = 4): LubanContinuousInterval[] {
-  const current = lubanContinuousResult(value);
+export function lubanNearbyIntervals(value: number, radius = 4, kind: LubanRulerKind = DEFAULT_LUBAN_RULER_KIND): LubanContinuousInterval[] {
+  const current = lubanContinuousResult(value, kind);
   if (!current) return [];
   const safeRadius = Math.max(0, Math.floor(radius));
   const intervals: LubanContinuousInterval[] = [];
   for (let index = Math.max(0, current.index - safeRadius); index <= current.index + safeRadius; index += 1) {
-    const interval = lubanIntervalAtIndex(index);
+    const interval = lubanIntervalAtIndex(index, kind);
     if (interval) intervals.push(interval);
   }
   return intervals;
 }
 
-export function nearestAuspiciousAdjustments(value: number): { down: LubanAdjustment | null; up: LubanAdjustment | null } {
-  const current = lubanContinuousResult(value);
+export function nearestAuspiciousAdjustments(value: number, kind: LubanRulerKind = DEFAULT_LUBAN_RULER_KIND): { down: LubanAdjustment | null; up: LubanAdjustment | null } {
+  const current = lubanContinuousResult(value, kind);
   if (!current || current.auspicious) return { down: null, up: null };
 
   let downInterval: LubanContinuousInterval | null = null;
   for (let index = current.index - 1; index >= 0; index -= 1) {
-    const interval = lubanIntervalAtIndex(index);
+    const interval = lubanIntervalAtIndex(index, kind);
     if (interval?.auspicious) {
       downInterval = interval;
       break;
@@ -110,7 +121,7 @@ export function nearestAuspiciousAdjustments(value: number): { down: LubanAdjust
 
   let upInterval: LubanContinuousInterval | null = null;
   for (let index = current.index + 1; index <= current.index + LUBAN_SMALL_WORDS.length; index += 1) {
-    const interval = lubanIntervalAtIndex(index);
+    const interval = lubanIntervalAtIndex(index, kind);
     if (interval?.auspicious) {
       upInterval = interval;
       break;
@@ -129,10 +140,12 @@ export function nearestAuspiciousAdjustments(value: number): { down: LubanAdjust
   };
 }
 
-export function lubanResult(value: number): LubanResult | null {
+export function lubanResult(value: number, kind: LubanRulerKind = DEFAULT_LUBAN_RULER_KIND): LubanResult | null {
   if (!Number.isFinite(value) || value < 0) return null;
-  const cyclePosition = ((value % LUBAN_CYCLE) + LUBAN_CYCLE) % LUBAN_CYCLE;
-  const index = Math.min(31, Math.floor(cyclePosition / LUBAN_SEGMENT_LENGTH));
+  const cycle = lubanRulerVersion(kind).cycle;
+  const segmentLength = lubanSegmentLength(kind);
+  const cyclePosition = ((value % cycle) + cycle) % cycle;
+  const index = Math.min(LUBAN_SMALL_WORDS.length - 1, Math.floor(cyclePosition / segmentLength));
   const bigSection = LUBAN_BIG_SECTIONS[Math.floor(index / 4)];
   return {
     millimeters: value,
@@ -140,7 +153,7 @@ export function lubanResult(value: number): LubanResult | null {
     bigWord: bigSection.name,
     smallWord: LUBAN_SMALL_WORDS[index],
     auspicious: bigSection.auspicious,
-    intervalStart: index * LUBAN_SEGMENT_LENGTH,
-    intervalEnd: (index + 1) * LUBAN_SEGMENT_LENGTH,
+    intervalStart: index * segmentLength,
+    intervalEnd: (index + 1) * segmentLength,
   };
 }

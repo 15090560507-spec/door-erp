@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   LubanAdjustment,
   LubanContinuousInterval,
+  LubanRulerKind,
+  LUBAN_RULER_VERSIONS,
   lubanContinuousResult,
   lubanNearbyIntervals,
+  lubanRulerVersion,
   nearestAuspiciousAdjustments,
 } from "@/lib/lubanRuler";
 
@@ -13,6 +16,8 @@ interface Props {
   open: boolean;
   width: number;
   height: number;
+  kind: LubanRulerKind;
+  onKindChange?: (kind: LubanRulerKind) => void;
   onClose: () => void;
 }
 
@@ -49,17 +54,18 @@ function AdjustmentItem({ direction, adjustment }: { direction: "向下" | "向�
   );
 }
 
-export default function LubanRulerModal({ open, width, height, onClose }: Props) {
+export default function LubanRulerModal({ open, width, height, kind, onKindChange, onClose }: Props) {
   const [activeDimension, setActiveDimension] = useState<DimensionKey>("width");
 
   useEffect(() => {
     if (open) setActiveDimension("width");
   }, [open]);
 
+  const version = lubanRulerVersion(kind);
   const value = activeDimension === "width" ? width : height;
-  const current = useMemo(() => lubanContinuousResult(value), [value]);
-  const nearby = useMemo(() => lubanNearbyIntervals(value, 5), [value]);
-  const adjustments = useMemo(() => nearestAuspiciousAdjustments(value), [value]);
+  const current = useMemo(() => lubanContinuousResult(value, kind), [value, kind]);
+  const nearby = useMemo(() => lubanNearbyIntervals(value, 5, kind), [value, kind]);
+  const adjustments = useMemo(() => nearestAuspiciousAdjustments(value, kind), [value, kind]);
 
   if (!open) return null;
   return (
@@ -68,13 +74,27 @@ export default function LubanRulerModal({ open, width, height, onClose }: Props)
         <div className="flex items-center justify-between border-b border-[#E5E5EA] px-5 py-4">
           <div>
             <h3 className="text-[16px] font-semibold text-[#1C1C1E]">鲁班尺见光区间</h3>
-            <p className="mt-0.5 text-[12px] text-[#8E8E93]">当前尺寸居中显示，区间按 429mm 周期循环。</p>
+            <p className="mt-0.5 text-[12px] text-[#8E8E93]">当前尺寸居中显示，区间按 {version.description} 循环。</p>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭" className="text-[22px] leading-none text-[#8E8E93] hover:text-[#1C1C1E]">×</button>
         </div>
 
         <div className="border-b border-[#E5E5EA] px-5 py-3">
-          <div className="grid grid-cols-2 rounded-md bg-[#F2F2F7] p-1">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 rounded-md bg-[#F2F2F7] p-1">
+              {LUBAN_RULER_VERSIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onKindChange?.(option.key)}
+                  className={`min-h-9 rounded px-3 text-[13px] font-medium ${kind === option.key ? "bg-white text-[#1C1C1E] shadow-sm" : "text-[#8E8E93]"}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-2 rounded-md bg-[#F2F2F7] p-1">
             {([
               ["width", "见光宽", width],
               ["height", "见光高", height],

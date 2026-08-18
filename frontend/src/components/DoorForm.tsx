@@ -10,7 +10,7 @@ import {
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 import LubanRulerModal from "@/components/LubanRulerModal";
-import { lubanResult } from "@/lib/lubanRuler";
+import { lubanResult, LUBAN_RULER_VERSIONS, DEFAULT_LUBAN_RULER_KIND, type LubanRulerKind } from "@/lib/lubanRuler";
 
 interface Props {
   data: DoorFormData;
@@ -35,8 +35,8 @@ function sectionValues(value: string | number, fallback = 0) {
   return values.length ? values : [fallback];
 }
 
-function LubanInlineResult({ label, value }: { label: string; value: number }) {
-  const result = lubanResult(value);
+function LubanInlineResult({ label, value, kind }: { label: string; value: number; kind: LubanRulerKind }) {
+  const result = lubanResult(value, kind);
   if (!result || value <= 0) {
     return <div className="mt-1.5 text-[11px] text-[#8E8E93]">{label}：未计算</div>;
   }
@@ -163,6 +163,7 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
 const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: Props) {
   const [opts, setOpts] = useState<Record<string, string[]> | null>(null);
   const [lubanOpen, setLubanOpen] = useState(false);
+  const [lubanKind, setLubanKind] = useState<LubanRulerKind>(DEFAULT_LUBAN_RULER_KIND);
 
   useEffect(() => {
     loadDropdownOptions().then(setOpts);
@@ -700,6 +701,18 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             {!data.use_light_size && (
               <Checkbox label="标注见光尺寸" checked={data.mark_light_size} onChange={(v) => set("mark_light_size", v)} />
             )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] font-medium text-[#8E8E93]">鲁班尺版本</span>
+              <select
+                value={lubanKind}
+                onChange={(e) => setLubanKind(e.target.value as LubanRulerKind)}
+                className="rounded-md border border-[#C7C7CC] bg-[#FAFAFC] px-2 py-1.5 text-[12px] text-[#1C1C1E] outline-none focus:border-[#007AFF]"
+              >
+                {LUBAN_RULER_VERSIONS.map((version) => (
+                  <option key={version.key} value={version.key}>{version.label}</option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => setLubanOpen(true)}
@@ -713,22 +726,22 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <>
                 <div>
                   <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} />}
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
                 </div>
                 <div>
                   <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} />}
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
                 </div>
               </>
             ) : (
               <>
                 <div>
                   <Input label="总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} />}
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
                 </div>
                 <div>
                   <Input label="总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} />}
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
                 </div>
               </>
             )}
@@ -998,6 +1011,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         open={lubanOpen}
         width={calculatedLightWidth}
         height={calculatedLightHeight}
+        kind={lubanKind}
+        onKindChange={setLubanKind}
         onClose={() => setLubanOpen(false)}
       />
     </div>
