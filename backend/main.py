@@ -62,6 +62,7 @@ from production_routes import (
     production_db,
 )
 from rendering.cad_line_art import export_dxf_line_art
+from rendering.layered_routes import layered_router
 from erpnext_bridge import sync_order_to_erpnext
 
 # ===================== FastAPI 应用初始化 =====================
@@ -85,6 +86,7 @@ app.add_middleware(
 
 app.include_router(quote_router)
 app.include_router(render_router)
+app.include_router(layered_router)
 if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
 app.include_router(fulfillment_router)

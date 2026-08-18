@@ -22,14 +22,14 @@ for _path in (RENDER_DIR, RENDER_FILES_DIR, LIBRARY_DIR, TEMP_DIR, RESULTS_DIR, 
 
 
 def public_file_url(path: str) -> str:
-    normalized = path.replace("\\", "/")
-    marker = "/data/render/files/"
-    if marker in normalized:
-        return f"/api/render/files/{normalized.split(marker, 1)[1]}"
-    marker = "data/render/files/"
-    if marker in normalized:
-        return f"/api/render/files/{normalized.split(marker, 1)[1]}"
-    return ""
+    try:
+        rel = os.path.relpath(os.path.abspath(path), os.path.abspath(RENDER_FILES_DIR))
+    except ValueError:
+        return ""
+    rel = rel.replace("\\", "/")
+    if rel.startswith("..") or rel.startswith("/"):
+        return ""
+    return f"/api/render/files/{rel}"
 
 
 def save_upload(file_obj: BinaryIO, filename: str, subdir: str) -> dict:
@@ -85,4 +85,4 @@ def temp_expiry(days: int = 7) -> str:
 
 def _safe_ext(filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
-    return ext if ext in {".png", ".jpg", ".jpeg", ".webp"} else ".png"
+    return ext if ext in {".png", ".jpg", ".jpeg", ".webp", ".psd"} else ".png"

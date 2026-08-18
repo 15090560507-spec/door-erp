@@ -32,6 +32,8 @@ export default function TopNav() {
                     router.push("/quote");
                   } else if (item.module === "效果渲染") {
                     router.push("/render");
+                  } else if (item.module === "分层效果图") {
+                    router.push("/layered-render");
                   } else if (item.module === "生产管理") {
                     router.push("/production");
                   } else if (pathname !== "/dashboard") {

@@ -1,6 +1,7 @@
 import axios from "axios";
 import type {
   DoorFormData,
+  LayeredRenderRecord,
   LoginResponse,
   TaskItem,
   TaskListResponse,
@@ -206,6 +207,30 @@ export async function generateCadPreview(formData: DoorFormData): Promise<string
   const { data } = await api.post<string>("/generate_cad_preview", formData, {
     responseType: "text",
   });
+  return data;
+}
+
+export async function generateLayeredRender(input: {
+  taskId: string;
+  dpi?: number;
+  targetLongEdge?: number;
+  faces?: string;
+}): Promise<{ record: LayeredRenderRecord }> {
+  const { data } = await api.post<{ record: LayeredRenderRecord }>("/layered-render/generate", input, {
+    timeout: 180000,
+  });
+  return data;
+}
+
+export async function listLayeredRecords(limit = 30): Promise<{ records: LayeredRenderRecord[] }> {
+  const { data } = await api.get<{ records: LayeredRenderRecord[] }>("/layered-render/records", {
+    params: { limit },
+  });
+  return data;
+}
+
+export async function deleteLayeredRecord(recordId: string) {
+  const { data } = await api.delete(`/layered-render/records/${recordId}`);
   return data;
 }
 
