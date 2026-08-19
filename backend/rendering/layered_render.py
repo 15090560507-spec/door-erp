@@ -1,32 +1,47 @@
-"""规则化分层效果图生成（第一版，不依赖 AI）。
+"""规则化分层效果图生成（CAD 管几何，AI 管材质）。
 
 从已生成的 DXF 文本中提取门板、门框、门套/门头门柱与配件几何，
-按 DXF 图层精确生成透明蒙版，使用默认平整材质（纯色）映射到蒙版，
-按遮挡顺序合成为 JPG，并输出带图层组的分层 PSD。
+按 DXF 图层精确生成透明蒙版：
+- 默认（无 AI）：使用默认平整材质（纯色）映射到蒙版；
+- 传入 ai_config 时：调用效果渲染的模型接口（图像编辑）给整幅门体
+  添加颜色/材质纹理，再把 AI 结果按 CAD 蒙版切回各部件图层。
+CAD 只负责结构与位置，AI 不改变任何几何。
 
 设计说明：
 - 画布为门体内容区（正反面视图 + 尺寸标注）的外包矩形，保持 CAD 订货单比例。
-- 输出像素尺寸由 ``target_long_edge`` 控制（默认 4000px 长边），``dpi`` 作为
+- 输出像素尺寸由 ``target_long_edge`` 控制（默认 2600px 长边），``dpi`` 作为
   PSD 分辨率元数据写入（默认 300 DPI）。按 mm 1:1 直接 300 DPI 会把整张
   订货单放大到数十万像素，超出内存，因此采用“目标长边 + 分辨率元数据”方案。
 - 配件通过“门板/门框/门套图层上的 INSERT 块”识别，独立成层。
+- AI 不可用/失败时自动回退默认材质，不阻塞生成。
 """
 
 from __future__ import annotations
 
+import base64
 import io
 import math
 import os
+import urllib.request
 from typing import Iterable, Optional
 
 import cv2
 import ezdxf
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from psd_tools.constants import Compression
 
 from cad_preview import Primitive, _arc_sample_points, _bbox, _point
 
+from .providers import RenderProviderRequest, get_provider
 from .psd_writer import PsdNode, write_psd
+from .storage import save_bytes
+
+AI_MATERIAL_PROMPT = (
+    "基于参考素材为铜门门体添加表面颜色与材质纹理。"
+    "严格保持门体结构、比例、门板分格、拉手/锁具/合页位置与所有尺寸标注完全不变，"
+    "只替换表面颜色、材质与轻微光影。输出平整的产品目录效果，无透视、无背景场景、无额外装饰。"
+)
 
 
 # ------------------------- 类别与图层映射 -------------------------
@@ -407,8 +422,58 @@ def _crop(arr: np.ndarray, bbox: tuple[float, float, float, float], canvas: _Can
     return arr[y_top:y_bot, x1:x2]
 
 
-def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 4000) -> dict:
-    """生成分层效果图，返回 PSD 与 JPG 字节流。"""
+def _apply_ai_material(flat_rgb: np.ndarray, ai_config: dict, references: list[dict]) -> np.ndarray:
+    """调用效果渲染模型接口给平整底图添加材质纹理，返回与底图等大的 RGB 数组。"""
+    flat_pil = Image.fromarray(flat_rgb, "RGB")
+    buffer = io.BytesIO()
+    flat_pil.save(buffer, "PNG")
+    saved = save_bytes(buffer.getvalue(), "layered-flat.png", "temp")
+
+    request = RenderProviderRequest(
+        config=ai_config,
+        prompt=AI_MATERIAL_PROMPT,
+        size="original",
+        count=1,
+        line_art={
+            "filePath": saved["filePath"],
+            "originalName": "layered-flat.png",
+            "mimeType": "image/png",
+        },
+        style_reference=None,
+        assets=references or [],
+        temp_assets=[],
+    )
+    response = get_provider(ai_config.get("provider", "")).render(request)
+    images = response.get("images") or []
+    if not images:
+        raise ValueError("模型返回中没有图片")
+    image = images[0]
+    src = str(image.get("src", ""))
+    if image.get("type") == "b64_json":
+        raw = src.split(",", 1)[1] if "," in src else src
+        data = base64.b64decode(raw)
+    elif image.get("type") == "url":
+        req = urllib.request.Request(src, headers={"User-Agent": "DoorERP-Render/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read()
+    else:
+        raise ValueError("无法识别的模型返回类型")
+    result = Image.open(io.BytesIO(data)).convert("RGB")
+    return np.array(result.resize((flat_rgb.shape[1], flat_rgb.shape[0]), Image.LANCZOS), dtype=np.uint8)
+
+
+def render_layered_dxf(
+    dxf_text: str,
+    dpi: int = 300,
+    target_long_edge: int = 2600,
+    ai_config: Optional[dict] = None,
+    references: Optional[list[dict]] = None,
+) -> dict:
+    """生成分层效果图，返回 PSD 与 JPG 字节流。
+
+    :param ai_config: 效果渲染模型配置（含 apiKey 的完整配置）；为 None 时使用默认平整材质。
+    :param references: 参考素材文件信息列表（素材库资产），供 AI 提取颜色/材质。
+    """
     doc = ezdxf.read(io.StringIO(dxf_text))
     categorized = collect_primitives(doc)
 
@@ -445,6 +510,10 @@ def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 40
         arr = _composite([arr, stroke])
         return arr
 
+    def part_mask(prim_list: list[Primitive]) -> np.ndarray:
+        """纯填充蒙版（只取 alpha 通道）。"""
+        return _render_primitives(canvas, prim_list, fill_rgb=(255, 255, 255), stroke_rgb=None, stroke_width=1)
+
     # 轮廓层（所有线条/圆弧描边）
     outline_all = prims("outline") + prims("panel") + prims("frame") + prims("trim") + prims("accessory")
     outline_arr = _render_primitives(canvas, outline_all, fill_rgb=None, stroke_rgb=PALETTE["outline"], stroke_width=max(1, int(canvas.scale * 0.5)))
@@ -453,14 +522,44 @@ def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 40
     dim_arr = _render_primitives(canvas, prims("dim"), fill_rgb=None, stroke_rgb=PALETTE["dim"], stroke_width=max(1, int(canvas.scale * 0.3)))
     dim_arr = _composite([dim_arr, _render_text(canvas, prims("dim"), PALETTE["dim"])])
 
+    white_bg = _blank_rgba(canvas.width, canvas.height)
+    _fill_color(white_bg, PALETTE["background"])
+
+    # ---------- 材质处理：AI 纹理 或 默认平整色 ----------
+    material_mode = "flat"
+    material_note = ""
+    ai_rgb: Optional[np.ndarray] = None
+    if ai_config:
+        try:
+            flat_complete = _composite([
+                white_bg,
+                _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
+                render_filled("panel", prims("panel")),
+                render_filled("frame", prims("frame")),
+                render_filled("trim", prims("trim")),
+                render_filled("accessory", prims("accessory")),
+                outline_arr,
+            ])
+            ai_rgb = _apply_ai_material(flat_complete[..., :3], ai_config, references or [])
+            material_mode = "ai"
+        except Exception as exc:
+            material_note = f"AI 材质处理失败，已回退默认材质：{exc}"
+            ai_rgb = None
+
+    def part_layer(cat: str, prim_list: list[Primitive]) -> np.ndarray:
+        if ai_rgb is not None:
+            alpha = part_mask(prim_list)[..., 3:4]
+            return np.concatenate([ai_rgb, alpha], axis=2)
+        return render_filled(cat, prim_list)
+
     def face_group(name: str, cats: dict[str, list[Primitive]]) -> PsdNode:
         children: list[PsdNode] = []
         shadow = _build_shadow(canvas, cats["panel"] + cats["frame"])
         children.append(PsdNode("阴影与高光", _to_pil(shadow)))
-        children.append(PsdNode("门板", _to_pil(render_filled("panel", cats["panel"]))))
-        children.append(PsdNode("门框", _to_pil(render_filled("frame", cats["frame"]))))
-        children.append(PsdNode("门套或门头门柱", _to_pil(render_filled("trim", cats["trim"]))))
-        children.append(PsdNode("配件", _to_pil(render_filled("accessory", cats["accessory"]))))
+        children.append(PsdNode("门板", _to_pil(part_layer("panel", cats["panel"]))))
+        children.append(PsdNode("门框", _to_pil(part_layer("frame", cats["frame"]))))
+        children.append(PsdNode("门套或门头门柱", _to_pil(part_layer("trim", cats["trim"]))))
+        children.append(PsdNode("配件", _to_pil(part_layer("accessory", cats["accessory"]))))
         return PsdNode(name, children=children)
 
     front_group = face_group("02_正面效果", front_cat)
@@ -470,9 +569,6 @@ def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 40
         PsdNode("尺寸标注", _to_pil(dim_arr)),
         PsdNode("表格与文字", _to_pil(text_arr)),
     ])
-
-    white_bg = _blank_rgba(canvas.width, canvas.height)
-    _fill_color(white_bg, PALETTE["background"])
 
     # 原始 CAD 底图：白底 + 轮廓 + 文字，默认隐藏
     raw_cad = _composite([white_bg, outline_arr, text_arr, dim_arr])
@@ -487,16 +583,17 @@ def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 40
         PsdNode("07_白色背景", _to_pil(white_bg)),
     ]
 
-    psd_bytes = write_psd(nodes, (canvas.width, canvas.height), dpi=dpi)
+    compression = Compression.ZIP if ai_rgb is not None else Compression.RLE
+    psd_bytes = write_psd(nodes, (canvas.width, canvas.height), dpi=dpi, compression=compression)
 
     # 完整合成（白色背景 + 阴影 + 部件 + 轮廓 + 文字标注）
     complete = _composite([
         white_bg,
         _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
-        render_filled("panel", prims("panel")),
-        render_filled("frame", prims("frame")),
-        render_filled("trim", prims("trim")),
-        render_filled("accessory", prims("accessory")),
+        part_layer("panel", prims("panel")),
+        part_layer("frame", prims("frame")),
+        part_layer("trim", prims("trim")),
+        part_layer("accessory", prims("accessory")),
         outline_arr,
         text_arr,
         dim_arr,
@@ -516,6 +613,8 @@ def render_layered_dxf(dxf_text: str, dpi: int = 300, target_long_edge: int = 40
         "canvas_size": (canvas.width, canvas.height),
         "dpi": dpi,
         "scale": canvas.scale,
+        "material_mode": material_mode,
+        "material_note": material_note,
     }
 
 

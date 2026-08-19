@@ -238,6 +238,9 @@ export interface LayeredRenderRecord {
     front: LayeredRenderFile;
     back: LayeredRenderFile;
   };
+  materialMode?: "ai" | "flat";
+  materialNote?: string;
+  modelConfig?: { name?: string; provider?: string; model?: string };
   createdAt: string;
   version: number;
 }

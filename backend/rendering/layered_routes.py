@@ -34,11 +34,22 @@ def _shanghai_now() -> datetime:
         return datetime.now(timezone.utc)
 
 
+def _guess_mime(path: str) -> str:
+    ext = os.path.splitext(path or "")[1].lower()
+    if ext in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if ext == ".webp":
+        return "image/webp"
+    return "image/png"
+
+
 class LayeredGenerateRequest(BaseModel):
     taskId: str
     dpi: int = 300
-    targetLongEdge: int = 4000
+    targetLongEdge: int = 2600
     faces: str = Field("both", description="front / back / both")
+    modelConfigId: str = ""
+    referenceAssetIds: list[str] = Field(default_factory=list)
 
 
 # ------------------------- 记录存储（轻量 JSON，第一版够用） -------------------------
@@ -93,11 +104,45 @@ def generate_layered(data: LayeredGenerateRequest, current_user: dict = Depends(
         logger.exception("Layered render: CAD regeneration failed")
         raise HTTPException(status_code=422, detail=f"图纸生成失败: {exc}") from exc
 
+    # 可选：接入效果渲染模型（AI 材质处理）+ 参考素材
+    ai_config = None
+    references: list[dict] = []
+    model_snapshot = {}
+    if data.modelConfigId:
+        try:
+            from .database import render_db
+            config = render_db.get_model_config(data.modelConfigId, include_secret=True)
+            if config and config.get("enabled") and config.get("apiKey"):
+                ai_config = config
+                model_snapshot = {
+                    "name": config.get("name", ""),
+                    "provider": config.get("provider", ""),
+                    "model": config.get("model", ""),
+                }
+        except Exception as exc:
+            logger.warning("Layered render: load model config failed: %s", exc)
+    for asset_id in data.referenceAssetIds:
+        try:
+            from .database import render_db
+            asset = render_db.get_asset(asset_id)
+            if asset:
+                references.append({
+                    **asset,
+                    "role": "asset",
+                    "assetId": asset["id"],
+                    "mimeType": _guess_mime(asset.get("filePath", "")),
+                    "originalName": asset.get("name", "asset"),
+                })
+        except Exception as exc:
+            logger.warning("Layered render: load asset failed: %s", exc)
+
     try:
         result = render_layered_dxf(
             dxf_bytes.decode("utf-8"),
             dpi=data.dpi,
             target_long_edge=data.targetLongEdge,
+            ai_config=ai_config,
+            references=references,
         )
     except Exception as exc:
         logger.exception("Layered render failed")
@@ -123,6 +168,9 @@ def generate_layered(data: LayeredGenerateRequest, current_user: dict = Depends(
         "targetLongEdge": data.targetLongEdge,
         "canvasSize": list(result["canvas_size"]),
         "files": {key: {"url": value["url"], "originalName": value["originalName"]} for key, value in files.items()},
+        "materialMode": result.get("material_mode", "flat"),
+        "materialNote": result.get("material_note", ""),
+        "modelConfig": model_snapshot,
         "createdAt": _shanghai_now().isoformat(timespec="seconds"),
         "version": 1,
     }

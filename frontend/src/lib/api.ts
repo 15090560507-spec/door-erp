@@ -215,9 +215,11 @@ export async function generateLayeredRender(input: {
   dpi?: number;
   targetLongEdge?: number;
   faces?: string;
+  modelConfigId?: string;
+  referenceAssetIds?: string[];
 }): Promise<{ record: LayeredRenderRecord }> {
   const { data } = await api.post<{ record: LayeredRenderRecord }>("/layered-render/generate", input, {
-    timeout: 180000,
+    timeout: 300000,
   });
   return data;
 }

@@ -84,6 +84,37 @@ if psd_url:
     resp = client.get(f"/api{path}", params={"download": "1", "name": "测试客户-分层效果图.psd"}, headers=HEADERS)
     check("download param sets attachment header", resp.status_code == 200 and "attachment" in resp.headers.get("content-disposition", ""), str(resp.headers.get("content-disposition", "")))
 
+# 无 AI 时 materialMode 应为 flat
+check("flat material mode without model config", record.get("materialMode") == "flat", str(record.get("materialMode")))
+
+# AI 模型配置接入：配置不可达的模型 → 生成成功并回退默认材质，且带原因
+resp = client.post("/api/render/model-configs", json={
+    "name": "分层测试模型",
+    "provider": "openai_compatible",
+    "baseUrl": "https://fake.example.com",
+    "apiKey": "test-key",
+    "model": "test-model",
+    "endpoint": "/images/edits",
+    "apiType": "openai_images_edits",
+    "timeoutSeconds": 5,
+    "enabled": True,
+}, headers=HEADERS)
+check("create model config returns 200", resp.status_code == 200, str(resp.text[:200]))
+config_id = resp.json().get("config", {}).get("id", "") if resp.status_code == 200 else ""
+
+resp = client.post("/api/layered-render/generate", json={
+    "taskId": task_id,
+    "dpi": 300,
+    "targetLongEdge": 1600,
+    "faces": "both",
+    "modelConfigId": config_id,
+    "referenceAssetIds": [],
+}, headers=HEADERS)
+check("ai generate returns 200 (fallback)", resp.status_code == 200, str(resp.text[:300]))
+ai_record = resp.json().get("record", {}) if resp.status_code == 200 else {}
+check("ai fallback materialMode=flat", ai_record.get("materialMode") == "flat", str(ai_record.get("materialMode")))
+check("ai fallback has materialNote", bool(ai_record.get("materialNote")), str(ai_record.get("materialNote")))
+
 # 历史列表
 resp = client.get("/api/layered-render/records", headers=HEADERS)
 check("records list returns record", resp.status_code == 200 and len(resp.json().get("records", [])) >= 1, str(resp.text[:200]))
