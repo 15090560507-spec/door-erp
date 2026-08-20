@@ -2126,9 +2126,53 @@ def test_special_product_opening_mechanisms_and_template_aliases():
     )
     check(
         "configuration quantity defaults are updated",
-        defaults["HYSL_OPTIONS"] == ["3个/扇", "1套/扇", "1套/樘"],
+        defaults["HYSL_OPTIONS"] == ["2个/扇", "3个/扇", "4个/扇", "5个/扇", "1套/扇", "1套/樘"],
         str(defaults["HYSL_OPTIONS"]),
     )
+
+    for quantity, expected_count in (("2个/扇", 2), ("5个/扇", 5)):
+        hinge_req = CADRequest(
+            sel_hys="葫芦头合页",
+            hysl=quantity,
+            sel_nk="外开",
+            fingerprint_lock="无",
+        )
+        hinge_info, hinge_checks, hinge_params = build_cad_params(hinge_req)
+        hinge_msg, hinge_buffer = run_integrated_system(hinge_info, hinge_checks, hinge_params)
+        check(f"{quantity} hinge CAD generation returns buffer", hinge_buffer is not None, hinge_msg)
+        if hinge_buffer:
+            hinge_doc = ezdxf.read(io.StringIO(hinge_buffer.getvalue()))
+            hinge_inserts = [
+                entity for entity in hinge_doc.modelspace().query("INSERT")
+                if entity.dxf.name.lower() == "hlt" and entity.dxf.layer == "A-DOOR-FRAME"
+                and 0 <= float(entity.dxf.insert.x) <= float(hinge_params["dw"])
+                and 0 <= float(entity.dxf.insert.y) <= float(hinge_params["dh"])
+            ]
+            check(
+                f"{quantity} uses the existing per-leaf hinge placement rule",
+                len(hinge_inserts) == expected_count,
+                f"expected={expected_count}, actual={len(hinge_inserts)}",
+            )
+
+    blank_open_req = CADRequest(
+        product_name="地弹簧门",
+        sel_hys="地弹簧",
+        sel_kx="",
+        sel_nk="",
+        fingerprint_lock="无",
+    )
+    blank_open_info, blank_open_checks, blank_open_params = build_cad_params(blank_open_req)
+    check(
+        "blank special-product opening leaves order-form direction unchecked",
+        not any(blank_open_checks[key] for key in ("KX_RIGHT", "KX_LEFT", "NK", "WK")),
+        str(blank_open_checks),
+    )
+    blank_open_msg, blank_open_buffer = run_integrated_system(
+        blank_open_info,
+        blank_open_checks,
+        blank_open_params,
+    )
+    check("blank special-product opening still generates CAD", blank_open_buffer is not None, blank_open_msg)
 
     floor_req = CADRequest(
         product_name="地弹簧门",
@@ -2164,6 +2208,15 @@ def test_special_product_opening_mechanisms_and_template_aliases():
         check("floor spring upper block is inserted", floor_inserts.count("dths") >= 1, str(floor_inserts[-20:]))
         check("floor spring lower block is inserted", floor_inserts.count("dthx") >= 1, str(floor_inserts[-20:]))
         check("magnetic lock block is inserted on visible side", floor_inserts.count("cls") >= 1, str(floor_inserts[-20:]))
+        floor_spring_inserts = [
+            entity for entity in floor_doc.modelspace().query("INSERT")
+            if entity.dxf.name.lower() in ("dths", "dthx") and entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        check(
+            "right-opening floor spring blocks use the corrected direction",
+            len(floor_spring_inserts) >= 2 and all(float(entity.dxf.xscale) == -1 for entity in floor_spring_inserts),
+            str([(entity.dxf.name, entity.dxf.xscale) for entity in floor_spring_inserts]),
+        )
         order_forms = [entity for entity in floor_doc.modelspace().query("INSERT") if entity.dxf.name == "ORDER_FORM"]
         order_attrs = {attrib.dxf.tag: attrib.dxf.text for attrib in order_forms[0].attribs}
         check("generated order form writes KQJG", order_attrs.get("KQJG") == "地弹簧", str(order_attrs))
@@ -2204,6 +2257,36 @@ def test_special_product_opening_mechanisms_and_template_aliases():
         top_spring_inserts = [entity.dxf.name.lower() for entity in top_spring_doc.modelspace().query("INSERT")]
         check("top spring upper block is inserted", top_spring_inserts.count("tths") >= 1, str(top_spring_inserts[-20:]))
         check("top spring lower block is inserted", top_spring_inserts.count("tthx") >= 1, str(top_spring_inserts[-20:]))
+        top_spring_entities = [
+            entity for entity in top_spring_doc.modelspace().query("INSERT")
+            if entity.dxf.name.lower() in ("tths", "tthx") and entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        check(
+            "right-opening top spring blocks use the corrected direction",
+            len(top_spring_entities) >= 2 and all(float(entity.dxf.xscale) == -1 for entity in top_spring_entities),
+            str([(entity.dxf.name, entity.dxf.xscale) for entity in top_spring_entities]),
+        )
+
+    left_floor_req = CADRequest(
+        product_name="地弹簧门",
+        sel_hys="地弹簧",
+        sel_kx="左开",
+        fingerprint_lock="无",
+    )
+    left_floor_info, left_floor_checks, left_floor_params = build_cad_params(left_floor_req)
+    left_floor_msg, left_floor_buffer = run_integrated_system(left_floor_info, left_floor_checks, left_floor_params)
+    check("left-opening floor spring CAD generation returns buffer", left_floor_buffer is not None, left_floor_msg)
+    if left_floor_buffer:
+        left_floor_doc = ezdxf.read(io.StringIO(left_floor_buffer.getvalue()))
+        left_floor_springs = [
+            entity for entity in left_floor_doc.modelspace().query("INSERT")
+            if entity.dxf.name.lower() in ("dths", "dthx") and entity.dxf.layer == "A-DOOR-PANEL"
+        ]
+        check(
+            "left-opening floor spring blocks mirror opposite to right-opening blocks",
+            len(left_floor_springs) >= 2 and all(float(entity.dxf.xscale) == 1 for entity in left_floor_springs),
+            str([(entity.dxf.name, entity.dxf.xscale) for entity in left_floor_springs]),
+        )
 
     fixed_hanging_req = CADRequest(
         width=3000,

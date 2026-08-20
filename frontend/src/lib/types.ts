@@ -269,7 +269,7 @@ export const THRESHOLD_OPTIONS = ["高低槛", "平底槛", "吊脚"];
 export const QC_OPTIONS = ["无", "玻璃", "封闭"];
 export const QC_SHAPE_OPTIONS = ["矩形气窗", "弧形气窗"];
 export const BZ_OPTIONS = ["全包", "木箱"];
-export const HYSL_OPTIONS = ["3个/扇", "1套/扇", "1套/樘"];
+export const HYSL_OPTIONS = ["2个/扇", "3个/扇", "4个/扇", "5个/扇", "1套/扇", "1套/樘"];
 export const MATERIALS = [
   "0.8的不锈钢镀铜",
   "1.0的不锈钢镀铜",

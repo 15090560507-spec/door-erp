@@ -546,8 +546,9 @@ def draw_door_in_frame(
     mid_door_width = p.get('mid_door_width', 400)
     pillar_width_str = p.get('pillar_width_str', '55/85')
     has_pillar = p.get('has_pillar', False)
-    door_open_dir = p.get('kx', '右开')
-    nk_choice = p.get('nk', '内开')
+    # 特殊产品允许开向留空；仅几何计算回退为右内开，订货单勾选仍保持为空。
+    door_open_dir = p.get('kx') or '右开'
+    nk_choice = p.get('nk') or '内开'
 
     left_gap, right_gap = p.get('left_right_gap', (0, 0))
     top_gap, bottom_gap = p.get('top_bottom_gap', (0, 0))
@@ -2331,8 +2332,8 @@ def draw_door_in_frame(
         for px1, px2, _lock_edge, toward_hinge in active_leaf_specs():
             hinge_edge = px2 if toward_hinge > 0 else px1
             x = hinge_edge - toward_hinge * 100
-            insert_required_block(top_block, x, top_frame_bottom_y, xscale=toward_hinge)
-            insert_required_block(bottom_block, x, 0, xscale=toward_hinge)
+            insert_required_block(top_block, x, top_frame_bottom_y, xscale=-toward_hinge)
+            insert_required_block(bottom_block, x, 0, xscale=-toward_hinge)
 
     if not is_back and p.get("product_name") == "平移门":
         insert_required_block("zdgy", dw / 2, dh - fw_top / 2)

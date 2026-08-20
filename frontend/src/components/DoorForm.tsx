@@ -242,11 +242,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     : legacyMidClearWidth;
   const panelStyle = data.door_panel_style || "无造型";
   const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
+  const blankOpeningProducts = ["平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾"];
   const applyProductName = (product_name: string) => {
     if (product_name === "平移门") {
       onChange({
         ...data,
         product_name,
+        sel_kx: "", sel_nk: "",
         door_type: "两定两开",
         has_pillar: false,
         fw_left_str: "55/55", fw_right_str: "55/55", fw_top_str: "235/235",
@@ -259,6 +261,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       onChange({
         ...data,
         product_name,
+        sel_kx: "", sel_nk: "",
         fw_left_str: "55/55", fw_right_str: "55/55", fw_top_str: "55/55",
         threshold_type: "吊脚", has_dj: true, dj_height: 10,
         sel_hys: product_name === "天弹簧门" ? "天弹簧" : "地弹簧",
@@ -269,16 +272,22 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       onChange({
         ...data,
         product_name,
+        sel_kx: data.sel_kx || "右开", sel_nk: data.sel_nk || "内开",
         left_gap: 0, right_gap: 0, top_gap: 0, bottom_gap: 0,
         fw_top_str: "0", threshold_type: "吊脚", has_dj: true, dj_height: data.dj_height || 30,
       });
       return;
     }
-    if (["庭院门", "平移门", "地弹簧门", "天弹簧门"].includes(data.product_name)) {
-      // 庭院门采用零门缝、吊脚的专用默认值；切回普通门时恢复标准门参数。
+    if (["铝艺栅栏", "雨棚", "牌匾"].includes(product_name)) {
+      onChange({ ...data, product_name, sel_kx: "", sel_nk: "" });
+      return;
+    }
+    if (["庭院门", ...blankOpeningProducts].includes(data.product_name)) {
+      // 离开专用产品时恢复普通门的开向、门缝和门框参数。
       onChange(applyFrameDefaults({
         ...data,
         product_name,
+        sel_kx: data.sel_kx || "右开", sel_nk: data.sel_nk || "内开",
         left_gap: 2, right_gap: 2, top_gap: 3, bottom_gap: 5, middle_gap: 2,
         threshold_type: "高低槛", th_str: "55/75", has_dj: false, dj_height: 0,
       }));

@@ -1115,7 +1115,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "THRESHOLD_OPTIONS": ["高低槛", "平底槛", "吊脚"],
     "QC_OPTIONS": ["无", "玻璃", "封闭"],
     "BZ_OPTIONS": ["全包", "木箱"],
-    "HYSL_OPTIONS": ["3个/扇", "1套/扇", "1套/樘"],
+    "HYSL_OPTIONS": ["2个/扇", "3个/扇", "4个/扇", "5个/扇", "1套/扇", "1套/樘"],
 }
 _DROPDOWN_ALIASES = {
     "三位可调合页": "三维可调合页",
