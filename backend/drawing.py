@@ -1088,8 +1088,9 @@ def draw_door_in_frame(
             dh - panel_ref_fw_top,
         )
 
-    def draw_panel_body_rect(x1: float, x2: float):
+    def draw_panel_body_rect(x1: float, x2: float, y_bottom: Optional[float] = None):
         left, right = sorted((x1, x2))
+        actual_y_bottom = panel_y_bot if y_bottom is None else y_bottom
         if right - left < 1:
             return
         if panel_arch_geom:
@@ -1105,8 +1106,8 @@ def draw_door_in_frame(
                 bulge = math.tan(math.radians(included) / 4)
                 drawer.draw_bulged_poly(
                     [
-                        (*off((left, panel_y_bot)), 0, 0, 0),
-                        (*off((right, panel_y_bot)), 0, 0, 0),
+                        (*off((left, actual_y_bottom)), 0, 0, 0),
+                        (*off((right, actual_y_bottom)), 0, 0, 0),
                         (*off(top_right), 0, 0, bulge),
                         (*off(top_left), 0, 0, 0),
                     ],
@@ -1115,8 +1116,8 @@ def draw_door_in_frame(
                 )
                 return
         drawer.draw_poly([
-            off((left, panel_y_bot)),
-            off((right, panel_y_bot)),
+            off((left, actual_y_bottom)),
+            off((right, actual_y_bottom)),
             off((right, panel_y_top)),
             off((left, panel_y_top)),
         ], 'A-DOOR-PANEL')
@@ -1256,6 +1257,11 @@ def draw_door_in_frame(
             rx1 = rmx2
             rx2 = rx1 + side_width
 
+        if p.get("product_name") == "平移门" and not has_pillar:
+            sliding_overlap = max(0, float(p.get("sliding_overlap", 45) or 0))
+            lmx1 -= sliding_overlap
+            rmx2 += sliding_overlap
+
         lpx1_draw, lpx2_draw = lpx1, lpx2
         rpx1_draw, rpx2_draw = rpx1, rpx2
         if has_pillar and current_pillar_width > 0:
@@ -1266,14 +1272,15 @@ def draw_door_in_frame(
             rpx1_draw = right_pillar_center - current_pillar_width / 2
             rpx2_draw = right_pillar_center + current_pillar_width / 2
 
-        draw_panel_body_rect(lx1, lx2)
+        fixed_panel_bottom = 0 if p.get("has_dj") else panel_y_bot
+        draw_panel_body_rect(lx1, lx2, fixed_panel_bottom)
         if has_pillar and current_pillar_width > 0:
             drawer.draw_poly([off((lpx1_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_bot)), off((lpx2_draw, pillar_y_top)), off((lpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
         draw_panel_body_rect(lmx1, lmx2)
         draw_panel_body_rect(rmx1, rmx2)
         if has_pillar and current_pillar_width > 0:
             drawer.draw_poly([off((rpx1_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_bot)), off((rpx2_draw, pillar_y_top)), off((rpx1_draw, pillar_y_top))], 'A-DOOR-FRAME')
-        draw_panel_body_rect(rx1, rx2)
+        draw_panel_body_rect(rx1, rx2, fixed_panel_bottom)
 
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
         if has_pillar and current_pillar_width > 0:
@@ -1403,7 +1410,10 @@ def draw_door_in_frame(
             break
 
     hinge_x_list = []
-    is_hinge_visible = (nk_choice == "外开" and not is_back) or (nk_choice == "内开" and is_back)
+    is_hinge_visible = (
+        hys_choice in CONFIG.HINGE_TYPES
+        and ((nk_choice == "外开" and not is_back) or (nk_choice == "内开" and is_back))
+    )
     # 暗合页/明合页暗装：不画合页块，保持立面干净
     if "暗" in hys_choice:
         is_hinge_visible = False
@@ -2097,6 +2107,22 @@ def draw_door_in_frame(
                 add(*panel_positions[2], "left")
         return targets
 
+    def active_leaf_specs():
+        """Return active leaf geometry as (x1, x2, lock edge, direction to hinge)."""
+        specs = []
+        for lock_edge, toward_hinge, _block in handle_targets(0):
+            for px1, px2 in panel_positions:
+                expected = px1 if toward_hinge > 0 else px2
+                if abs(expected - lock_edge) < 0.01:
+                    specs.append((px1, px2, lock_edge, toward_hinge))
+                    break
+        return specs
+
+    def insert_required_block(block_name: str, x: float, y: float, *, xscale: float = 1):
+        if block_name not in drawer.doc.blocks:
+            raise ValueError(f"CAD模板缺少必需块：{block_name}")
+        drawer.insert_custom_block(block_name, off((x, y)), layer="A-DOOR-PANEL", xscale=xscale)
+
     def sized_handle_targets(distance: float = 110):
         if door_type == "对开门" and len(panel_positions) >= 2:
             left_x1, left_x2 = panel_positions[0]
@@ -2280,6 +2306,37 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("AZJ", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
+    lock_type = p.get("lock_type", "")
+    magnetic_lock_view = (nk_choice == "内开" and not is_back) or (nk_choice == "外开" and is_back)
+    if lock_type in ("磁力锁", "暗装磁力锁") and magnetic_lock_view:
+        for hx, toward_hinge, _block in handle_targets(140):
+            insert_required_block("cls", hx, panel_y_top - 15, xscale=toward_hinge)
+
+    top_frame_bottom_y = panel_y_top + top_gap
+    mechanism_visible = (
+        (nk_choice == "外开" and not is_back)
+        or (nk_choice == "内开" and is_back)
+    )
+    if hys_choice == "明合页+闭门器" and mechanism_visible:
+        for px1, px2, _lock_edge, toward_hinge in active_leaf_specs():
+            hinge_edge = px2 if toward_hinge > 0 else px1
+            insert_required_block("bmq", hinge_edge - toward_hinge * 150, top_frame_bottom_y, xscale=toward_hinge)
+
+    spring_blocks = {
+        "天弹簧": ("tths", "tthx"),
+        "地弹簧": ("dths", "dthx"),
+    }
+    if not is_back and hys_choice in spring_blocks:
+        top_block, bottom_block = spring_blocks[hys_choice]
+        for px1, px2, _lock_edge, toward_hinge in active_leaf_specs():
+            hinge_edge = px2 if toward_hinge > 0 else px1
+            x = hinge_edge - toward_hinge * 100
+            insert_required_block(top_block, x, top_frame_bottom_y, xscale=toward_hinge)
+            insert_required_block(bottom_block, x, 0, xscale=toward_hinge)
+
+    if not is_back and p.get("product_name") == "平移门":
+        insert_required_block("zdgy", dw / 2, dh - fw_top / 2)
+
     drawer.update_progress(f"{view_name}绘制完成")
 
 
@@ -2320,6 +2377,7 @@ def run_integrated_system(
             "FMLS": info.get("FMLS", ""),
             "ST": info.get("ST", ""),
             "ZWS": info.get("ZWS", ""),
+            "PZSL": info.get("PZSL", info.get("HYSL", "")),
             "HYSL": info.get("HYSL", ""),
             "QH": info.get("QH", ""),
             "MSHD": info.get("MSHD", ""),
@@ -2327,6 +2385,7 @@ def run_integrated_system(
             "BZ": info.get("BZ", ""),
             "DOOR_TYPE": info.get("DOOR_TYPE", ""),
             "MOTHER_DOOR_WIDTH": info.get("MOTHER_DOOR_WIDTH", ""),
+            "KQJG": info.get("KQJG", info.get("HYYS", "")),
             "HYYS": info.get("HYYS", ""),
             "DXK": info.get("DXK", ""),
             "GXK": info.get("GXK", ""),
@@ -2460,7 +2519,8 @@ def run_integrated_system(
             drawer.update_progress("简化产品无需绘制门体结构")
         else:
             draw_door_in_frame(drawer, "正面", draw_p, False, use_light, lw, lh)
-            draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
+            if not draw_p.get("front_only"):
+                draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
         drawer.occlusion.apply()
         draw_elapsed = time.perf_counter() - draw_started
 

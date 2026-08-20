@@ -5,7 +5,7 @@ import type { DoorFormData } from "@/lib/types";
 import {
   DOOR_TYPES, KX_OPTIONS, NK_OPTIONS, THRESHOLD_OPTIONS,
   QC_OPTIONS, QC_SHAPE_OPTIONS, BZ_OPTIONS, HYSL_OPTIONS,
-  MATERIALS, MATERIAL_THICKNESSES, PRODUCT_NAMES, ORDER_TITLES, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, COLOR_PRESETS,
+  MATERIALS, MATERIAL_THICKNESSES, PRODUCT_NAMES, ORDER_TITLES, HANDLES, LOCKS, FINGERPRINT_LOCKS, HINGES, GLASS_SPECS, COLOR_PRESETS,
   TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS, GLASS_LINE_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
@@ -243,6 +243,28 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const panelStyle = data.door_panel_style || "无造型";
   const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
   const applyProductName = (product_name: string) => {
+    if (product_name === "平移门") {
+      onChange({
+        ...data,
+        product_name,
+        door_type: "两定两开",
+        has_pillar: false,
+        fw_left_str: "55/55", fw_right_str: "55/55", fw_top_str: "235/235",
+        threshold_type: "吊脚", has_dj: true, dj_height: 10,
+        sliding_overlap: Number(data.sliding_overlap || 45),
+      });
+      return;
+    }
+    if (["地弹簧门", "天弹簧门"].includes(product_name)) {
+      onChange({
+        ...data,
+        product_name,
+        fw_left_str: "55/55", fw_right_str: "55/55", fw_top_str: "55/55",
+        threshold_type: "吊脚", has_dj: true, dj_height: 10,
+        sel_hys: product_name === "天弹簧门" ? "天弹簧" : "地弹簧",
+      });
+      return;
+    }
     if (product_name === "庭院门") {
       onChange({
         ...data,
@@ -252,7 +274,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       });
       return;
     }
-    if (data.product_name === "庭院门") {
+    if (["庭院门", "平移门", "地弹簧门", "天弹簧门"].includes(data.product_name)) {
       // 庭院门采用零门缝、吊脚的专用默认值；切回普通门时恢复标准门参数。
       onChange(applyFrameDefaults({
         ...data,
@@ -603,7 +625,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
 
         <Card title="材质与外观">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="产品名称" required value={data.product_name} options={PRODUCT_NAMES} onChange={applyProductName} />
+            <Combobox label="产品名称" required value={data.product_name} options={o("PRODUCT_NAMES", PRODUCT_NAMES)} onChange={applyProductName} />
             <Combobox label="材料" value={data.material} options={o("MATERIAL_THICKNESSES", MATERIAL_THICKNESSES)} onChange={(v) => set("material", v)} />
             {!isSimpleProduct && <>
               <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
@@ -679,6 +701,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 )}
               </>
             )}
+            <Combobox label="玻璃规格" value={data.glass_spec} options={o("GLASS_SPECS", GLASS_SPECS)} onChange={(v) => set("glass_spec", v)} />
             {data.has_mm && (
               <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
             )}
@@ -756,6 +779,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               type="number"
               onChange={(v) => set("mid_clear_width", Number(v))}
             />
+          )}
+          {data.product_name === "平移门" && (
+            <Input label="中门重叠尺寸(mm)" value={data.sliding_overlap} type="number" onChange={(v) => set("sliding_overlap", Number(v))} />
           )}
         </Card>
 
@@ -918,10 +944,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
             <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
-            <Combobox label="合页样式" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
+            <Combobox label="开启机构" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
           </div>
           <div className="mt-3">
-            <Select label="单扇合页数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
+            <Combobox label="配置数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
           </div>
         </Card>
 

@@ -55,6 +55,7 @@ export interface DoorFormData {
   mother_door_width: number;
   mid_door_width: number;
   mid_clear_width: number;
+  sliding_overlap: number;
   fw_left_str: string;
   fw_right_str: string;
   fw_top_str: string;
@@ -101,6 +102,7 @@ export interface DoorFormData {
   trim_back_in: number;
   sel_qc: string;
   qc_shape: string;
+  glass_spec: string;
   is_arch_door: boolean;
   arch_spring_height: number;
   is_integrated_door: boolean;
@@ -267,7 +269,7 @@ export const THRESHOLD_OPTIONS = ["高低槛", "平底槛", "吊脚"];
 export const QC_OPTIONS = ["无", "玻璃", "封闭"];
 export const QC_SHAPE_OPTIONS = ["矩形气窗", "弧形气窗"];
 export const BZ_OPTIONS = ["全包", "木箱"];
-export const HYSL_OPTIONS = ["3个/扇", "2个/扇", "4个/扇", "5个/扇"];
+export const HYSL_OPTIONS = ["3个/扇", "1套/扇", "1套/樘"];
 export const MATERIALS = [
   "0.8的不锈钢镀铜",
   "1.0的不锈钢镀铜",
@@ -286,12 +288,16 @@ export const MATERIALS = [
   "1.2的304不锈钢镀铜木纹板",
 ];
 export const MATERIAL_THICKNESSES = ["0.8mm", "1.0mm", "1.2mm", "1.5mm", "2.0mm"];
-export const PRODUCT_NAMES = ["不锈钢镀铜门", "纯铜门", "全铝门", "系统门", "系统偏轴门", "庭院门", "铝艺栅栏", "雨棚", "牌匾"];
+export const PRODUCT_NAMES = ["不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门", "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾"];
 export const ORDER_TITLES = ["浙江西州将军铜门订货单", "杭州兰庭新贵门业"];
 export const HANDLES = ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手"];
-export const LOCKS = ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"];
+export const LOCKS = ["连体锁", "霸王锁体", "标准锁体", "磁力锁", "暗装磁力锁"];
 export const FINGERPRINT_LOCKS = ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"];
-export const HINGES = ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页"];
+export const HINGES = [
+  "葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页",
+  "北京暗合页", "明合页暗装", "明合页", "电动开门机", "地弹簧", "天弹簧", "天地轴", "明合页+闭门器",
+];
+export const GLASS_SPECS = ["10mm钢化玻璃", "10mm钢化超白玻璃", "10mm夹胶玻璃", "10mm普通白玻", "5+12+5中空钢化玻璃"];
 export const COLOR_PRESETS = ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"];
 export const TRIM_STYLES = ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"];
 export const DOOR_STYLES = ["平板"];
@@ -325,10 +331,10 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   glass_line_inset: 20, glass_line_spacing: 20, back_glass_line_inset: 0, back_glass_line_spacing: 0,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),
-  door_type: "单门", mother_door_width: 600, mid_door_width: 400, mid_clear_width: 0,
+  door_type: "单门", mother_door_width: 600, mid_door_width: 400, mid_clear_width: 0, sliding_overlap: 45,
   has_pillar: false, pillar_width_str: "55/85",
   sel_kx: "右开", sel_nk: "内开",
-  sel_qc: "无", qc_shape: "矩形气窗", qc_height: 400, qc_glass_style: "无线条",
+  sel_qc: "无", qc_shape: "矩形气窗", glass_spec: "", qc_height: 400, qc_glass_style: "无线条",
   is_arch_door: false, arch_spring_height: 1800,
   is_integrated_door: false, integrated_panel_height: 300,
   integrated_press_top_rail: 20, integrated_glass_bottom_rail: 20,

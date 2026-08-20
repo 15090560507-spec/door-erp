@@ -265,6 +265,11 @@ def build_cad_params(req: CADRequest):
     material = (req.material or "").strip()
     product_display = f"{material}的{product_name}" if material else ((req.zzcl or "").strip() or product_name)
     is_simple_product = product_name in {"牌匾", "铝艺栅栏", "雨棚"}
+    is_sliding_door = product_name == "平移门"
+    is_floor_spring_door = product_name == "地弹簧门"
+    is_top_spring_door = product_name == "天弹簧门"
+    is_spring_door = is_floor_spring_door or is_top_spring_door
+    front_only = is_sliding_door or is_spring_door
 
     # --- 包套批注 ---
     def _format_handle_size(value: str):
@@ -333,6 +338,9 @@ def build_cad_params(req: CADRequest):
         else:
             frame_notes.append(f"拉手尺寸={handle_label}")
 
+    if req.glass_spec.strip():
+        frame_notes.append(f"玻璃规格={req.glass_spec.strip()}")
+
     if frame_notes:
         note_line = "\n".join(frame_notes)
         if note_line not in current_note:
@@ -348,8 +356,8 @@ def build_cad_params(req: CADRequest):
     resolved_mid_door_width = _resolve_mid_door_width(req, door_type)
 
     # --- 框宽解析 ---
-    fw_left_str = req.fw_left_str
-    fw_right_str = req.fw_right_str
+    fw_left_str = "55/55" if (is_sliding_door or is_spring_door) else req.fw_left_str
+    fw_right_str = "55/55" if (is_sliding_door or is_spring_door) else req.fw_right_str
     if door_type in ("对开门", "子母门", "两定两开", "四开门") and fw_left_str == "55/85" and fw_right_str == "55/62":
         fw_left_str = "55/62"
         fw_right_str = "55/62"
@@ -360,7 +368,8 @@ def build_cad_params(req: CADRequest):
     parts_right = parse_dim_str(fw_right_str, 60, 60)
     right_small, right_big = min(parts_right[0], parts_right[1]), max(parts_right[0], parts_right[1])
 
-    parts_top = parse_dim_str(req.fw_top_str, 60, 60)
+    fw_top_str = "235/235" if is_sliding_door else ("55/55" if is_spring_door else req.fw_top_str)
+    parts_top = parse_dim_str(fw_top_str, 60, 60)
     fw_top_small, fw_top_big = min(parts_top[0], parts_top[1]), max(parts_top[0], parts_top[1])
 
     parts_th = parse_dim_str(req.th_str, 60, 60)
@@ -401,7 +410,8 @@ def build_cad_params(req: CADRequest):
             res_light = calc.calculate_from_light_size(lw, lh, req.sel_nk == "外开")
             dw, dh = res_light[0], res_light[1]
 
-    is_hanging_threshold = req.threshold_type == "吊脚" or req.has_dj
+    is_hanging_threshold = is_sliding_door or is_spring_door or req.threshold_type == "吊脚" or req.has_dj
+    effective_dj_height = 10 if (is_sliding_door or is_spring_door) else req.dj_height
 
     if is_hanging_threshold:
         thf = 0
@@ -415,7 +425,7 @@ def build_cad_params(req: CADRequest):
         gxk_val = ""
         pdk_val = ""
         dj_val = "√"
-        djg_val = str(req.dj_height or "")
+        djg_val = str(effective_dj_height or "")
     elif req.threshold_type == "平底槛":
         dxk_val = ""
         gxk_val = ""
@@ -456,12 +466,13 @@ def build_cad_params(req: CADRequest):
         "DHDW": req.dhdw, "GDMC": req.gdmc, "ZZCL": product_display, "CPMC": product_display,
         "DHRQ": req.dhrq, "DDH": req.ddh, "SL": req.sl,
         "YS": req.ys, "ZMLS": req.zmls, "FMLS": req.fmls,
-        "ST": req.st_val, "ZWS": req.fingerprint_lock, "HYSL": req.hysl, "QH": qh_val,
+        "ST": req.st_val, "ZWS": req.fingerprint_lock,
+        "PZSL": req.hysl, "HYSL": req.hysl, "QH": qh_val,
         "MSHD": mshd_val, "HHXD": req.hhxd, "BZ": final_note,
         "DOOR_TYPE": door_type, "MOTHER_DOOR_WIDTH": req.mother_door_width,
         "MID_DOOR_WIDTH": resolved_mid_door_width, "MID_CLEAR_WIDTH": req.mid_clear_width or 0,
         "PILLAR_WIDTH_STR": req.pillar_width_str,
-        "HAS_PILLAR": req.has_pillar, "HYYS": req.sel_hys,
+        "HAS_PILLAR": req.has_pillar, "KQJG": req.sel_hys, "HYYS": req.sel_hys,
         "DXK": dxk_val, "GXK": gxk_val, "PXK": pdk_val, "DJ": dj_val, "DJG": djg_val, "MX": dt_cn,
         "QC_HEIGHT": qc_height_val, "HAS_MM": req.has_mm, "MM_HEIGHT": mm_height_val,
         "QC_SHAPE": req.qc_shape,
@@ -530,7 +541,7 @@ def build_cad_params(req: CADRequest):
 
     if is_simple_product:
         for key in (
-            "ZMLS", "FMLS", "ST", "ZWS", "HYSL", "QH", "MSHD", "HYYS", "DXK", "GXK", "PXK", "DJ", "DJG",
+            "ZMLS", "FMLS", "ST", "ZWS", "PZSL", "HYSL", "QH", "MSHD", "KQJG", "HYYS", "DXK", "GXK", "PXK", "DJ", "DJG",
             "QC_HEIGHT", "MM_HEIGHT", "ZMKS", "FMKS", "TRIM_STYLE_OUTER", "TRIM_STYLE_INNER", "PANEL_PRESET",
         ):
             info_map[key] = "/"
@@ -587,7 +598,7 @@ def build_cad_params(req: CADRequest):
         "fw_top_front": ftf, "fw_top_back": ftb,
         "th_front": thf, "th_back": thb,
         "has_dj": is_hanging_threshold,
-        "dj_height": req.dj_height,
+        "dj_height": effective_dj_height,
         "trim_front": trim_f, "trim_front_right": trim_f_right, "trim_front_top": trim_f_top, "trim_back": trim_b, "trim_back_top": trim_b,
         "has_outer_portal": req.has_outer_portal,
         "has_outer_portal2": req.has_outer_portal2,
@@ -605,6 +616,9 @@ def build_cad_params(req: CADRequest):
         "outer_landscape_right_overlap": req.outer_landscape_right_overlap,
         "outer_landscape_top_overlap": req.outer_landscape_top_overlap,
         "door_type": door_type,
+        "product_name": product_name,
+        "front_only": front_only,
+        "sliding_overlap": max(0, float(req.sliding_overlap or 0)),
         "mother_door_width": req.mother_door_width,
         "mid_door_width": resolved_mid_door_width,
         "mid_clear_width": req.mid_clear_width or 0,
@@ -622,6 +636,7 @@ def build_cad_params(req: CADRequest):
         "integrated_glass_height": req.integrated_glass_height,
         "has_mm": req.has_mm, "mm_height": mm_height_val,
         "hys": req.sel_hys, "hysl": req.hysl,
+        "lock_type": "暗装磁力锁" if req.st_val == "暗转磁力锁" else req.st_val,
         # 间隙：优先使用新独立字段，回退到旧字符串格式
         "left_right_gap": (req.left_gap, req.right_gap) if (req.left_gap or req.right_gap) else parse_gap_str(req.left_right_gap_str, 0),
         "top_bottom_gap": (req.top_gap, req.bottom_gap) if (req.top_gap or req.bottom_gap) else parse_gap_str(req.top_bottom_gap_str, 0),
@@ -1090,18 +1105,21 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "NK_OPTIONS": ["内开", "外开"],
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
     "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手", "铝雕圆形拉手", "铝雕滑盖圆环拉手"],
-    "LOCKS": ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"],
+    "PRODUCT_NAMES": ["不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门", "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾"],
+    "LOCKS": ["连体锁", "霸王锁体", "标准锁体", "磁力锁", "暗装磁力锁"],
     "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
-    "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页"],
+    "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页", "电动开门机", "地弹簧", "天弹簧", "天地轴", "明合页+闭门器"],
+    "GLASS_SPECS": ["10mm钢化玻璃", "10mm钢化超白玻璃", "10mm夹胶玻璃", "10mm普通白玻", "5+12+5中空钢化玻璃"],
     "TRIM_STYLES": ["平包套", "斜包套", "阶梯包套", "工字形包套", "01款包套", "02款包套", "03款包套"],
     "COLOR_PRESETS": ["2号色", "2.3号色", "2.5号色", "3号色", "6号色乱纹", "7号色乱纹"],
     "THRESHOLD_OPTIONS": ["高低槛", "平底槛", "吊脚"],
     "QC_OPTIONS": ["无", "玻璃", "封闭"],
     "BZ_OPTIONS": ["全包", "木箱"],
-    "HYSL_OPTIONS": ["3个/扇", "2个/扇", "4个/扇", "5个/扇"],
+    "HYSL_OPTIONS": ["3个/扇", "1套/扇", "1套/樘"],
 }
 _DROPDOWN_ALIASES = {
     "三位可调合页": "三维可调合页",
+    "暗转磁力锁": "暗装磁力锁",
     "折叠四开门": "四开门",
 }
 

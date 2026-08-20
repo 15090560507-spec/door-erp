@@ -8,16 +8,18 @@ const KEY_LABELS: Record<string, string> = {
   KX_OPTIONS: "开向",
   NK_OPTIONS: "内外开",
   MATERIALS: "制作材料",
+  PRODUCT_NAMES: "产品名称",
   HANDLES: "拉手",
   LOCKS: "锁体",
   FINGERPRINT_LOCKS: "指纹锁",
-  HINGES: "合页",
+  HINGES: "开启机构",
   TRIM_STYLES: "包套款式",
   COLOR_PRESETS: "颜色",
   THRESHOLD_OPTIONS: "下槛方案",
   QC_OPTIONS: "气窗",
   BZ_OPTIONS: "包装",
-  HYSL_OPTIONS: "合页数量",
+  HYSL_OPTIONS: "配置数量",
+  GLASS_SPECS: "玻璃规格",
 };
 
 export default function DropdownOptionsManager() {

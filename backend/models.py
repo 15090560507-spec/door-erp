@@ -37,6 +37,7 @@ class CADRequest(BaseModel):
     mother_door_width: int = 600        # 母门单扇宽
     mid_door_width: int = 400           # 中门单扇宽
     mid_clear_width: Optional[float] = None  # 中门内空宽；缺失时兼容旧 mid_door_width
+    sliding_overlap: int = 45           # 平移门中间活动扇左右重叠尺寸
     fw_left_str: str = "55/85"          # 左框宽 (小/大，按开向分配)
     fw_right_str: str = "55/62"         # 右框宽 (小/大，按开向分配)
     fw_top_str: str = "55/75"           # 上框宽 (小/大，按开向分配)
@@ -53,8 +54,8 @@ class CADRequest(BaseModel):
     handle_size: str = ""               # 拉手尺寸，如 40*800
     st_val: str = ""                    # 锁体类型（录入时必填）
     fingerprint_lock: str = ""          # 指纹锁
-    sel_hys: str = ""                   # 合页样式
-    hysl: str = "3个/扇"                # 合页数量
+    sel_hys: str = ""                   # 开启机构（字段名保留以兼容旧任务）
+    hysl: str = "3个/扇"                # 配置数量（字段名保留以兼容旧任务）
     has_outer: bool = True              # 外包套
     has_outer_portal: bool = False      # 外门头门柱（与外包套互斥）
     has_outer_portal2: bool = False     # 外门头门柱2（门头位于两柱之间）
@@ -83,6 +84,7 @@ class CADRequest(BaseModel):
     trim_back_in: int = 140             # 内包套宽
     sel_qc: str = "无"                  # 气窗
     qc_shape: str = "矩形气窗"          # 气窗形状
+    glass_spec: str = ""                # 玻璃规格
     is_arch_door: bool = False          # 圆弧门
     arch_spring_height: int = 1800      # 起弧高度
     is_integrated_door: bool = False    # 连体门

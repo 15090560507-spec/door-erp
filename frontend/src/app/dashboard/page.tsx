@@ -239,7 +239,7 @@ export default function DashboardPage() {
     if (!data.zmks.trim()) missing.push("正面款式");
     if (!data.fmks.trim()) missing.push("反面款式");
     if (!data.st_val.trim()) missing.push("锁体类型");
-    if (!data.sel_hys.trim()) missing.push("合页样式");
+    if (!data.sel_hys.trim()) missing.push("开启机构");
     if (!data.fingerprint_lock.trim()) missing.push("指纹锁");
     if (data.use_light_size) {
       if (!data.light_w || data.light_w <= 0) missing.push("见光宽(W)");

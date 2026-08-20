@@ -3,6 +3,7 @@ import sys
 import io
 import math
 import re
+from collections import Counter
 
 import ezdxf
 
@@ -2102,7 +2103,7 @@ def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
     locks = merged.get("LOCKS", [])
     check(
         "lock dropdown drops hinge/handle/fingerprint/packing noise",
-        all(item in locks for item in ["连体锁", "标准锁体", "防盗锁体", "霸王锁体", "快装锁体"])
+        all(item in locks for item in ["连体锁", "霸王锁体", "标准锁体", "磁力锁", "暗装磁力锁"])
         and "葫芦头合页" not in locks
         and "铝雕滑盖拉手150*300" not in locks
         and "Q3指纹锁" not in locks
@@ -2111,6 +2112,153 @@ def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
         str(locks),
     )
     check("new semicircle handle names in dropdown defaults", "铝雕圆形拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"] and "铝雕滑盖圆环拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"], str(_DEFAULT_DROPDOWN_OPTIONS["HANDLES"]))
+
+
+def test_special_product_opening_mechanisms_and_template_aliases():
+    defaults = _DEFAULT_DROPDOWN_OPTIONS
+    check(
+        "special product options keep the confirmed order",
+        defaults["PRODUCT_NAMES"] == [
+            "不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门",
+            "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾",
+        ],
+        str(defaults["PRODUCT_NAMES"]),
+    )
+    check(
+        "configuration quantity defaults are updated",
+        defaults["HYSL_OPTIONS"] == ["3个/扇", "1套/扇", "1套/樘"],
+        str(defaults["HYSL_OPTIONS"]),
+    )
+
+    floor_req = CADRequest(
+        product_name="地弹簧门",
+        material="1.0mm",
+        sel_hys="地弹簧",
+        hysl="1套/扇",
+        st_val="磁力锁",
+        glass_spec="10mm钢化超白玻璃",
+        sel_nk="内开",
+        fingerprint_lock="无",
+    )
+    floor_info, floor_checks, floor_params = build_cad_params(floor_req)
+    check("new opening mechanism maps to KQJG", floor_info["KQJG"] == "地弹簧", floor_info)
+    check("legacy hinge tag keeps compatibility", floor_info["HYYS"] == "地弹簧", floor_info)
+    check("new quantity maps to PZSL", floor_info["PZSL"] == "1套/扇", floor_info)
+    check("legacy quantity tag keeps compatibility", floor_info["HYSL"] == "1套/扇", floor_info)
+    check("glass specification is appended to note", "玻璃规格=10mm钢化超白玻璃" in floor_info["BZ"], floor_info["BZ"])
+    check(
+        "floor spring door uses flat 55mm frames",
+        floor_params["left_width_front"] == 55
+        and floor_params["right_width_front"] == 55
+        and floor_params["fw_top_front"] == 55,
+        floor_params,
+    )
+    check("floor spring door defaults to 10mm hanging foot", floor_params["has_dj"] is True and floor_params["dj_height"] == 10, floor_params)
+    check("floor spring door is front-view only", floor_params["front_only"] is True, floor_params)
+
+    floor_msg, floor_buffer = run_integrated_system(floor_info, floor_checks, floor_params)
+    check("floor spring CAD generation returns buffer", floor_buffer is not None, floor_msg)
+    if floor_buffer:
+        floor_doc = ezdxf.read(io.StringIO(floor_buffer.getvalue()))
+        floor_inserts = [entity.dxf.name.lower() for entity in floor_doc.modelspace().query("INSERT")]
+        check("floor spring upper block is inserted", floor_inserts.count("dths") >= 1, str(floor_inserts[-20:]))
+        check("floor spring lower block is inserted", floor_inserts.count("dthx") >= 1, str(floor_inserts[-20:]))
+        check("magnetic lock block is inserted on visible side", floor_inserts.count("cls") >= 1, str(floor_inserts[-20:]))
+        order_forms = [entity for entity in floor_doc.modelspace().query("INSERT") if entity.dxf.name == "ORDER_FORM"]
+        order_attrs = {attrib.dxf.tag: attrib.dxf.text for attrib in order_forms[0].attribs}
+        check("generated order form writes KQJG", order_attrs.get("KQJG") == "地弹簧", str(order_attrs))
+        check("generated order form fills legacy quantity tag", order_attrs.get("HYSL") == "1套/扇", str(order_attrs))
+        note_mtexts = [entity.text for entity in floor_doc.modelspace().query("MTEXT")]
+        check("generated order form writes glass specification note", any("玻璃规格=10mm钢化超白玻璃" in text for text in note_mtexts), str(note_mtexts[-5:]))
+        view_titles = [entity.dxf.text for entity in floor_doc.modelspace().query("TEXT") if entity.dxf.text in ("正面", "背面")]
+        check("front-only product omits back drawing title", "背面" not in view_titles, str(view_titles))
+
+    closer_req = CADRequest(
+        product_name="不锈钢镀铜门",
+        sel_hys="明合页+闭门器",
+        sel_nk="内开",
+        fingerprint_lock="无",
+    )
+    closer_info, closer_checks, closer_params = build_cad_params(closer_req)
+    closer_msg, closer_buffer = run_integrated_system(closer_info, closer_checks, closer_params)
+    check("door closer CAD generation returns buffer", closer_buffer is not None, closer_msg)
+    if closer_buffer:
+        closer_doc = ezdxf.read(io.StringIO(closer_buffer.getvalue()))
+        closer_inserts = [entity.dxf.name.lower() for entity in closer_doc.modelspace().query("INSERT")]
+        check("visible opening side inserts BMQ block", closer_inserts.count("bmq") >= 1, str(closer_inserts[-20:]))
+
+    top_spring_req = CADRequest(
+        product_name="天弹簧门",
+        sel_hys="天弹簧",
+        fingerprint_lock="无",
+    )
+    top_spring_info, top_spring_checks, top_spring_params = build_cad_params(top_spring_req)
+    top_spring_msg, top_spring_buffer = run_integrated_system(
+        top_spring_info,
+        top_spring_checks,
+        top_spring_params,
+    )
+    check("top spring CAD generation returns buffer", top_spring_buffer is not None, top_spring_msg)
+    if top_spring_buffer:
+        top_spring_doc = ezdxf.read(io.StringIO(top_spring_buffer.getvalue()))
+        top_spring_inserts = [entity.dxf.name.lower() for entity in top_spring_doc.modelspace().query("INSERT")]
+        check("top spring upper block is inserted", top_spring_inserts.count("tths") >= 1, str(top_spring_inserts[-20:]))
+        check("top spring lower block is inserted", top_spring_inserts.count("tthx") >= 1, str(top_spring_inserts[-20:]))
+
+    fixed_hanging_req = CADRequest(
+        width=3000,
+        height=2600,
+        door_type="两定两开",
+        has_pillar=False,
+        threshold_type="吊脚",
+        has_dj=True,
+        dj_height=10,
+        mid_clear_width=1600,
+        fingerprint_lock="无",
+    )
+    fixed_hanging_info, fixed_hanging_checks, fixed_hanging_params = build_cad_params(fixed_hanging_req)
+    fixed_hanging_msg, fixed_hanging_buffer = run_integrated_system(
+        fixed_hanging_info,
+        fixed_hanging_checks,
+        fixed_hanging_params,
+    )
+    check("two-fixed hanging-foot CAD generation returns buffer", fixed_hanging_buffer is not None, fixed_hanging_msg)
+    if fixed_hanging_buffer:
+        fixed_hanging_doc = ezdxf.read(io.StringIO(fixed_hanging_buffer.getvalue()))
+        panel_bottoms = []
+        for entity in fixed_hanging_doc.modelspace().query("LWPOLYLINE"):
+            if entity.dxf.layer != "A-DOOR-PANEL" or len(entity) < 4:
+                continue
+            points = list(entity.get_points())
+            width = max(point[0] for point in points) - min(point[0] for point in points)
+            height = max(point[1] for point in points) - min(point[1] for point in points)
+            if width > 100 and height > 1000:
+                panel_bottoms.append(round(min(point[1] for point in points), 1))
+        bottom_counts = Counter(panel_bottoms)
+        check(
+            "two-fixed side leaves stay on ground while middle leaves hang 10mm",
+            bottom_counts[0.0] == 4 and bottom_counts[10.0] == 4,
+            str(bottom_counts),
+        )
+
+    sliding_req = CADRequest(
+        product_name="平移门",
+        door_type="两定两开",
+        has_pillar=False,
+        mid_clear_width=1000,
+        sliding_overlap=45,
+        fingerprint_lock="无",
+    )
+    sliding_info, sliding_checks, sliding_params = build_cad_params(sliding_req)
+    check("sliding door uses 235mm top frame", sliding_params["fw_top_front"] == 235, sliding_params)
+    check("sliding overlap reaches drawing params", sliding_params["sliding_overlap"] == 45, sliding_params)
+    check("sliding door is front-view only", sliding_params["front_only"] is True, sliding_params)
+    sliding_msg, sliding_buffer = run_integrated_system(sliding_info, sliding_checks, sliding_params)
+    check("sliding CAD generation returns buffer", sliding_buffer is not None, sliding_msg)
+    if sliding_buffer:
+        sliding_doc = ezdxf.read(io.StringIO(sliding_buffer.getvalue()))
+        sliding_inserts = [entity.dxf.name.lower() for entity in sliding_doc.modelspace().query("INSERT")]
+        check("sliding rail block is inserted", sliding_inserts.count("zdgy") >= 1, str(sliding_inserts[-20:]))
 
 
 if __name__ == "__main__":
@@ -2142,6 +2290,7 @@ if __name__ == "__main__":
     test_outer_landscape_trim_with_occlusion()
     test_order_title_product_name_and_simple_products()
     test_semicircle_handles_b4_glass_and_lock_dropdown_filter()
+    test_special_product_opening_mechanisms_and_template_aliases()
     print(f"\nPASS: {PASSED}")
     print(f"FAIL: {FAILED}")
     if FAILED:
