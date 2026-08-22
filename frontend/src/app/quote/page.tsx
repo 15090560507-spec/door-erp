@@ -21,6 +21,7 @@ import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { localDateYmd } from "@/lib/dateTime";
+import { calculateDoorAreas } from "@/lib/doorAreas";
 
 type QuoteFeedback = {
   tone: "success" | "error";
@@ -75,45 +76,6 @@ function createQuoteGroup(index = 0): QuoteDoorGroup {
     trimUnitPrice: 0,
     items: withMinimumQuoteRows([]),
   };
-}
-
-function calcAreas(params: DoorFormData) {
-  const frameWidth = num(params.dw);
-  const frameHeight = num(params.dh);
-  const frontOuterLeftWidth = params.has_outer
-    ? num(params.trim_front_in)
-    : params.has_outer_portal
-      ? num(params.outer_portal_pillar_width)
-      : params.has_outer_landscape
-        ? num(params.outer_landscape_left_width)
-        : 0;
-  const frontOuterRightWidth = params.has_outer
-    ? num(params.trim_front_in)
-    : params.has_outer_portal
-      ? num(params.outer_portal_pillar_width)
-      : params.has_outer_landscape
-        ? num(params.outer_landscape_right_width)
-        : 0;
-  const frontOuterTopHeight = params.has_outer
-    ? num(params.trim_front_in)
-    : params.has_outer_portal
-      ? num(params.outer_portal_header_height)
-      : params.has_outer_landscape
-        ? num(params.outer_landscape_top_height)
-        : 0;
-  const innerTrimWidth = params.has_inner ? num(params.trim_back_in) : 0;
-  const frontOuterWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth;
-  const frontOuterHeight = frameHeight + frontOuterTopHeight;
-  const backOuterWidth = frameWidth + innerTrimWidth * 2;
-  const backOuterHeight = frameHeight + innerTrimWidth;
-  const outerWidth = Math.max(frontOuterWidth, backOuterWidth);
-  const outerHeight = Math.max(frontOuterHeight, backOuterHeight);
-  const frameArea = frameWidth && frameHeight ? frameWidth * frameHeight * 0.000001 : 0;
-  const outerArea = outerWidth && outerHeight ? outerWidth * outerHeight * 0.000001 : 0;
-  const frontTrimArea = Math.max(0, frontOuterWidth * frontOuterHeight * 0.000001 - frameArea);
-  const backTrimArea = Math.max(0, backOuterWidth * backOuterHeight * 0.000001 - frameArea);
-  const trimArea = frontTrimArea + backTrimArea;
-  return { frameWidth, frameHeight, outerWidth, outerHeight, frameArea, outerArea, frontTrimArea, backTrimArea, trimArea };
 }
 
 function rowFromAccessory(accessory: Accessory, productName = accessory.name, width: number | null = null, height: number | null = null, openDirection = ""): QuoteItem {
@@ -181,7 +143,7 @@ function buildHingeQuoteRow(accessories: Accessory[], hinge: string, doorType: s
 
 function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], pricingMode: QuotePricingMode, trimUnitPrice: number): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
-  const { frameWidth, frameHeight, outerWidth, outerHeight, frontTrimArea, backTrimArea } = calcAreas(params);
+  const { frameWidth, frameHeight, outerWidth, outerHeight, frontTrimArea, backTrimArea } = calculateDoorAreas(params);
   const productDisplay = [params.material, params.product_name || params.zzcl].filter(Boolean).join("的");
   const material = findPriceItem(accessories, "制作材料", params.material || params.zzcl || productDisplay);
   const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
@@ -207,8 +169,8 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
 
   if (pricingMode === "framePlusTrim") {
     ([
-      ["正面门套面积", frontTrimArea],
-      ["反面门套面积", backTrimArea],
+      ["外包套面积", frontTrimArea],
+      ["内包套面积", backTrimArea],
     ] as const).filter(([, area]) => area > 0).forEach(([productName, area]) => {
       rows.push({
         ...createEmptyQuoteItem(),
@@ -339,6 +301,17 @@ export default function QuotePage() {
         console.warn("load drawing tasks failed:", error);
       });
     return () => { alive = false; };
+  }, []);
+
+  const searchDrawingTasks = useCallback(async (query: string) => {
+    const result = await getTasks({ q: query, limit: 50, offset: 0 });
+    const found = result.tasks || [];
+    setDrawingTasks((current) => {
+      const merged = new Map<string, TaskItem>();
+      [...found, ...current].forEach((task) => merged.set(task.id, task));
+      return Array.from(merged.values());
+    });
+    return found;
   }, []);
 
   const updateDoorGroup = useCallback((groupIndex: number, updates: Partial<QuoteDoorGroup>) => {
@@ -819,6 +792,7 @@ export default function QuotePage() {
                     <TaskProjectCombobox
                       tasks={drawingTasks}
                       value={group.taskId}
+                      searchTasks={searchDrawingTasks}
                       onChange={(taskId) => handleApplyTaskQuote(
                         groupIndex,
                         taskId,

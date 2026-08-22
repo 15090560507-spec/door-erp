@@ -1449,7 +1449,7 @@ def test_new_defaults_fingerprint_and_transom_shape():
         fingerprint_options,
     )
 
-    for lock_name in ("\u5b89\u5fd7\u6770AF-12", "Q3\u6307\u7eb9\u9501", "T5\u6307\u7eb9\u9501"):
+    for lock_name in ("\u5b89\u5fd7\u6770AF-12", "Q3\u6307\u7eb9\u9501", "T5\u6307\u7eb9\u9501", "\u5ba2\u5907\u6307\u7eb9\u9501"):
         req = CADRequest(fingerprint_lock=lock_name)
         info, checks, draw_params = build_cad_params(req)
         msg, buffer = run_integrated_system(info, checks, draw_params)
@@ -1756,6 +1756,14 @@ def test_double_door_sized_handles_draw_on_front_only():
         len(set(back_centers_both)) >= 2 and (back_centers_both[-1] - back_centers_both[0]) > 200,
         f"back long handle centers: {back_centers_both}",
     )
+
+    for groove_handle in ("凹槽拉手", "凹槽拉手+灯带"):
+        groove_front_rects, groove_back_rects = sized_handle_rects(groove_handle, "标配拉手")
+        check(
+            f"{groove_handle} does not draw sized-handle geometry",
+            len(groove_front_rects) == 0 and len(groove_back_rects) == 0,
+            f"front={groove_front_rects}, back={groove_back_rects}",
+        )
 
 
 def test_back_backpack_handle_stays_near_lock_edge():
@@ -2112,6 +2120,11 @@ def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
         str(locks),
     )
     check("new semicircle handle names in dropdown defaults", "铝雕圆形拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"] and "铝雕滑盖圆环拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"], str(_DEFAULT_DROPDOWN_OPTIONS["HANDLES"]))
+    check(
+        "groove handle names are front-handle dropdown defaults",
+        "凹槽拉手" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"] and "凹槽拉手+灯带" in _DEFAULT_DROPDOWN_OPTIONS["HANDLES"],
+        str(_DEFAULT_DROPDOWN_OPTIONS["HANDLES"]),
+    )
 
 
 def test_special_product_opening_mechanisms_and_template_aliases():

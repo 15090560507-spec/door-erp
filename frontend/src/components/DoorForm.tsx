@@ -9,6 +9,7 @@ import {
   TRIM_STYLES, DOOR_STYLES, DOOR_PANEL_STYLES, DOOR_PANEL_PRESETS, PANEL_FILL_OPTIONS, GLASS_LINE_STYLES,
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
+import { calculateDoorAreas } from "@/lib/doorAreas";
 import LubanRulerModal from "@/components/LubanRulerModal";
 import { lubanResult, LUBAN_RULER_VERSIONS, DEFAULT_LUBAN_RULER_KIND, type LubanRulerKind } from "@/lib/lubanRuler";
 
@@ -173,6 +174,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     const configured = opts?.[key] || [];
     return Array.from(new Set([...fallback, ...configured])).filter(Boolean);
   };
+  const frontOnlyHandles = new Set(["凹槽拉手", "凹槽拉手+灯带"]);
 
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
@@ -180,41 +182,18 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const setField = (key: keyof DoorFormData, value: string | number | boolean) => {
     onChange({ ...data, [key]: value });
   };
-  const frameWidth = Number(data.dw || 0);
-  const frameHeight = Number(data.dh || 0);
-  const frontOuterLeftWidth = data.has_outer
-    ? Number(data.trim_front_in || 0)
-    : data.has_outer_portal
-      ? Number(data.outer_portal_pillar_width || 0)
-      : data.has_outer_portal2
-        ? Number(data.outer_portal2_pillar_width || 0)
-      : data.has_outer_landscape
-        ? Number(data.outer_landscape_left_width || 0)
-        : 0;
-  const frontOuterRightWidth = data.has_outer
-    ? Number(data.trim_front_in || 0)
-    : data.has_outer_portal
-      ? Number(data.outer_portal_pillar_width || 0)
-      : data.has_outer_portal2
-        ? Number(data.outer_portal2_pillar_width || 0)
-      : data.has_outer_landscape
-        ? Number(data.outer_landscape_right_width || 0)
-        : 0;
-  const frontOuterTopHeight = data.has_outer
-    ? Number(data.trim_front_in || 0)
-    : data.has_outer_portal
-      ? Number(data.outer_portal_header_height || 0)
-      : data.has_outer_portal2
-        ? Number(data.outer_portal2_header_height || 0)
-      : data.has_outer_landscape
-        ? Number(data.outer_landscape_top_height || 0)
-        : 0;
-  const innerTrimWidth = data.has_inner ? Number(data.trim_back_in || 0) : 0;
-  const outerWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth + innerTrimWidth * 2;
-  const outerHeight = frameHeight + frontOuterTopHeight + innerTrimWidth;
-  const frameArea = frameWidth > 0 && frameHeight > 0 ? frameWidth * frameHeight / 1000000 : 0;
-  const outerArea = outerWidth > 0 && outerHeight > 0 ? outerWidth * outerHeight / 1000000 : 0;
-  const trimArea = Math.max(0, outerArea - frameArea);
+  const {
+    frameWidth,
+    frameHeight,
+    frameArea,
+    hasFrontOuter,
+    hasInnerTrim,
+    outerWidth,
+    outerHeight,
+    outerArea,
+    frontTrimArea,
+    backTrimArea,
+  } = calculateDoorAreas(data);
   const calculatedLightWidth = data.use_light_size
     ? Number(data.light_w || 0)
     : Math.max(0, frameWidth - maxSectionValue(data.fw_left_str) - maxSectionValue(data.fw_right_str));
@@ -949,7 +928,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
             <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
-            <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("fmls", v)} />
+            <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES).filter((handle) => !frontOnlyHandles.has(handle))} onChange={(v) => set("fmls", v)} />
             <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
             <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
@@ -1015,7 +994,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           <div className="mt-3 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3 text-[13px] text-[#3A3A3C] space-y-1.5">
             <div>门框规格：{frameWidth || 0} x {frameHeight || 0} = {frameArea.toFixed(3)} m2</div>
             <div>外围规格：{outerWidth || 0} x {outerHeight || 0} = {outerArea.toFixed(3)} m2</div>
-            <div>包套面积：{trimArea.toFixed(3)} m2</div>
+            {hasFrontOuter && <div>外包套面积：{frontTrimArea.toFixed(3)} m2</div>}
+            {hasInnerTrim && <div>内包套面积：{backTrimArea.toFixed(3)} m2</div>}
           </div>
         </Card>
 

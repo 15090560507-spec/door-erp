@@ -91,7 +91,7 @@ class Config:
     ])
     HANDLE_OPTIONS: List[str] = field(default_factory=lambda: [
         "标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手",
-        "铝雕圆形拉手", "铝雕滑盖圆环拉手"
+        "凹槽拉手", "凹槽拉手+灯带", "铝雕圆形拉手", "铝雕滑盖圆环拉手"
     ])
     LOCK_OPTIONS: List[str] = field(default_factory=lambda: [
         "连体锁", "霸王锁体", "标准锁体", "磁力锁", "暗装磁力锁"

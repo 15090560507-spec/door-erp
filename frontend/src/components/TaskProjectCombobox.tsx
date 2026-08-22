@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { TaskItem } from "@/lib/types";
 
 interface Props {
   tasks: TaskItem[];
   value: string;
   onChange: (taskId: string) => void;
+  searchTasks?: (query: string) => Promise<TaskItem[]>;
 }
 
 function taskLabel(task: TaskItem): string {
@@ -29,35 +30,67 @@ function taskSearchText(task: TaskItem): string {
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
-export default function TaskProjectCombobox({ tasks, value, onChange }: Props) {
+export default function TaskProjectCombobox({ tasks, value, onChange, searchTasks }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestRef = useRef(0);
+  const listboxId = useId();
   const selectedTask = tasks.find((task) => task.id === value);
-  const [query, setQuery] = useState(selectedTask ? taskLabel(selectedTask) : "");
+  const [inputQuery, setInputQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const task = tasks.find((item) => item.id === value);
-    setQuery(task ? taskLabel(task) : "");
-  }, [tasks, value]);
+  const [remoteMatches, setRemoteMatches] = useState<TaskItem[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const query = inputQuery ?? (selectedTask ? taskLabel(selectedTask) : "");
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
       if (rootRef.current?.contains(event.target as Node)) return;
       setOpen(false);
-      const task = tasks.find((item) => item.id === value);
-      setQuery(task ? taskLabel(task) : "");
+      setRemoteMatches(null);
+      setInputQuery(null);
     }
     document.addEventListener("mousedown", closeOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [tasks, value]);
+  }, []);
+
+  useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchRequestRef.current += 1;
+  }, []);
+
+  const scheduleRemoteSearch = (nextQuery: string) => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    const normalized = nextQuery.trim();
+    if (!searchTasks || !normalized) {
+      searchRequestRef.current += 1;
+      setRemoteMatches(null);
+      setSearching(false);
+      return;
+    }
+
+    const requestId = ++searchRequestRef.current;
+    setRemoteMatches(null);
+    setSearching(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await searchTasks(normalized);
+        if (searchRequestRef.current === requestId) setRemoteMatches(result);
+      } catch (error) {
+        console.warn("search drawing tasks failed:", error);
+        if (searchRequestRef.current === requestId) setRemoteMatches([]);
+      } finally {
+        if (searchRequestRef.current === requestId) setSearching(false);
+      }
+    }, 250);
+  };
 
   const matches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const source = normalized
+    const source = remoteMatches ?? (normalized
       ? tasks.filter((task) => taskSearchText(task).includes(normalized))
-      : tasks;
+      : tasks);
     return source.slice(0, 20);
-  }, [query, tasks]);
+  }, [query, remoteMatches, tasks]);
 
   return (
     <div ref={rootRef} className="relative mt-1">
@@ -66,22 +99,27 @@ export default function TaskProjectCombobox({ tasks, value, onChange }: Props) {
         value={query}
         placeholder="输入客户、项目、门型、尺寸或任务ID搜索"
         onFocus={() => {
-          if (value) setQuery("");
+          if (value) {
+            setInputQuery("");
+            setRemoteMatches(null);
+          }
           setOpen(true);
         }}
         onChange={(event) => {
           const nextQuery = event.target.value;
-          setQuery(nextQuery);
+          setInputQuery(nextQuery);
           setOpen(true);
+          scheduleRemoteSearch(nextQuery);
           if (!nextQuery.trim() && value) onChange("");
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setOpen(false);
-            setQuery(selectedTask ? taskLabel(selectedTask) : "");
+            setInputQuery(null);
           }
         }}
         role="combobox"
+        aria-controls={listboxId}
         aria-expanded={open}
         aria-autocomplete="list"
         className="w-full rounded-lg border border-[#E5E5EA]/60 bg-white px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#007AFF]"
@@ -89,10 +127,15 @@ export default function TaskProjectCombobox({ tasks, value, onChange }: Props) {
 
       {open && (
         <div
+          id={listboxId}
           role="listbox"
           className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[#E5E5EA] bg-white p-1 shadow-lg"
         >
-          {matches.length ? matches.map((task) => (
+          {searching ? (
+            <div className="px-3 py-4 text-center text-[12px] text-[#8E8E93]">
+              正在搜索全部图纸项目...
+            </div>
+          ) : matches.length ? matches.map((task) => (
             <button
               key={task.id}
               type="button"
@@ -101,7 +144,8 @@ export default function TaskProjectCombobox({ tasks, value, onChange }: Props) {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
                 onChange(task.id);
-                setQuery(taskLabel(task));
+                setInputQuery(null);
+                setRemoteMatches(null);
                 setOpen(false);
               }}
               className={`block w-full rounded-md px-3 py-2 text-left text-[12px] transition-colors ${

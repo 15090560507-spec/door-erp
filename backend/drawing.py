@@ -2174,7 +2174,7 @@ def draw_door_in_frame(
     # ===================== 标配拉手/背包拉手/长拉手绘制 =====================
     current_handle = p.get('fmls') if is_back else p.get('zmls')
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
-    non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手"}
+    non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手", "凹槽拉手", "凹槽拉手+灯带"}
     current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
     # 半圆拉手：铝雕圆形拉手/铝雕滑盖圆环拉手。直径方向平行于门板锁边，圆弧向板内凸出。
     semicircle_handles = {"铝雕圆形拉手", "铝雕滑盖圆环拉手", "铝雕圆形滑盖拉手"}
@@ -2232,7 +2232,7 @@ def draw_door_in_frame(
         for hx, toward_hinge, _hblock in sized_handle_targets(110):
             draw_mask(hx, 1200, radius + 4, diameter + 4)
 
-    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
+    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"):
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             draw_block_mask("AZJ", hx, 1050, xscale=toward_hinge, fallback_width=80, fallback_height=180)
 
@@ -2303,7 +2303,7 @@ def draw_door_in_frame(
                 off((hx - handle_w / 2, y_center + handle_h / 2)),
             ], "A-DOOR-PANEL")
 
-    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁"):
+    if not is_back and p.get("fingerprint_lock") in ("安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"):
         for hx, toward_hinge, _hblock in handle_targets(60, primary_only=True):
             drawer.insert_custom_block("AZJ", off((hx, 1050)), layer="A-DOOR-PANEL", xscale=toward_hinge)
 
