@@ -443,6 +443,18 @@ def create_quote(data: QuoteCreate, current_user: dict = Depends(require_roles(*
     return {"quote": quote}
 
 
+@quote_router.put("/api/quotes/{quote_id}")
+def update_quote(quote_id: int, data: QuoteCreate, current_user: dict = Depends(require_roles(*ENTRY_ROLES))):
+    """覆盖更新已有报价单，保留报价编号和创建时间。"""
+    try:
+        quote = quote_db.update(quote_id, data.model_dump())
+    except ValueError as e:
+        message = str(e)
+        status_code = 404 if "不存在" in message else 400
+        raise HTTPException(status_code=status_code, detail=message)
+    return {"quote": quote}
+
+
 @quote_router.get("/api/quotes/{quote_id}")
 def get_quote(quote_id: int, current_user: dict = Depends(get_current_user)):
     """获取单个报价单详情（含 items）"""

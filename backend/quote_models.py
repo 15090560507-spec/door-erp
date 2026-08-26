@@ -110,6 +110,7 @@ class QuoteResponse(BaseModel):
     quoteDate: str
     noticeText: str = DEFAULT_QUOTE_NOTICE_TEXT
     createdAt: str = ""
+    updatedAt: str = ""
     items: List[QuoteItemResponse] = Field(default_factory=list)
     doorGroups: List[QuoteDoorGroupResponse] = Field(default_factory=list)
 

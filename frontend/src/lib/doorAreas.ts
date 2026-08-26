@@ -23,6 +23,14 @@ function numeric(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function numericOr(value: unknown, fallback: unknown): number {
+  return value === undefined || value === null ? numeric(fallback) : numeric(value);
+}
+
+function exposedSize(width: unknown, overlap: unknown): number {
+  return Math.max(0, numeric(width) - numeric(overlap));
+}
+
 export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
   const frameWidth = numeric(params.dw);
   const frameHeight = numeric(params.dh);
@@ -34,39 +42,49 @@ export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
   );
   const hasInnerTrim = Boolean(params.has_inner);
 
+  const frontOverlapLr = numericOr(params.overlap_front_lr, params.overlap_front);
+  const frontOverlapTop = numericOr(params.overlap_front_top, params.overlap_front);
+  const backOverlapLr = numericOr(params.overlap_back_lr, params.overlap_back);
+  const backOverlapTop = numericOr(params.overlap_back_top, params.overlap_back);
+
   const frontOuterLeftWidth = params.has_outer
-    ? numeric(params.trim_front_in)
+    ? exposedSize(params.trim_front_in, frontOverlapLr)
     : params.has_outer_portal
-      ? numeric(params.outer_portal_pillar_width)
+      ? exposedSize(params.outer_portal_pillar_width, frontOverlapLr)
       : params.has_outer_portal2
-        ? numeric(params.outer_portal2_pillar_width)
+        ? exposedSize(params.outer_portal2_pillar_width, params.outer_portal2_lr_overlap)
         : params.has_outer_landscape
-          ? numeric(params.outer_landscape_left_width)
+          ? exposedSize(params.outer_landscape_left_width, params.outer_landscape_left_overlap)
           : 0;
   const frontOuterRightWidth = params.has_outer
-    ? numeric(params.trim_front_in)
+    ? exposedSize(params.trim_front_in, frontOverlapLr)
     : params.has_outer_portal
-      ? numeric(params.outer_portal_pillar_width)
+      ? exposedSize(params.outer_portal_pillar_width, frontOverlapLr)
       : params.has_outer_portal2
-        ? numeric(params.outer_portal2_pillar_width)
+        ? exposedSize(params.outer_portal2_pillar_width, params.outer_portal2_lr_overlap)
         : params.has_outer_landscape
-          ? numeric(params.outer_landscape_right_width)
+          ? exposedSize(params.outer_landscape_right_width, params.outer_landscape_right_overlap)
           : 0;
   const frontOuterTopHeight = params.has_outer
-    ? numeric(params.trim_front_in)
+    ? exposedSize(params.trim_front_in, frontOverlapTop)
     : params.has_outer_portal
-      ? numeric(params.outer_portal_header_height)
+      ? exposedSize(params.outer_portal_header_height, frontOverlapTop)
       : params.has_outer_portal2
-        ? numeric(params.outer_portal2_header_height)
+        ? exposedSize(params.outer_portal2_header_height, params.outer_portal2_top_overlap)
         : params.has_outer_landscape
-          ? numeric(params.outer_landscape_top_height)
+          ? exposedSize(params.outer_landscape_top_height, params.outer_landscape_top_overlap)
           : 0;
-  const innerTrimWidth = hasInnerTrim ? numeric(params.trim_back_in) : 0;
+  const innerTrimSide = hasInnerTrim
+    ? exposedSize(params.trim_back_in, backOverlapLr)
+    : 0;
+  const innerTrimTop = hasInnerTrim
+    ? exposedSize(params.trim_back_in, backOverlapTop)
+    : 0;
 
   const frontOuterWidth = frameWidth + frontOuterLeftWidth + frontOuterRightWidth;
   const frontOuterHeight = frameHeight + frontOuterTopHeight;
-  const backOuterWidth = frameWidth + innerTrimWidth * 2;
-  const backOuterHeight = frameHeight + innerTrimWidth;
+  const backOuterWidth = frameWidth + innerTrimSide * 2;
+  const backOuterHeight = frameHeight + innerTrimTop;
 
   // 正面外装饰决定正式外围规格；仅有内包套时才采用反面外围。
   const outerWidth = hasFrontOuter

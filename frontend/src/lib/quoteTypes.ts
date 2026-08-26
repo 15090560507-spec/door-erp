@@ -90,6 +90,7 @@ export interface QuoteResponse {
   quoteDate: string;
   noticeText: string;
   createdAt: string;
+  updatedAt?: string;
   items: QuoteItemResponse[];
   doorGroups?: QuoteDoorGroupResponse[];
   doorSummary?: string;

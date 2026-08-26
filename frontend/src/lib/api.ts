@@ -197,17 +197,51 @@ export async function loadDropdownOptions(): Promise<Record<string, string[]>> {
 }
 
 export async function generateCad(formData: DoorFormData): Promise<Blob> {
-  const { data } = await api.post("/generate_cad", formData, {
-    responseType: "blob",
-  });
-  return data;
+  try {
+    const { data } = await api.post("/generate_cad", formData, {
+      responseType: "blob",
+    });
+    return data;
+  } catch (error: unknown) {
+    const requestError = error as {
+      response?: { data?: unknown };
+      userMessage?: string;
+    };
+    const body = requestError.response?.data;
+    if (body instanceof Blob) {
+      const text = await body.text();
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        requestError.userMessage = extractApiErrorMessage(parsed) || cleanupApiErrorText(text);
+      } catch {
+        requestError.userMessage = cleanupApiErrorText(text);
+      }
+    }
+    throw requestError;
+  }
 }
 
 export async function generateCadPreview(formData: DoorFormData): Promise<string> {
-  const { data } = await api.post<string>("/generate_cad_preview", formData, {
-    responseType: "text",
-  });
-  return data;
+  try {
+    const { data } = await api.post<string>("/generate_cad_preview", formData, {
+      responseType: "text",
+    });
+    return data;
+  } catch (error: unknown) {
+    const requestError = error as {
+      response?: { data?: unknown };
+      userMessage?: string;
+    };
+    const body = requestError.response?.data;
+    if (typeof body === "string" && body.trim()) {
+      try {
+        requestError.userMessage = extractApiErrorMessage(JSON.parse(body)) || cleanupApiErrorText(body);
+      } catch {
+        requestError.userMessage = cleanupApiErrorText(body);
+      }
+    }
+    throw requestError;
+  }
 }
 
 export async function generateLayeredRender(input: {

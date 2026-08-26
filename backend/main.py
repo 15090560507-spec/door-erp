@@ -221,6 +221,16 @@ def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
     logger.info("[cad] preview_rendered key=%s elapsed=%.3fs", key[:10], time.perf_counter() - started)
     return svg, False
 
+
+def _raise_cad_error(stage: str, exc: Exception) -> None:
+    """保留业务校验错误，并为未知 CAD 异常返回可定位的阶段信息。"""
+    if isinstance(exc, HTTPException):
+        raise exc
+    detail = str(exc).strip() or exc.__class__.__name__
+    logger.exception("[cad] %s failed", stage)
+    status_code = 400 if isinstance(exc, ValueError) else 500
+    raise HTTPException(status_code=status_code, detail=f"{stage}失败：{detail}") from exc
+
 # 确保 data 目录存在
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -721,7 +731,10 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     接收表单数据，调用 ezdxf 读取 template.dxf 生成图纸，
     并以 .dxf 文件流形式返回。
     """
-    _, dxf_bytes, cache_hit = _cached_cad(req)
+    try:
+        _, dxf_bytes, cache_hit = _cached_cad(req)
+    except Exception as exc:
+        _raise_cad_error("DXF 生成", exc)
     bytes_io = io.BytesIO(dxf_bytes)
 
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
@@ -755,9 +768,12 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
     """
     try:
         key, dxf_bytes, cad_cache_hit = _cached_cad(req)
+    except Exception as exc:
+        _raise_cad_error("DXF 生成", exc)
+    try:
         svg, svg_cache_hit = _cached_cad_svg(key, dxf_bytes)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"CAD preview failed: {exc}") from exc
+        _raise_cad_error("DXF 预览转换", exc)
 
     return Response(
         content=svg,

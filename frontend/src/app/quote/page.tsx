@@ -10,7 +10,7 @@ import type {
   QuoteResponse,
 } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
-import { createQuote, getAccessories, rememberQuoteItems } from "@/lib/quoteApi";
+import { createQuote, getAccessories, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
 import { api, getTask, getTasks, updateTask } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
@@ -281,7 +281,8 @@ export default function QuotePage() {
 
   // Status
   const [status, setStatus] = useState("");
-  const [lastQuoteId, setLastQuoteId] = useState<number | null>(null);
+  const [currentQuoteId, setCurrentQuoteId] = useState<number | null>(null);
+  const [quoteDirty, setQuoteDirty] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingType, setExportingType] = useState("");
@@ -318,7 +319,7 @@ export default function QuotePage() {
     setDoorGroups((groups) => groups.map((group, index) => (
       index === groupIndex ? { ...group, ...updates } : group
     )));
-    setLastQuoteId(null);
+    setQuoteDirty(true);
   }, []);
 
   // Collect form data
@@ -329,7 +330,11 @@ export default function QuotePage() {
         groupName: group.groupName.trim() || `第${index + 1}樘门`,
         items: normalizeQuoteRows(group.items)
           .filter((item) => item.productName.trim())
-          .map(({ rowId: _rowId, ...item }) => item),
+          .map((item) => {
+            const savedItem = { ...item };
+            delete savedItem.rowId;
+            return savedItem;
+          }),
       }))
       .filter((group) => group.items.length > 0);
     const items = cleanedGroups.flatMap((group) => group.items);
@@ -358,8 +363,7 @@ export default function QuotePage() {
     }
   }, [rememberCurrentQuote]);
 
-  // Save quote
-  async function handleSave() {
+  async function saveCurrentQuote(saveAsNew: boolean) {
     const form = collectForm();
     if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
     if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
@@ -368,8 +372,12 @@ export default function QuotePage() {
     setSaving(true);
     setStatus("");
     try {
-      const quote = await createQuote(form);
-      setLastQuoteId(quote.id);
+      const updating = Boolean(currentQuoteId && !saveAsNew);
+      const quote = updating
+        ? await updateQuote(currentQuoteId as number, form)
+        : await createQuote(form);
+      setCurrentQuoteId(quote.id);
+      setQuoteDirty(false);
       // 联动：报价保存成功后，把关联任务的报价状态置为 已报价
       const quotedTaskIds = (form.doorGroups || [])
         .map((group) => group.taskId)
@@ -387,7 +395,11 @@ export default function QuotePage() {
         showFeedback("error", "报价已保存", `已保存 #${quote.id}，但报价记忆写入失败`);
         return;
       }
-      showFeedback("success", "保存成功", `报价单 #${quote.id} 已保存${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}。请确认尺寸是否有调整。`);
+      showFeedback(
+        "success",
+        updating ? "更新成功" : "保存成功",
+        `报价单 #${quote.id} 已${updating ? "更新" : "保存"}${rememberQuote ? `，已记忆 ${remembered} 条价格` : ""}。`,
+      );
     } catch (err: unknown) {
       const error = err as { userMessage?: string; message?: string };
       showFeedback("error", "保存失败", error?.userMessage || error?.message || "保存失败");
@@ -396,14 +408,35 @@ export default function QuotePage() {
     }
   }
 
+  async function handleSave() {
+    await saveCurrentQuote(false);
+  }
+
+  async function handleSaveAsNew() {
+    await saveCurrentQuote(true);
+  }
+
+  function savedQuoteIdForExport(action: string): number | null {
+    if (!currentQuoteId) {
+      showFeedback("error", `无法${action}`, "请先保存报价单");
+      return null;
+    }
+    if (quoteDirty) {
+      showFeedback("error", `无法${action}`, "当前报价已有修改，请先点击“保存”更新后再操作");
+      return null;
+    }
+    return currentQuoteId;
+  }
+
   // Export Excel: fetch blob then trigger download
   async function handleExportExcel() {
-    if (!lastQuoteId) { showFeedback("error", "无法导出", "请先保存报价单"); return; }
+    const quoteId = savedQuoteIdForExport("导出");
+    if (!quoteId) return;
     setExporting(true);
     setExportingType("xlsx");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
-      await downloadQuoteFile(lastQuoteId, "xlsx", `报价单_${lastQuoteId}.xlsx`);
+      await downloadQuoteFile(quoteId, "xlsx", `报价单_${quoteId}.xlsx`);
       const message = memoryResult.failed ? "Excel 已下载，但报价记忆写入失败" : "Excel 已下载";
       showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "导出部分完成" : "导出成功", message);
     } catch (err: unknown) {
@@ -411,19 +444,20 @@ export default function QuotePage() {
       showFeedback("error", "Excel 导出失败", error?.userMessage || error?.message || "Excel 导出失败");
     } finally {
       setExporting(false);
-    setExportingType("");
+      setExportingType("");
     }
   }
 
   // Export JPG: 服务端渲染 Excel A1:J24 → JPG + 40px 白边
   async function handleExportJpg() {
-    if (!lastQuoteId) { showFeedback("error", "无法导出", "请先保存报价单"); return; }
+    const quoteId = savedQuoteIdForExport("导出");
+    if (!quoteId) return;
     setExporting(true);
     setExportingType("jpg");
     setStatus("正在生成 JPG...");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
-      await downloadQuoteFile(lastQuoteId, "jpg", `报价单_${lastQuoteId}.jpg`);
+      await downloadQuoteFile(quoteId, "jpg", `报价单_${quoteId}.jpg`);
       const message = memoryResult.failed ? "JPG 已下载，但报价记忆写入失败" : "JPG 已下载";
       showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "导出部分完成" : "导出成功", message);
     } catch (err: unknown) {
@@ -436,13 +470,14 @@ export default function QuotePage() {
   }
 
   async function handlePrint() {
-    if (!lastQuoteId) { showFeedback("error", "无法打印", "请先保存报价单"); return; }
+    const quoteId = savedQuoteIdForExport("打印");
+    if (!quoteId) return;
     setExporting(true);
     setExportingType("pdf");
     setStatus("正在生成 PDF...");
     try {
       const memoryResult = await tryRememberCurrentQuote(collectForm().items);
-      await downloadQuoteFile(lastQuoteId, "pdf", `报价单_${lastQuoteId}.pdf`);
+      await downloadQuoteFile(quoteId, "pdf", `报价单_${quoteId}.pdf`);
       const message = memoryResult.failed ? "PDF 已下载，但报价记忆写入失败" : "PDF 已下载，可打开后打印";
       showFeedback(memoryResult.failed ? "error" : "success", memoryResult.failed ? "打印文件部分完成" : "打印文件已生成", message);
     } catch (err: unknown) {
@@ -535,7 +570,7 @@ export default function QuotePage() {
         trimUnitPrice: trimPrice,
         items: buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice),
       });
-      setLastQuoteId(null);
+      setQuoteDirty(true);
       setStatus(`已根据图纸项目生成${groupIndex + 1}号门报价明细`);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string };
@@ -562,7 +597,7 @@ export default function QuotePage() {
         updateDoorGroup(groupIndex, {
           items: buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", price),
         });
-        setLastQuoteId(null);
+        setQuoteDirty(true);
       } catch (error: unknown) {
         const err = error as { userMessage?: string; message?: string };
         setStatus(err?.userMessage || err?.message || "门套单价更新失败");
@@ -572,7 +607,7 @@ export default function QuotePage() {
 
   function addDoorGroup() {
     setDoorGroups((groups) => [...groups, createQuoteGroup(groups.length)]);
-    setLastQuoteId(null);
+    setQuoteDirty(true);
   }
 
   function removeDoorGroup(groupIndex: number) {
@@ -580,7 +615,7 @@ export default function QuotePage() {
     setDoorGroups((groups) => groups
       .filter((_, index) => index !== groupIndex)
       .map((group, index) => ({ ...group, groupName: `第${index + 1}樘门` })));
-    setLastQuoteId(null);
+    setQuoteDirty(true);
   }
 
   // Load quote from history
@@ -615,7 +650,8 @@ export default function QuotePage() {
         unitPrice: item.unitPrice ?? 0,
       }))),
     })));
-    setLastQuoteId(quote.id);
+    setCurrentQuoteId(quote.id);
+    setQuoteDirty(false);
     setStatus(`已载入报价单 #${quote.id}`);
   }
 
@@ -626,7 +662,8 @@ export default function QuotePage() {
     setNoticeText(DEFAULT_QUOTE_NOTICE_TEXT);
     setDoorGroups([createQuoteGroup()]);
     setRememberQuote(true);
-    setLastQuoteId(null);
+    setCurrentQuoteId(null);
+    setQuoteDirty(true);
     setStatus("表单已清空");
   }
 
@@ -700,7 +737,7 @@ export default function QuotePage() {
                   value={customerName}
                   onChange={(e) => {
                     setCustomerName(e.target.value);
-                    setLastQuoteId(null);
+                    setQuoteDirty(true);
                   }}
                   placeholder="客户A"
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
@@ -713,7 +750,7 @@ export default function QuotePage() {
                   value={projectName}
                   onChange={(e) => {
                     setProjectName(e.target.value);
-                    setLastQuoteId(null);
+                    setQuoteDirty(true);
                   }}
                   placeholder="项目A"
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
@@ -726,7 +763,7 @@ export default function QuotePage() {
                   value={quoteDate}
                   onChange={(e) => {
                     setQuoteDate(e.target.value);
-                    setLastQuoteId(null);
+                    setQuoteDirty(true);
                   }}
                   className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
                 />
@@ -739,7 +776,7 @@ export default function QuotePage() {
                   type="button"
                   onClick={() => {
                     setNoticeText("本报价不含税工厂结算价，含木箱。");
-                    setLastQuoteId(null);
+                    setQuoteDirty(true);
                   }}
                   className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
                 >
@@ -749,7 +786,7 @@ export default function QuotePage() {
                   type="button"
                   onClick={() => {
                     setNoticeText("本报价不含税工厂结算价，不含木箱。");
-                    setLastQuoteId(null);
+                    setQuoteDirty(true);
                   }}
                   className="rounded-md bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#1C1C1E]"
                 >
@@ -761,7 +798,7 @@ export default function QuotePage() {
                 value={noticeText}
                 onChange={(e) => {
                   setNoticeText(e.target.value);
-                  setLastQuoteId(null);
+                  setQuoteDirty(true);
                 }}
                 className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
               />
@@ -846,7 +883,7 @@ export default function QuotePage() {
                     items={group.items}
                     onChange={(rows) => {
                       updateDoorGroup(groupIndex, { items: normalizeQuoteRows(rows) });
-                      setLastQuoteId(null);
+                      setQuoteDirty(true);
                     }}
                   />
                 </section>
@@ -870,13 +907,20 @@ export default function QuotePage() {
         <div className="space-y-4">
           {/* Action Buttons */}
           <div className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-4">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
               >
-                {saving ? "保存中..." : "保存"}
+                {saving ? "保存中..." : currentQuoteId ? "更新报价" : "保存"}
+              </button>
+              <button
+                onClick={handleSaveAsNew}
+                disabled={saving}
+                className="px-4 py-2 text-[13px] font-medium rounded-lg bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]/60 active:scale-[0.97] disabled:opacity-50 transition-all"
+              >
+                另存为新报价
               </button>
               <button
                 onClick={handleExportExcel}

@@ -238,7 +238,39 @@ class QuoteDatabaseManager:
 
     def create(self, quote_data: Dict) -> Dict:
         """创建报价单，自动验证、分配 id、设置 createdAt"""
-        # 验证
+        door_groups = self._validate_quote_data(quote_data)
+
+        with self._lock:
+            quotes = self._load_unlocked()
+            max_id = max((q.get("id", 0) for q in quotes), default=0)
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            quote = self._build_quote(quote_data, door_groups, max_id + 1, now, now)
+            quotes.append(quote)
+            self._atomic_save(quotes)
+            return dict(quote)
+
+    def update(self, quote_id: int, quote_data: Dict) -> Dict:
+        """覆盖更新报价单，保留原编号和创建时间。"""
+        door_groups = self._validate_quote_data(quote_data)
+
+        with self._lock:
+            quotes = self._load_unlocked()
+            quote_index = next(
+                (index for index, quote in enumerate(quotes) if quote.get("id") == quote_id),
+                None,
+            )
+            if quote_index is None:
+                raise ValueError(f"报价单不存在: {quote_id}")
+
+            current = quotes[quote_index]
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            created_at = current.get("createdAt") or now
+            quote = self._build_quote(quote_data, door_groups, quote_id, created_at, now)
+            quotes[quote_index] = quote
+            self._atomic_save(quotes)
+            return dict(quote)
+
+    def _validate_quote_data(self, quote_data: Dict) -> List[Dict]:
         if not quote_data.get("customerName", "").strip():
             raise ValueError("customerName 为必填字段")
         if not quote_data.get("quoteDate", "").strip():
@@ -270,54 +302,58 @@ class QuoteDatabaseManager:
                 if not item.get("productName", "").strip():
                     raise ValueError(f"第 {group_index + 1} 樘门第 {item_index + 1} 个项目的 productName 为必填字段")
 
-        with self._lock:
-            quotes = self._load_unlocked()
-            max_id = max((q.get("id", 0) for q in quotes), default=0)
+        return door_groups
 
-            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            quote = {
-                "id": max_id + 1,
-                "customerName": quote_data["customerName"].strip(),
-                "projectName": str(quote_data.get("projectName") or "").strip(),
-                "quoteDate": quote_data["quoteDate"].strip(),
-                "noticeText": quote_data.get("noticeText", "").strip() or "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002",
-                "createdAt": now,
+    def _build_quote(
+        self,
+        quote_data: Dict,
+        door_groups: List[Dict],
+        quote_id: int,
+        created_at: str,
+        updated_at: str,
+    ) -> Dict:
+        quote = {
+            "id": quote_id,
+            "customerName": quote_data["customerName"].strip(),
+            "projectName": str(quote_data.get("projectName") or "").strip(),
+            "quoteDate": quote_data["quoteDate"].strip(),
+            "noticeText": quote_data.get("noticeText", "").strip() or "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002",
+            "createdAt": created_at,
+            "updatedAt": updated_at,
+            "items": [],
+            "doorGroups": [],
+        }
+
+        global_row = 0
+        for group_index, group in enumerate(door_groups):
+            saved_group = {
+                "groupName": str(group.get("groupName") or f"第{group_index + 1}樘门").strip(),
+                "taskId": str(group.get("taskId") or "").strip(),
+                "pricingMode": str(group.get("pricingMode") or "outerArea"),
+                "trimUnitPrice": float(group.get("trimUnitPrice") or 0),
                 "items": [],
-                "doorGroups": [],
             }
-
-            global_row = 0
-            for group_index, group in enumerate(door_groups):
-                saved_group = {
-                    "groupName": str(group.get("groupName") or f"第{group_index + 1}樘门").strip(),
-                    "taskId": str(group.get("taskId") or "").strip(),
-                    "pricingMode": str(group.get("pricingMode") or "outerArea"),
-                    "trimUnitPrice": float(group.get("trimUnitPrice") or 0),
-                    "items": [],
+            for item_index, item in enumerate(group.get("items") or []):
+                saved_item = {
+                    "id": global_row + 1,
+                    "accessoryId": item.get("accessoryId"),
+                    "category": str(item.get("category") or ""),
+                    "productName": item.get("productName", "").strip(),
+                    "width": item.get("width"),
+                    "height": item.get("height"),
+                    "quantity": item.get("quantity"),
+                    "openDirection": item.get("openDirection", "") if item_index == 0 else "",
+                    "unit": item.get("unit", ""),
+                    "unitPrice": item.get("unitPrice", 0),
+                    "rowOrder": global_row,
+                    "groupIndex": group_index,
                 }
-                for item_index, item in enumerate(group.get("items") or []):
-                    saved_item = {
-                        "id": global_row + 1,
-                        "accessoryId": item.get("accessoryId"),
-                        "category": str(item.get("category") or ""),
-                        "productName": item.get("productName", "").strip(),
-                        "width": item.get("width"),
-                        "height": item.get("height"),
-                        "quantity": item.get("quantity"),
-                        "openDirection": item.get("openDirection", "") if item_index == 0 else "",
-                        "unit": item.get("unit", ""),
-                        "unitPrice": item.get("unitPrice", 0),
-                        "rowOrder": global_row,
-                        "groupIndex": group_index,
-                    }
-                    saved_group["items"].append(saved_item)
-                    quote["items"].append(dict(saved_item))
-                    global_row += 1
-                quote["doorGroups"].append(saved_group)
+                saved_group["items"].append(saved_item)
+                quote["items"].append(dict(saved_item))
+                global_row += 1
+            quote["doorGroups"].append(saved_group)
 
-            quotes.append(quote)
-            self._atomic_save(quotes)
-            return dict(quote)
+        return quote
 
     def delete(self, quote_id: int):
         """删除报价单"""

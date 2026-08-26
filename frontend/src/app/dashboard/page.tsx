@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [cadError, setCadError] = useState<{ title: string; message: string } | null>(null);
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterQ, setFilterQ] = useState("");
@@ -182,6 +183,14 @@ export default function DashboardPage() {
     setMessage({ text, type });
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
+  };
+
+  const showCadError = (title: string, error: unknown) => {
+    const requestError = error as { userMessage?: string; message?: string };
+    setCadError({
+      title,
+      message: requestError?.userMessage || requestError?.message || "服务器未返回具体错误，请查看后端日志",
+    });
   };
 
   // 搜索输入防抖：300ms 后生效
@@ -321,13 +330,17 @@ export default function DashboardPage() {
       return;
     }
     setCadLoading(true);
+    setCadError(null);
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
       downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("CAD 生成完成！", "success");
-    } catch { flash("CAD 生成失败", "error"); }
-    setCadLoading(false);
+    } catch (error: unknown) {
+      showCadError("CAD 生成失败", error);
+    } finally {
+      setCadLoading(false);
+    }
   };
 
   // ===================== 绘制模块 =====================
@@ -338,14 +351,16 @@ export default function DashboardPage() {
       return;
     }
     setPreviewLoading(true);
+    setCadError(null);
     try {
       const svg = await generateCadPreview(formData);
       setCadPreviewSvg(svg);
       flash("CAD 预览已生成", "success");
-    } catch (e: any) {
-      flash(e?.userMessage || "CAD 预览生成失败", "error");
+    } catch (error: unknown) {
+      showCadError("CAD 预览生成失败", error);
+    } finally {
+      setPreviewLoading(false);
     }
-    setPreviewLoading(false);
   };
 
   const handleGenerateCad = async () => {
@@ -355,13 +370,17 @@ export default function DashboardPage() {
       return;
     }
     setCadLoading(true);
+    setCadError(null);
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
       downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("基准 CAD 底图已生成", "success");
-    } catch { flash("CAD 生成失败", "error"); }
-    setCadLoading(false);
+    } catch (error: unknown) {
+      showCadError("CAD 生成失败", error);
+    } finally {
+      setCadLoading(false);
+    }
   };
 
   const handleSubmitDrawing = async () => {
@@ -442,6 +461,30 @@ export default function DashboardPage() {
           <div className="rounded-2xl px-8 py-6 shadow-2xl text-center max-w-sm mx-4 bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl mb-3">⚠️</div>
             <p className="text-[17px] font-semibold text-[#1C1C1E]">{validationError}</p>
+          </div>
+        </div>
+      )}
+
+      {cadError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={() => setCadError(null)}>
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setCadError(null)}
+              aria-label="关闭 CAD 错误窗口"
+              className="absolute right-3 top-3 h-8 w-8 rounded-full text-lg text-[#8E8E93] hover:bg-[#F2F2F7]"
+            >
+              ×
+            </button>
+            <h3 className="pr-10 text-[17px] font-semibold text-[#1C1C1E]">{cadError.title}</h3>
+            <div className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-[#FF3B30]/10 px-4 py-3 text-sm leading-6 text-[#D70015]">
+              {cadError.message}
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button type="button" onClick={() => setCadError(null)} className="rounded-lg bg-[#007AFF] px-4 py-2 text-sm font-medium text-white">
+                知道了
+              </button>
+            </div>
           </div>
         </div>
       )}

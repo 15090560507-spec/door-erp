@@ -243,10 +243,12 @@ function renderHtml(quote, cssText) {
         <tr class="r21"></tr>
         <tr class="r22"></tr>
         <tr class="r23">
-          <td class="yellow invoice" colspan="10">开票资料:对公账户公司名称杭州浙家门业有限公司账产
-号码:3301041060000451769                                                                   开户银行:杭州银行富阳支行
-法定代表人:王家龙基本存款
-账户编号:J3310198780901</td>
+          <td class="yellow invoice" colspan="10">开票资料
+公司名称：杭州浙家门业有限公司
+账户号码：3301041060000451769
+开户银行：杭州银行富阳支行
+法定代表人：王家龙基本存款
+账户编号：J3310198780901</td>
         </tr>
         <tr class="r24">
           <td class="yellow bank" colspan="10">汇款请汇入以下账户

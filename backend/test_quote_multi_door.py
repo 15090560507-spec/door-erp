@@ -111,6 +111,23 @@ class MultiDoorQuoteTests(unittest.TestCase):
         self.assertNotIn("items", summaries[0])
         self.assertNotIn("doorGroups", summaries[0])
 
+    def test_quote_update_keeps_id_and_created_at_without_creating_duplicate(self):
+        manager = self.quote_manager()
+        created = manager.create(_multi_door_quote())
+        updated_payload = _multi_door_quote()
+        updated_payload["customerName"] = "更新后的客户"
+        updated_payload["doorGroups"][0]["items"][0]["unitPrice"] = 1888
+
+        updated = manager.update(created["id"], updated_payload)
+        loaded = manager.get_by_id(created["id"])
+
+        self.assertEqual(len(manager._load_unlocked()), 1)
+        self.assertEqual(updated["id"], created["id"])
+        self.assertEqual(updated["createdAt"], created["createdAt"])
+        self.assertEqual(loaded["customerName"], "更新后的客户")
+        self.assertEqual(loaded["doorGroups"][0]["items"][0]["unitPrice"], 1888)
+        self.assertTrue(updated["updatedAt"])
+
     def test_legacy_quote_is_wrapped_as_one_door_group(self):
         manager = self.quote_manager()
         created = manager.create({
@@ -172,6 +189,9 @@ process.stdout.write(html);
         self.assertNotIn('<tr class="group-row">', result.stdout)
         self.assertIn("入户门小计", result.stdout)
         self.assertIn("厨房门小计", result.stdout)
+        self.assertIn("公司名称：杭州浙家门业有限公司", result.stdout)
+        self.assertIn("开户银行：杭州银行富阳支行", result.stdout)
+        self.assertNotIn("账产", result.stdout)
 
     def test_quote_memory_upserts_name_category_unit_and_price(self):
         manager = AccessoryDatabaseManager(

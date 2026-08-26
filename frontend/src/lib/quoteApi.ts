@@ -88,6 +88,11 @@ export async function createQuote(form: QuoteFormData): Promise<QuoteResponse> {
   return data.quote;
 }
 
+export async function updateQuote(id: number, form: QuoteFormData): Promise<QuoteResponse> {
+  const { data } = await api.put<{ quote: QuoteResponse }>(`/quotes/${id}`, form);
+  return data.quote;
+}
+
 export async function getQuote(id: number): Promise<QuoteResponse> {
   const { data } = await api.get<{ quote: QuoteResponse }>(`/quotes/${id}`);
   return data.quote;
