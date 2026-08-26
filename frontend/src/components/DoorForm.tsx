@@ -220,8 +220,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     ? Number(data.mid_clear_width)
     : legacyMidClearWidth;
   const panelStyle = data.door_panel_style || "无造型";
-  const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
-  const blankOpeningProducts = ["平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾"];
+  const simpleProducts = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
+  const isSimpleProduct = simpleProducts.includes(data.product_name);
+  const usesLengthDimension = ["雨棚", "牌匾", "其他"].includes(data.product_name);
+  const blankOpeningProducts = ["平移门", "地弹簧门", "天弹簧门", ...simpleProducts];
   const applyProductName = (product_name: string) => {
     if (product_name === "平移门") {
       onChange({
@@ -257,7 +259,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       });
       return;
     }
-    if (["铝艺栅栏", "雨棚", "牌匾"].includes(product_name)) {
+    if (simpleProducts.includes(product_name)) {
       onChange({ ...data, product_name, sel_kx: "", sel_nk: "" });
       return;
     }
@@ -635,9 +637,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           {isSimpleProduct && <>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Input label="宽度(mm)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-              <Input label="高度(mm)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+              <Input label={`${usesLengthDimension ? "长度" : "高度"}(mm)`} required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
             </div>
-            <p className="mt-3 text-[12px] text-[#8E8E93]">牌匾、铝艺栅栏、雨棚只需录入产品名称、材料、颜色、数量和尺寸；其他订货单字段自动以“/”占位。</p>
+            <p className="mt-3 text-[12px] text-[#8E8E93]">牌匾、铝艺栅栏、雨棚、其他只需录入产品名称、材料、颜色、数量和尺寸；其余订货单字段自动以“/”占位。</p>
           </>}
         </Card>
       </div>

@@ -23,6 +23,11 @@ export default function TaskCard({
   const quoted = quoteStatus === "已报价";
   const confirmed = confirmStatus === "已确认";
   const showToggles = Boolean(onToggleQuoteStatus || onToggleConfirmStatus);
+  const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚", "其他"].includes(task.params?.product_name);
+  const productType = isSimpleProduct ? task.params.product_name : task.door_type;
+  const productSize = isSimpleProduct
+    ? `${task.params.dw || 0} x ${task.params.dh || 0}（${["雨棚", "牌匾", "其他"].includes(task.params.product_name) ? "宽×长" : "宽×高"}）`
+    : task.size;
 
   return (
     <div className="flex items-stretch gap-2 mb-2 animate-fade-in group">
@@ -74,8 +79,8 @@ export default function TaskCard({
           )}
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[#8E8E93] mt-1.5">
-          <span className="bg-[#F2F2F7] px-2 py-0.5 rounded font-medium">{task.door_type}</span>
-          {task.size && <span>{task.size}</span>}
+          <span className="bg-[#F2F2F7] px-2 py-0.5 rounded font-medium">{productType}</span>
+          {productSize && <span>{productSize}</span>}
           <span className="ml-auto">{task.date}</span>
         </div>
       </div>

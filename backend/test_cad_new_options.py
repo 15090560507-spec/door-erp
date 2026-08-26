@@ -2015,6 +2015,18 @@ def test_order_title_product_name_and_simple_products():
     ))
     check("canopy uses simple-product drawing mode", canopy_params["simple_product"] is True, canopy_params)
     check("canopy uses slash placeholders", canopy_info["ST"] == "/" and canopy_info["ZMLS"] == "/", canopy_info)
+    check("canopy uses width-length note", "产品规格：宽1800mm × 长600mm" in canopy_info["BZ"], canopy_info["BZ"])
+
+    other_info, _other_checks, other_params = build_cad_params(CADRequest(
+        product_name="其他",
+        material="1.0mm",
+        ys="灰色",
+        dw=1200,
+        dh=450,
+    ))
+    check("other uses simple-product drawing mode", other_params["simple_product"] is True, other_params)
+    check("other maps product name", other_info["MX"] == "其他", other_info)
+    check("other uses width-length note", "产品规格：宽1200mm × 长450mm" in other_info["BZ"], other_info["BZ"])
 
 
 def test_semicircle_handles_b4_glass_and_lock_dropdown_filter():
@@ -2133,7 +2145,7 @@ def test_special_product_opening_mechanisms_and_template_aliases():
         "special product options keep the confirmed order",
         defaults["PRODUCT_NAMES"] == [
             "不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门",
-            "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾",
+            "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾", "其他",
         ],
         str(defaults["PRODUCT_NAMES"]),
     )

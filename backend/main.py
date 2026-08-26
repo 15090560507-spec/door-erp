@@ -125,17 +125,28 @@ def normalize_task_date(value: Optional[str]) -> str:
     return text.replace("-", ".").replace("/", ".")
 
 
+SIMPLE_PRODUCT_NAMES = {"牌匾", "铝艺栅栏", "雨棚", "其他"}
+LENGTH_PRODUCT_NAMES = {"牌匾", "雨棚", "其他"}
+
+
 def _task_summary_from_params(params: Dict) -> Dict:
     """从表单参数推导汇总表字段（时间/客户/项目/门型/尺寸）。
 
     表单参数修改后必须重新推导，保证汇总表与表单内容始终一致。
     """
+    product_name = str(params.get("product_name", "") or "")
+    is_simple_product = product_name in SIMPLE_PRODUCT_NAMES
+    dimension_name = "宽×长" if product_name in LENGTH_PRODUCT_NAMES else "宽×高"
     return {
         "date": normalize_task_date(params.get("dhrq", "")) or shanghai_now().strftime("%Y.%m.%d"),
         "customer": str(params.get("dhdw", "") or ""),
         "project": str(params.get("gdmc", "") or ""),
-        "door_type": str(params.get("door_type", "") or ""),
-        "size": f"{params.get('dw', 0)} x {params.get('dh', 0)} (洞口)",
+        "door_type": product_name if is_simple_product else str(params.get("door_type", "") or ""),
+        "size": (
+            f"{params.get('dw', 0)} x {params.get('dh', 0)} ({dimension_name})"
+            if is_simple_product
+            else f"{params.get('dw', 0)} x {params.get('dh', 0)} (洞口)"
+        ),
     }
 
 
@@ -274,7 +285,7 @@ def build_cad_params(req: CADRequest):
     product_name = (req.product_name or "").strip() or "不锈钢镀铜门"
     material = (req.material or "").strip()
     product_display = f"{material}的{product_name}" if material else ((req.zzcl or "").strip() or product_name)
-    is_simple_product = product_name in {"牌匾", "铝艺栅栏", "雨棚"}
+    is_simple_product = product_name in SIMPLE_PRODUCT_NAMES
     is_sliding_door = product_name == "平移门"
     is_floor_spring_door = product_name == "地弹簧门"
     is_top_spring_door = product_name == "天弹簧门"
@@ -350,6 +361,10 @@ def build_cad_params(req: CADRequest):
 
     if req.glass_spec.strip():
         frame_notes.append(f"玻璃规格={req.glass_spec.strip()}")
+
+    if is_simple_product:
+        second_dimension = "长" if product_name in LENGTH_PRODUCT_NAMES else "高"
+        frame_notes.append(f"产品规格：宽{req.dw}mm × {second_dimension}{req.dh}mm")
 
     if frame_notes:
         note_line = "\n".join(frame_notes)
@@ -451,7 +466,9 @@ def build_cad_params(req: CADRequest):
         pdk_val = ""
 
     # --- 门型中文名 ---
-    if door_type == "两定两开":
+    if is_simple_product:
+        dt_cn = product_name
+    elif door_type == "两定两开":
         dt_cn = "两定两开门"
     else:
         dt_cn = door_type
@@ -981,7 +998,7 @@ def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_rol
     product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
     if not product_name:
         raise HTTPException(status_code=400, detail="产品名称为必填项")
-    if product_name not in {"牌匾", "铝艺栅栏", "雨棚"} and not str(req.params.get("st_val", "")).strip():
+    if product_name not in SIMPLE_PRODUCT_NAMES and not str(req.params.get("st_val", "")).strip():
         raise HTTPException(status_code=400, detail="锁体类型为必填项")
     task_id = str(uuid.uuid4())[:8]
     new_task = {
@@ -1034,7 +1051,7 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
         product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
         if not product_name:
             raise HTTPException(status_code=400, detail="产品名称为必填项")
-        if product_name not in {"牌匾", "铝艺栅栏", "雨棚"} and not str(req.params.get("st_val", "")).strip():
+        if product_name not in SIMPLE_PRODUCT_NAMES and not str(req.params.get("st_val", "")).strip():
             raise HTTPException(status_code=400, detail="锁体类型为必填项")
         update_data["params"] = req.params
         # 表单修改后同步刷新汇总表字段（时间/客户/项目/门型/尺寸），避免汇总表停留旧值
@@ -1121,7 +1138,7 @@ _DEFAULT_DROPDOWN_OPTIONS = {
     "NK_OPTIONS": ["内开", "外开"],
     "MATERIALS": ["0.8的不锈钢镀铜", "1.0的不锈钢镀铜", "1.2的不锈钢镀铜", "0.8的纯铜", "1.0的纯铜", "1.2的纯铜", "纯铝"],
     "HANDLES": ["标配拉手", "A1022", "A635", "分体拉手", "铝雕拉手", "铝雕滑盖拉手", "铝雕长拉手", "自制长拉手", "背包拉手", "凹槽拉手", "凹槽拉手+灯带", "铝雕圆形拉手", "铝雕滑盖圆环拉手"],
-    "PRODUCT_NAMES": ["不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门", "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾"],
+    "PRODUCT_NAMES": ["不锈钢镀铜门", "纯铜门", "全铝门", "庭院门", "系统门", "平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾", "其他"],
     "LOCKS": ["连体锁", "霸王锁体", "标准锁体", "磁力锁", "暗装磁力锁"],
     "FINGERPRINT_LOCKS": ["", "无", "安志杰AF-12", "Q3指纹锁", "T5指纹锁", "客备指纹锁"],
     "HINGES": ["葫芦头合页", "可拆卸合页", "三维可调合页", "暗合页", "半钢暗合页", "全钢暗合页", "北京暗合页", "明合页暗装", "明合页", "电动开门机", "地弹簧", "天弹簧", "天地轴", "明合页+闭门器"],

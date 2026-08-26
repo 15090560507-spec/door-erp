@@ -20,6 +20,18 @@ import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
 import { isLocalToday, localDateCompact } from "@/lib/dateTime";
 
+const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
+const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
+
+function productSummary(params?: DoorFormData) {
+  if (!params) return "";
+  if (SIMPLE_PRODUCT_NAMES.includes(params.product_name)) {
+    const dimensionLabel = LENGTH_PRODUCT_NAMES.includes(params.product_name) ? "宽×长" : "宽×高";
+    return `产品: ${params.product_name} | ${dimensionLabel}: ${params.dw}×${params.dh}`;
+  }
+  return `门型: ${params.door_type} | 洞口: ${params.dw}×${params.dh}`;
+}
+
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   const date = localDateCompact();
   const customer = (data.dhdw || "未命名").trim().replace(/[\\/:*?"<>|\s]+/g, "");
@@ -235,7 +247,7 @@ export default function DashboardPage() {
 
   const validateDoorForm = (data: DoorFormData): string | null => {
     const missing: string[] = [];
-    const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚"].includes(data.product_name);
+    const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚", "其他"].includes(data.product_name);
     if (!data.dhdw.trim()) missing.push("订货单位");
     if (!data.sl.trim()) missing.push("数量(樘)");
     if (!data.product_name.trim()) missing.push("产品名称");
@@ -661,7 +673,7 @@ export default function DashboardPage() {
                   <Card title="核心参数">
                     <p className="text-sm text-[#8E8E93]">
                       客户: {activeTask.params?.dhdw} | 项目: {activeTask.params?.gdmc}<br />
-                      门型: {activeTask.params?.door_type} | 洞口: {activeTask.params?.dw}x{activeTask.params?.dh}<br />
+                      {productSummary(activeTask.params)}<br />
                       开向: {activeTask.params?.sel_kx}{activeTask.params?.sel_nk}<br />
                       材质: {activeTask.params?.zzcl} | 颜色: {activeTask.params?.ys}
                     </p>
@@ -708,7 +720,7 @@ export default function DashboardPage() {
                   <Card title="核心参数">
                     <p className="text-sm text-[#8E8E93]">
                       客户: {activeTask.params?.dhdw} | 项目: {activeTask.params?.gdmc}<br />
-                      门型: {activeTask.params?.door_type} | 洞口: {activeTask.params?.dw}x{activeTask.params?.dh}<br />
+                      {productSummary(activeTask.params)}<br />
                       开向: {activeTask.params?.sel_kx}{activeTask.params?.sel_nk}
                     </p>
                   </Card>

@@ -48,10 +48,9 @@ function num(value: unknown): number {
 }
 
 function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
-  return rows.map((item, index) => ({
+  return rows.map((item) => ({
     ...item,
     rowId: item.rowId || createEmptyQuoteItem().rowId,
-    openDirection: index === 0 ? item.openDirection : "",
   }));
 }
 
@@ -183,24 +182,24 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
   }
 
   const packingRow = packing && num(packing.unitPrice) > 0
-    ? rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null, direction)
+    ? rowFromAccessory(packing, `包装-${packing.name}`, outerWidth || null, outerHeight || null)
     : null;
 
-  const hingeRow = buildHingeQuoteRow(accessories, params.sel_hys || "", params.door_type || "", direction);
+  const hingeRow = buildHingeQuoteRow(accessories, params.sel_hys || "", params.door_type || "", "");
   if (hingeRow) rows.push(hingeRow);
 
   const fingerprint = findPriceItem(accessories, "配件", params.fingerprint_lock);
-  if (fingerprint && params.fingerprint_lock && params.fingerprint_lock !== "无") rows.push(rowFromAccessory(fingerprint, fingerprint.name, null, null, direction));
+  if (fingerprint && params.fingerprint_lock && params.fingerprint_lock !== "无") rows.push(rowFromAccessory(fingerprint));
 
   const handleNames = Array.from(new Set([params.zmls, params.fmls].filter((name) => name && name !== "标配拉手")));
   handleNames.forEach((handleName) => {
     const match = findPriceItem(accessories, "配件", handleName);
-    if (match) rows.push(rowFromAccessory(match, match.name, null, null, direction));
+    if (match) rows.push(rowFromAccessory(match));
   });
 
   if ((params.qc_shape || "").includes("弧") || (params.sel_qc || "").includes("弧")) {
     const arcWindow = findPriceItem(accessories, "配件", "圆弧气窗");
-    if (arcWindow) rows.push(rowFromAccessory(arcWindow, arcWindow.name, null, null, direction));
+    if (arcWindow) rows.push(rowFromAccessory(arcWindow));
   }
 
   if (packingRow) {
