@@ -1939,12 +1939,12 @@ def test_outer_landscape_trim_with_occlusion():
         has_outer=False,
         has_outer_portal=False,
         has_outer_landscape=True,
-        outer_landscape_left_width=150,
-        outer_landscape_right_width=180,
-        outer_landscape_top_height=160,
-        outer_landscape_left_overlap=20,
-        outer_landscape_right_overlap=25,
-        outer_landscape_top_overlap=30,
+        outer_landscape_left_width=63.5,
+        outer_landscape_right_width=173.5,
+        outer_landscape_top_height=160.5,
+        outer_landscape_left_overlap=20.5,
+        outer_landscape_right_overlap=25.5,
+        outer_landscape_top_overlap=30.5,
         enable_occlusion=True,
     )
     info, checks, draw_params = build_cad_params(req)
@@ -1953,7 +1953,7 @@ def test_outer_landscape_trim_with_occlusion():
         draw_params["outer_landscape_left_overlap"],
         draw_params["outer_landscape_right_overlap"],
         draw_params["outer_landscape_top_overlap"],
-    ) == (20, 25, 30), str(draw_params))
+    ) == (20.5, 25.5, 30.5), str(draw_params))
     message, buffer = run_integrated_system(info, checks, draw_params)
     check("one-scene CAD generation supports occlusion", buffer is not None, message)
     if not buffer:
@@ -1963,11 +1963,11 @@ def test_outer_landscape_trim_with_occlusion():
         round(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)), 2)
         for entity in landscape_doc.modelspace().query("DIMENSION")
         if abs(float(entity.dxf.angle)) < 0.01
-        and round(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)), 2) in {150.0, 180.0}
+        and round(abs(float(entity.dxf.defpoint3.x) - float(entity.dxf.defpoint2.x)), 2) in {63.5, 173.5}
     )
     check(
         "one-scene left and right width dimensions use independent inputs",
-        landscape_width_dims[:2] == [150.0, 180.0],
+        landscape_width_dims[:2] == [63.5, 173.5],
         landscape_width_dims,
     )
     svg = render_dxf_svg(buffer.getvalue())
