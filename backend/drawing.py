@@ -1443,7 +1443,9 @@ def draw_door_in_frame(
     front_panel_style = p.get('door_panel_style') or "无造型"
     back_panel_style = p.get('back_door_panel_style') or "无造型"
     child_panel_style = p.get('child_door_panel_style') or ""
-    panel_style_default = back_panel_style if is_back else front_panel_style
+    child_back_panel_style = p.get('child_back_door_panel_style') or ""
+    back_panel_same_as_front = bool(p.get("back_panel_same_as_front", False))
+    child_back_same_as_front = bool(p.get("child_back_same_as_front", False))
     hatch_library = _build_hatch_library(drawer.doc)
 
     def draw_glass_template_rect(
@@ -1772,13 +1774,19 @@ def draw_door_in_frame(
     back_preset = detect_panel_preset(str(p.get("fmks", ""))) or front_preset
     force_panel_preset = bool(explicit_panel_preset)
 
-    def _group_glass_value(group: str, front_key: str, back_key: str) -> float:
-        """玻璃线条边距/间距按面取值：反面未单独设置(0)时回退正面值。"""
-        front_value = float(p.get(front_key, 20) or 20)
+    def _group_glass_value(group: str, value_type: str) -> float:
+        """按门板组取玻璃参数，并保留旧反面 0=沿用正面的兼容规则。"""
+        if group == "front":
+            return float(p.get(f"glass_line_{value_type}", 20) or 20)
         if group == "back":
-            back_value = float(p.get(back_key, 0) or 0)
+            front_value = float(p.get(f"glass_line_{value_type}", 20) or 20)
+            back_value = float(p.get(f"back_glass_line_{value_type}", 0) or 0)
             return back_value if back_value > 0 else front_value
-        return front_value
+        if group == "child":
+            return float(p.get(f"child_glass_line_{value_type}", 20) or 20)
+        child_value = float(p.get(f"child_glass_line_{value_type}", 20) or 20)
+        child_back_value = float(p.get(f"child_back_glass_line_{value_type}", 0) or 0)
+        return child_back_value if child_back_value > 0 else child_value
 
     def panel_settings(group: str, style: str) -> Dict[str, float | str]:
         prefix = "" if group == "front" else f"{group}_panel_"
@@ -1810,8 +1818,8 @@ def draw_door_in_frame(
                 "panel_b4_glass_style" if group == "front" else f"{group}_panel_b4_glass_style",
                 "无线条",
             ) or "无线条"),
-            "glass_line_inset": _group_glass_value(group, "glass_line_inset", "back_glass_line_inset"),
-            "glass_line_spacing": _group_glass_value(group, "glass_line_spacing", "back_glass_line_spacing"),
+            "glass_line_inset": _group_glass_value(group, "inset"),
+            "glass_line_spacing": _group_glass_value(group, "spacing"),
         }
 
     def panel_lock_edge(index: int, px1: float, px2: float) -> Optional[float]:
@@ -1840,10 +1848,15 @@ def draw_door_in_frame(
 
     def panel_settings_for(index: int) -> Dict[str, float | str]:
         if is_child_panel(index):
-            return panel_settings("child", child_panel_style)
-        group = "back" if is_back else "front"
-        preset = back_preset if is_back else front_preset
-        return apply_panel_preset(panel_settings(group, panel_style_default), preset, group, force_panel_preset)
+            use_child_back = is_back and not child_back_same_as_front
+            group = "child_back" if use_child_back else "child"
+            style = child_back_panel_style if use_child_back else child_panel_style
+            return panel_settings(group, style)
+        use_back = is_back and not back_panel_same_as_front
+        group = "back" if use_back else "front"
+        style = back_panel_style if use_back else front_panel_style
+        preset = back_preset if use_back else front_preset
+        return apply_panel_preset(panel_settings(group, style), preset, group, force_panel_preset)
 
     def resolve_three_col_widths(panel_width: float, settings: Dict[str, float | str]):
         a = settings["three_col_a"] if settings["three_col_a"] > 0 else None

@@ -538,6 +538,75 @@ def test_disc_panel_style_draws_semicircle():
     )
 
 
+def _panel_disc_arc_count(req: CADRequest, radius: float) -> int:
+    info, checks, draw_params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("panel inheritance CAD generation returns buffer", buffer is not None, msg)
+    if not buffer:
+        return 0
+    doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+    return len([
+        entity for entity in doc.modelspace().query("ARC")
+        if entity.dxf.layer == "A-DOOR-PANEL"
+        and abs(float(entity.dxf.radius) - radius) < 0.01
+    ])
+
+
+def test_panel_front_back_inheritance_and_child_independence():
+    legacy = CADRequest()
+    check("legacy main back remains independent", legacy.back_panel_same_as_front is False)
+    check("legacy child back remains independent", legacy.child_back_same_as_front is False)
+
+    inherited_main = CADRequest(
+        door_panel_style="圆盘造型",
+        panel_disc_radius=137,
+        back_panel_same_as_front=True,
+        back_door_panel_style="无造型",
+    )
+    _, _, inherited_params = build_cad_params(inherited_main)
+    check("main inheritance flag reaches drawing", inherited_params["back_panel_same_as_front"] is True)
+    check(
+        "main inherited style draws on both views",
+        _panel_disc_arc_count(inherited_main, 137) == 2,
+    )
+
+    independent_main = inherited_main.model_copy(update={"back_panel_same_as_front": False})
+    check(
+        "legacy independent back keeps its own style",
+        _panel_disc_arc_count(independent_main, 137) == 1,
+    )
+
+    inherited_child = CADRequest(
+        door_type="子母门",
+        door_panel_style="无造型",
+        back_door_panel_style="无造型",
+        child_door_panel_style="圆盘造型",
+        child_panel_disc_radius=139,
+        child_back_same_as_front=True,
+        child_back_door_panel_style="无造型",
+        child_glass_line_inset=26,
+        child_glass_line_spacing=18,
+    )
+    _, _, child_params = build_cad_params(inherited_child)
+    check("child inheritance flag reaches drawing", child_params["child_back_same_as_front"] is True)
+    check("child glass inset reaches drawing", child_params["child_glass_line_inset"] == 26)
+    check(
+        "child inherited style draws on both views",
+        _panel_disc_arc_count(inherited_child, 139) == 2,
+    )
+
+    independent_child = inherited_child.model_copy(update={
+        "child_door_panel_style": "",
+        "child_back_same_as_front": False,
+        "child_back_door_panel_style": "圆盘造型",
+        "child_back_panel_disc_radius": 141,
+    })
+    check(
+        "child back can use an independent style",
+        _panel_disc_arc_count(independent_child, 141) == 1,
+    )
+
+
 def poly_bounds(entity):
     points = list(entity.get_points("xy"))
     xs = [point[0] for point in points]
@@ -2377,6 +2446,7 @@ if __name__ == "__main__":
     test_door_panel_style_lines()
     test_rectangular_glass_line_templates()
     test_disc_panel_style_draws_semicircle()
+    test_panel_front_back_inheritance_and_child_independence()
     test_pillar_handle_title_and_three_column_panel()
     test_panel_hatch_presets_and_masks()
     test_all_panel_hatch_definitions_survive_roundtrip()

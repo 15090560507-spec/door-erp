@@ -165,7 +165,15 @@ export default function DashboardPage() {
       setTaskLoading(true);
       getTask(activeTaskId).then((t) => {
         setActiveTask(t);
-        if (t.params) setFormData({ ...DEFAULT_FORM_DATA, ...t.params });
+        if (t.params) {
+          setFormData({
+            ...DEFAULT_FORM_DATA,
+            ...t.params,
+            // 历史任务没有继承标记，必须继续使用原来的独立反面设置。
+            back_panel_same_as_front: t.params.back_panel_same_as_front ?? false,
+            child_back_same_as_front: t.params.child_back_same_as_front ?? false,
+          });
+        }
         setRefText(t.ref_text || "");
         setRefImages(t.ref_images || []);
         setUploadImgB64(t.drawing_img_b64 || null);

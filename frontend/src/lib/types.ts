@@ -122,8 +122,11 @@ export interface DoorFormData {
   lock_side_offset?: number;
   panel_preset: string;
   door_panel_style: string;
+  back_panel_same_as_front: boolean;
   back_door_panel_style: string;
   child_door_panel_style: string;
+  child_back_same_as_front: boolean;
+  child_back_door_panel_style: string;
   panel_lock_offset_x: number;
   panel_hinge_offset_y: number;
   panel_middle_offset_z: number;
@@ -172,6 +175,26 @@ export interface DoorFormData {
   child_panel_horizontal_b_height: number;
   child_panel_b2_glass_style: string;
   child_panel_b4_glass_style: string;
+  child_glass_line_inset: number;
+  child_glass_line_spacing: number;
+  child_back_panel_lock_offset_x: number;
+  child_back_panel_hinge_offset_y: number;
+  child_back_panel_middle_offset_z: number;
+  child_back_panel_plus_offset_a: number;
+  child_back_panel_plus_offset_b: number;
+  child_back_panel_three_col_a: number;
+  child_back_panel_three_col_b: number;
+  child_back_panel_three_col_c: number;
+  child_back_panel_fill_a: string;
+  child_back_panel_fill_b: string;
+  child_back_panel_fill_c: string;
+  child_back_panel_disc_radius: number;
+  child_back_panel_horizontal_a_height: number;
+  child_back_panel_horizontal_b_height: number;
+  child_back_panel_b2_glass_style: string;
+  child_back_panel_b4_glass_style: string;
+  child_back_glass_line_inset: number;
+  child_back_glass_line_spacing: number;
   glass_line_inset: number;
   glass_line_spacing: number;
   back_glass_line_inset: number;
@@ -312,7 +335,8 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
-  door_panel_style: "无造型", back_door_panel_style: "无造型", child_door_panel_style: "",
+  door_panel_style: "无造型", back_panel_same_as_front: true, back_door_panel_style: "无造型",
+  child_door_panel_style: "", child_back_same_as_front: true, child_back_door_panel_style: "",
   panel_lock_offset_x: 180, panel_hinge_offset_y: 100,
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
   panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
@@ -328,6 +352,14 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
   child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
   child_panel_horizontal_a_height: 1000, child_panel_horizontal_b_height: 300, child_panel_b2_glass_style: "无线条", child_panel_b4_glass_style: "无线条",
+  child_glass_line_inset: 20, child_glass_line_spacing: 20,
+  child_back_panel_lock_offset_x: 180, child_back_panel_hinge_offset_y: 100,
+  child_back_panel_middle_offset_z: 180, child_back_panel_plus_offset_a: 350, child_back_panel_plus_offset_b: 100,
+  child_back_panel_three_col_a: 180, child_back_panel_three_col_b: 0, child_back_panel_three_col_c: 100,
+  child_back_panel_fill_a: "", child_back_panel_fill_b: "", child_back_panel_fill_c: "", child_back_panel_disc_radius: 120,
+  child_back_panel_horizontal_a_height: 1000, child_back_panel_horizontal_b_height: 300,
+  child_back_panel_b2_glass_style: "无线条", child_back_panel_b4_glass_style: "无线条",
+  child_back_glass_line_inset: 20, child_back_glass_line_spacing: 20,
   glass_line_inset: 20, glass_line_spacing: 20, back_glass_line_inset: 0, back_glass_line_spacing: 0,
   ddh: "", sl: "1 樘", hhxd: "D",
   dhrq: localDateYmd(),

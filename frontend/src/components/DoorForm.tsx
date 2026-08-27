@@ -314,6 +314,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     onChange({
       ...data,
       panel_preset: preset,
+      back_panel_same_as_front: false,
       door_panel_style: "两列式布局",
       panel_lock_offset_x: 150,
       panel_fill_a: frontFillA[preset] || "",
@@ -573,17 +574,17 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   onChange={(v) => setField(b4GlassStyleKey, v)}
                 />
               )}
-              {/* 玻璃线条边距/间距仅在 H / H+ 布局显示，正反面可独立设置 */}
+              {/* 玻璃图案参数仅在 H / H+ 布局显示，正反面可独立设置。 */}
               {insetKey !== undefined && spacingKey !== undefined && (
                 <>
                   <Input
-                    label={`${title}玻璃线条边距(mm)`}
+                    label={`${title}玻璃图案外边距(mm)`}
                     value={(data[insetKey] as number) ?? 0}
                     type="number"
                     onChange={(v) => setField(insetKey, Number(v))}
                   />
                   <Input
-                    label={`${title}玻璃线条间距(mm)`}
+                    label={`${title}图案内部线距(mm)`}
                     value={(data[spacingKey] as number) ?? 0}
                     type="number"
                     onChange={(v) => setField(spacingKey, Number(v))}
@@ -837,32 +838,42 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   insetKey: "glass_line_inset",
                   spacingKey: "glass_line_spacing",
                 })}
-                {renderPanelControls({
-                  title: "反面门板",
-                  styleKey: "back_door_panel_style",
-                  style: data.back_door_panel_style || "无造型",
-                  styleOptions: DOOR_PANEL_STYLES,
-                  lockKey: "back_panel_lock_offset_x",
-                  hingeKey: "back_panel_hinge_offset_y",
-                  middleKey: "back_panel_middle_offset_z",
-                  plusAKey: "back_panel_plus_offset_a",
-                  plusBKey: "back_panel_plus_offset_b",
-                  threeAKey: "back_panel_three_col_a",
-                  threeBKey: "back_panel_three_col_b",
-                  threeCKey: "back_panel_three_col_c",
-                  horizontalAKey: "back_panel_horizontal_a_height",
-                  horizontalBKey: "back_panel_horizontal_b_height",
-                  fillAKey: "back_panel_fill_a",
-                  fillBKey: "back_panel_fill_b",
-                  fillCKey: "back_panel_fill_c",
-                  discRadiusKey: "back_panel_disc_radius",
-                  b2GlassStyleKey: "back_panel_b2_glass_style",
-                  b4GlassStyleKey: "back_panel_b4_glass_style",
-                  insetKey: "back_glass_line_inset",
-                  spacingKey: "back_glass_line_spacing",
-                })}
+                <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-white p-3">
+                  <Checkbox
+                    label="反面同正面"
+                    checked={data.back_panel_same_as_front}
+                    onChange={(v) => set("back_panel_same_as_front", v)}
+                  />
+                  {data.back_panel_same_as_front && (
+                    <div className="mt-2 text-xs text-[#8E8E93]">反面沿用正面的全部门板设置，正面修改后会同步生效。</div>
+                  )}
+                </div>
+                {!data.back_panel_same_as_front && renderPanelControls({
+                    title: "反面门板",
+                    styleKey: "back_door_panel_style",
+                    style: data.back_door_panel_style || "无造型",
+                    styleOptions: DOOR_PANEL_STYLES,
+                    lockKey: "back_panel_lock_offset_x",
+                    hingeKey: "back_panel_hinge_offset_y",
+                    middleKey: "back_panel_middle_offset_z",
+                    plusAKey: "back_panel_plus_offset_a",
+                    plusBKey: "back_panel_plus_offset_b",
+                    threeAKey: "back_panel_three_col_a",
+                    threeBKey: "back_panel_three_col_b",
+                    threeCKey: "back_panel_three_col_c",
+                    horizontalAKey: "back_panel_horizontal_a_height",
+                    horizontalBKey: "back_panel_horizontal_b_height",
+                    fillAKey: "back_panel_fill_a",
+                    fillBKey: "back_panel_fill_b",
+                    fillCKey: "back_panel_fill_c",
+                    discRadiusKey: "back_panel_disc_radius",
+                    b2GlassStyleKey: "back_panel_b2_glass_style",
+                    b4GlassStyleKey: "back_panel_b4_glass_style",
+                    insetKey: "back_glass_line_inset",
+                    spacingKey: "back_glass_line_spacing",
+                  })}
                 {hasChildPanel && renderPanelControls({
-                  title: "子门门板",
+                  title: "子门正面",
                   styleKey: "child_door_panel_style",
                   style: data.child_door_panel_style || "",
                   styleOptions: childPanelStyles,
@@ -882,6 +893,44 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   discRadiusKey: "child_panel_disc_radius",
                   b2GlassStyleKey: "child_panel_b2_glass_style",
                   b4GlassStyleKey: "child_panel_b4_glass_style",
+                  insetKey: "child_glass_line_inset",
+                  spacingKey: "child_glass_line_spacing",
+                })}
+                {hasChildPanel && (
+                  <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-white p-3">
+                    <Checkbox
+                      label="子门反面同正面"
+                      checked={data.child_back_same_as_front}
+                      onChange={(v) => set("child_back_same_as_front", v)}
+                    />
+                    {data.child_back_same_as_front && (
+                      <div className="mt-2 text-xs text-[#8E8E93]">子门反面沿用子门正面的全部设置。</div>
+                    )}
+                  </div>
+                )}
+                {hasChildPanel && !data.child_back_same_as_front && renderPanelControls({
+                  title: "子门反面",
+                  styleKey: "child_back_door_panel_style",
+                  style: data.child_back_door_panel_style || "",
+                  styleOptions: childPanelStyles,
+                  lockKey: "child_back_panel_lock_offset_x",
+                  hingeKey: "child_back_panel_hinge_offset_y",
+                  middleKey: "child_back_panel_middle_offset_z",
+                  plusAKey: "child_back_panel_plus_offset_a",
+                  plusBKey: "child_back_panel_plus_offset_b",
+                  threeAKey: "child_back_panel_three_col_a",
+                  threeBKey: "child_back_panel_three_col_b",
+                  threeCKey: "child_back_panel_three_col_c",
+                  horizontalAKey: "child_back_panel_horizontal_a_height",
+                  horizontalBKey: "child_back_panel_horizontal_b_height",
+                  fillAKey: "child_back_panel_fill_a",
+                  fillBKey: "child_back_panel_fill_b",
+                  fillCKey: "child_back_panel_fill_c",
+                  discRadiusKey: "child_back_panel_disc_radius",
+                  b2GlassStyleKey: "child_back_panel_b2_glass_style",
+                  b4GlassStyleKey: "child_back_panel_b4_glass_style",
+                  insetKey: "child_back_glass_line_inset",
+                  spacingKey: "child_back_glass_line_spacing",
                 })}
               </>
             )}

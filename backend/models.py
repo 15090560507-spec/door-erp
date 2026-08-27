@@ -104,8 +104,11 @@ class CADRequest(BaseModel):
     lock_side_offset: int = 0           # 兼容旧数据：旧锁边偏移量 (mm)
     panel_preset: str = ""              # 门板固定款式预设
     door_panel_style: str = "无造型"     # 门板样式
+    back_panel_same_as_front: bool = False # 反面门板沿用正面；False 保持旧任务行为
     back_door_panel_style: str = "无造型"  # 反面门板样式
     child_door_panel_style: str = ""    # 子门/边扇门板样式，空=不单独绘制
+    child_back_same_as_front: bool = False # 子门反面沿用子门正面；False 保持旧任务行为
+    child_back_door_panel_style: str = "" # 子门/边扇反面门板样式
     panel_lock_offset_x: int = 180      # 锁边向合页边偏移 X
     panel_hinge_offset_y: int = 100     # 合页边向锁边偏移 Y
     panel_middle_offset_z: int = 180    # B 区域上下向中间偏移 Z
@@ -154,6 +157,26 @@ class CADRequest(BaseModel):
     child_panel_horizontal_b_height: int = 300
     child_panel_b2_glass_style: str = "无线条"
     child_panel_b4_glass_style: str = "无线条"
+    child_glass_line_inset: int = 20
+    child_glass_line_spacing: int = 20
+    child_back_panel_lock_offset_x: int = 180
+    child_back_panel_hinge_offset_y: int = 100
+    child_back_panel_middle_offset_z: int = 180
+    child_back_panel_plus_offset_a: int = 350
+    child_back_panel_plus_offset_b: int = 100
+    child_back_panel_three_col_a: int = 180
+    child_back_panel_three_col_b: int = 0
+    child_back_panel_three_col_c: int = 100
+    child_back_panel_fill_a: str = ""
+    child_back_panel_fill_b: str = ""
+    child_back_panel_fill_c: str = ""
+    child_back_panel_disc_radius: int = 120
+    child_back_panel_horizontal_a_height: int = 1000
+    child_back_panel_horizontal_b_height: int = 300
+    child_back_panel_b2_glass_style: str = "无线条"
+    child_back_panel_b4_glass_style: str = "无线条"
+    child_back_glass_line_inset: int = 20
+    child_back_glass_line_spacing: int = 20
     glass_line_inset: int = 20          # 玻璃线条距区域边界
     glass_line_spacing: int = 20        # 双线及回纹间距
     back_glass_line_inset: int = 0      # 反面玻璃线条边距；0=沿用正面
