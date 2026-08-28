@@ -35,6 +35,8 @@ export default function TopNav() {
                     router.push("/render");
                   } else if (item.module === "生产管理") {
                     router.push("/production");
+                  } else if (item.module === "下料") {
+                    router.push("/door-cad/frame");
                   } else if (pathname !== "/dashboard") {
                     router.push("/dashboard");
                   }

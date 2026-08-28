@@ -271,7 +271,7 @@ export interface LayeredRenderRecord {
 }
 
 // ===================== 模块 =====================
-export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "任务总览" | "生产管理";
+export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "下料" | "任务总览" | "生产管理";
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
@@ -279,6 +279,7 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "图纸绘制", module: "图纸绘制" },
   { title: "图纸初审", module: "图纸初审" },
   { title: "图纸终审", module: "图纸终审" },
+  { title: "下料", module: "下料" },
   { title: "效果渲染", module: "效果渲染" },
   { title: "报价系统", module: "报价系统" },
   { title: "生产管理", module: "生产管理" },
