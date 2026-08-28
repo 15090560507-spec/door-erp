@@ -64,6 +64,7 @@ from production_routes import (
 from rendering.cad_line_art import export_dxf_line_art
 from rendering.layered_routes import layered_router
 from erpnext_bridge import sync_order_to_erpnext
+from door_cad.router import router as door_cad_router
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -91,6 +92,7 @@ if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
 app.include_router(fulfillment_router)
 app.include_router(inventory_router)
+app.include_router(door_cad_router)
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()
