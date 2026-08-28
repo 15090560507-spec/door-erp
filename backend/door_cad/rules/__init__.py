@@ -7,7 +7,9 @@ from door_cad.models import FrameInput, PartGeometry
 
 from .frame_new_skeleton import build_left_skeleton
 from .frame_new_skin import build_left_skin, build_skin_cut_outer
+from .bottom_frame import build_bottom_parts
 from .opening import edge_fixing_positions, resolve_hinge_positions
+from .top_frame import build_top_parts
 
 
 def build_side_parts(inputs: FrameInput, side: str) -> list[PartGeometry]:
@@ -36,6 +38,8 @@ def build_side_parts(inputs: FrameInput, side: str) -> list[PartGeometry]:
 __all__ = [
     "build_side_parts",
     "build_skin_cut_outer",
+    "build_top_parts",
+    "build_bottom_parts",
     "edge_fixing_positions",
     "resolve_hinge_positions",
 ]
