@@ -23,6 +23,7 @@ USERS_DB_FILE = os.path.join(DATA_DIR, 'users_database.json')
 ACCESSORIES_DB_FILE = os.path.join(DATA_DIR, 'accessories_database.json')
 QUOTES_DB_FILE = os.path.join(DATA_DIR, 'quotes_database.json')
 AI_CONFIG_FILE = os.path.join(DATA_DIR, 'ai_config.json')
+DOOR_CAD_PROJECTS_FILE = os.path.join(DATA_DIR, 'door_cad_projects.json')
 PRODUCTION_DB_FILE = os.path.join(DATA_DIR, 'production.db')
 PRODUCTION_FILES_DIR = os.path.join(DATA_DIR, 'production_files')
 FULFILLMENT_DB_FILE = os.path.join(DATA_DIR, 'fulfillment.db')
@@ -58,8 +59,9 @@ USERS_BACKUP_DIR = os.path.join(BACKUP_DIR, 'users')
 TASKS_BACKUP_DIR = os.path.join(BACKUP_DIR, 'tasks')
 ACCESSORIES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'accessories')
 QUOTES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'quotes')
+DOOR_CAD_BACKUP_DIR = os.path.join(BACKUP_DIR, 'door_cad')
 
-for _d in (BACKUP_DIR, IMAGES_DIR, PRODUCTION_FILES_DIR, FULFILLMENT_FILES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR):
+for _d in (BACKUP_DIR, IMAGES_DIR, PRODUCTION_FILES_DIR, FULFILLMENT_FILES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR, DOOR_CAD_BACKUP_DIR):
     os.makedirs(_d, exist_ok=True)
 
 
