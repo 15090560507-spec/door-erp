@@ -6,7 +6,7 @@ import { MODULE_OPTIONS } from "@/lib/types";
 
 export default function TopNav() {
   const { user, setModule, logout } = useAuth();
-  const module = useModule();
+  const activeModule = useModule();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -23,7 +23,7 @@ export default function TopNav() {
 
           {/* 模块导航按钮 */}
           {items.map((item) => {
-            const active = module === item.module;
+            const active = activeModule === item.module;
             return (
               <button
                 key={item.module}

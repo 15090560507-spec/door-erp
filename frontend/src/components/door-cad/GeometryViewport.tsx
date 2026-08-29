@@ -3,7 +3,7 @@ import type { SvgBounds } from "./svgGeometry";
 
 interface Props {
   bounds: SvgBounds;
-  children: ReactNode;
+  children?: ReactNode;
   label: string;
   empty?: boolean;
 }
