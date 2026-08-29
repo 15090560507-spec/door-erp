@@ -193,16 +193,16 @@ export default function DoorCadFramePage() {
   ];
 
   return (
-    <main className="mx-auto max-w-[1600px] px-5 py-5">
+    <main className="mx-auto max-w-[1600px] px-3 py-4 sm:px-5 sm:py-5">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[#1C1C1E]">门框下料</h1>
           <p className="mt-1 text-[13px] text-[#636366]">新工艺门框 · 8 个标准零件 · SVG / DXF / BOM 共用同一几何数据</p>
         </div>
-        <div className="flex items-end gap-2">
-          <label className="space-y-1 text-[12px] text-[#636366]">
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+          <label className="min-w-0 flex-1 space-y-1 text-[12px] text-[#636366] sm:flex-none">
             <span>已保存项目</span>
-            <select className="block h-9 min-w-72 border border-[#D1D1D6] bg-white px-2 text-[13px]" value={savedProjectId} onChange={(event) => void loadProject(event.target.value)}>
+            <select className="block h-9 w-full min-w-0 border border-[#D1D1D6] bg-white px-2 text-[13px] sm:w-72" value={savedProjectId} onChange={(event) => void loadProject(event.target.value)}>
               <option value="">新建项目</option>
               {projects.map((item) => <option key={item.id} value={item.id}>{item.orderNo || "无订单号"} · {item.projectName || "未命名"}</option>)}
             </select>
@@ -231,13 +231,15 @@ export default function DoorCadFramePage() {
           />
           <ProductionValidation geometry={geometry} />
           <section className="border border-[#D1D1D6] bg-white">
-            <div className="flex items-center border-b border-[#D1D1D6] bg-[#FAFAFA]">
-              {tabs.map((item) => (
-                <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`h-10 border-r border-[#D1D1D6] px-5 text-[13px] font-medium ${tab === item.id ? "bg-white text-[#007AFF]" : "text-[#636366] hover:bg-white"}`}>
-                  {item.label}
-                </button>
-              ))}
-              <span className="ml-auto px-4 text-xs text-[#8E8E93]">{calculating ? "正在计算..." : geometry ? `${geometry.parts.length} 个零件` : "等待有效参数"}</span>
+            <div className="flex flex-wrap items-center border-b border-[#D1D1D6] bg-[#FAFAFA]">
+              <div className="flex min-w-0 overflow-x-auto">
+                {tabs.map((item) => (
+                  <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`h-10 shrink-0 border-r border-[#D1D1D6] px-4 text-[13px] font-medium sm:px-5 ${tab === item.id ? "bg-white text-[#007AFF]" : "text-[#636366] hover:bg-white"}`}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto px-3 text-xs text-[#8E8E93] sm:px-4">{calculating ? "正在计算..." : geometry ? `${geometry.parts.length} 个零件` : "等待有效参数"}</span>
             </div>
             <div className="p-3">
               {tab === "overview" && <Overview2D geometry={geometry} />}

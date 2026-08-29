@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import { MODULE_OPTIONS } from "@/lib/types";
@@ -9,13 +10,18 @@ export default function TopNav() {
   const activeModule = useModule();
   const router = useRouter();
   const pathname = usePathname();
+  const activeItemRef = useRef<HTMLButtonElement>(null);
 
   const items = MODULE_OPTIONS;
 
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [activeModule]);
+
   return (
-    <nav className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-[#E5E5EA]/60 shadow-sm">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex items-center gap-1.5 h-14">
+    <nav className="sticky top-0 z-40 w-full border-b border-[#E5E5EA]/60 bg-white/80 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-7xl min-w-0 items-center px-3 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* Logo */}
           <span className="text-[15px] font-bold text-[#1C1C1E] mr-3 tracking-tight whitespace-nowrap">
             西州将军
@@ -27,6 +33,7 @@ export default function TopNav() {
             return (
               <button
                 key={item.module}
+                ref={active ? activeItemRef : undefined}
                 onClick={() => {
                   setModule(item.module);
                   if (item.module === "报价系统") {
@@ -55,17 +62,16 @@ export default function TopNav() {
             );
           })}
 
-          <div className="flex-1" />
+        </div>
 
-          {/* 用户信息 */}
-          <span className="text-[12px] text-[#8E8E93] bg-[#F2F2F7] px-2.5 py-1 rounded-full font-medium">
+        {/* 用户操作固定在导航右侧，模块过多时仅滚动中间导航区。 */}
+        <div className="ml-2 flex shrink-0 items-center gap-1 bg-white/80">
+          <span className="hidden max-w-24 truncate rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[12px] font-medium text-[#8E8E93] sm:block">
             {user?.name}
           </span>
-
-          {/* 退出 */}
           <button
             onClick={logout}
-            className="text-[12px] font-medium text-[#FF3B30]/70 hover:text-[#FF3B30] hover:bg-[#FF3B30]/8 px-3 py-1.5 rounded-lg transition-all duration-200"
+            className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-[#FF3B30]/70 transition-all duration-200 hover:bg-[#FF3B30]/8 hover:text-[#FF3B30] sm:px-3"
           >
             退出
           </button>

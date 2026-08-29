@@ -34,7 +34,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="border-t border-[#E5E5EA] pt-4 first:border-t-0 first:pt-0">
       <h3 className="mb-3 text-[13px] font-semibold text-[#1C1C1E]">{title}</h3>
-      <div className="grid grid-cols-2 gap-3">{children}</div>
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">{children}</div>
     </section>
   );
 }
@@ -55,7 +55,7 @@ export default function ParameterPanel({ inputs, project, tasks, onInputsChange,
           <span>项目名称</span>
           <input className={inputClass} value={project.projectName} onChange={(event) => onProjectChange({ ...project, projectName: event.target.value })} />
         </label>
-        <label className={`${labelClass} col-span-2`}>
+        <label className={`${labelClass} min-[420px]:col-span-2`}>
           <span>关联终审任务</span>
           <select className={inputClass} value={project.taskId ?? ""} onChange={(event) => onProjectChange({ ...project, taskId: event.target.value || null })}>
             <option value="">不关联</option>
@@ -72,7 +72,7 @@ export default function ParameterPanel({ inputs, project, tasks, onInputsChange,
       <Section title="左右框规格">
         <NumberField label="外皮小边" value={inputs.outerSideShort} onChange={(value) => setInput("outerSideShort", value)} />
         <NumberField label="外皮大边" value={inputs.outerSideLong} onChange={(value) => setInput("outerSideLong", value)} />
-        <div className="col-span-2"><Toggle label="骨架尺寸随外皮自动联动（各减 3 mm）" checked={inputs.linkedSideSizes} onChange={(value) => setInput("linkedSideSizes", value)} /></div>
+        <div className="min-[420px]:col-span-2"><Toggle label="骨架尺寸随外皮自动联动（各减 3 mm）" checked={inputs.linkedSideSizes} onChange={(value) => setInput("linkedSideSizes", value)} /></div>
         <NumberField label="骨架小边" value={inputs.skeletonSideShort} disabled={inputs.linkedSideSizes} onChange={(value) => setInput("skeletonSideShort", value)} />
         <NumberField label="骨架大边" value={inputs.skeletonSideLong} disabled={inputs.linkedSideSizes} onChange={(value) => setInput("skeletonSideLong", value)} />
       </Section>
@@ -106,7 +106,7 @@ export default function ParameterPanel({ inputs, project, tasks, onInputsChange,
         <NumberField label="骨架合页中心" value={inputs.hingeCenterSkeleton} step={0.1} onChange={(value) => setInput("hingeCenterSkeleton", value)} />
         <NumberField label="外皮合页中心" value={inputs.hingeCenterSkin} step={0.1} onChange={(value) => setInput("hingeCenterSkin", value)} />
         {inputs.hingeMode === "custom" && (
-          <label className={`${labelClass} col-span-2`}>
+          <label className={`${labelClass} min-[420px]:col-span-2`}>
             <span>合页位置（逗号分隔，距底 mm）</span>
             <input
               className={inputClass}
@@ -120,7 +120,7 @@ export default function ParameterPanel({ inputs, project, tasks, onInputsChange,
       <Section title="上下框规格">
         <NumberField label="上框小边" value={inputs.topShort} onChange={(value) => setInput("topShort", value)} />
         <NumberField label="上框大边" value={inputs.topLong} onChange={(value) => setInput("topLong", value)} />
-        <div className="col-span-2"><Toggle label="下框与上框相同" checked={inputs.sameTopBottom} onChange={(value) => setInput("sameTopBottom", value)} /></div>
+        <div className="min-[420px]:col-span-2"><Toggle label="下框与上框相同" checked={inputs.sameTopBottom} onChange={(value) => setInput("sameTopBottom", value)} /></div>
         <NumberField label="下框小边" value={inputs.bottomShort} disabled={inputs.sameTopBottom} onChange={(value) => setInput("bottomShort", value)} />
         <NumberField label="下框大边" value={inputs.bottomLong} disabled={inputs.sameTopBottom} onChange={(value) => setInput("bottomLong", value)} />
         <Toggle label="上框带插脚" checked={inputs.topPin} onChange={(value) => setInput("topPin", value)} />
