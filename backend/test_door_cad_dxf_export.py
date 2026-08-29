@@ -1,6 +1,7 @@
 import ezdxf
 
 from door_cad.exporters import build_combined_dxf, combined_dxf_filename
+from door_cad.exporters.dxf_exporter import _renderer_parameters
 from door_cad.models import FrameInput, ProjectMeta
 from door_cad.services import calculate_frame_project
 from test_door_cad_api import _client, _request
@@ -18,19 +19,72 @@ def test_combined_dxf_contains_all_parts_layers_dimensions_and_audits_cleanly(tm
     modelspace = document.modelspace()
 
     expected_layers = {
-        "L01_OUTER_CUT", "L02_INNER_CUT", "L03_GROOVE_INNER",
-        "L04_GROOVE_OUTER", "L05_FOLD", "L06_DIM", "L07_NOTE", "L08_SECTION",
+        "L00_AUX", "L01_OUTER_CUT", "L02_INNER_CUT",
+        "L10_GROOVE_FRONT", "L11_GROOVE_BACK",
+        "L20_FACE_OUTER", "L21_GROOVE_OUTER", "L22_GROOVE_INNER", "L23_FACE_INNER",
+        "L30_DIM", "L31_NOTE_CN", "L32_PART_ID", "L33_CENTER_MARK",
     }
     assert expected_layers.issubset({layer.dxf.name for layer in document.layers})
-    assert len(modelspace.query('LWPOLYLINE[layer=="L01_OUTER_CUT"]')) == 8
-    assert all(entity.closed for entity in modelspace.query('LWPOLYLINE[layer=="L01_OUTER_CUT"]'))
-    assert len(modelspace.query("DIMENSION")) >= 16
+    assert {style.dxf.name for style in document.styles}.issuperset({"CN_TEXT", "NUM_TEXT"})
+    assert {style.dxf.name for style in document.dimstyles}.issuperset(
+        {"DIM_PLAN", "DIM_SECTION", "DIM_DETAIL"}
+    )
+    assert len(modelspace.query("DIMENSION")) >= 250
 
-    texts = [entity.dxf.text for entity in modelspace.query("TEXT")]
-    for part in geometry.parts:
-        assert part.partId in texts
-    assert not any(entity.dxf.get("text_generation_flag", 0) & 2 for entity in modelspace.query("TEXT"))
+    cut_outer = list(modelspace.query('LWPOLYLINE[layer=="L01_OUTER_CUT"]'))
+    assert len(cut_outer) == 4
+    for entity in cut_outer:
+        points = list(entity.get_points("xy"))
+        assert points[0] == points[-1]
+
+    outer_skin_paths = [entity for entity in cut_outer if len(list(entity.get_points("xy"))) == 13]
+    assert len(outer_skin_paths) == 2
+    for entity in outer_skin_paths:
+        points = list(entity.get_points("xy"))
+        ys = [point[1] for point in points]
+        assert min(ys) + 47.0 in ys
+        assert max(ys) - 47.0 in ys
+        min_x, max_x = min(point[0] for point in points), max(point[0] for point in points)
+        clipped_grooves = [
+            line
+            for layer in ("L10_GROOVE_FRONT", "L11_GROOVE_BACK")
+            for line in modelspace.query(f'LINE[layer=="{layer}"]')
+            if min_x < line.dxf.start.x < max_x
+            and line.dxf.start.y == min(ys) + 47.0
+            and line.dxf.end.y == max(ys) - 47.0
+        ]
+        assert clipped_grooves
+
+    notes = "\n".join(entity.plain_text() for entity in modelspace.query("MTEXT"))
+    assert "DD20260829001" in notes
+    assert "标准门框" in notes
+    assert "统一三行标注" in notes
     assert not document.audit().errors
+
+
+def test_combined_dxf_supports_partial_part_selection(tmp_path):
+    variants = (
+        FrameInput(includeTop=False, includeBottom=False),
+        FrameInput(includeLeft=False, includeRight=False),
+        FrameInput(includeRight=False, includeBottom=False),
+    )
+    for index, inputs in enumerate(variants):
+        geometry = calculate_frame_project(inputs, ProjectMeta(projectName=f"局部导出{index}"))
+        path = tmp_path / f"partial-{index}.dxf"
+        path.write_bytes(build_combined_dxf(geometry))
+        document = ezdxf.readfile(path)
+        assert document.modelspace().query("DIMENSION")
+        assert not document.audit().errors
+
+
+def test_v143_renderer_keeps_dynamic_hinge_datum_for_nonstandard_side_widths():
+    geometry = calculate_frame_project(
+        FrameInput(outerSideShort=60, outerSideLong=70),
+        ProjectMeta(projectName="非标框宽"),
+    )
+    parameters = _renderer_parameters(geometry)
+    assert parameters["skeleton_params"]["hinge_center_override"] == 102.0
+    assert parameters["outer_params"]["hinge_center_override"] == 103.5
 
 
 def test_combined_dxf_filename_is_windows_safe():

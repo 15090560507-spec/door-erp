@@ -10,7 +10,10 @@ from pathlib import Path
 
 import ezdxf
 
+from door_cad.baseline import BASELINE_DIR
 from door_cad.models import PartGeometry, Point2D, ProjectGeometry, Shape
+
+from .v143_reference import generate_all_frames_dxf
 
 
 LAYERS = {
@@ -157,21 +160,89 @@ def _make_document(geometry: ProjectGeometry):
     return document
 
 
+def _renderer_parameters(geometry: ProjectGeometry) -> dict:
+    inputs = geometry.inputs
+    skeleton_short, skeleton_long = inputs.resolved_skeleton_sizes()
+    outer_short, outer_long = inputs.resolved_skin_sizes()
+    bottom_short, bottom_long = inputs.resolved_bottom_sizes()
+    skeleton_hinge_center = inputs.hingeCenterSkeleton + (skeleton_short - 52.0)
+    outer_hinge_center = inputs.hingeCenterSkin + (outer_short - 55.0)
+    hinge_positions = inputs.hingePositions if inputs.hingeMode == "custom" else None
+    project_label = "  ".join(
+        value for value in (geometry.project.orderNo, geometry.project.projectName) if value
+    )
+    document_title = (
+        f"{project_label}｜门框下料生产图｜门宽{inputs.doorWidth:.0f}｜门高{inputs.doorHeight:.0f}"
+        if project_label
+        else f"门框下料生产图｜门宽{inputs.doorWidth:.0f}｜门高{inputs.doorHeight:.0f}"
+    )
+    return {
+        "skeleton_params": {
+            "short_top": skeleton_short,
+            "long_bottom": skeleton_long,
+            "height": inputs.doorHeight,
+            "thickness": inputs.skeletonThickness,
+            "groove_depth": inputs.skeletonGrooveDepth,
+            "groove_width": inputs.skeletonGrooveWidth,
+            "hinge_style": inputs.hingeStyle,
+            "hinge_count": inputs.hingeCount,
+            "hinge_center_override": skeleton_hinge_center,
+            "hinge_positions": hinge_positions,
+        },
+        "outer_params": {
+            "short_top": outer_short,
+            "long_bottom": outer_long,
+            "height": inputs.doorHeight,
+            "thickness": inputs.skinThickness,
+            "groove_depth": inputs.skinGrooveDepth,
+            "groove_width": inputs.skinGrooveWidth,
+            "hinge_style": inputs.hingeStyle,
+            "hinge_count": inputs.hingeCount,
+            "hinge_center_override": outer_hinge_center,
+            "hinge_positions": hinge_positions,
+        },
+        "include_left": inputs.includeLeft,
+        "include_right": inputs.includeRight,
+        "top_bottom_params": {
+            "door_width": inputs.doorWidth,
+            "side_small": outer_short,
+            "side_large": outer_long,
+            "top_outer_short": inputs.topShort,
+            "top_outer_long": inputs.topLong,
+            "bottom_outer_short": bottom_short,
+            "bottom_outer_long": bottom_long,
+            "include_top": inputs.includeTop,
+            "include_bottom": inputs.includeBottom,
+            "top_pin": inputs.topPin,
+            "bottom_pin": inputs.bottomPin,
+        },
+        "source_template": BASELINE_DIR / "top_bottom_double_door_template.dxf",
+        "door_width": inputs.doorWidth,
+        "door_height": inputs.doorHeight,
+        "document_title": document_title,
+    }
+
+
 def build_combined_dxf(geometry: ProjectGeometry) -> bytes:
     if geometry.validation.errors:
         raise DxfAuditError("几何校验未通过，不能导出 DXF")
-    document = _make_document(geometry)
     temporary_path = ""
     try:
         fd, temporary_path = tempfile.mkstemp(suffix=".dxf")
         os.close(fd)
-        document.saveas(temporary_path)
+        result = generate_all_frames_dxf(temporary_path, **_renderer_parameters(geometry))
+        if result["audit_errors"]:
+            raise DxfAuditError(f"DXF 审计失败：发现 {result['audit_errors']} 个错误")
         audited = ezdxf.readfile(temporary_path)
         auditor = audited.audit()
         if auditor.errors:
             messages = "; ".join(str(error) for error in auditor.errors[:5])
             raise DxfAuditError(f"DXF 审计失败：{messages}")
         return Path(temporary_path).read_bytes()
+    except DxfAuditError:
+        raise
+    except Exception as exc:
+        raise DxfAuditError(f"按 v1.4.3 标准生成 DXF 失败：{exc}") from exc
     finally:
         if temporary_path and os.path.exists(temporary_path):
             os.unlink(temporary_path)
