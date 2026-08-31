@@ -7,6 +7,7 @@ interface Props {
   task: TaskItem;
   onClick: (task: TaskItem) => void;
   onDelete?: (task: TaskItem) => void;
+  onCopy?: (task: TaskItem) => void;
   onToggleQuoteStatus?: (task: TaskItem) => void;
   onToggleConfirmStatus?: (task: TaskItem) => void;
 }
@@ -15,6 +16,7 @@ export default function TaskCard({
   task,
   onClick,
   onDelete,
+  onCopy,
   onToggleQuoteStatus,
   onToggleConfirmStatus,
 }: Props) {
@@ -84,6 +86,15 @@ export default function TaskCard({
           <span className="ml-auto">{task.date}</span>
         </div>
       </div>
+
+      {onCopy && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onCopy(task); }}
+          className="flex-shrink-0 rounded-xl border border-[#B9D8FF] bg-[#EDF6FF] px-3 text-sm font-medium text-[#007AFF] transition-colors hover:bg-[#007AFF] hover:text-white"
+        >
+          复制
+        </button>
+      )}
 
       {onDelete && (
         <button

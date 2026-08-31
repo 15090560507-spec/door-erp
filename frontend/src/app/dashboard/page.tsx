@@ -3,13 +3,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
-  getTasks, getTask, createTask, updateTask, deleteTask,
+  getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
   generateCad, generateCadPreview, downloadCadBlob,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
   resetPassword as apiResetPassword,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
-import type { TaskItem, DoorFormData, UserInfo, HistoryEntry } from "@/lib/types";
+import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -18,7 +18,8 @@ import { Thumbnail } from "@/components/ImageModal";
 import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
-import { isLocalToday, localDateCompact } from "@/lib/dateTime";
+import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
+import { localDateCompact } from "@/lib/dateTime";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
 const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
@@ -40,7 +41,7 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
 
 export default function DashboardPage() {
   const module = useModule();
-  const { user } = useAuth();
+  const { user, setModule } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -67,6 +68,7 @@ export default function DashboardPage() {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [overview, setOverview] = useState<TaskOverviewData | null>(null);
   const PAGE_SIZE = 20;
 
   // 用 ref 保存 module，避免 fetchTasks 因 module 变化而重建导致双重请求
@@ -138,11 +140,23 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const fetchOverview = useCallback(async () => {
+    try {
+      setOverview(await getTaskOverview());
+    } catch {
+      // 总览统计失败不阻塞任务处理。
+    }
+  }, []);
+
   useEffect(() => {
     setPage(0);
     fetchTasks(filterDate, filterStatus, 0);
     fetchStatusCounts(filterDate);
   }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, searchQ, module]); // module/搜索词变化时重新触发
+
+  useEffect(() => {
+    if (module === "任务总览" || module === "图纸绘制") fetchOverview();
+  }, [fetchOverview, module]);
 
   // 切换模块时自动返回任务列表（保留表单数据以便返回继续编辑）
   useEffect(() => {
@@ -189,7 +203,7 @@ export default function DashboardPage() {
   const backToList = () => {
     setActiveTaskId(null);
     setActiveTask(null);
-    setFormData(DEFAULT_FORM_DATA);
+    setFormData({ ...DEFAULT_FORM_DATA });
     setRefText("");
     setRefImages([]);
     setUploadImgB64(null);
@@ -265,6 +279,9 @@ export default function DashboardPage() {
       if (!data.dh || data.dh <= 0) missing.push("高度");
       return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
     }
+    if (!data.mshd || Number(data.mshd) <= 0) missing.push("门扇厚度");
+    if (!data.sel_kx.trim()) missing.push("左右开向");
+    if (!data.sel_nk.trim()) missing.push("内外开向");
     if (!data.zmks.trim()) missing.push("正面款式");
     if (!data.fmks.trim()) missing.push("反面款式");
     if (!data.st_val.trim()) missing.push("锁体类型");
@@ -325,14 +342,24 @@ export default function DashboardPage() {
       setToast({ text: "订单提交成功，已流转至绘图部！", type: "success" });
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      setFormData({ ...DEFAULT_FORM_DATA });
+      setRefText("");
+      setRefImages([]);
+      setModule("图纸绘制");
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch { flash("提交失败", "error"); }
     setSubmitting(false);
   };
 
   const handleSaveEdit = async () => {
     if (!activeTaskId) return;
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
     try {
       await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
       const updated = await getTask(activeTaskId);
@@ -340,6 +367,7 @@ export default function DashboardPage() {
       flash("修改已保存", "success");
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch { flash("保存失败", "error"); }
   };
 
@@ -418,6 +446,7 @@ export default function DashboardPage() {
       backToList();
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch { flash("提交失败", "error"); }
   };
 
@@ -430,6 +459,7 @@ export default function DashboardPage() {
       backToList();
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch { flash("操作失败", "error"); }
   };
 
@@ -443,6 +473,7 @@ export default function DashboardPage() {
       backToList();
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch { flash("操作失败", "error"); }
   };
 
@@ -453,9 +484,43 @@ export default function DashboardPage() {
       flash("表单已删除", "success");
       fetchTasks(filterDate, filterStatus, page);
       fetchStatusCounts(filterDate);
+      fetchOverview();
     } catch (error: any) {
       flash(error?.userMessage || "删除失败", "error");
     }
+  };
+
+  const handleCopyTask = async (task: TaskItem) => {
+    try {
+      const copied = await copyTask(task.id);
+      flash(`已复制为新任务 ${copied.id}`, "success");
+      setActiveTaskId(copied.id);
+      fetchTasks(filterDate, filterStatus, page);
+      fetchStatusCounts(filterDate);
+      fetchOverview();
+    } catch (error: unknown) {
+      const requestError = error as { userMessage?: string };
+      flash(requestError.userMessage || "复制失败", "error");
+    }
+  };
+
+  const startNewDrawing = () => {
+    setActiveTaskId(null);
+    setActiveTask(null);
+    setFormData({ ...DEFAULT_FORM_DATA });
+    setRefText("");
+    setRefImages([]);
+    setUploadImgB64(null);
+    setReviewFeedback("");
+    setCadBlob(null);
+    setCadPreviewSvg(null);
+    setModule("图纸信息录入");
+  };
+
+  const applyOverviewQuery = (query: string) => {
+    setFilterQ(query);
+    setSearchQ(query);
+    setPage(0);
   };
 
   // ===================== 通用背景 =====================
@@ -787,6 +852,14 @@ export default function DashboardPage() {
       {/* ---------- 任务列表模式 ---------- */}
       {!activeTaskId && (
         <div>
+          {module === "任务总览" && overview && (
+            <TaskOverviewDashboard
+              data={overview}
+              activeStatus={filterStatus}
+              onStatus={setFilterStatus}
+              onQuery={applyOverviewQuery}
+            />
+          )}
           {module === "任务总览" && <AdminSettingsPanel />}
 
           {/* 录入模块 */}
@@ -944,64 +1017,25 @@ export default function DashboardPage() {
           {module !== "图纸信息录入" && (
             <div>
               {/* 统计概览卡片 */}
-              {(module === "任务总览" || (!filterDate && !filterStatus)) && (
-                <div className={`grid grid-cols-2 gap-3 mb-4 ${module === "任务总览" ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
+              {module !== "任务总览" && !filterDate && !filterStatus && (
+                <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                   {module === "图纸绘制" && (
                     <>
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                       <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
-                      <StatCard label="今日新增" count={tasks.filter(t => isLocalToday(t.date)).length} color="bg-[#E5F9E5] text-[#248A3D]" />
+                      <StatCard label="今日新增" count={overview?.today_created ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
                     </>
                   )}
                   {module === "图纸初审" && (
                     <>
                       <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
-                      <StatCard label="今日提交" count={tasks.filter(t => isLocalToday(t.date)).length} color="bg-[#E8E8ED] text-[#48484A]" />
+                      <StatCard label="今日提交" count={overview?.today_created ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                     </>
                   )}
                   {module === "图纸终审" && (
                     <>
                       <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
-                    </>
-                  )}
-                  {module === "任务总览" && (
-                    <>
-                      <StatCard
-                        label="待绘制"
-                        count={statusCounts["待绘制"] ?? 0}
-                        color="bg-[#E8E8ED] text-[#48484A]"
-                        active={filterStatus === "待绘制"}
-                        onClick={() => setFilterStatus(filterStatus === "待绘制" ? "" : "待绘制")}
-                      />
-                      <StatCard
-                        label="待初审"
-                        count={statusCounts["待初审"] ?? 0}
-                        color="bg-[#FFF3E0] text-[#CC7A00]"
-                        active={filterStatus === "待初审"}
-                        onClick={() => setFilterStatus(filterStatus === "待初审" ? "" : "待初审")}
-                      />
-                      <StatCard
-                        label="待终审"
-                        count={statusCounts["待终审"] ?? 0}
-                        color="bg-[#FFF3E0] text-[#CC7A00]"
-                        active={filterStatus === "待终审"}
-                        onClick={() => setFilterStatus(filterStatus === "待终审" ? "" : "待终审")}
-                      />
-                      <StatCard
-                        label="待修改"
-                        count={statusCounts["待修改"] ?? 0}
-                        color="bg-[#FFEBEB] text-[#CC2F2A]"
-                        active={filterStatus === "待修改"}
-                        onClick={() => setFilterStatus(filterStatus === "待修改" ? "" : "待修改")}
-                      />
-                      <StatCard
-                        label="已通过"
-                        count={statusCounts["已通过"] ?? 0}
-                        color="bg-[#E5F9E5] text-[#248A3D]"
-                        active={filterStatus === "已通过"}
-                        onClick={() => setFilterStatus(filterStatus === "已通过" ? "" : "已通过")}
-                      />
                     </>
                   )}
                 </div>
@@ -1057,6 +1091,15 @@ export default function DashboardPage() {
                   {(filterDate || filterStatus) && " (已筛选)"}
                   {total > 0 && <span className="ml-2 text-sm font-normal text-[#8E8E93]">共 {total} 条</span>}
                 </h4>
+                {module === "图纸绘制" && (
+                  <button
+                    type="button"
+                    onClick={startNewDrawing}
+                    className="ml-auto mr-3 rounded-lg bg-[#007AFF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0066D6]"
+                  >
+                    图纸绘制
+                  </button>
+                )}
                 {total > PAGE_SIZE && (
                   <div className="flex items-center gap-2 text-sm">
                     <button
@@ -1094,6 +1137,7 @@ export default function DashboardPage() {
                         setActiveTaskId(task.id);
                       }}
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
+                      onCopy={module === "图纸绘制" ? handleCopyTask : undefined}
                       onToggleQuoteStatus={toggleTaskQuoteStatus}
                       onToggleConfirmStatus={toggleTaskConfirmStatus}
                     />

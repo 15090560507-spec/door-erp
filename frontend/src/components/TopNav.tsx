@@ -12,7 +12,7 @@ export default function TopNav() {
   const pathname = usePathname();
   const activeItemRef = useRef<HTMLButtonElement>(null);
 
-  const items = MODULE_OPTIONS;
+  const items = MODULE_OPTIONS.filter((item) => item.module !== "下料" || user?.uid === "A");
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: "nearest", inline: "center" });

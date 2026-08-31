@@ -14,16 +14,16 @@ def _request(project_name="API 测试"):
     }
 
 
-def _client(tmp_path, authenticated=True):
+def _client(tmp_path, authenticated=True, uid="A"):
     app = FastAPI()
     app.include_router(router)
     repository = DoorCadProjectRepository(tmp_path / "projects.json", tmp_path / "backups")
     app.dependency_overrides[get_project_repository] = lambda: repository
     if authenticated:
         app.dependency_overrides[get_current_user] = lambda: {
-            "uid": "api-user",
-            "role": "绘图员",
-            "name": "API 测试用户",
+            "uid": uid,
+            "role": "录入员" if uid == "A" else "绘图员",
+            "name": "销售小A" if uid == "A" else "API 测试用户",
         }
     return TestClient(app)
 
@@ -32,6 +32,13 @@ def test_all_routes_require_login(tmp_path):
     client = _client(tmp_path, authenticated=False)
     assert client.post("/api/door-cad/frame/calculate", json=_request()).status_code == 401
     assert client.get("/api/door-cad/frame/projects").status_code == 401
+
+
+def test_only_sales_a_can_access_cutting_workbench(tmp_path):
+    client = _client(tmp_path, uid="B")
+    response = client.post("/api/door-cad/frame/calculate", json=_request())
+    assert response.status_code == 403
+    assert response.json()["detail"] == "仅销售小A可访问下料工作台"
 
 
 def test_calculate_and_field_validation(tmp_path):
@@ -54,7 +61,7 @@ def test_project_create_list_get_update_and_audit(tmp_path):
     assert response.status_code == 201
     created = response.json()
     project_id = created["id"]
-    assert created["createdBy"] == "api-user"
+    assert created["createdBy"] == "A"
 
     response = client.get("/api/door-cad/frame/projects")
     assert response.status_code == 200
@@ -70,7 +77,7 @@ def test_project_create_list_get_update_and_audit(tmp_path):
     )
     assert response.status_code == 200
     assert response.json()["id"] == project_id
-    assert response.json()["updatedBy"] == "api-user"
+    assert response.json()["updatedBy"] == "A"
     assert response.json()["geometry"]["project"]["projectName"] == "API 修改后"
 
 

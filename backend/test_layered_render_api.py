@@ -48,6 +48,8 @@ HEADERS = {"Authorization": f"Bearer {token}"}
 BASE_PARAMS = {
     "product_name": "不锈钢镀铜门",
     "material": "0.8mm",
+    "ys": "2号色",
+    "mshd": 80,
     "st_val": "标准锁体",
     "dhdw": "分层效果图测试客户",
     "gdmc": "测试项目",

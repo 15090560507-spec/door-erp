@@ -40,7 +40,7 @@ export interface DoorFormData {
   ys: string;
   zmks: string;
   fmks: string;
-  mshd: number;
+  mshd: number | string;
   qh: string;
   sel_bz: string;
   door_type: string;
@@ -223,6 +223,8 @@ export interface HistoryEntry {
 export interface TaskItem {
   id: string;
   date: string;
+  created_at?: string | null;
+  approved_at?: string | null;
   status: string;
   customer: string;
   project: string;
@@ -241,6 +243,15 @@ export interface TaskItem {
 export interface TaskListResponse {
   tasks: TaskItem[];
   total: number;
+}
+
+export interface TaskOverviewData {
+  total: number;
+  today_created: number;
+  status_counts: Record<string, number>;
+  trend: { date: string; label: string; created: number; approved: number }[];
+  customers: { name: string; count: number }[];
+  door_types: { name: string; count: number }[];
 }
 
 // ===================== 分层效果图 =====================
@@ -275,7 +286,7 @@ export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" 
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
-  { title: "图纸信息录入", module: "图纸信息录入" },
+  { title: "任务总览", module: "任务总览" },
   { title: "图纸绘制", module: "图纸绘制" },
   { title: "图纸初审", module: "图纸初审" },
   { title: "图纸终审", module: "图纸终审" },
@@ -283,7 +294,6 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "效果渲染", module: "效果渲染" },
   { title: "报价系统", module: "报价系统" },
   { title: "生产管理", module: "生产管理" },
-  { title: "任务总览", module: "任务总览" },
 ];
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];
@@ -331,10 +341,10 @@ export const PANEL_FILL_OPTIONS = ["", "紫荆花", "钱币款", "流星雨", "�
 export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围线(封闭)", "四角回纹", "双边框", "双边框+花件", "六格线条", "八格线条"];
 
 export const DEFAULT_FORM_DATA: DoorFormData = {
-  dhdw: "", gdmc: "", ys: "2号色", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",
+  dhdw: "", gdmc: "", ys: "", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",
   zmks: "", fmks: "",
   zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "", fingerprint_lock: "",
-  hysl: "3个/扇", sel_hys: "", qh: "", mshd: 80,
+  hysl: "3个/扇", sel_hys: "", qh: "", mshd: "",
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
   door_panel_style: "无造型", back_panel_same_as_front: true, back_door_panel_style: "无造型",
   child_door_panel_style: "", child_back_same_as_front: true, child_back_door_panel_style: "",
@@ -366,7 +376,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   dhrq: localDateYmd(),
   door_type: "单门", mother_door_width: 600, mid_door_width: 400, mid_clear_width: 0, sliding_overlap: 45,
   has_pillar: false, pillar_width_str: "55/85",
-  sel_kx: "右开", sel_nk: "内开",
+  sel_kx: "", sel_nk: "",
   sel_qc: "无", qc_shape: "矩形气窗", glass_spec: "", qc_height: 400, qc_glass_style: "无线条",
   is_arch_door: false, arch_spring_height: 1800,
   is_integrated_door: false, integrated_panel_height: 300,

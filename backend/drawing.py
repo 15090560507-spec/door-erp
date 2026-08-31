@@ -546,9 +546,11 @@ def draw_door_in_frame(
     mid_door_width = p.get('mid_door_width', 400)
     pillar_width_str = p.get('pillar_width_str', '55/85')
     has_pillar = p.get('has_pillar', False)
-    # 特殊产品允许开向留空；仅几何计算回退为右内开，订货单勾选仍保持为空。
-    door_open_dir = p.get('kx') or '右开'
-    nk_choice = p.get('nk') or '内开'
+    # 双选时几何仍需一个主方向：左开优先、内开优先；订货单会同时勾选两项。
+    door_open_value = str(p.get('kx') or '')
+    inner_outer_value = str(p.get('nk') or '')
+    door_open_dir = '左开' if '左开' in door_open_value else '右开'
+    nk_choice = '内开' if '内开' in inner_outer_value else '外开'
 
     left_gap, right_gap = p.get('left_right_gap', (0, 0))
     top_gap, bottom_gap = p.get('top_bottom_gap', (0, 0))
@@ -2430,10 +2432,10 @@ def run_integrated_system(
         check_attrs = {
             "OUTER": checks.get("OUTER", ""),
             "INNER": checks.get("INNER", ""),
-            "NK": "√" if nk == "内开" else "",
-            "WK": "√" if nk == "外开" else "",
-            "KX_RIGHT": "√" if kx == "右开" else "",
-            "KX_LEFT": "√" if kx == "左开" else "",
+            "NK": "√" if "内开" in nk else "",
+            "WK": "√" if "外开" in nk else "",
+            "KX_RIGHT": "√" if "右开" in kx else "",
+            "KX_LEFT": "√" if "左开" in kx else "",
             "LZ_YES": "√" if has_pillar else "",
             "LZ_NO": "" if has_pillar else "√",
             "MM_YES": "√" if has_mm else "",

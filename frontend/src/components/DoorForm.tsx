@@ -179,6 +179,22 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const set = <K extends keyof DoorFormData>(key: K, value: DoorFormData[K]) => {
     onChange({ ...data, [key]: value });
   };
+  const toggleOpening = (
+    current: string,
+    option: string,
+    first: string,
+    second: string,
+    combined: string,
+  ) => {
+    let hasFirst = current.includes(first);
+    let hasSecond = current.includes(second);
+    if (option === first) hasFirst = !hasFirst;
+    if (option === second) hasSecond = !hasSecond;
+    if (hasFirst && hasSecond) return combined;
+    if (hasFirst) return first;
+    if (hasSecond) return second;
+    return "";
+  };
   const setField = (key: keyof DoorFormData, value: string | number | boolean) => {
     onChange({ ...data, [key]: value });
   };
@@ -213,7 +229,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     const pillarValues = sectionValues(data.pillar_width_str, 55);
     const pillarSmall = Math.min(...pillarValues);
     const pillarBig = Math.max(...pillarValues);
-    const frontPillarWidth = data.sel_nk === "内开" ? pillarBig : pillarSmall;
+    const frontPillarWidth = data.sel_nk.includes("内开") ? pillarBig : pillarSmall;
     return Math.max(0, pillarSmall + leafWidth * 2 + gap * 3 - frontPillarWidth);
   })();
   const displayedMidClearWidth = Number(data.mid_clear_width || 0) > 0
@@ -253,7 +269,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       onChange({
         ...data,
         product_name,
-        sel_kx: data.sel_kx || "右开", sel_nk: data.sel_nk || "内开",
+        sel_kx: data.sel_kx, sel_nk: data.sel_nk,
         left_gap: 0, right_gap: 0, top_gap: 0, bottom_gap: 0,
         fw_top_str: "0", threshold_type: "吊脚", has_dj: true, dj_height: data.dj_height || 30,
       });
@@ -268,7 +284,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       onChange(applyFrameDefaults({
         ...data,
         product_name,
-        sel_kx: data.sel_kx || "右开", sel_nk: data.sel_nk || "内开",
+        sel_kx: data.sel_kx, sel_nk: data.sel_nk,
         left_gap: 2, right_gap: 2, top_gap: 3, bottom_gap: 5, middle_gap: 2,
         threshold_type: "高低槛", th_str: "55/75", has_dj: false, dj_height: 0,
       }));
@@ -342,7 +358,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       };
     }
     if (next.door_type === "单门") {
-      const rightOpen = next.sel_kx !== "左开";
+      const rightOpen = !next.sel_kx.includes("左开");
       return {
         ...next,
         fw_left_str: rightOpen ? "55/85" : "55/62",
@@ -622,7 +638,13 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
               <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
               <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
-              <Input label="门扇厚度(mm)" value={data.mshd} type="number" onChange={(v) => set("mshd", Number(v))} />
+              <Combobox
+                label="门扇厚度(mm)"
+                required
+                value={String(data.mshd ?? "")}
+                options={["80", "100"]}
+                onChange={(v) => set("mshd", v)}
+              />
               <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
             </>}
             {isSimpleProduct && <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />}
@@ -654,22 +676,39 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             options={o("DOOR_TYPES", DOOR_TYPES)}
             onChange={(v) => onChange(applyFrameDefaults({ ...data, door_type: v }))}
           />
-          <div className="flex gap-6 mt-3">
-            <div className="flex gap-4">
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[#E5E5EA] pt-3 sm:grid-cols-2">
+            <div>
+              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>左右开向</div>
+              <div className="flex gap-4">
               {o("KX_OPTIONS", KX_OPTIONS).map((opt) => (
                 <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input type="radio" name="kx" checked={data.sel_kx === opt} onChange={() => onChange(applyFrameDefaults({ ...data, sel_kx: opt }))} />
+                  <input
+                    type="checkbox"
+                    checked={data.sel_kx.includes(opt)}
+                    onChange={() => onChange(applyFrameDefaults({
+                      ...data,
+                      sel_kx: toggleOpening(data.sel_kx, opt, "左开", "右开", "左右开"),
+                    }))}
+                  />
                   {opt}
                 </label>
               ))}
+              </div>
             </div>
-            <div className="flex gap-4">
+            <div className="border-t border-[#E5E5EA] pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>内外开向</div>
+              <div className="flex gap-4">
               {o("NK_OPTIONS", NK_OPTIONS).map((opt) => (
                 <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input type="radio" name="nk" checked={data.sel_nk === opt} onChange={() => set("sel_nk", opt)} />
+                  <input
+                    type="checkbox"
+                    checked={data.sel_nk.includes(opt)}
+                    onChange={() => set("sel_nk", toggleOpening(data.sel_nk, opt, "内开", "外开", "内外开"))}
+                  />
                   {opt}
                 </label>
               ))}
+              </div>
             </div>
           </div>
           <div className="flex gap-3 mt-3">

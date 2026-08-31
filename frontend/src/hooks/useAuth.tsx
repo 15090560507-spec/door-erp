@@ -46,11 +46,11 @@ const AuthContext = createContext<AuthCtx>({
 
 // 模块单独拆成一个 context：切换模块只重渲染 TopNav 与依赖模块内容的页面，
 // 避免所有消费 useAuth 的页面（效果渲染/生产管理等大页面）跟着重渲染造成卡顿。
-const ModuleContext = createContext<ModuleName>("图纸信息录入");
+const ModuleContext = createContext<ModuleName>("任务总览");
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [module, setModule] = useState<ModuleName>("图纸信息录入");
+  const [module, setModule] = useState<ModuleName>("任务总览");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -135,8 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(res.user);
         S.setToken(res.token);
         S.setUser(res.user);
-        S.setModule("图纸信息录入");
-        setModule("图纸信息录入");
+        S.setModule("任务总览");
+        setModule("任务总览");
         setAuthCookie(res.token);
         router.push("/dashboard");
         return true;

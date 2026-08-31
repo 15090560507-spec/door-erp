@@ -3,6 +3,7 @@
 从 door_26.py (Streamlit 单体应用) 提取核心逻辑重构为前后端分离架构
 """
 import io
+import copy
 import json
 import os
 import uuid
@@ -12,7 +13,7 @@ import logging
 import sqlite3
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict
 from urllib.parse import quote
@@ -129,6 +130,39 @@ def normalize_task_date(value: Optional[str]) -> str:
 
 SIMPLE_PRODUCT_NAMES = {"牌匾", "铝艺栅栏", "雨棚", "其他"}
 LENGTH_PRODUCT_NAMES = {"牌匾", "雨棚", "其他"}
+LEFT_RIGHT_OPENINGS = {"左开", "右开", "左右开"}
+INNER_OUTER_OPENINGS = {"内开", "外开", "内外开"}
+
+
+def _opening_selected(value: object, option: str) -> bool:
+    return option in str(value or "")
+
+
+def _validate_task_params(params: Dict) -> None:
+    """Apply the same required-field rules to task writes and direct CAD calls."""
+    product_name = str(params.get("product_name") or "").strip()
+    if not product_name:
+        raise HTTPException(status_code=400, detail="产品名称为必填项")
+    if not str(params.get("ys") or "").strip():
+        raise HTTPException(status_code=400, detail="颜色为必填项")
+    if product_name in SIMPLE_PRODUCT_NAMES:
+        return
+
+    try:
+        thickness = float(params.get("mshd"))
+    except (TypeError, ValueError):
+        thickness = 0
+    if thickness <= 0:
+        raise HTTPException(status_code=400, detail="门扇厚度为必填项")
+
+    left_right = str(params.get("sel_kx") or "").strip()
+    inner_outer = str(params.get("sel_nk") or "").strip()
+    if left_right not in LEFT_RIGHT_OPENINGS:
+        raise HTTPException(status_code=400, detail="左右开向至少选择一项")
+    if inner_outer not in INNER_OUTER_OPENINGS:
+        raise HTTPException(status_code=400, detail="内外开向至少选择一项")
+    if not str(params.get("st_val") or "").strip():
+        raise HTTPException(status_code=400, detail="锁体类型为必填项")
 
 
 def _task_summary_from_params(params: Dict) -> Dict:
@@ -159,7 +193,7 @@ def _task_matches_query(task: Dict, query: str) -> bool:
         return True
     params = task.get("params") or {}
     haystack = " ".join(str(value) for value in (
-        task.get("customer"), task.get("project"), task.get("date"), task.get("id"),
+        task.get("customer"), task.get("project"), task.get("date"), task.get("id"), task.get("door_type"),
         params.get("dhdw"), params.get("gdmc"), params.get("ddh"), params.get("order_title"),
     ) if value)
     return text in haystack.lower()
@@ -179,6 +213,7 @@ def _cad_cache_key(req: CADRequest) -> str:
 
 
 def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
+    _validate_task_params(req.model_dump())
     key = _cad_cache_key(req)
     now = time.monotonic()
     with _cad_cache_lock:
@@ -268,7 +303,7 @@ def _resolve_mid_door_width(req: CADRequest, door_type: str) -> float:
         pillar_parts = parse_dim_str(req.pillar_width_str, 55, 85)
         pillar_small = min(pillar_parts[0], pillar_parts[1])
         pillar_big = max(pillar_parts[0], pillar_parts[1])
-        front_pillar_width = pillar_big if req.sel_nk == "内开" else pillar_small
+        front_pillar_width = pillar_big if _opening_selected(req.sel_nk, "内开") else pillar_small
         leaf_width = (clear_width - pillar_small - 3 * middle_gap + front_pillar_width) / 2
     else:
         leaf_width = (clear_width - middle_gap) / 2
@@ -403,7 +438,7 @@ def build_cad_params(req: CADRequest):
     th_small, th_big = min(parts_th[0], parts_th[1]), max(parts_th[0], parts_th[1])
 
     # --- 框宽按开向分配：输入值只表示小/大，不再表示外/内 ---
-    if req.sel_nk == "内开":
+    if _opening_selected(req.sel_nk, "内开"):
         # 内开时外侧（正面）用大值，内侧（背面）用小值。
         lwf, rwf = left_big, right_big
         lwb, rwb = left_small, right_small
@@ -434,7 +469,8 @@ def build_cad_params(req: CADRequest):
                 "nk": req.sel_nk
             }
             calc = DimensionCalculator(calc_p)
-            res_light = calc.calculate_from_light_size(lw, lh, req.sel_nk == "外开")
+            outer_only = _opening_selected(req.sel_nk, "外开") and not _opening_selected(req.sel_nk, "内开")
+            res_light = calc.calculate_from_light_size(lw, lh, outer_only)
             dw, dh = res_light[0], res_light[1]
 
     is_hanging_threshold = is_sliding_door or is_spring_door or req.threshold_type == "吊脚" or req.has_dj
@@ -479,7 +515,8 @@ def build_cad_params(req: CADRequest):
     if req.qh:
         qh_val = f"{req.qh} mm"
 
-    mshd_val = f"{req.mshd} mm"
+    mshd_number = float(req.mshd or 0)
+    mshd_val = f"{mshd_number:g} mm"
 
     qc_height_val = 0
     if req.sel_qc != "无":
@@ -600,10 +637,10 @@ def build_cad_params(req: CADRequest):
     out_mark = "√" if req.has_outer or req.has_outer_landscape else ""
     outer_portal_mark = "√" if req.has_outer_portal or req.has_outer_portal2 else ""
     in_mark = "√" if req.has_inner else ""
-    nk_mark = "√" if req.sel_nk == "内开" else ""
-    wk_mark = "√" if req.sel_nk == "外开" else ""
-    kxr_mark = "√" if req.sel_kx == "右开" else ""
-    kxl_mark = "√" if req.sel_kx == "左开" else ""
+    nk_mark = "√" if _opening_selected(req.sel_nk, "内开") else ""
+    wk_mark = "√" if _opening_selected(req.sel_nk, "外开") else ""
+    kxr_mark = "√" if _opening_selected(req.sel_kx, "右开") else ""
+    kxl_mark = "√" if _opening_selected(req.sel_kx, "左开") else ""
 
     lz_y, lz_n = ("√", "") if req.has_pillar else ("", "√")
     mm_y, mm_n = ("√", "") if req.has_mm else ("", "√")
@@ -794,6 +831,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     接收表单数据，调用 ezdxf 读取 template.dxf 生成图纸，
     并以 .dxf 文件流形式返回。
     """
+    _validate_task_params(req.model_dump())
     try:
         _, dxf_bytes, cache_hit = _cached_cad(req)
     except Exception as exc:
@@ -829,6 +867,7 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
     """
     Reuse the CAD export path and render the generated DXF as an SVG preview.
     """
+    _validate_task_params(req.model_dump())
     try:
         key, dxf_bytes, cad_cache_hit = _cached_cad(req)
     except Exception as exc:
@@ -1029,6 +1068,61 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
     return TaskListResponse(tasks=page, total=total)
 
 
+def _local_iso_date(value: object) -> Optional[datetime.date]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=SHANGHAI_TZ)
+        return parsed.astimezone(SHANGHAI_TZ).date()
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/api/tasks/overview")
+def task_overview(current_user: Dict = Depends(get_current_user)):
+    """Aggregate operational drawing metrics without returning task image payloads."""
+    tasks = task_db.load_all_tasks()
+    today = shanghai_now().date()
+    dates = [today - datetime.timedelta(days=offset) for offset in range(13, -1, -1)]
+    trend = {
+        day: {"date": day.isoformat(), "label": f"{day.month}/{day.day}", "created": 0, "approved": 0}
+        for day in dates
+    }
+    customer_counts: Counter[str] = Counter()
+    door_type_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    today_created = 0
+
+    for task in tasks:
+        status_counts[str(task.get("status") or "未标记")] += 1
+        customer = str(task.get("customer") or "").strip()
+        door_type = str(task.get("door_type") or "").strip()
+        if customer:
+            customer_counts[customer] += 1
+        if door_type:
+            door_type_counts[door_type] += 1
+
+        created_date = _local_iso_date(task.get("created_at"))
+        approved_date = _local_iso_date(task.get("approved_at"))
+        if created_date == today:
+            today_created += 1
+        if created_date in trend:
+            trend[created_date]["created"] += 1
+        if approved_date in trend:
+            trend[approved_date]["approved"] += 1
+
+    return {
+        "total": len(tasks),
+        "today_created": today_created,
+        "status_counts": dict(status_counts),
+        "trend": list(trend.values()),
+        "customers": [{"name": name, "count": count} for name, count in customer_counts.most_common(8)],
+        "door_types": [{"name": name, "count": count} for name, count in door_type_counts.most_common(8)],
+    }
+
+
 @app.get("/api/tasks/{task_id}", response_model=TaskResponse)
 def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
     """获取单个任务详情"""
@@ -1041,15 +1135,14 @@ def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
 @app.post("/api/tasks", response_model=TaskResponse)
 def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_roles(*ENTRY_ROLES))):
     """创建新任务（录入员提交订单）"""
-    product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
-    if not product_name:
-        raise HTTPException(status_code=400, detail="产品名称为必填项")
-    if product_name not in SIMPLE_PRODUCT_NAMES and not str(req.params.get("st_val", "")).strip():
-        raise HTTPException(status_code=400, detail="锁体类型为必填项")
+    _validate_task_params(req.params)
     task_id = str(uuid.uuid4())[:8]
+    created_at = shanghai_now().isoformat()
     new_task = {
         "id": task_id,
         **_task_summary_from_params(req.params),
+        "created_at": created_at,
+        "approved_at": None,
         "status": "待绘制",
         "params": req.params,
         "ref_text": req.ref_text,
@@ -1066,6 +1159,38 @@ def create_task(req: TaskCreateRequest, current_user: Dict = Depends(require_rol
         raise HTTPException(status_code=400, detail=str(e))
     # 返回完整任务（包含已还原的图片）
     return task_db.get_task(task_id)
+
+
+@app.post("/api/tasks/{task_id}/copy", response_model=TaskResponse)
+def copy_task(task_id: str, current_user: Dict = Depends(require_roles(*TASK_ROLES))):
+    """Create an independent drawing task from an existing input package."""
+    source = task_db.get_task(task_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    params = copy.deepcopy(source.get("params") or {})
+    _validate_task_params(params)
+    new_id = str(uuid.uuid4())[:8]
+    new_task = {
+        "id": new_id,
+        **_task_summary_from_params(params),
+        "created_at": shanghai_now().isoformat(),
+        "approved_at": None,
+        "status": "待绘制",
+        "params": params,
+        "ref_text": str(source.get("ref_text") or ""),
+        "ref_images": copy.deepcopy(source.get("ref_images") or []),
+        "drawing_img_b64": None,
+        "review_feedback": "",
+        "history": [],
+        "quote_status": "未报价",
+        "confirm_status": "未确认",
+    }
+    try:
+        task_db.add_task(new_task)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return task_db.get_task(new_id)
 
 
 def _build_history(old_params: Dict, new_params: Dict, user_name: str) -> Dict:
@@ -1093,12 +1218,10 @@ def update_task(task_id: str, req: TaskUpdateRequest, current_user: Dict = Depen
     update_data = {}
     if req.status is not None:
         update_data["status"] = req.status
+        if req.status == "已通过" and existing.get("status") != "已通过" and not existing.get("approved_at"):
+            update_data["approved_at"] = shanghai_now().isoformat()
     if req.params is not None:
-        product_name = str(req.params.get("product_name") or "不锈钢镀铜门").strip()
-        if not product_name:
-            raise HTTPException(status_code=400, detail="产品名称为必填项")
-        if product_name not in SIMPLE_PRODUCT_NAMES and not str(req.params.get("st_val", "")).strip():
-            raise HTTPException(status_code=400, detail="锁体类型为必填项")
+        _validate_task_params(req.params)
         update_data["params"] = req.params
         # 表单修改后同步刷新汇总表字段（时间/客户/项目/门型/尺寸），避免汇总表停留旧值
         update_data.update(_task_summary_from_params(req.params))

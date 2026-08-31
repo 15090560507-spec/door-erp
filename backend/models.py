@@ -2,7 +2,7 @@
 Pydantic 模型 - 请求/响应数据定义
 """
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ===================== 表单数据模型（生成 CAD 用） =====================
@@ -19,15 +19,15 @@ class CADRequest(BaseModel):
     material: str = "0.8mm"              # 材料/厚度，例如 0.8mm
     product_name: str = "不锈钢镀铜门"     # 产品名称（录入时必填）
     order_title: str = "浙江西州将军铜门订货单"  # 订货单抬头，对应 TT
-    ys: str = "2号色"                   # 颜色
+    ys: str = ""                        # 颜色（必填）
     zmks: str = ""                      # 正面款式
     fmks: str = ""                      # 反面款式
-    mshd: int = 80                      # 门扇厚度
+    mshd: Optional[float] = None         # 门扇厚度（必填，支持自定义）
     qh: str = ""                        # 墙厚
     sel_bz: str = "全包"                # 包装方式
     door_type: str = "单门"             # 门型
-    sel_kx: str = "右开"                # 左右开向
-    sel_nk: str = "内开"                # 内外开向
+    sel_kx: str = ""                    # 左右开向：左开/右开/左右开
+    sel_nk: str = ""                    # 内外开向：内开/外开/内外开
     use_light_size: bool = False        # 是否使用见光尺寸
     mark_light_size: bool = False       # 是否在洞口输入时标注见光尺寸
     dw: int = 900                       # 洞口总宽
@@ -190,6 +190,11 @@ class CADRequest(BaseModel):
     left_right_gap_str: str = "0/0"     # [兼容旧数据] 左右间隙
     top_bottom_gap_str: str = "0/0"     # [兼容旧数据] 上下间隙
 
+    @field_validator("mshd", mode="before")
+    @classmethod
+    def empty_thickness_is_none(cls, value):
+        return None if value in ("", None) else value
+
 
 # ===================== 用户相关模型 =====================
 class LoginRequest(BaseModel):
@@ -258,6 +263,8 @@ class TaskResponse(BaseModel):
     """任务响应"""
     id: str
     date: str
+    created_at: Optional[str] = None
+    approved_at: Optional[str] = None
     status: str
     customer: str
     project: str

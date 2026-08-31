@@ -125,4 +125,15 @@ def require_permissions(*permissions: str):
     return dependency
 
 
+def require_uids(*uids: str):
+    allowed = set(uids)
+
+    def dependency(current_user: Dict = Depends(get_current_user)) -> Dict:
+        if current_user.get("uid") not in allowed:
+            raise HTTPException(status_code=403, detail="仅销售小A可访问下料工作台")
+        return current_user
+
+    return dependency
+
+
 require_super_admin = require_roles(SUPER_ADMIN_ROLE)

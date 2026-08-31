@@ -5,6 +5,7 @@ import type {
   LoginResponse,
   TaskItem,
   TaskListResponse,
+  TaskOverviewData,
   UserInfo,
   VerifyResponse,
 } from "./types";
@@ -133,6 +134,11 @@ export async function getTasks(params?: {
   return data;
 }
 
+export async function getTaskOverview(): Promise<TaskOverviewData> {
+  const { data } = await api.get<TaskOverviewData>("/tasks/overview");
+  return data;
+}
+
 export async function getTask(taskId: string): Promise<TaskItem> {
   const { data } = await api.get<TaskItem>(`/tasks/${taskId}`);
   return data;
@@ -166,6 +172,11 @@ export async function updateTask(
 
 export async function deleteTask(taskId: string) {
   const { data } = await api.delete(`/tasks/${taskId}`);
+  return data;
+}
+
+export async function copyTask(taskId: string): Promise<TaskItem> {
+  const { data } = await api.post<TaskItem>(`/tasks/${taskId}/copy`);
   return data;
 }
 
