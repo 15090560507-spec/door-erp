@@ -1,0 +1,42 @@
+{
+  "minimumItemRows": 5,
+  "companyName": "浙江西州将军门业有限公司",
+  "introText": "承蒙关照，感谢贵方对我方产品感兴趣，根据贵方要求，报上我公司价格，可随时来电来函告知，我们将及时为您提供。",
+  "defaultNoticeText": "本报价不含税工厂结算价，不含木箱。",
+  "termsText": "1.付款方式:确定制作，先安排货款50%的定金，款清发货\n2.以上价格不包含运费、安装调试费、测量等费用。\n3.请及时确定签字回传，我司以收到贵方签字回传单以及保证金为准，方可安排生产",
+  "invoiceText": "开票资料\n公司名称：杭州浙家门业有限公司\n账户号码：3301041060000451769\n开户银行：杭州银行富阳支行\n法定代表人：王家龙基本存款\n账户编号：J3310198780901",
+  "bankText": "汇款请汇入以下账户\n户名：张春兰\n账号：622848 0329 2739 08775\n汇款行农业银行浙江省分行杭州市上泗支行",
+  "columns": [
+    { "key": "A", "className": "col-a", "millimeters": 15.0, "excelWidth": 8.7416666667 },
+    { "key": "B", "className": "col-b", "millimeters": 18.4, "excelWidth": 13.0 },
+    { "key": "C", "className": "col-c", "millimeters": 53.4, "excelWidth": 31.525 },
+    { "key": "D", "className": "col-d", "millimeters": 18.3, "excelWidth": 10.625 },
+    { "key": "E", "className": "col-e", "millimeters": 18.4, "excelWidth": 13.0 },
+    { "key": "F", "className": "col-f", "millimeters": 17.6, "excelWidth": 13.0 },
+    { "key": "G", "className": "col-g", "millimeters": 10.4, "excelWidth": 6.1083333333 },
+    { "key": "H", "className": "col-h", "millimeters": 14.4, "excelWidth": 8.75 },
+    { "key": "I", "className": "col-i", "millimeters": 12.6, "excelWidth": 7.775 },
+    { "key": "J", "className": "col-j", "millimeters": 28.3, "excelWidth": 18.675 }
+  ],
+  "rowHeightsMm": {
+    "title": 20.0,
+    "header": 7.2,
+    "introPart": 11.3,
+    "tableHeader": 6.6,
+    "item": 8.8,
+    "subtotal": 6.6,
+    "total": 6.6,
+    "amount": 7.2,
+    "notice": 12.0,
+    "termsPart": 7.8,
+    "invoice": 37.0,
+    "bank": 28.6
+  },
+  "colors": {
+    "headerText": "00005E",
+    "totalFill": "00B0F0",
+    "subtotalFill": "E8F2FF",
+    "noticeText": "FF0000",
+    "infoFill": "FFFF00"
+  }
+}

@@ -3,8 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002";
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -126,7 +124,7 @@ function quoteGroups(quote) {
   }];
 }
 
-function renderItemRows(groups) {
+function renderItemRows(groups, minimumItemRows) {
   const rows = [];
   let sequence = 0;
   let itemCount = 0;
@@ -154,7 +152,7 @@ function renderItemRows(groups) {
       </tr>`);
     }
   });
-  for (let index = itemCount; index < 8; index += 1) {
+  for (let index = itemCount; index < minimumItemRows; index += 1) {
     rows.push(`<tr class="item-row">
       <td></td><td colspan="2"></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     </tr>`);
@@ -163,11 +161,36 @@ function renderItemRows(groups) {
   return rows.join("\n");
 }
 
-function renderHtml(quote, cssText) {
+function buildLayoutCss(layout) {
+  const columnRules = layout.columns
+    .map((column) => `.quote-sheet col.${column.className} { width: ${column.millimeters}mm; }`)
+    .join("\n");
+  const heights = layout.rowHeightsMm;
+  return `${columnRules}
+.quote-sheet tr.r1 { height: ${heights.title}mm; }
+.quote-sheet tr.r3, .quote-sheet tr.r4 { height: ${heights.header}mm; }
+.quote-sheet tr.r5, .quote-sheet tr.r6 { height: ${heights.introPart}mm; }
+.quote-sheet tr.r7, .quote-sheet tr.r8 { height: ${heights.tableHeader}mm; }
+.quote-sheet tr.item-row { height: ${heights.item}mm; }
+.quote-sheet tr.group-subtotal { height: ${heights.subtotal}mm; }
+.quote-sheet tr.r17 { height: ${heights.total}mm; }
+.quote-sheet tr.r18 { height: ${heights.amount}mm; }
+.quote-sheet tr.r19 { height: ${heights.notice}mm; }
+.quote-sheet tr.r20, .quote-sheet tr.r21, .quote-sheet tr.r22 { height: ${heights.termsPart}mm; }
+.quote-sheet tr.r23 { height: ${heights.invoice}mm; }
+.quote-sheet tr.r24 { height: ${heights.bank}mm; }
+.head { color: #${layout.colors.headerText}; }
+.group-subtotal td { background: #${layout.colors.subtotalFill}; }
+.total-row td { background: #${layout.colors.totalFill}; }
+.notice { color: #${layout.colors.noticeText}; }
+.yellow { background: #${layout.colors.infoFill}; color: #${layout.colors.noticeText}; }`;
+}
+
+function renderHtml(quote, cssText, layout) {
   const groups = quoteGroups(quote);
   const items = groups.flatMap((group) => group.items);
   const total = totalAmount(items);
-  const noticeText = quote.noticeText || DEFAULT_NOTICE_TEXT;
+  const noticeText = quote.noticeText || layout.defaultNoticeText;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -175,7 +198,7 @@ function renderHtml(quote, cssText) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>报价单</title>
-  <style>${cssText}</style>
+  <style>${cssText}\n${buildLayoutCss(layout)}</style>
 </head>
 <body>
   <main class="page">
@@ -185,7 +208,7 @@ function renderHtml(quote, cssText) {
         <col class="col-f"><col class="col-g"><col class="col-h"><col class="col-i"><col class="col-j">
       </colgroup>
       <tbody>
-        <tr class="r1"><td class="title" colspan="10">浙江西州将军门业有限公司</td></tr>
+        <tr class="r1"><td class="title" colspan="10">${escapeHtml(layout.companyName)}</td></tr>
         <tr class="r3">
           <td class="label" colspan="2">客户名称:</td>
           <td class="value" colspan="4">${escapeHtml(quote.customerName || "")}</td>
@@ -199,7 +222,7 @@ function renderHtml(quote, cssText) {
           <td class="value subject-value" colspan="2">产品报价单</td>
         </tr>
         <tr class="r5">
-          <td class="intro" colspan="10" rowspan="2">承蒙关照，感谢贵方对我方产品感兴趣，根据贵方要求，报上我公司价格，可随时来电来函告知，我们将及时为您提供。</td>
+          <td class="intro" colspan="10" rowspan="2">${escapeHtml(layout.introText)}</td>
         </tr>
         <tr class="r6"></tr>
         <tr class="r7">
@@ -216,7 +239,7 @@ function renderHtml(quote, cssText) {
           <td class="head">宽</td>
           <td class="head">高</td>
         </tr>
-        ${renderItemRows(groups)}
+        ${renderItemRows(groups, layout.minimumItemRows)}
         <tr class="r17 total-row">
           <td class="total-label">合计</td>
           <td colspan="2"></td>
@@ -236,25 +259,15 @@ function renderHtml(quote, cssText) {
           <td class="notice" colspan="10">${escapeHtml(noticeText)}</td>
         </tr>
         <tr class="r20">
-          <td class="yellow terms" colspan="10" rowspan="3">1.付款方式:确定制作，先安排货款50%的定金，款清发货
-2.以上价格不包含运费、安装调试费、测量等费用。
-3.请及时确定签字回传，我司以收到贵方签字回传单以及保证金为准，方可安排生产</td>
+          <td class="yellow terms" colspan="10" rowspan="3">${escapeHtml(layout.termsText)}</td>
         </tr>
         <tr class="r21"></tr>
         <tr class="r22"></tr>
         <tr class="r23">
-          <td class="yellow invoice" colspan="10">开票资料
-公司名称：杭州浙家门业有限公司
-账户号码：3301041060000451769
-开户银行：杭州银行富阳支行
-法定代表人：王家龙基本存款
-账户编号：J3310198780901</td>
+          <td class="yellow invoice" colspan="10">${escapeHtml(layout.invoiceText)}</td>
         </tr>
         <tr class="r24">
-          <td class="yellow bank" colspan="10">汇款请汇入以下账户
-户名：张春兰
-账号：622848 0329 2739 08775
-汇款行农业银行浙江省分行杭州市上泗支行</td>
+          <td class="yellow bank" colspan="10">${escapeHtml(layout.bankText)}</td>
         </tr>
       </tbody>
     </table>
@@ -264,9 +277,10 @@ function renderHtml(quote, cssText) {
 }
 
 export async function buildQuoteHtml(quotePath) {
-  const [quoteText, cssText] = await Promise.all([
+  const [quoteText, cssText, layoutText] = await Promise.all([
     fs.readFile(quotePath, "utf8"),
     fs.readFile(path.join(__dirname, "template.css"), "utf8"),
+    fs.readFile(path.join(__dirname, "..", "layout.json"), "utf8"),
   ]);
-  return renderHtml(JSON.parse(quoteText), cssText);
+  return renderHtml(JSON.parse(quoteText), cssText, JSON.parse(layoutText));
 }

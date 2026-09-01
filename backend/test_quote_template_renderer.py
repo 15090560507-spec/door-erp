@@ -84,6 +84,7 @@ def test_renderer_module_contract():
     check("excel resolves container app root", str(excel_container_root).replace("\\", "/").endswith("/app"), str(excel_container_root))
     check("renderer script exists", os.path.exists(renderer._RENDER_SCRIPT), renderer._RENDER_SCRIPT)
     check("excel template exists", os.path.exists(quote_excel.TEMPLATE_PATH), quote_excel.TEMPLATE_PATH)
+    check("shared quote layout exists", os.path.exists(quote_excel.LAYOUT_PATH), quote_excel.LAYOUT_PATH)
 
     tmpdir = tempfile.mkdtemp(prefix="quote_renderer_contract_")
     original_run = renderer.subprocess.run
@@ -158,6 +159,8 @@ process.stdout.write(html);
         sample_quote()["noticeText"] in html,
         html[html.find("\u672c\u62a5\u4ef7"):html.find("\u672c\u62a5\u4ef7") + 80],
     )
+    check("HTML uses five detail rows by default", html.count('<tr class="item-row">') == 5, str(html.count('<tr class="item-row">')))
+    check("HTML uses shared invoice layout", "开票资料\n公司名称：杭州浙家门业有限公司" in html, html[html.find("开票资料"):html.find("开票资料") + 100])
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -349,14 +352,11 @@ def test_optional_project_and_adaptive_excel_layout():
         sheet = workbook["Sheet1 (2)"] if "Sheet1 (2)" in workbook.sheetnames else workbook.worksheets[0]
         check("long product text wraps", sheet["B9"].alignment.wrap_text is True, str(sheet["B9"].alignment))
         check("long product row grows", float(sheet.row_dimensions[9].height or 0) > 25, str(sheet.row_dimensions[9].height))
-        check(
-            "product column grows within A4-safe limit",
-            31.525 < float(sheet.column_dimensions["C"].width or 0) <= 37.525,
-            str(sheet.column_dimensions["C"].width),
-        )
+        expected_widths = {column["key"]: float(column["excelWidth"]) for column in quote_excel.QUOTE_LAYOUT["columns"]}
+        check("product column follows shared layout", float(sheet.column_dimensions["C"].width or 0) == expected_widths["C"], str(sheet.column_dimensions["C"].width))
         check("area quantity remains a formula", str(sheet["H9"].value).startswith("=IF("), str(sheet["H9"].value))
         check("explicit quantity remains editable", sheet["H10"].value == 17.2344, str(sheet["H10"].value))
-        check("quantity column is wide enough", float(sheet.column_dimensions["H"].width or 0) >= 11.5, str(sheet.column_dimensions["H"].width))
+        check("quantity column follows shared layout", float(sheet.column_dimensions["H"].width or 0) == expected_widths["H"], str(sheet.column_dimensions["H"].width))
         check("quantity format avoids hash overflow", sheet["H10"].number_format == "0.####", sheet["H10"].number_format)
         check("detail amount is formula driven", sheet["J9"].value == '=IF(OR(H9="",I9=""),"",ROUND(H9*I9,0))', str(sheet["J9"].value))
         check("quote total is formula driven", sheet["J14"].value == "=SUM(J9:J13)", str(sheet["J14"].value))
@@ -368,6 +368,13 @@ def test_optional_project_and_adaptive_excel_layout():
         )
         check("workbook calculation mode is automatic", workbook.calculation.calcMode == "auto", str(workbook.calculation.calcMode))
         check("dynamic text uses Song font", sheet["B9"].font.name == "宋体", str(sheet["B9"].font.name))
+        check("Excel title is valid Chinese", sheet["A1"].value == quote_excel.QUOTE_LAYOUT["companyName"], str(sheet["A1"].value))
+        check("Excel header is valid Chinese", sheet["A3"].value == "客户名称:", str(sheet["A3"].value))
+        check("Excel intro follows shared layout", sheet["A5"].value == quote_excel.QUOTE_LAYOUT["introText"], str(sheet["A5"].value))
+        check("Excel terms follow shared layout", sheet["A17"].value == quote_excel.QUOTE_LAYOUT["termsText"], str(sheet["A17"].value))
+        check("Excel invoice follows shared layout", sheet["A20"].value == quote_excel.QUOTE_LAYOUT["invoiceText"], str(sheet["A20"].value))
+        check("Excel bank details follow shared layout", sheet["A21"].value == quote_excel.QUOTE_LAYOUT["bankText"], str(sheet["A21"].value))
+        check("Excel total fill follows shared layout", sheet["A14"].fill.fgColor.rgb.endswith(quote_excel.QUOTE_LAYOUT["colors"]["totalFill"]), str(sheet["A14"].fill.fgColor.rgb))
         normalized_print_area = str(sheet.print_area).replace("$", "")
         check("quote print area follows five-row layout", "A1:J21" in normalized_print_area, str(sheet.print_area))
         check("product name is left-bottom aligned", sheet["B9"].alignment.horizontal == "left" and sheet["B9"].alignment.vertical == "bottom", str(sheet["B9"].alignment))

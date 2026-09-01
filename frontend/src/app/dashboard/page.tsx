@@ -517,6 +517,11 @@ export default function DashboardPage() {
     setModule("图纸信息录入");
   };
 
+  const returnToDrawingList = () => {
+    backToList();
+    setModule("图纸绘制");
+  };
+
   const applyOverviewQuery = (query: string) => {
     setFilterQ(query);
     setSearchQ(query);
@@ -623,12 +628,14 @@ export default function DashboardPage() {
             <h4 className="text-lg font-semibold text-[#1C1C1E] m-0">
               正在处理：{activeTask.customer} - {activeTask.project} <StatusBadge status={activeTask.status} />
             </h4>
-            <button
-              onClick={handleSaveEdit}
-              className="ml-auto px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all"
-            >
-              保存修改
-            </button>
+            {module !== "图纸绘制" && (
+              <button
+                onClick={handleSaveEdit}
+                className="ml-auto px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all"
+              >
+                保存修改
+              </button>
+            )}
           </div>
 
           {/* 客户沟通记录与参考图：任务进入绘制后也允许继续补充/删除 */}
@@ -658,7 +665,9 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-              <p className="text-[12px] text-[#8E8E93]">修改后点击上方“保存修改”。</p>
+              <p className="text-[12px] text-[#8E8E93]">
+                修改后点击{module === "图纸绘制" ? "表单下方" : "上方"}“保存修改”。
+              </p>
             </div>
           </details>
 
@@ -671,6 +680,18 @@ export default function DashboardPage() {
 
           {/* 表单 */}
           <DoorForm data={formData} onChange={setFormData} />
+
+          {module === "图纸绘制" && (
+            <div className="mt-5 flex justify-end border-t border-[#E5E5EA] pt-5">
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="min-w-36 rounded-lg bg-[#007AFF] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0066D6]"
+              >
+                保存修改
+              </button>
+            </div>
+          )}
 
           {/* 模块特有操作 */}
           <div className="mt-6 space-y-4">
@@ -865,6 +886,16 @@ export default function DashboardPage() {
           {/* 录入模块 */}
           {module === "图纸信息录入" && (
             <div>
+              <div className="mb-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={returnToDrawingList}
+                  className="rounded-lg border border-[#C7C7CC] bg-white px-4 py-2 text-sm font-medium text-[#1C1C1E] transition-colors hover:border-[#007AFF] hover:text-[#007AFF]"
+                >
+                  ← 返回图纸绘制列表
+                </button>
+                <h4 className="text-lg font-semibold text-[#1C1C1E]">新建图纸信息</h4>
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <div className="bg-white rounded-xl p-5 border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
                   <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-3 pb-2.5 border-b border-[#F2F2F7]">
@@ -931,85 +962,6 @@ export default function DashboardPage() {
                   onRefresh={handleGeneratePreview}
                 />
               </div>
-
-              <div className="mt-6 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-4">
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <h4 className="text-lg font-semibold text-[#1C1C1E] mr-auto">已录入表单</h4>
-                  <input
-                    type="text"
-                    value={filterQ}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="搜索客户/项目/订单号"
-                    className="px-3 py-1.5 text-sm w-52 rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
-                  />
-                  <input
-                    type="date"
-                    value={filterDate ? filterDate.replace(/\./g, "-") : ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setFilterDate(v ? v.replace(/-/g, ".") : "");
-                    }}
-                    className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
-                  />
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="px-3 py-1.5 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none focus:border-[#007AFF]"
-                  >
-                    <option value="">全部状态</option>
-                    <option value="待绘制">待绘制</option>
-                    <option value="待初审">待初审</option>
-                    <option value="待终审">待终审</option>
-                    <option value="待修改">待修改</option>
-                    <option value="已通过">已通过</option>
-                  </select>
-                  {(filterDate || filterStatus || filterQ) && (
-                    <button
-                      onClick={() => { setFilterDate(""); setFilterStatus(""); clearSearch(); }}
-                      className="px-3 py-1.5 text-xs text-[#007AFF] font-medium hover:underline"
-                    >
-                      清除筛选
-                    </button>
-                  )}
-                </div>
-                {loading ? (
-                  <TaskListSkeleton count={3} />
-                ) : tasks.length === 0 ? (
-                  <div className="text-center py-6 text-[#8E8E93] text-sm">暂无表单</div>
-                ) : (
-                  <>
-                    {tasks.map((t) => (
-                      <TaskCard
-                        key={t.id}
-                        task={t}
-                        onClick={(task) => setActiveTaskId(task.id)}
-                        onDelete={handleDeleteTask}
-                        onToggleQuoteStatus={toggleTaskQuoteStatus}
-                        onToggleConfirmStatus={toggleTaskConfirmStatus}
-                      />
-                    ))}
-                    {total > PAGE_SIZE && (
-                      <div className="flex items-center justify-center gap-2 mt-4 text-sm">
-                        <button
-                          disabled={page === 0}
-                          onClick={() => { setPage(page - 1); fetchTasks(filterDate, filterStatus, page - 1); }}
-                          className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
-                        >
-                          ← 上一页
-                        </button>
-                        <span className="text-[#8E8E93] px-2">{page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
-                        <button
-                          disabled={(page + 1) * PAGE_SIZE >= total}
-                          onClick={() => { setPage(page + 1); fetchTasks(filterDate, filterStatus, page + 1); }}
-                          className="px-4 py-2 rounded-lg border border-[#C7C7CC] disabled:opacity-30 disabled:cursor-not-allowed hover:border-[#007AFF] transition-colors"
-                        >
-                          下一页 →
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
             </div>
           )}
 
@@ -1024,6 +976,17 @@ export default function DashboardPage() {
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                       <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
                       <StatCard label="今日新增" count={overview?.today_created ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
+                      <button
+                        type="button"
+                        onClick={startNewDrawing}
+                        className="flex min-h-20 items-center justify-between rounded-lg border border-[#007AFF] bg-[#007AFF] px-4 py-3 text-left text-white shadow-sm transition-colors hover:bg-[#0066D6]"
+                      >
+                        <span>
+                          <span className="block text-xs text-white/75">新建任务</span>
+                          <span className="mt-1 block text-sm font-semibold">图纸信息录入</span>
+                        </span>
+                        <span aria-hidden="true" className="text-xl">→</span>
+                      </button>
                     </>
                   )}
                   {module === "图纸初审" && (
@@ -1091,15 +1054,6 @@ export default function DashboardPage() {
                   {(filterDate || filterStatus) && " (已筛选)"}
                   {total > 0 && <span className="ml-2 text-sm font-normal text-[#8E8E93]">共 {total} 条</span>}
                 </h4>
-                {module === "图纸绘制" && (
-                  <button
-                    type="button"
-                    onClick={startNewDrawing}
-                    className="ml-auto mr-3 rounded-lg bg-[#007AFF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0066D6]"
-                  >
-                    图纸绘制
-                  </button>
-                )}
                 {total > PAGE_SIZE && (
                   <div className="flex items-center gap-2 text-sm">
                     <button

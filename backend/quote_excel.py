@@ -4,6 +4,7 @@
 使用 LibreOffice + poppler-utils 将 Excel A1:J24 精确渲染为 JPG
 """
 import os
+import json
 import math
 import subprocess
 import shutil
@@ -12,6 +13,7 @@ import unicodedata
 from copy import copy
 from pathlib import Path
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from PIL import Image
 
 
@@ -23,7 +25,16 @@ def _resolve_project_root(module_file: str = __file__) -> Path:
 
 
 TEMPLATE_PATH = str(_resolve_project_root() / "template.xlsx")
-DEFAULT_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u4e0d\u542b\u6728\u7bb1\u3002"
+LAYOUT_PATH = str(_resolve_project_root() / "quote-template-pdf" / "layout.json")
+
+
+def _load_layout() -> dict:
+    with open(LAYOUT_PATH, "r", encoding="utf-8") as layout_file:
+        return json.load(layout_file)
+
+
+QUOTE_LAYOUT = _load_layout()
+DEFAULT_NOTICE_TEXT = QUOTE_LAYOUT["defaultNoticeText"]
 
 
 def _display_width(value) -> int:
@@ -74,6 +85,177 @@ def _fit_row_group(ws, rows: range, value, capacity: float, minimum_total: float
         ws.row_dimensions[row].height = each
 
 
+def _mm_to_points(value: float) -> float:
+    return float(value) * 72 / 25.4
+
+
+def _quote_font(size: float, *, bold: bool = True, color: str = "000000") -> Font:
+    return Font(name="宋体", size=size, bold=bold, color=color, charset=134)
+
+
+def _style_cells(ws, cell_range: str, *, font=None, alignment=None, fill=None, border=None) -> None:
+    for row in ws[cell_range]:
+        for cell in row:
+            if font is not None:
+                cell.font = copy(font)
+            if alignment is not None:
+                cell.alignment = copy(alignment)
+            if fill is not None:
+                cell.fill = copy(fill)
+            if border is not None:
+                cell.border = copy(border)
+
+
+def _apply_shared_quote_layout(
+    ws,
+    quote: dict,
+    display_rows: list[tuple[str, dict, int]],
+    total_row: int,
+) -> None:
+    layout = QUOTE_LAYOUT
+    heights = layout["rowHeightsMm"]
+    colors = layout["colors"]
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    no_fill = PatternFill(fill_type=None)
+    total_fill = PatternFill("solid", fgColor=colors["totalFill"])
+    subtotal_fill = PatternFill("solid", fgColor=colors["subtotalFill"])
+    info_fill = PatternFill("solid", fgColor=colors["infoFill"])
+
+    for column in layout["columns"]:
+        ws.column_dimensions[column["key"]].width = float(column["excelWidth"])
+
+    amount_row = total_row + 1
+    notice_row = total_row + 2
+    terms_row = total_row + 3
+    invoice_row = total_row + 6
+    bank_row = total_row + 7
+
+    # 固定内容全部显式写入，避免旧 template.xlsx 中的乱码或旧排版继续泄漏到导出文件。
+    static_values = {
+        "A1": layout["companyName"],
+        "A3": "客户名称:",
+        "C3": quote.get("customerName", ""),
+        "G3": "日期:",
+        "I3": quote.get("quoteDate", ""),
+        "A4": "项目名称:",
+        "C4": quote.get("projectName", ""),
+        "G4": "主题:",
+        "I4": "产品报价单",
+        "A5": layout["introText"],
+        "A7": "序号",
+        "B7": "品名型号",
+        "D7": "规格",
+        "D8": "宽",
+        "E8": "高",
+        "F7": "开启方向",
+        "G7": "单位",
+        "H7": "数量",
+        "I7": "单价",
+        "J7": "总金额/元",
+        f"A{terms_row}": layout["termsText"],
+        f"A{invoice_row}": layout["invoiceText"],
+        f"A{bank_row}": layout["bankText"],
+    }
+    for coordinate, value in static_values.items():
+        ws[coordinate] = value
+
+    for row in range(1, bank_row + 1):
+        for column in range(1, 11):
+            cell = ws.cell(row, column)
+            cell.border = copy(border)
+            cell.fill = copy(no_fill)
+            _set_song_font(cell)
+
+    title_half = _mm_to_points(heights["title"]) / 2
+    ws.row_dimensions[1].height = title_half
+    ws.row_dimensions[2].height = title_half
+    for row in (3, 4):
+        ws.row_dimensions[row].height = _mm_to_points(heights["header"])
+    for row in (5, 6):
+        ws.row_dimensions[row].height = _mm_to_points(heights["introPart"])
+    for row in (7, 8):
+        ws.row_dimensions[row].height = _mm_to_points(heights["tableHeader"])
+
+    _style_cells(ws, "A1:J2", font=_quote_font(20), alignment=Alignment(horizontal="center", vertical="center"), border=border)
+    _style_cells(ws, "A3:J4", font=_quote_font(16), alignment=Alignment(vertical="center"), border=border)
+    for coordinate in ("I3", "I4"):
+        ws[coordinate].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A5"].font = _quote_font(16)
+    ws["A5"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=2)
+    _style_cells(
+        ws,
+        "A7:J8",
+        font=_quote_font(12, color=colors["headerText"]),
+        alignment=Alignment(horizontal="center", vertical="center", wrap_text=True),
+        border=border,
+    )
+
+    for row_offset, (row_type, _payload, _marker) in enumerate(display_rows):
+        row = 9 + row_offset
+        if row_type == "subtotal":
+            ws.row_dimensions[row].height = _mm_to_points(heights["subtotal"])
+            _style_cells(
+                ws,
+                f"A{row}:J{row}",
+                font=_quote_font(12),
+                alignment=Alignment(horizontal="right", vertical="center"),
+                fill=subtotal_fill,
+                border=border,
+            )
+            ws[f"J{row}"].alignment = Alignment(horizontal="center", vertical="center")
+        else:
+            ws.row_dimensions[row].height = _mm_to_points(heights["item"])
+            _style_cells(
+                ws,
+                f"A{row}:J{row}",
+                font=_quote_font(12),
+                alignment=Alignment(horizontal="center", vertical="bottom"),
+                border=border,
+            )
+            ws[f"B{row}"].alignment = Alignment(horizontal="left", vertical="bottom", wrap_text=True)
+
+    ws.row_dimensions[total_row].height = _mm_to_points(heights["total"])
+    _style_cells(
+        ws,
+        f"A{total_row}:J{total_row}",
+        font=_quote_font(14),
+        alignment=Alignment(horizontal="center", vertical="center"),
+        fill=total_fill,
+        border=border,
+    )
+    ws[f"A{total_row}"].alignment = Alignment(horizontal="left", vertical="center")
+
+    ws.row_dimensions[amount_row].height = _mm_to_points(heights["amount"])
+    _style_cells(ws, f"A{amount_row}:J{amount_row}", font=_quote_font(14), alignment=Alignment(vertical="center"), border=border)
+    ws[f"A{amount_row}"].font = _quote_font(16)
+    ws[f"A{amount_row}"].alignment = Alignment(horizontal="left", vertical="center")
+    ws[f"F{amount_row}"].alignment = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[notice_row].height = _mm_to_points(heights["notice"])
+    _style_cells(
+        ws,
+        f"A{notice_row}:J{notice_row}",
+        font=_quote_font(14, color=colors["noticeText"]),
+        alignment=Alignment(horizontal="center", vertical="center", wrap_text=True),
+        border=border,
+    )
+
+    for row in range(terms_row, terms_row + 3):
+        ws.row_dimensions[row].height = _mm_to_points(heights["termsPart"])
+    for row, height_key in ((invoice_row, "invoice"), (bank_row, "bank")):
+        ws.row_dimensions[row].height = _mm_to_points(heights[height_key])
+    for start_row, end_row in ((terms_row, terms_row + 2), (invoice_row, invoice_row), (bank_row, bank_row)):
+        _style_cells(
+            ws,
+            f"A{start_row}:J{end_row}",
+            font=_quote_font(14, color=colors["noticeText"]),
+            alignment=Alignment(horizontal="left", vertical="center", wrap_text=True),
+            fill=info_fill,
+            border=border,
+        )
+
+
 def _apply_dynamic_layout(
     ws,
     quote: dict,
@@ -81,17 +263,11 @@ def _apply_dynamic_layout(
     item_rows: list[int],
     total_row: int,
 ) -> None:
-    product_width = max((_display_width(item.get("productName") or item.get("product_name") or "") for item in items), default=0)
-    current_product_capacity = _column_width(ws, "B") + _column_width(ws, "C")
-    if product_width > current_product_capacity:
-        target_capacity = min(current_product_capacity + 6, max(current_product_capacity, product_width))
-        ws.column_dimensions["C"].width = _column_width(ws, "C") + (target_capacity - current_product_capacity)
-
     product_capacity = _merged_text_capacity(ws, "BC")
     for row in item_rows:
         cell = ws[f"B{row}"]
         _enable_wrap(cell)
-        _fit_row(ws, row, cell.value, product_capacity, 25, line_height=22)
+        _fit_row(ws, row, cell.value, product_capacity, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["item"]), line_height=22)
         alignment = copy(cell.alignment)
         alignment.horizontal = "left"
         alignment.vertical = "bottom"
@@ -103,8 +279,6 @@ def _apply_dynamic_layout(
             alignment.vertical = "bottom"
             item_cell.alignment = alignment
 
-    ws.column_dimensions["H"].width = max(_column_width(ws, "H"), 11.5)
-    ws.column_dimensions["I"].width = max(_column_width(ws, "I"), 9.5)
     for row in item_rows:
         ws[f"H{row}"].number_format = "0.####"
         ws[f"J{row}"].number_format = "0"
@@ -113,7 +287,7 @@ def _apply_dynamic_layout(
     customer_capacity = sum(_column_width(ws, column) for column in ("C", "D", "E", "F"))
     for row, value in ((3, quote.get("customerName", "")), (4, quote.get("projectName", ""))):
         _enable_wrap(ws[f"C{row}"])
-        _fit_row(ws, row, value, customer_capacity, 20.25, line_height=18)
+        _fit_row(ws, row, value, customer_capacity, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["header"]), line_height=18)
 
     full_capacity = sum(_column_width(ws, column) for column in "ABCDEFGHIJ")
     notice_row = total_row + 2
@@ -121,17 +295,20 @@ def _apply_dynamic_layout(
     invoice_row = total_row + 6
     bank_row = total_row + 7
     _enable_wrap(ws[f"A{notice_row}"])
-    _fit_row(ws, notice_row, ws[f"A{notice_row}"].value, full_capacity, 34, line_height=18)
+    _fit_row(ws, notice_row, ws[f"A{notice_row}"].value, full_capacity, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["notice"]), line_height=18)
     _enable_wrap(ws[f"A{terms_row}"])
-    _fit_row_group(ws, range(terms_row, terms_row + 3), ws[f"A{terms_row}"].value, full_capacity, 66, line_height=19)
-    for row, minimum in ((invoice_row, 105), (bank_row, 81)):
+    _fit_row_group(ws, range(terms_row, terms_row + 3), ws[f"A{terms_row}"].value, full_capacity, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["termsPart"] * 3), line_height=19)
+    for row, minimum in (
+        (invoice_row, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["invoice"])),
+        (bank_row, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["bank"])),
+    ):
         _enable_wrap(ws[f"A{row}"])
         _fit_row(ws, row, ws[f"A{row}"].value, full_capacity, minimum, line_height=19)
 
     amount_row = total_row + 1
     _enable_wrap(ws[f"F{amount_row}"])
     amount_capacity = sum(_column_width(ws, column) for column in "FGHIJ")
-    _fit_row(ws, amount_row, ws[f"F{amount_row}"].value, amount_capacity, 20.25, line_height=18)
+    _fit_row(ws, amount_row, ws[f"F{amount_row}"].value, amount_capacity, _mm_to_points(QUOTE_LAYOUT["rowHeightsMm"]["amount"]), line_height=18)
 
     for row in ws.iter_rows(min_row=1, max_row=bank_row, min_col=1, max_col=10):
         for cell in row:
@@ -249,11 +426,6 @@ def generate_excel(quote: dict, output_path: str):
     wb = load_workbook(TEMPLATE_PATH)
     ws = wb["Sheet1 (2)"] if "Sheet1 (2)" in wb.sheetnames else wb.worksheets[0]
 
-    # Header
-    ws["C3"] = quote.get("customerName", "")
-    ws["C4"] = quote.get("projectName", "")
-    ws["I3"] = quote.get("quoteDate", "")
-
     groups = _quote_groups(quote)
     display_rows: list[tuple[str, dict, int]] = []
     items: list[dict] = []
@@ -264,7 +436,7 @@ def generate_excel(quote: dict, output_path: str):
             items.append(item)
         if len(groups) > 1:
             display_rows.append(("subtotal", group, group_index))
-    minimum_display_rows = 5
+    minimum_display_rows = int(QUOTE_LAYOUT["minimumItemRows"])
     template_item_rows = 8
     while len(display_rows) < minimum_display_rows:
         display_rows.append(("item", {}, -1))
@@ -339,7 +511,11 @@ def generate_excel(quote: dict, output_path: str):
     ws.merge_cells(start_row=terms_row, start_column=1, end_row=terms_row + 2, end_column=10)
     ws.merge_cells(start_row=invoice_row, start_column=1, end_row=invoice_row, end_column=10)
     ws.merge_cells(start_row=bank_row, start_column=1, end_row=bank_row, end_column=10)
+    ws[f"A{terms_row}"] = QUOTE_LAYOUT["termsText"]
+    ws[f"A{invoice_row}"] = QUOTE_LAYOUT["invoiceText"]
+    ws[f"A{bank_row}"] = QUOTE_LAYOUT["bankText"]
 
+    _apply_shared_quote_layout(ws, quote, display_rows, total_row)
     _apply_dynamic_layout(ws, quote, items, item_rows, total_row)
 
     ws.print_area = f"A1:J{bank_row}"

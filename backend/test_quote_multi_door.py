@@ -229,7 +229,14 @@ process.stdout.write(html);
             return "ok", io.StringIO("SECTION\nENDSEC\nEOF")
 
         main._cad_cache.clear()
-        request = CADRequest(ddh="CACHE-TEST")
+        request = CADRequest(
+            ddh="CACHE-TEST",
+            ys="测试色",
+            mshd=80,
+            sel_kx="左开",
+            sel_nk="外开",
+            st_val="标准锁体",
+        )
         with patch.object(main, "build_cad_params", fake_build), patch.object(
             main, "run_integrated_system", fake_generate
         ):
