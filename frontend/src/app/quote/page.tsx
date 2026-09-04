@@ -20,6 +20,7 @@ import AiConfigModal from "@/components/AiConfigModal";
 import AiAnalysisPanel from "@/components/AiAnalysisPanel";
 import QuoteHistoryModal from "@/components/QuoteHistoryModal";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
+import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateYmd } from "@/lib/dateTime";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 
@@ -277,6 +278,7 @@ export default function QuotePage() {
   const [aiConfigOpen, setAiConfigOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [feedback, setFeedback] = useState<QuoteFeedback | null>(null);
+  const [saveConfirmation, setSaveConfirmation] = useState<{ saveAsNew: boolean; message: string } | null>(null);
 
   // Status
   const [status, setStatus] = useState("");
@@ -407,12 +409,33 @@ export default function QuotePage() {
     }
   }
 
-  async function handleSave() {
-    await saveCurrentQuote(false);
+  function requestQuoteSave(saveAsNew: boolean) {
+    const form = collectForm();
+    if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
+    if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
+    if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
+
+    const dimensionLines = form.doorGroups.map((group, index) => {
+      const dimensionItem = group.items.find((item) => num(item.width) > 0 || num(item.height) > 0);
+      const label = group.groupName || `第${index + 1}樘门`;
+      const width = num(dimensionItem?.width);
+      const height = num(dimensionItem?.height);
+      return width > 0 && height > 0
+        ? `${label}：${width} × ${height} mm`
+        : `${label}：未填写宽、高尺寸`;
+    });
+    setSaveConfirmation({
+      saveAsNew,
+      message: `请确认以下宽、高尺寸是否正确：\n${dimensionLines.join("\n")}`,
+    });
   }
 
-  async function handleSaveAsNew() {
-    await saveCurrentQuote(true);
+  function handleSave() {
+    requestQuoteSave(false);
+  }
+
+  function handleSaveAsNew() {
+    requestQuoteSave(true);
   }
 
   function savedQuoteIdForExport(action: string): number | null {
@@ -956,6 +979,20 @@ export default function QuotePage() {
       </div>
 
       {/* Modals */}
+      {saveConfirmation && (
+        <NoticeDialog
+          title="请确认宽、高尺寸"
+          message={saveConfirmation.message}
+          confirmLabel="确认保存"
+          cancelLabel="返回检查"
+          onCancel={() => setSaveConfirmation(null)}
+          onConfirm={() => {
+            const saveAsNew = saveConfirmation.saveAsNew;
+            setSaveConfirmation(null);
+            void saveCurrentQuote(saveAsNew);
+          }}
+        />
+      )}
       {feedback && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => setFeedback(null)}>
           <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>

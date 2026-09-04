@@ -19,6 +19,7 @@ import { TaskListSkeleton } from "@/components/Skeleton";
 import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
 import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
+import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateCompact } from "@/lib/dateTime";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
@@ -60,6 +61,7 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [cadError, setCadError] = useState<{ title: string; message: string } | null>(null);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterQ, setFilterQ] = useState("");
@@ -364,7 +366,7 @@ export default function DashboardPage() {
       await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
       const updated = await getTask(activeTaskId);
       setActiveTask(updated);
-      flash("修改已保存", "success");
+      setSaveSuccessOpen(true);
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
       fetchOverview();
@@ -531,6 +533,14 @@ export default function DashboardPage() {
   // ===================== 通用背景 =====================
   return (
     <div>
+      {saveSuccessOpen && (
+        <NoticeDialog
+          title="保存成功"
+          message="修改已保存"
+          onConfirm={() => setSaveSuccessOpen(false)}
+        />
+      )}
+
       {/* 居中 Toast 弹窗 — 点击任意处关闭 */}
       {toast && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-in fade-in" onClick={() => setToast(null)}>

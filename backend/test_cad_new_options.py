@@ -1222,7 +1222,7 @@ def test_outer_portal_draws_separate_rectangles_and_header_dimension():
 
 
 def test_middle_door_dimension_text_and_transom_light_height():
-    middle_req = CADRequest(door_type="\u6298\u53e0\u56db\u5f00\u95e8")
+    middle_req = CADRequest(door_type="\u6298\u53e0\u56db\u5f00\u95e8", sel_nk="内开")
     middle_info, middle_checks, middle_draw_params = build_cad_params(middle_req)
     middle_msg, middle_buffer = run_integrated_system(middle_info, middle_checks, middle_draw_params)
     check("middle door dimension CAD generation returns buffer", middle_buffer is not None, middle_msg)
@@ -1235,7 +1235,7 @@ def test_middle_door_dimension_text_and_transom_light_height():
             middle_texts,
         )
 
-    fixed_req = CADRequest(door_type="\u4e24\u5b9a\u4e24\u5f00")
+    fixed_req = CADRequest(door_type="\u4e24\u5b9a\u4e24\u5f00", sel_nk="内开")
     fixed_info, fixed_checks, fixed_draw_params = build_cad_params(fixed_req)
     fixed_msg, fixed_buffer = run_integrated_system(fixed_info, fixed_checks, fixed_draw_params)
     check("fixed-and-open door middle dimension CAD generation returns buffer", fixed_buffer is not None, fixed_msg)
@@ -1356,6 +1356,7 @@ def test_light_width_uses_pillar_inner_edges():
         has_pillar=True,
         pillar_width_str="55/85",
         mark_light_size=True,
+        sel_nk="内开",
     )
 
     info, checks, draw_params = build_cad_params(req)
@@ -1402,6 +1403,7 @@ def test_light_width_uses_pillar_inner_edges():
         has_pillar=True,
         pillar_width_str="55/85",
         mark_light_size=True,
+        sel_nk="内开",
     )
     four_info, four_checks, four_draw_params = build_cad_params(four_req)
     four_msg, four_buffer = run_integrated_system(four_info, four_checks, four_draw_params)
@@ -1433,6 +1435,7 @@ def test_middle_clear_width_input_and_new_hidden_hinges():
         middle_gap=4,
         mid_clear_width=1000,
         has_pillar=False,
+        sel_nk="内开",
     )
     check(
         "no-pillar middle clear width resolves leaf width",
@@ -1497,6 +1500,48 @@ def test_middle_clear_width_input_and_new_hidden_hinges():
     for hinge_name in ("半钢暗合页", "全钢暗合页"):
         check(f"{hinge_name} is a default hinge option", hinge_name in hinge_options, hinge_options)
         check(f"{hinge_name} maps to hidden hinge block", CONFIG.HINGE_TYPES.get(hinge_name) == "暗合页块", CONFIG.HINGE_TYPES)
+
+
+def test_middle_clear_width_dimension_follows_opening_side():
+    def dimension_centers(door_type: str, opening: str):
+        req = CADRequest(
+            door_type=door_type,
+            dw=2400,
+            mid_clear_width=900,
+            has_pillar=False,
+            sel_nk=opening,
+        )
+        info, checks, params = build_cad_params(req)
+        message, buffer = run_integrated_system(info, checks, params)
+        check(f"{door_type} {opening} CAD generation returns buffer", buffer is not None, message)
+        if not buffer:
+            return []
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        return sorted(
+            round((float(entity.dxf.defpoint2.x) + float(entity.dxf.defpoint3.x)) / 2, 2)
+            for entity in doc.modelspace().query("DIMENSION")
+            if entity.dxf.text == "中门内空宽 <>" and abs(float(entity.dxf.angle)) < 0.01
+        )
+
+    for door_type in ("四开门", "两定两开"):
+        inner_centers = dimension_centers(door_type, "内开")
+        outer_centers = dimension_centers(door_type, "外开")
+        both_centers = dimension_centers(door_type, "内外开")
+        check(f"{door_type} inner-opening dimension is front only", len(inner_centers) == 1, str(inner_centers))
+        check(f"{door_type} outer-opening dimension is back only", len(outer_centers) == 1, str(outer_centers))
+        check(
+            f"{door_type} back-view dimension is to the right of front view",
+            len(inner_centers) == 1 and len(outer_centers) == 1 and inner_centers[0] < outer_centers[0],
+            str((inner_centers, outer_centers)),
+        )
+        check(
+            f"{door_type} dual-opening dimensions appear on both views",
+            len(both_centers) == 2
+            and len(inner_centers) == 1
+            and len(outer_centers) == 1
+            and both_centers == [inner_centers[0], outer_centers[0]],
+            str((inner_centers, outer_centers, both_centers)),
+        )
 
 
 def test_new_defaults_fingerprint_and_transom_shape():
@@ -2461,6 +2506,7 @@ if __name__ == "__main__":
     test_transom_pillar_lintel_label_and_view_gap()
     test_light_width_uses_pillar_inner_edges()
     test_middle_clear_width_input_and_new_hidden_hinges()
+    test_middle_clear_width_dimension_follows_opening_side()
     test_new_defaults_fingerprint_and_transom_shape()
     test_integrated_door_sections_and_dimensions()
     test_cad_preview_svg_renders()

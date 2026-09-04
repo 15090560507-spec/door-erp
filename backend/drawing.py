@@ -551,6 +551,12 @@ def draw_door_in_frame(
     inner_outer_value = str(p.get('nk') or '')
     door_open_dir = '左开' if '左开' in door_open_value else '右开'
     nk_choice = '内开' if '内开' in inner_outer_value else '外开'
+    inner_open_selected = inner_outer_value == '内外开' or '内开' in inner_outer_value
+    outer_open_selected = inner_outer_value == '内外开' or '外开' in inner_outer_value
+    should_draw_mid_clear_dimension = (
+        (inner_open_selected and not is_back)
+        or (outer_open_selected and is_back)
+    )
 
     left_gap, right_gap = p.get('left_right_gap', (0, 0))
     top_gap, bottom_gap = p.get('top_bottom_gap', (0, 0))
@@ -1223,7 +1229,7 @@ def draw_door_in_frame(
         if has_pillar and current_pillar_width > 0:
             pillar_inner_light_edges = (lpx2_draw, rpx1_draw)
 
-        if not is_back:
+        if should_draw_mid_clear_dimension:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
             mid_dim_x1, mid_dim_x2 = pillar_inner_light_edges or (lmx1, rmx2)
             drawer.draw_dim(off((mid_dim_x1, mid_dim_y)), off((mid_dim_x2, mid_dim_y)), off(((mid_dim_x1 + mid_dim_x2) / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
@@ -1288,7 +1294,7 @@ def draw_door_in_frame(
         panel_positions.extend([(lx1, lx2), (lmx1, lmx2), (rmx1, rmx2), (rx1, rx2)])
         if has_pillar and current_pillar_width > 0:
             pillar_inner_light_edges = (lpx2_draw, rpx1_draw)
-        if not is_back:
+        if should_draw_mid_clear_dimension:
             mid_dim_y = panel_y_bot - 150 - DIMENSION_SPACING_DELTA
             mid_dim_x1, mid_dim_x2 = pillar_inner_light_edges or (lmx1, rmx2)
             drawer.draw_dim(off((mid_dim_x1, mid_dim_y)), off((mid_dim_x2, mid_dim_y)), off(((mid_dim_x1 + mid_dim_x2) / 2, mid_dim_y - 50)), 0, 'YQ_DIM', "中门内空宽 <>")
