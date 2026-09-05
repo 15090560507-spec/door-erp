@@ -258,17 +258,6 @@ export default function DashboardPage() {
     }
   };
 
-  const toggleTaskConfirmStatus = async (task: TaskItem) => {
-    const next = (task.confirm_status || "未确认") === "已确认" ? "未确认" : "已确认";
-    try {
-      const updated = await updateTask(task.id, { confirm_status: next });
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
-      flash(`已切换为${next}`, "success");
-    } catch {
-      flash("确认状态更新失败", "error");
-    }
-  };
-
   const validateDoorForm = (data: DoorFormData): string | null => {
     const missing: string[] = [];
     const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚", "其他"].includes(data.product_name);
@@ -1103,7 +1092,6 @@ export default function DashboardPage() {
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
                       onCopy={module === "图纸绘制" ? handleCopyTask : undefined}
                       onToggleQuoteStatus={toggleTaskQuoteStatus}
-                      onToggleConfirmStatus={toggleTaskConfirmStatus}
                     />
                   ))}
                   {total > PAGE_SIZE && (

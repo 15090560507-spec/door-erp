@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import threading
+import copy
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -235,6 +236,30 @@ class QuoteDatabaseManager:
                         }]
                     return result
             return None
+
+    def find_groups_by_task(self, task_id: str) -> List[Dict]:
+        """Return quote groups linked to one drawing task, newest quote first."""
+        task_key = str(task_id or "").strip()
+        if not task_key:
+            return []
+        with self._lock:
+            quotes = sorted(self._load_unlocked(), key=lambda item: item.get("id", 0), reverse=True)
+            matches: List[Dict] = []
+            for quote in quotes:
+                groups = quote.get("doorGroups") or []
+                for group_index, group in enumerate(groups):
+                    if str(group.get("taskId") or "").strip() != task_key:
+                        continue
+                    matches.append({
+                        "quote_id": quote.get("id"),
+                        "quote_date": quote.get("quoteDate", ""),
+                        "customer_name": quote.get("customerName", ""),
+                        "project_name": quote.get("projectName", ""),
+                        "updated_at": quote.get("updatedAt", ""),
+                        "group_index": group_index,
+                        "group": copy.deepcopy(group),
+                    })
+            return matches
 
     def create(self, quote_data: Dict) -> Dict:
         """创建报价单，自动验证、分配 id、设置 createdAt"""

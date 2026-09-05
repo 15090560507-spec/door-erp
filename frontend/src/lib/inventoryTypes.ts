@@ -31,6 +31,16 @@ export interface InventoryMaterial {
   default_location_name?: string;
   default_supplier: string;
   minimum_stock: number;
+  brand: string;
+  purchase_unit: string;
+  purchase_conversion: number;
+  standard_sale_price: number;
+  reference_purchase_price: number;
+  safety_stock: number;
+  can_sell: number;
+  can_purchase: number;
+  manage_stock: number;
+  can_subcontract: number;
   is_active: number;
   remark: string;
 }
@@ -88,6 +98,78 @@ export interface MaterialPayload {
   default_location_id?: number | null;
   default_supplier: string;
   minimum_stock: number;
+  brand?: string;
+  purchase_unit?: string;
+  purchase_conversion?: number;
+  standard_sale_price?: number;
+  reference_purchase_price?: number;
+  safety_stock?: number;
+  can_sell?: boolean;
+  can_purchase?: boolean;
+  manage_stock?: boolean;
+  can_subcontract?: boolean;
+  remark: string;
+  is_active?: boolean;
+}
+
+export interface InventorySupplier {
+  id: number;
+  code: string;
+  name: string;
+  short_name: string;
+  contact_name: string;
+  phone: string;
+  address: string;
+  invoice_title: string;
+  tax_no: string;
+  default_tax_rate: number;
+  settlement_method: string;
+  payment_days: number;
+  default_lead_days: number;
+  supply_category: string;
+  is_active: number;
+  remark: string;
+  item_count: number;
+}
+
+export type SupplierPayload = Omit<InventorySupplier, "id" | "item_count" | "is_active"> & { is_active?: boolean };
+
+export interface InventorySupplierItem {
+  id: number;
+  supplier_id: number;
+  material_id: number;
+  supplier_code: string;
+  supplier_name: string;
+  material_code: string;
+  material_name: string;
+  material_specification: string;
+  supplier_item_code: string;
+  supplier_item_name: string;
+  purchase_specification: string;
+  purchase_unit: string;
+  conversion_rate: number;
+  tax_inclusive_price: number;
+  tax_rate: number;
+  minimum_order_quantity: number;
+  lead_days: number;
+  is_preferred: number;
+  is_active: number;
+  remark: string;
+}
+
+export interface SupplierItemPayload {
+  supplier_id: number;
+  material_id: number;
+  supplier_item_code: string;
+  supplier_item_name: string;
+  purchase_specification: string;
+  purchase_unit: string;
+  conversion_rate: number;
+  tax_inclusive_price: number;
+  tax_rate: number;
+  minimum_order_quantity: number;
+  lead_days: number;
+  is_preferred: boolean;
   remark: string;
   is_active?: boolean;
 }

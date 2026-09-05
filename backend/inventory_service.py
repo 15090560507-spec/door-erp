@@ -28,6 +28,16 @@ class InventoryService:
         default_location_id: Optional[int] = None,
         default_supplier: str = "",
         minimum_stock: float = 0,
+        brand: str = "",
+        purchase_unit: str = "",
+        purchase_conversion: float = 1,
+        standard_sale_price: float = 0,
+        reference_purchase_price: float = 0,
+        safety_stock: float = 0,
+        can_sell: bool = False,
+        can_purchase: bool = True,
+        manage_stock: bool = True,
+        can_subcontract: bool = False,
         remark: str = "",
     ) -> Dict[str, Any]:
         code = code.strip()
@@ -52,8 +62,11 @@ class InventoryService:
                 """INSERT INTO inventory_materials(
                        code, name, category, specification, unit, material_type,
                        default_warehouse_id, default_location_id, default_supplier,
-                       minimum_stock, remark, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       minimum_stock, brand, purchase_unit, purchase_conversion,
+                       standard_sale_price, reference_purchase_price, safety_stock,
+                       can_sell, can_purchase, manage_stock, can_subcontract,
+                       remark, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     code,
                     name,
@@ -65,6 +78,16 @@ class InventoryService:
                     default_location_id,
                     default_supplier.strip(),
                     minimum_stock,
+                    brand.strip(),
+                    purchase_unit.strip(),
+                    purchase_conversion,
+                    standard_sale_price,
+                    reference_purchase_price,
+                    safety_stock,
+                    int(can_sell),
+                    int(can_purchase),
+                    int(manage_stock),
+                    int(can_subcontract),
                     remark,
                     now,
                     now,
@@ -98,7 +121,10 @@ class InventoryService:
                 """UPDATE inventory_materials SET
                        code=?, name=?, category=?, specification=?, unit=?, material_type=?,
                        default_warehouse_id=?, default_location_id=?, default_supplier=?,
-                       minimum_stock=?, is_active=?, remark=?, updated_at=?
+                       minimum_stock=?, brand=?, purchase_unit=?, purchase_conversion=?,
+                       standard_sale_price=?, reference_purchase_price=?, safety_stock=?,
+                       can_sell=?, can_purchase=?, manage_stock=?, can_subcontract=?,
+                       is_active=?, remark=?, updated_at=?
                    WHERE id=?""",
                 (
                     code,
@@ -111,6 +137,16 @@ class InventoryService:
                     payload.get("default_location_id"),
                     str(payload.get("default_supplier") or "").strip(),
                     minimum_stock,
+                    str(payload.get("brand") or "").strip(),
+                    str(payload.get("purchase_unit") or "").strip(),
+                    float(payload.get("purchase_conversion") or 1),
+                    float(payload.get("standard_sale_price") or 0),
+                    float(payload.get("reference_purchase_price") or 0),
+                    float(payload.get("safety_stock") or 0),
+                    int(bool(payload.get("can_sell", False))),
+                    int(bool(payload.get("can_purchase", True))),
+                    int(bool(payload.get("manage_stock", True))),
+                    int(bool(payload.get("can_subcontract", False))),
                     int(bool(payload.get("is_active", True))),
                     str(payload.get("remark") or ""),
                     now,
@@ -152,6 +188,154 @@ class InventoryService:
                 ORDER BY m.category, m.code, m.id""",
             params,
         )
+
+    def list_suppliers(self, q: str = "", active_only: bool = True) -> List[Dict[str, Any]]:
+        where: List[str] = []
+        params: List[Any] = []
+        if active_only:
+            where.append("s.is_active=1")
+        if q:
+            keyword = f"%{q.strip()}%"
+            where.append("(s.code LIKE ? OR s.name LIKE ? OR s.short_name LIKE ? OR s.phone LIKE ?)")
+            params.extend([keyword, keyword, keyword, keyword])
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        return self.db.fetch_all(
+            f"""SELECT s.*, COUNT(si.id) AS item_count
+                FROM inventory_suppliers s
+                LEFT JOIN inventory_supplier_items si ON si.supplier_id=s.id AND si.is_active=1
+                {clause}
+                GROUP BY s.id ORDER BY s.is_active DESC, s.name, s.id""",
+            params,
+        )
+
+    def create_supplier(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        code = str(payload.get("code") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        if not code or not name:
+            raise ValueError("供应商编码和名称不能为空")
+        now = inventory_now()
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                """INSERT INTO inventory_suppliers(
+                       code, name, short_name, contact_name, phone, address, invoice_title,
+                       tax_no, default_tax_rate, settlement_method, payment_days,
+                       default_lead_days, supply_category, remark, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    code, name, str(payload.get("short_name") or "").strip(),
+                    str(payload.get("contact_name") or "").strip(), str(payload.get("phone") or "").strip(),
+                    str(payload.get("address") or "").strip(), str(payload.get("invoice_title") or "").strip(),
+                    str(payload.get("tax_no") or "").strip(), float(payload.get("default_tax_rate") or 0),
+                    str(payload.get("settlement_method") or "").strip(), int(payload.get("payment_days") or 0),
+                    int(payload.get("default_lead_days") or 0), str(payload.get("supply_category") or "").strip(),
+                    str(payload.get("remark") or ""), now, now,
+                ),
+            )
+            return dict(conn.execute("SELECT * FROM inventory_suppliers WHERE id=?", (cursor.lastrowid,)).fetchone())
+
+    def update_supplier(self, supplier_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        code = str(payload.get("code") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        if not code or not name:
+            raise ValueError("供应商编码和名称不能为空")
+        now = inventory_now()
+        with self.db.transaction() as conn:
+            if not conn.execute("SELECT id FROM inventory_suppliers WHERE id=?", (supplier_id,)).fetchone():
+                raise LookupError("供应商不存在")
+            conn.execute(
+                """UPDATE inventory_suppliers SET code=?, name=?, short_name=?, contact_name=?,
+                       phone=?, address=?, invoice_title=?, tax_no=?, default_tax_rate=?,
+                       settlement_method=?, payment_days=?, default_lead_days=?, supply_category=?,
+                       is_active=?, remark=?, updated_at=? WHERE id=?""",
+                (
+                    code, name, str(payload.get("short_name") or "").strip(),
+                    str(payload.get("contact_name") or "").strip(), str(payload.get("phone") or "").strip(),
+                    str(payload.get("address") or "").strip(), str(payload.get("invoice_title") or "").strip(),
+                    str(payload.get("tax_no") or "").strip(), float(payload.get("default_tax_rate") or 0),
+                    str(payload.get("settlement_method") or "").strip(), int(payload.get("payment_days") or 0),
+                    int(payload.get("default_lead_days") or 0), str(payload.get("supply_category") or "").strip(),
+                    int(bool(payload.get("is_active", True))), str(payload.get("remark") or ""), now, supplier_id,
+                ),
+            )
+            return dict(conn.execute("SELECT * FROM inventory_suppliers WHERE id=?", (supplier_id,)).fetchone())
+
+    def list_supplier_items(self, supplier_id: Optional[int] = None, material_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        where = ["si.is_active=1"]
+        params: List[Any] = []
+        if supplier_id is not None:
+            where.append("si.supplier_id=?")
+            params.append(supplier_id)
+        if material_id is not None:
+            where.append("si.material_id=?")
+            params.append(material_id)
+        return self.db.fetch_all(
+            f"""SELECT si.*, s.code AS supplier_code, s.name AS supplier_name,
+                       m.code AS material_code, m.name AS material_name, m.specification AS material_specification
+                FROM inventory_supplier_items si
+                JOIN inventory_suppliers s ON s.id=si.supplier_id
+                JOIN inventory_materials m ON m.id=si.material_id
+                WHERE {' AND '.join(where)}
+                ORDER BY si.is_preferred DESC, s.name, m.name""",
+            params,
+        )
+
+    def save_supplier_item(self, payload: Dict[str, Any], operator_uid: str, supplier_item_id: Optional[int] = None) -> Dict[str, Any]:
+        supplier_id = int(payload.get("supplier_id") or 0)
+        material_id = int(payload.get("material_id") or 0)
+        if not supplier_id or not material_id:
+            raise ValueError("供应商和商品不能为空")
+        now = inventory_now()
+        with self.db.transaction() as conn:
+            if not conn.execute("SELECT id FROM inventory_suppliers WHERE id=? AND is_active=1", (supplier_id,)).fetchone():
+                raise LookupError("供应商不存在或已停用")
+            material = conn.execute("SELECT * FROM inventory_materials WHERE id=? AND is_active=1", (material_id,)).fetchone()
+            if not material:
+                raise LookupError("物料或商品不存在或已停用")
+            if bool(payload.get("is_preferred")):
+                conn.execute("UPDATE inventory_supplier_items SET is_preferred=0, updated_at=? WHERE material_id=?", (now, material_id))
+            values = (
+                supplier_id, material_id, str(payload.get("supplier_item_code") or "").strip(),
+                str(payload.get("supplier_item_name") or "").strip(), str(payload.get("purchase_specification") or "").strip(),
+                str(payload.get("purchase_unit") or material["unit"]).strip(), float(payload.get("conversion_rate") or 1),
+                float(payload.get("tax_inclusive_price") or 0), float(payload.get("tax_rate") or 0),
+                float(payload.get("minimum_order_quantity") or 0), int(payload.get("lead_days") or 0),
+                int(bool(payload.get("is_preferred"))), int(bool(payload.get("is_active", True))),
+                str(payload.get("remark") or ""), now,
+            )
+            old_price = None
+            if supplier_item_id is None:
+                cursor = conn.execute(
+                    """INSERT INTO inventory_supplier_items(
+                           supplier_id, material_id, supplier_item_code, supplier_item_name,
+                           purchase_specification, purchase_unit, conversion_rate, tax_inclusive_price,
+                           tax_rate, minimum_order_quantity, lead_days, is_preferred, is_active,
+                           remark, created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (*values, now),
+                )
+                supplier_item_id = int(cursor.lastrowid)
+            else:
+                current = conn.execute("SELECT * FROM inventory_supplier_items WHERE id=?", (supplier_item_id,)).fetchone()
+                if not current:
+                    raise LookupError("供应商供货关系不存在")
+                old_price = float(current["tax_inclusive_price"] or 0)
+                conn.execute(
+                    """UPDATE inventory_supplier_items SET supplier_id=?, material_id=?, supplier_item_code=?,
+                           supplier_item_name=?, purchase_specification=?, purchase_unit=?, conversion_rate=?,
+                           tax_inclusive_price=?, tax_rate=?, minimum_order_quantity=?, lead_days=?,
+                           is_preferred=?, is_active=?, remark=?, updated_at=? WHERE id=?""",
+                    (*values, supplier_item_id),
+                )
+            new_price = float(payload.get("tax_inclusive_price") or 0)
+            if old_price is None or abs(old_price - new_price) > EPSILON:
+                conn.execute(
+                    """INSERT INTO inventory_supplier_item_prices(
+                           supplier_item_id, tax_inclusive_price, tax_rate, effective_date, operator_uid, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (supplier_item_id, new_price, float(payload.get("tax_rate") or 0), now[:10], operator_uid, now),
+                )
+            row = conn.execute("SELECT * FROM inventory_supplier_items WHERE id=?", (supplier_item_id,)).fetchone()
+            return dict(row)
 
     def create_warehouse(self, code: str, name: str, warehouse_type: str = "", remark: str = "") -> Dict[str, Any]:
         code = code.strip()

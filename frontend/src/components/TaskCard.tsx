@@ -9,7 +9,6 @@ interface Props {
   onDelete?: (task: TaskItem) => void;
   onCopy?: (task: TaskItem) => void;
   onToggleQuoteStatus?: (task: TaskItem) => void;
-  onToggleConfirmStatus?: (task: TaskItem) => void;
 }
 
 export default function TaskCard({
@@ -18,13 +17,10 @@ export default function TaskCard({
   onDelete,
   onCopy,
   onToggleQuoteStatus,
-  onToggleConfirmStatus,
 }: Props) {
   const quoteStatus = task.quote_status || "未报价";
   const confirmStatus = task.confirm_status || "未确认";
   const quoted = quoteStatus === "已报价";
-  const confirmed = confirmStatus === "已确认";
-  const showToggles = Boolean(onToggleQuoteStatus || onToggleConfirmStatus);
   const isSimpleProduct = ["牌匾", "铝艺栅栏", "雨棚", "其他"].includes(task.params?.product_name);
   const productType = isSimpleProduct ? task.params.product_name : task.door_type;
   const productSize = isSimpleProduct
@@ -49,7 +45,7 @@ export default function TaskCard({
           <span className="text-[13px] text-[#8E8E93] truncate">- {task.project}</span>
           <StatusBadge status={task.status} />
           {/* 未报价/已报价、未确认/已确认：时间上方的空白处，上下排列 */}
-          {showToggles && (
+          {(onToggleQuoteStatus || confirmStatus) && (
             <div className="ml-auto flex flex-col items-end gap-0.5 flex-shrink-0 pl-2">
               {onToggleQuoteStatus && (
                 <button
@@ -64,19 +60,7 @@ export default function TaskCard({
                   {quoteStatus}
                 </button>
               )}
-              {onToggleConfirmStatus && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onToggleConfirmStatus(task); }}
-                  title={`点击切换为${confirmed ? "未确认" : "已确认"}`}
-                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all duration-200 ${
-                    confirmed
-                      ? "bg-[#E5F0FF] text-[#007AFF] border-[#A9CDF7] hover:bg-[#D8E9FF]"
-                      : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE] hover:bg-[#E9E9ED]"
-                  }`}
-                >
-                  {confirmStatus}
-                </button>
-              )}
+              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${confirmStatus === "已确认" ? "bg-[#E5F0FF] text-[#007AFF] border-[#A9CDF7]" : "bg-[#F2F2F7] text-[#636366] border-[#D9D9DE]"}`} title="由订单确认状态自动更新">{confirmStatus}</span>
             </div>
           )}
         </div>

@@ -18,10 +18,61 @@ class MaterialCreate(BaseModel):
     default_location_id: Optional[int] = None
     default_supplier: str = ""
     minimum_stock: float = Field(default=0, ge=0)
+    brand: str = ""
+    purchase_unit: str = ""
+    purchase_conversion: float = Field(default=1, gt=0)
+    standard_sale_price: float = Field(default=0, ge=0)
+    reference_purchase_price: float = Field(default=0, ge=0)
+    safety_stock: float = Field(default=0, ge=0)
+    can_sell: bool = False
+    can_purchase: bool = True
+    manage_stock: bool = True
+    can_subcontract: bool = False
     remark: str = ""
 
 
 class MaterialUpdate(MaterialCreate):
+    is_active: bool = True
+
+
+class SupplierCreate(BaseModel):
+    code: str
+    name: str
+    short_name: str = ""
+    contact_name: str = ""
+    phone: str = ""
+    address: str = ""
+    invoice_title: str = ""
+    tax_no: str = ""
+    default_tax_rate: float = Field(default=0, ge=0, le=100)
+    settlement_method: str = ""
+    payment_days: int = Field(default=0, ge=0)
+    default_lead_days: int = Field(default=0, ge=0)
+    supply_category: str = ""
+    remark: str = ""
+
+
+class SupplierUpdate(SupplierCreate):
+    is_active: bool = True
+
+
+class SupplierItemCreate(BaseModel):
+    supplier_id: int
+    material_id: int
+    supplier_item_code: str = ""
+    supplier_item_name: str = ""
+    purchase_specification: str = ""
+    purchase_unit: str = ""
+    conversion_rate: float = Field(default=1, gt=0)
+    tax_inclusive_price: float = Field(default=0, ge=0)
+    tax_rate: float = Field(default=0, ge=0, le=100)
+    minimum_order_quantity: float = Field(default=0, ge=0)
+    lead_days: int = Field(default=0, ge=0)
+    is_preferred: bool = False
+    remark: str = ""
+
+
+class SupplierItemUpdate(SupplierItemCreate):
     is_active: bool = True
 
 

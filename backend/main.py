@@ -50,11 +50,13 @@ from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
 from render_routes import render_router
 from fulfillment_routes import (
+    configure_sales_order_repository as configure_fulfillment_sales_orders,
     configure_task_repository as configure_fulfillment_tasks,
     configure_user_repository as configure_fulfillment_users,
     router as fulfillment_router,
 )
 from inventory_routes import router as inventory_router
+from sales_order_routes import configure_task_repository as configure_sales_order_tasks, router as sales_order_router, sales_order_db
 from production_models import ProductionReleaseRequest
 from production_routes import (
     configure_task_repository,
@@ -93,6 +95,7 @@ if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
 app.include_router(fulfillment_router)
 app.include_router(inventory_router)
+app.include_router(sales_order_router)
 app.include_router(door_cad_router)
 
 # ===================== 数据库实例 =====================
@@ -101,6 +104,8 @@ task_db = TaskDatabaseManager()
 configure_task_repository(task_db)
 configure_fulfillment_tasks(task_db)
 configure_fulfillment_users(user_db)
+configure_sales_order_tasks(task_db)
+configure_fulfillment_sales_orders(sales_order_db)
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")

@@ -28,6 +28,7 @@ PRODUCTION_DB_FILE = os.path.join(DATA_DIR, 'production.db')
 PRODUCTION_FILES_DIR = os.path.join(DATA_DIR, 'production_files')
 FULFILLMENT_DB_FILE = os.path.join(DATA_DIR, 'fulfillment.db')
 FULFILLMENT_FILES_DIR = os.path.join(DATA_DIR, 'fulfillment_files')
+SALES_ORDER_DB_FILE = os.path.join(DATA_DIR, 'sales_orders.db')
 LEGACY_PRODUCTION_ENABLED = os.environ.get("LEGACY_PRODUCTION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # ERPNext integration. Credentials stay in the server environment only.

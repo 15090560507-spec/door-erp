@@ -16,6 +16,7 @@ import main as main_module
 from auth import create_token
 from database import TaskDatabaseManager
 from fulfillment_database import FulfillmentDatabase
+from inventory_service import InventoryService
 
 
 PASSED = 0
@@ -68,8 +69,21 @@ def main() -> None:
     test_db = FulfillmentDatabase(os.path.join(temp_dir, "fulfillment.db"), os.path.join(temp_dir, "files"))
     old_db = fulfillment_routes.fulfillment_db
     old_tasks = fulfillment_routes.task_repository
+    old_sales_orders = fulfillment_routes.sales_order_repository
     fulfillment_routes.fulfillment_db = test_db
     fulfillment_routes.task_repository = task_db
+    # This suite exercises fulfillment itself. The sales-order gate has its own
+    # end-to-end coverage in test_sales_orders.py.
+    fulfillment_routes.sales_order_repository = None
+    inventory_service = InventoryService(test_db.inventory_db)
+    panel_material = inventory_service.create_material(
+        code="TEST-PANEL", name="门扇板件", category="板件", specification="按图",
+        unit="扇", material_type="自制件",
+    )
+    flower_material = inventory_service.create_material(
+        code="TEST-FLOWER", name="花件", category="花件", specification="客户确认款",
+        unit="件", material_type="采购件",
+    )
     client = TestClient(main_module.app)
 
     try:
@@ -115,8 +129,8 @@ def main() -> None:
             "product_summary": "1.0mm不锈钢镀铜对门 / 紫荆花款",
             "special_requirements": "花件采购，玻璃定制",
             "components": [
-                {"id": 100, "name": "门扇板件", "category": "板件", "specification": "按图", "quantity": 2, "unit": "扇", "acquisition_method": "内部加工", "remark": ""},
-                {"id": 101, "name": "花件", "category": "花件", "specification": "客户确认款", "quantity": 2, "unit": "件", "acquisition_method": "采购", "remark": ""},
+                {"id": 100, "material_id": panel_material["id"], "name": "门扇板件", "category": "板件", "specification": "按图", "quantity": 2, "unit": "扇", "acquisition_method": "内部加工", "remark": ""},
+                {"id": 101, "material_id": flower_material["id"], "name": "花件", "category": "花件", "specification": "客户确认款", "quantity": 2, "unit": "件", "acquisition_method": "采购", "remark": ""},
             ],
             "work_packages": [
                 {"component_id": 100, "name": "板件下料折弯", "category": "内部加工", "route": "剪板→折弯", "acquisition_method": "内部加工", "executor_uid": "worker-a", "planned_end": "2026-08-20", "quantity": 2, "unit": "扇", "piece_rate": 80, "inspection_required": False},
@@ -238,6 +252,7 @@ def main() -> None:
     finally:
         fulfillment_routes.fulfillment_db = old_db
         fulfillment_routes.task_repository = old_tasks
+        fulfillment_routes.sales_order_repository = old_sales_orders
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     print(f"\nPASS: {PASSED}")

@@ -5,6 +5,8 @@ import type {
   InventoryMaterial,
   InventoryTransaction,
   InventoryWarehouse,
+  InventorySupplier,
+  InventorySupplierItem,
   MaterialRequirement,
   MaterialRequirementSummary,
   MaterialPayload,
@@ -15,6 +17,8 @@ import type {
   PendingMaterialIssue,
   SubcontractOrder,
   SubcontractReceipt,
+  SupplierItemPayload,
+  SupplierPayload,
 } from "./inventoryTypes";
 
 export async function getInventoryMaterials(params?: {
@@ -34,6 +38,36 @@ export async function createInventoryMaterial(payload: MaterialPayload) {
 
 export async function updateInventoryMaterial(id: number, payload: MaterialPayload) {
   const { data } = await api.put<{ material: InventoryMaterial; message: string }>(`/inventory/materials/${id}`, payload);
+  return data;
+}
+
+export async function getInventorySuppliers(params?: { q?: string; include_inactive?: boolean }) {
+  const { data } = await api.get<{ suppliers: InventorySupplier[] }>("/inventory/suppliers", { params });
+  return data.suppliers;
+}
+
+export async function createInventorySupplier(payload: SupplierPayload) {
+  const { data } = await api.post<{ supplier: InventorySupplier; message: string }>("/inventory/suppliers", payload);
+  return data;
+}
+
+export async function updateInventorySupplier(id: number, payload: SupplierPayload) {
+  const { data } = await api.put<{ supplier: InventorySupplier; message: string }>(`/inventory/suppliers/${id}`, payload);
+  return data;
+}
+
+export async function getInventorySupplierItems(params?: { supplier_id?: number; material_id?: number }) {
+  const { data } = await api.get<{ supplier_items: InventorySupplierItem[] }>("/inventory/supplier-items", { params });
+  return data.supplier_items;
+}
+
+export async function createInventorySupplierItem(payload: SupplierItemPayload) {
+  const { data } = await api.post<{ supplier_item: InventorySupplierItem; message: string }>("/inventory/supplier-items", payload);
+  return data;
+}
+
+export async function updateInventorySupplierItem(id: number, payload: SupplierItemPayload) {
+  const { data } = await api.put<{ supplier_item: InventorySupplierItem; message: string }>(`/inventory/supplier-items/${id}`, payload);
   return data;
 }
 

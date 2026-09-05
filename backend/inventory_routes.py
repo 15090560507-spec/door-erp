@@ -25,6 +25,10 @@ from inventory_models import (
     SubcontractInspectionCreate,
     SubcontractReceiptCreate,
     SubcontractSendCreate,
+    SupplierCreate,
+    SupplierItemCreate,
+    SupplierItemUpdate,
+    SupplierUpdate,
     WarehouseCreate,
 )
 from inventory_service import InventoryService
@@ -57,6 +61,10 @@ def _error(exc: Exception) -> HTTPException:
         message = str(exc)
         if "inventory_materials.code" in message:
             message = "物料编码已经存在"
+        elif "inventory_suppliers.code" in message:
+            message = "供应商编码已经存在"
+        elif "inventory_supplier_items.supplier_id, inventory_supplier_items.material_id" in message:
+            message = "该供应商与商品的供货关系已经存在"
         elif "inventory_warehouses.code" in message:
             message = "仓库编码已经存在"
         elif "inventory_locations.warehouse_id, inventory_locations.code" in message:
@@ -104,6 +112,66 @@ def update_material(material_id: int, req: MaterialUpdate, current_user: Dict = 
             "material": inventory_service.update_material(material_id, req.model_dump()),
             "message": "物料更新成功",
         }
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/suppliers")
+def list_suppliers(
+    q: str = Query(""),
+    include_inactive: bool = Query(False),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"suppliers": inventory_service.list_suppliers(q=q, active_only=not include_inactive)}
+
+
+@router.post("/suppliers", status_code=201)
+def create_supplier(req: SupplierCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        supplier = inventory_service.create_supplier(req.model_dump())
+        return {"supplier": supplier, "message": "供应商创建成功"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.put("/suppliers/{supplier_id}")
+def update_supplier(supplier_id: int, req: SupplierUpdate, current_user: Dict = Depends(get_current_user)):
+    try:
+        supplier = inventory_service.update_supplier(supplier_id, req.model_dump())
+        return {"supplier": supplier, "message": "供应商资料已更新"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/supplier-items")
+def list_supplier_items(
+    supplier_id: Optional[int] = Query(None),
+    material_id: Optional[int] = Query(None),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"supplier_items": inventory_service.list_supplier_items(supplier_id=supplier_id, material_id=material_id)}
+
+
+@router.post("/supplier-items", status_code=201)
+def create_supplier_item(req: SupplierItemCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        item = inventory_service.save_supplier_item(req.model_dump(), str(current_user.get("uid") or ""))
+        return {"supplier_item": item, "message": "供应商供货商品已保存"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.put("/supplier-items/{supplier_item_id}")
+def update_supplier_item(
+    supplier_item_id: int,
+    req: SupplierItemUpdate,
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        item = inventory_service.save_supplier_item(
+            req.model_dump(), str(current_user.get("uid") or ""), supplier_item_id=supplier_item_id,
+        )
+        return {"supplier_item": item, "message": "供应商供货关系已更新"}
     except Exception as exc:
         raise _error(exc) from exc
 

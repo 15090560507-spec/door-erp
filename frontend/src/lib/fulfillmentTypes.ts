@@ -13,6 +13,11 @@ export interface PendingFulfillmentTask {
   opening: string;
   approved_at: string;
   approved_by: string;
+  sales_order_id?: number;
+  sales_order_no?: string;
+  door_count?: number;
+  delivery_date?: string;
+  order_source_changed?: boolean;
 }
 
 export interface FulfillmentOrder {

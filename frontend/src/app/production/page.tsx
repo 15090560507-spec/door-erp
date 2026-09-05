@@ -2,10 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TopNav from "@/components/TopNav";
-import InventoryWorkspace from "@/components/inventory/InventoryWorkspace";
-import MasterDataWorkspace from "@/components/inventory/MasterDataWorkspace";
-import PurchasingCenter from "@/components/inventory/PurchasingCenter";
-import SupplyRequirements from "@/components/inventory/SupplyRequirements";
 import { useAuth } from "@/hooks/useAuth";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
@@ -54,7 +50,6 @@ export default function ProductionPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; error: boolean } | null>(null);
-  const [workspace, setWorkspace] = useState<"orders" | "requirements" | "purchase" | "warehouse" | "finished" | "master">("orders");
 
   const notify = useCallback((message: string, error = false) => setNotice({ title: error ? "操作失败" : "操作成功", message, error }), []);
   const loadAll = useCallback(async () => {
@@ -109,11 +104,7 @@ export default function ProductionPage() {
         <button className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm" onClick={() => void refresh()}>刷新</button>
       </header>
 
-      <nav className="flex overflow-x-auto border border-[#D1D1D6] bg-white">
-        {([['orders','门樘履约'],['requirements','供应需求'],['purchase','采购中心'],['warehouse','仓库中心'],['finished','成品与发货'],['master','基础资料']] as const).map(([key,label]) => <button key={key} onClick={() => setWorkspace(key)} className={`h-11 shrink-0 min-w-28 border-r border-[#E5E5EA] px-5 text-sm ${workspace === key ? "bg-[#007AFF] text-white" : "bg-white text-[#3C3C43]"}`}>{label}</button>)}
-      </nav>
-
-      {workspace === "orders" && <><section className="grid grid-cols-2 gap-px border border-[#D1D1D6] bg-[#D1D1D6] md:grid-cols-4 xl:grid-cols-12">
+      <section className="grid grid-cols-2 gap-px border border-[#D1D1D6] bg-[#D1D1D6] md:grid-cols-4 xl:grid-cols-12">
         <Metric label="待下达" value={dashboard?.pending_release || 0} accent />
         {STATUS_CARDS.map((item) => <Metric key={item} label={item} value={dashboard?.status_counts?.[item] || 0} />)}
         <Metric label="未解决异常" value={dashboard?.open_exceptions || 0} danger />
@@ -142,12 +133,6 @@ export default function ProductionPage() {
           </>}
         </div>
       </section>
-      </>}
-      {workspace === "requirements" && <SupplyRequirements notify={notify} />}
-      {workspace === "purchase" && <PurchasingCenter notify={notify} />}
-      {workspace === "warehouse" && <InventoryWorkspace notify={notify} />}
-      {workspace === "finished" && <StageNotice title="成品与发货" message="阶段五将在这里统一管理成品库存、财务放行、发货和签收。当前门樘详情中的质检、入库与发货功能继续可用。" />}
-      {workspace === "master" && <MasterDataWorkspace notify={notify} />}
     </main>
     <datalist id="fulfillment-people">{people.map((person)=><option key={person.uid} value={person.uid}>{person.name} · {person.role}</option>)}</datalist>
     {busy && <div className="fixed bottom-5 right-5 z-40 border border-[#D1D1D6] bg-white px-4 py-3 text-sm shadow-lg">正在处理...</div>}
@@ -167,7 +152,12 @@ function StageNotice({ title, message }: { title: string; message: string }) {
 function PendingPanel({ tasks, busy, onRelease }: { tasks: PendingFulfillmentTask[]; busy: boolean; onRelease: (task: PendingFulfillmentTask, form: { due_date: string; sales_note: string; door_count: number; owner_uid: string }) => Promise<void> }) {
   const [open, setOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ due_date: "", sales_note: "", door_count: 1, owner_uid: "" });
-  return <section className="border border-[#B8D8F8] bg-[#F4F9FF] p-4"><div className="flex items-center justify-between"><div><h2 className="font-semibold">终审通过，待下达生产</h2><p className="mt-1 text-xs text-[#636366]">一张客户订单可生成多樘独立生产编号。</p></div><span className="text-sm font-semibold text-[#007AFF]">{tasks.length} 项</span></div><div className="mt-3 grid gap-2 lg:grid-cols-2">{tasks.map((task) => <div key={task.task_id} className="border border-[#D1D1D6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold">{task.customer || "未填写订货单位"}</div><div className="mt-1 text-xs text-[#636366]">{task.project || "未填写项目"} · {task.product_name || task.door_type} · {task.width}×{task.height}</div></div><button onClick={() => setOpen(open === task.task_id ? null : task.task_id)} className="h-8 bg-[#007AFF] px-3 text-xs text-white">下达</button></div>{open === task.task_id && <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#E5E5EA] pt-3"><label className="text-xs text-[#636366]">要求交期<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" /></label><label className="text-xs text-[#636366]">门樘数量<input type="number" min={1} max={50} value={form.door_count} onChange={(event) => setForm({ ...form, door_count: Math.max(1, Number(event.target.value) || 1) })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" /></label><label className="text-xs text-[#636366]">整单负责人<input value={form.owner_uid} onChange={(event) => setForm({ ...form, owner_uid: event.target.value })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" placeholder="用户账号或姓名" /></label><label className="text-xs text-[#636366]">销售备注<input value={form.sales_note} onChange={(event) => setForm({ ...form, sales_note: event.target.value })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" /></label><button disabled={busy} onClick={() => void onRelease(task, form)} className="col-span-2 h-9 bg-[#007AFF] text-sm text-white disabled:opacity-50">确认下达并生成门樘生产单</button></div>}</div>)}</div></section>;
+  const toggle = (task: PendingFulfillmentTask) => {
+    const next = open === task.task_id ? null : task.task_id;
+    setOpen(next);
+    if (next) setForm({ due_date: task.delivery_date || "", sales_note: "", door_count: task.door_count || 1, owner_uid: "" });
+  };
+  return <section className="border border-[#B8D8F8] bg-[#F4F9FF] p-4"><div className="flex items-center justify-between"><div><h2 className="font-semibold">订单已确认，图纸终审通过</h2><p className="mt-1 text-xs text-[#636366]">管理员下达后，每樘门生成独立生产编号。</p></div><span className="text-sm font-semibold text-[#007AFF]">{tasks.length} 项</span></div><div className="mt-3 grid gap-2 lg:grid-cols-2">{tasks.map((task) => <div key={task.task_id} className={`border bg-white p-3 ${task.order_source_changed ? "border-[#D70015]" : "border-[#D1D1D6]"}`}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-semibold">{task.sales_order_no || "未关联订单"} · {task.customer || "未填写订货单位"}</div><div className="mt-1 text-xs text-[#636366]">{task.project || "未填写项目"} · {task.product_name || task.door_type} · {task.width}×{task.height}</div><div className="mt-1 text-xs text-[#007AFF]">订单数量 {task.door_count || 1} 樘 · 交期 {task.delivery_date || "未设置"}</div>{task.order_source_changed && <div className="mt-2 text-xs font-medium text-[#D70015]">订单确认后图纸参数已变化，请取消原订单并重新确认</div>}</div><button disabled={task.order_source_changed} onClick={() => toggle(task)} className="h-8 bg-[#007AFF] px-3 text-xs text-white disabled:bg-[#C7C7CC]">下达</button></div>{open === task.task_id && <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#E5E5EA] pt-3"><label className="text-xs text-[#636366]">订单交期<input type="date" readOnly value={form.due_date} className="mt-1 h-9 w-full border border-[#C7C7CC] bg-[#F2F2F7] px-2 text-sm text-[#1C1C1E]" /></label><label className="text-xs text-[#636366]">订单数量<input type="number" readOnly value={form.door_count} className="mt-1 h-9 w-full border border-[#C7C7CC] bg-[#F2F2F7] px-2 text-sm text-[#1C1C1E]" /></label><label className="text-xs text-[#636366]">整单负责人<input value={form.owner_uid} onChange={(event) => setForm({ ...form, owner_uid: event.target.value })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" placeholder="用户账号或姓名" /></label><label className="text-xs text-[#636366]">下达备注<input value={form.sales_note} onChange={(event) => setForm({ ...form, sales_note: event.target.value })} className="mt-1 h-9 w-full border border-[#C7C7CC] px-2 text-sm text-[#1C1C1E]" /></label><button disabled={busy} onClick={() => void onRelease(task, form)} className="col-span-2 h-9 bg-[#007AFF] text-sm text-white disabled:opacity-50">确认下达并生成门樘生产单</button></div>}</div>)}</div></section>;
 }
 
 function DoorUnitWorkbench({ door, busy, notify, onBusy, onChanged }: { door: DoorUnitDetail; busy: boolean; notify: (message: string, error?: boolean) => void; onBusy: (value: boolean) => void; onChanged: (door: DoorUnitDetail) => Promise<void> }) {

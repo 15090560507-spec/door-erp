@@ -69,6 +69,31 @@ def main() -> None:
         material = response.json().get("material", {})
         check("可创建物料档案", response.status_code == 201 and material.get("code") == "PLATE-08", response.text)
 
+        supplier_payload = {
+            "code": "SUP-001", "name": "测试板材供应商", "short_name": "测试供应商",
+            "contact_name": "王师傅", "phone": "13800000000", "default_tax_rate": 13,
+            "settlement_method": "月结", "payment_days": 30, "default_lead_days": 5,
+            "supply_category": "板材", "remark": "",
+        }
+        response = client.post("/api/inventory/suppliers", headers=headers(), json=supplier_payload)
+        supplier = response.json().get("supplier", {})
+        check("可创建供应商档案", response.status_code == 201 and supplier.get("code") == "SUP-001", response.text)
+
+        relation_payload = {
+            "supplier_id": supplier.get("id"), "material_id": material.get("id"),
+            "supplier_item_code": "TB-08", "supplier_item_name": "0.8铜板",
+            "purchase_specification": "1220x2440", "purchase_unit": "张", "conversion_rate": 1,
+            "tax_inclusive_price": 680, "tax_rate": 13, "minimum_order_quantity": 5,
+            "lead_days": 3, "is_preferred": True, "remark": "常用",
+        }
+        response = client.post("/api/inventory/supplier-items", headers=headers(), json=relation_payload)
+        relation = response.json().get("supplier_item", {})
+        check("可建立供应商与商品供货关系", response.status_code == 201 and relation.get("is_preferred") == 1, response.text)
+
+        response = client.get(f"/api/inventory/supplier-items?material_id={material.get('id')}", headers=headers())
+        relations = response.json().get("supplier_items", [])
+        check("商品可反查首选供应商和采购价", response.status_code == 200 and len(relations) == 1 and relations[0].get("tax_inclusive_price") == 680, response.text)
+
         response = client.post("/api/inventory/materials", headers=headers(), json=material_payload)
         check("重复物料编码返回409", response.status_code == 409, response.text)
 

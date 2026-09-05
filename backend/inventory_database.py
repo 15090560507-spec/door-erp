@@ -96,6 +96,16 @@ class InventoryDatabase:
                     default_location_id INTEGER,
                     default_supplier TEXT NOT NULL DEFAULT '',
                     minimum_stock REAL NOT NULL DEFAULT 0,
+                    brand TEXT NOT NULL DEFAULT '',
+                    purchase_unit TEXT NOT NULL DEFAULT '',
+                    purchase_conversion REAL NOT NULL DEFAULT 1,
+                    standard_sale_price REAL NOT NULL DEFAULT 0,
+                    reference_purchase_price REAL NOT NULL DEFAULT 0,
+                    safety_stock REAL NOT NULL DEFAULT 0,
+                    can_sell INTEGER NOT NULL DEFAULT 0,
+                    can_purchase INTEGER NOT NULL DEFAULT 1,
+                    manage_stock INTEGER NOT NULL DEFAULT 1,
+                    can_subcontract INTEGER NOT NULL DEFAULT 0,
                     is_active INTEGER NOT NULL DEFAULT 1,
                     remark TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
@@ -466,6 +476,61 @@ class InventoryDatabase:
                     FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS inventory_suppliers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    short_name TEXT NOT NULL DEFAULT '',
+                    contact_name TEXT NOT NULL DEFAULT '',
+                    phone TEXT NOT NULL DEFAULT '',
+                    address TEXT NOT NULL DEFAULT '',
+                    invoice_title TEXT NOT NULL DEFAULT '',
+                    tax_no TEXT NOT NULL DEFAULT '',
+                    default_tax_rate REAL NOT NULL DEFAULT 0,
+                    settlement_method TEXT NOT NULL DEFAULT '',
+                    payment_days INTEGER NOT NULL DEFAULT 0,
+                    default_lead_days INTEGER NOT NULL DEFAULT 0,
+                    supply_category TEXT NOT NULL DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS inventory_supplier_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    supplier_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    supplier_item_code TEXT NOT NULL DEFAULT '',
+                    supplier_item_name TEXT NOT NULL DEFAULT '',
+                    purchase_specification TEXT NOT NULL DEFAULT '',
+                    purchase_unit TEXT NOT NULL DEFAULT '',
+                    conversion_rate REAL NOT NULL DEFAULT 1,
+                    tax_inclusive_price REAL NOT NULL DEFAULT 0,
+                    tax_rate REAL NOT NULL DEFAULT 0,
+                    minimum_order_quantity REAL NOT NULL DEFAULT 0,
+                    lead_days INTEGER NOT NULL DEFAULT 0,
+                    is_preferred INTEGER NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(supplier_id, material_id),
+                    FOREIGN KEY(supplier_id) REFERENCES inventory_suppliers(id),
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS inventory_supplier_item_prices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    supplier_item_id INTEGER NOT NULL,
+                    tax_inclusive_price REAL NOT NULL,
+                    tax_rate REAL NOT NULL DEFAULT 0,
+                    effective_date TEXT NOT NULL,
+                    operator_uid TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(supplier_item_id) REFERENCES inventory_supplier_items(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_inventory_material_search
                     ON inventory_materials(name, category, specification, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_material
@@ -496,6 +561,10 @@ class InventoryDatabase:
                     ON subcontract_items(production_no, status);
                 CREATE INDEX IF NOT EXISTS ix_subcontract_receipts_status_date
                     ON subcontract_receipts(status, return_date, created_at);
+                CREATE INDEX IF NOT EXISTS ix_inventory_suppliers_name
+                    ON inventory_suppliers(name, short_name, is_active);
+                CREATE INDEX IF NOT EXISTS ix_inventory_supplier_items_material
+                    ON inventory_supplier_items(material_id, is_preferred, is_active);
 
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions
@@ -510,6 +579,21 @@ class InventoryDatabase:
                 END;
                 """
             )
+            material_columns = {row["name"] for row in conn.execute("PRAGMA table_info(inventory_materials)").fetchall()}
+            for name, definition in (
+                ("brand", "TEXT NOT NULL DEFAULT ''"),
+                ("purchase_unit", "TEXT NOT NULL DEFAULT ''"),
+                ("purchase_conversion", "REAL NOT NULL DEFAULT 1"),
+                ("standard_sale_price", "REAL NOT NULL DEFAULT 0"),
+                ("reference_purchase_price", "REAL NOT NULL DEFAULT 0"),
+                ("safety_stock", "REAL NOT NULL DEFAULT 0"),
+                ("can_sell", "INTEGER NOT NULL DEFAULT 0"),
+                ("can_purchase", "INTEGER NOT NULL DEFAULT 1"),
+                ("manage_stock", "INTEGER NOT NULL DEFAULT 1"),
+                ("can_subcontract", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if name not in material_columns:
+                    conn.execute(f"ALTER TABLE inventory_materials ADD COLUMN {name} {definition}")
             conn.executemany(
                 """INSERT INTO inventory_warehouses(
                        code, name, warehouse_type, created_at, updated_at
