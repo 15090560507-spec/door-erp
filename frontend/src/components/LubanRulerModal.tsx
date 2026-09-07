@@ -69,14 +69,14 @@ export default function LubanRulerModal({ open, width, height, kind, onKindChang
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-[#E5E5EA] px-5 py-4">
+    <div className="ui-dialog-backdrop" onMouseDown={onClose}>
+      <div className="ui-dialog ui-dialog--wide max-w-3xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="ui-dialog__header">
           <div>
-            <h3 className="text-[16px] font-semibold text-[#1C1C1E]">鲁班尺见光区间</h3>
-            <p className="mt-0.5 text-[12px] text-[#8E8E93]">当前尺寸居中显示，区间按 {version.description} 循环。</p>
+            <h3 className="ui-dialog__title">鲁班尺见光区间</h3>
+            <p className="ui-dialog__description">当前尺寸居中显示，区间按 {version.description} 循环。</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="关闭" className="text-[22px] leading-none text-[#8E8E93] hover:text-[#1C1C1E]">×</button>
+          <button type="button" onClick={onClose} aria-label="关闭" className="ui-dialog__close">×</button>
         </div>
 
         <div className="border-b border-[#E5E5EA] px-5 py-3">
@@ -111,7 +111,7 @@ export default function LubanRulerModal({ open, width, height, kind, onKindChang
           </div>
         </div>
 
-        <div className="overflow-y-auto p-5">
+        <div className="ui-dialog__body">
           {!current || value <= 0 ? (
             <div className="py-14 text-center text-[13px] text-[#8E8E93]">当前尺寸未计算</div>
           ) : (
@@ -172,6 +172,7 @@ export default function LubanRulerModal({ open, width, height, kind, onKindChang
             </div>
           )}
         </div>
+        <div className="ui-dialog__footer"><button type="button" onClick={onClose} className="ui-button ui-button--secondary">关闭</button></div>
       </div>
     </div>
   );

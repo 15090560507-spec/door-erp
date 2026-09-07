@@ -102,10 +102,10 @@ const Checkbox = memo(function Checkbox({ label, checked, onChange }: {
 
 const Card = memo(function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5">
-      <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-4 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
+    <section className="door-form-section">
+      <h4 className="door-form-section__title">{title}</h4>
       {children}
-    </div>
+    </section>
   );
 });
 
@@ -615,7 +615,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="door-form grid grid-cols-1 gap-5 xl:grid-cols-3">
       {/* 左列：订单信息 + 材质 */}
       <div className="space-y-4">
         <Card title="订单基础信息">
@@ -815,8 +815,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           )}
         </Card>
 
-        <details className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 cursor-pointer">
-          <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
+        <details className="door-form-section cursor-pointer">
+          <summary className="door-form-section__title mb-0 select-none">
             门缝设置 <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
               {data.left_gap}/{data.right_gap}/{data.top_gap}/{data.bottom_gap}
               {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
@@ -833,8 +833,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           </div>
         </details>
 
-        <details className="bg-white rounded-xl border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] p-5 cursor-pointer">
-          <summary className="text-[17px] font-semibold text-[#1C1C1E] pb-2.5 border-b border-[#F2F2F7] select-none">
+        <details className="door-form-section cursor-pointer">
+          <summary className="door-form-section__title mb-0 select-none">
             门板设置
             <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
               {panelPreset || panelStyle}

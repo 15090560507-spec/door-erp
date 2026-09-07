@@ -54,19 +54,20 @@ export default function ProductionReleaseButton({
     >
       下达生产
     </button>
-    {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={() => !busy && close()}>
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <h3 className="text-lg font-semibold">下达 ERPNext 生产订单</h3>
-        <p className="mt-1 text-xs text-[#8E8E93]">
+    {open && <div className="ui-dialog-backdrop" onClick={() => !busy && close()}>
+      <div className="ui-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="ui-dialog__header"><div><h3 className="ui-dialog__title">下达 ERPNext 生产订单</h3>
+        <p className="ui-dialog__description">
           将冻结终审图纸和当前参数，并创建 ERPNext 草稿订单。一张生产订单对应一樘门，报价不是必填项；同步失败可在生产管理中重试。
-        </p>
+        </p></div></div>
+        <div className="ui-dialog__body">
         {message ? <>
-          <div className={`mt-5 rounded-md px-4 py-3 text-sm ${message.error ? "bg-[#FFF0F0] text-[#FF3B30]" : "bg-[#E7F7EA] text-[#248A3D]"}`}>
+          <div className={`px-4 py-3 text-sm ${message.error ? "bg-[#FFF0F0] text-[#FF3B30]" : "bg-[#E7F7EA] text-[#248A3D]"}`}>
             {message.text}
           </div>
           <div className="mt-5 flex justify-end gap-2">
-            <button onClick={close} className="h-9 bg-[#F2F2F7] px-4 text-sm">关闭</button>
-            {!message.error && <button onClick={() => { onReleased?.(); router.push("/production"); }} className="h-9 bg-[#007AFF] px-4 text-sm text-white">查看生产管理</button>}
+            <button onClick={close} className="ui-button ui-button--secondary">关闭</button>
+            {!message.error && <button onClick={() => { onReleased?.(); router.push("/production"); }} className="ui-button ui-button--primary">查看生产管理</button>}
           </div>
         </> : <>
           <div className="mt-5 space-y-4">
@@ -80,10 +81,11 @@ export default function ProductionReleaseButton({
             </label>
           </div>
           <div className="mt-5 flex justify-end gap-2">
-            <button disabled={busy} onClick={close} className="h-9 bg-[#F2F2F7] px-4 text-sm">取消</button>
-            <button disabled={busy} onClick={submit} className="h-9 bg-[#248A3D] px-5 text-sm text-white disabled:opacity-50">{busy ? "正在下达..." : "确认下达"}</button>
+            <button disabled={busy} onClick={close} className="ui-button ui-button--secondary">取消</button>
+            <button disabled={busy} onClick={submit} className="ui-button ui-button--primary">{busy ? "正在下达..." : "确认下达"}</button>
           </div>
         </>}
+        </div>
       </div>
     </div>}
   </>;

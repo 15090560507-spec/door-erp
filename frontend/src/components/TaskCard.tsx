@@ -29,15 +29,13 @@ export default function TaskCard({
     : task.size;
 
   return (
-    <div className="task-list-row flex items-stretch gap-2 mb-2 animate-fade-in group">
+    <div className="task-list-row mb-2 flex items-stretch animate-fade-in group">
       <div
         role="button"
         tabIndex={0}
         onClick={() => onClick(task)}
         onKeyDown={(e) => { if (e.key === "Enter") onClick(task); }}
-        className="flex-1 text-left bg-white border border-[#E5E5EA] rounded-lg px-5 py-3.5 cursor-pointer
-          shadow-sm hover:shadow-md hover:border-[#A9A9B3] hover:-translate-y-0.5
-          active:scale-[0.98] transition-all duration-200"
+        className="task-list-row__main cursor-pointer"
       >
         <div className="flex items-center gap-3">
           <span className="text-[15px] font-semibold text-[#1C1C1E] truncate">
@@ -72,26 +70,29 @@ export default function TaskCard({
         </div>
       </div>
 
-      {onCopy && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onCopy(task); }}
-          className="inline-flex w-10 flex-shrink-0 items-center justify-center rounded-lg border border-[#D9D9DF] bg-white text-[#5C5C65] transition-colors hover:border-[#18181C] hover:bg-[#18181C] hover:text-white"
-          title="复制表单"
-          aria-label="复制表单"
-        >
-          <Copy size={16} />
-        </button>
-      )}
-
-      {onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(task); }}
-          className="inline-flex w-10 flex-shrink-0 items-center justify-center rounded-lg border border-[#F0D4D3] bg-[#FFF7F7] text-[#D94A45] transition-all duration-200 hover:border-[#D94A45] hover:bg-[#D94A45] hover:text-white"
-          title="删除表单"
-          aria-label="删除表单"
-        >
-          <Trash2 size={16} />
-        </button>
+      {(onCopy || onDelete) && (
+        <div className="task-list-row__actions">
+          {onCopy && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCopy(task); }}
+              className="task-list-row__action"
+              title="复制表单"
+              aria-label="复制表单"
+            >
+              <Copy size={16} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(task); }}
+              className="task-list-row__action task-list-row__action--danger"
+              title="删除表单"
+              aria-label="删除表单"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

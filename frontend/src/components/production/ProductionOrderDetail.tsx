@@ -196,10 +196,11 @@ function OperationsAndQuality({ orderId, operations, inspections, finished, canW
 }
 
 function ConfirmDialog({ title, detail, busy, onCancel, onConfirm }: { title: string; detail: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={onCancel}>
-    <div className="w-full max-w-md border border-[#D1D1D6] bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-      <h3 className="font-semibold">{title}</h3><p className="mt-3 text-sm leading-6 text-[#636366]">{detail}</p>
-      <div className="mt-5 flex justify-end gap-2"><button disabled={busy} onClick={onCancel} className="h-9 border border-[#C7C7CC] px-4 text-sm">取消</button><button disabled={busy} onClick={onConfirm} className="h-9 bg-[#FF3B30] px-4 text-sm text-white">确认执行</button></div>
+  return <div className="ui-dialog-backdrop" onClick={onCancel}>
+    <div className="ui-dialog" onClick={(event) => event.stopPropagation()}>
+      <div className="ui-dialog__header"><h3 className="ui-dialog__title">{title}</h3></div>
+      <div className="ui-dialog__body"><p className="text-sm leading-6 text-[#636366]">{detail}</p></div>
+      <div className="ui-dialog__footer"><button disabled={busy} onClick={onCancel} className="ui-button ui-button--secondary">取消</button><button disabled={busy} onClick={onConfirm} className="ui-button ui-button--danger">确认执行</button></div>
     </div>
   </div>;
 }

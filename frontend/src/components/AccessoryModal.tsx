@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import {
   createAccessory,
   deleteAccessory,
@@ -181,53 +182,53 @@ export default function AccessoryModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="ui-dialog-backdrop" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col mx-4"
+        className="ui-dialog ui-dialog--wide"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5EA]/60">
+        <div className="ui-dialog__header">
           <div>
-            <h3 className="text-[16px] font-semibold text-[#1C1C1E]">配件价格库</h3>
-            <p className="text-[12px] text-[#8E8E93] mt-1">按价格表方式维护：分类、名称、单价</p>
+            <h3 className="ui-dialog__title">配件价格库</h3>
+            <p className="ui-dialog__description">按价格表方式维护分类、名称和单价。</p>
           </div>
-          <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">&times;</button>
+          <button onClick={onClose} className="ui-dialog__close" aria-label="关闭"><X size={18} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          <form onSubmit={handleAdd} className="grid grid-cols-[160px_1fr_140px_auto] gap-3 items-end">
+        <div className="ui-dialog__body space-y-4">
+          <form onSubmit={handleAdd} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[150px_1fr_130px_auto]">
             <label className="block">
-              <span className="text-[12px] font-medium text-[#8E8E93]">分类</span>
+              <span className="text-[13px] font-medium text-[#62626B]">分类</span>
               <input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 list="accessoryCategoryOptions"
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
+                className="mt-1 w-full border border-[#D7D7DE] px-3 py-2 text-sm focus:border-[#007AFF] focus:outline-none"
               />
             </label>
             <label className="block">
-              <span className="text-[12px] font-medium text-[#8E8E93]">名称</span>
+              <span className="text-[13px] font-medium text-[#62626B]">名称</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
+                className="mt-1 w-full border border-[#D7D7DE] px-3 py-2 text-sm focus:border-[#007AFF] focus:outline-none"
                 required
               />
             </label>
             <label className="block">
-              <span className="text-[12px] font-medium text-[#8E8E93]">单价</span>
+              <span className="text-[13px] font-medium text-[#62626B]">单价</span>
               <input
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
                 type="number"
                 step="0.01"
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
+                className="mt-1 w-full border border-[#D7D7DE] px-3 py-2 text-sm focus:border-[#007AFF] focus:outline-none"
               />
             </label>
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 text-[13px] font-medium rounded-lg bg-[#007AFF] text-white hover:bg-[#007AFF]/90 disabled:opacity-50 transition-colors"
+              className="ui-button ui-button--primary"
             >
               {submitting ? "添加中..." : "添加"}
             </button>
@@ -241,26 +242,26 @@ export default function AccessoryModal({ open, onClose }: Props) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索分类或名称"
-              className="flex-1 px-3 py-2 text-[13px] border border-[#E5E5EA]/60 rounded-lg focus:border-[#007AFF] focus:outline-none"
+              className="min-w-0 flex-1 border border-[#D7D7DE] px-3 py-2 text-sm focus:border-[#007AFF] focus:outline-none"
             />
-            <button onClick={handleExport} type="button" className="px-3 py-2 text-[12px] font-medium rounded-lg border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors whitespace-nowrap">导出</button>
-            <label className="px-3 py-2 text-[12px] font-medium rounded-lg border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors cursor-pointer whitespace-nowrap">
+            <button onClick={handleExport} type="button" className="ui-button ui-button--secondary whitespace-nowrap">导出</button>
+            <label className="ui-button ui-button--secondary cursor-pointer whitespace-nowrap">
               导入 Excel/JSON
               <input type="file" accept=".json,.xlsx,.xlsm" onChange={handleImport} className="hidden" />
             </label>
           </div>
 
-          {status && <div className="text-[12px] text-[#007AFF]">{status}</div>}
+          {status && <div className="text-[13px] text-[#4F62A7]">{status}</div>}
 
           <div className="space-y-4">
             {groupedAccessories.length === 0 ? (
               <p className="text-[13px] text-[#8E8E93] text-center py-6">暂无数据</p>
             ) : (
               groupedAccessories.map(([groupName, groupItems]) => (
-                <section key={groupName} className="border border-[#E5E5EA]/60 rounded-xl overflow-hidden">
+                <section key={groupName} className="overflow-hidden border border-[#E2E2E8]">
                   <div className="px-3 py-2 bg-[#F2F2F7] text-[13px] font-semibold text-[#1C1C1E] flex items-center justify-between">
                     <span>{groupName}</span>
-                    <span className="text-[11px] font-normal text-[#8E8E93]">{groupItems.length} 条</span>
+                    <span className="text-xs font-normal text-[#777780]">{groupItems.length} 条</span>
                   </div>
                   <table className="w-full text-[13px]">
                     <thead className="text-[#8E8E93] border-b border-[#E5E5EA]/60">
@@ -291,6 +292,9 @@ export default function AccessoryModal({ open, onClose }: Props) {
               ))
             )}
           </div>
+        </div>
+        <div className="ui-dialog__footer">
+          <button type="button" onClick={onClose} className="ui-button ui-button--secondary">关闭</button>
         </div>
       </div>
     </div>

@@ -533,48 +533,38 @@ export default function DashboardPage() {
 
       {/* 居中 Toast 弹窗 — 点击任意处关闭 */}
       {toast && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-in fade-in" onClick={() => setToast(null)}>
-          <div className={`rounded-2xl px-8 py-6 shadow-2xl text-center max-w-sm mx-4 ${
-            toast.type === "success"
-              ? "bg-white text-[#1C1C1E]"
-              : "bg-white text-[#FF3B30]"
-          }`} onClick={(e) => e.stopPropagation()}>
-            <div className="text-4xl mb-3">{toast.type === "success" ? "✅" : "❌"}</div>
-            <p className="text-[17px] font-semibold">{toast.text}</p>
+        <div className="ui-dialog-backdrop" onClick={() => setToast(null)}>
+          <div className="ui-dialog max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ui-dialog__body text-center">
+              <p className={`text-[17px] font-semibold ${toast.type === "success" ? "text-[#248A3D]" : "text-[#C93531]"}`}>{toast.text}</p>
+            </div>
           </div>
         </div>
       )}
 
       {/* 必填项校验弹窗 — 点击任意处关闭 */}
       {validationError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-in fade-in" onClick={() => setValidationError(null)}>
-          <div className="rounded-2xl px-8 py-6 shadow-2xl text-center max-w-sm mx-4 bg-white" onClick={(e) => e.stopPropagation()}>
-            <div className="text-4xl mb-3">⚠️</div>
-            <p className="text-[17px] font-semibold text-[#1C1C1E]">{validationError}</p>
+        <div className="ui-dialog-backdrop" onClick={() => setValidationError(null)}>
+          <div className="ui-dialog max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ui-dialog__header"><h3 className="ui-dialog__title">请检查表单</h3></div>
+            <div className="ui-dialog__body"><p className="text-sm leading-6 text-[#C93531]">{validationError}</p></div>
           </div>
         </div>
       )}
 
       {cadError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" onClick={() => setCadError(null)}>
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setCadError(null)}
-              aria-label="关闭 CAD 错误窗口"
-              className="absolute right-3 top-3 h-8 w-8 rounded-full text-lg text-[#8E8E93] hover:bg-[#F2F2F7]"
-            >
-              ×
-            </button>
-            <h3 className="pr-10 text-[17px] font-semibold text-[#1C1C1E]">{cadError.title}</h3>
-            <div className="mt-4 whitespace-pre-wrap break-words rounded-lg bg-[#FF3B30]/10 px-4 py-3 text-sm leading-6 text-[#D70015]">
+        <div className="ui-dialog-backdrop" onClick={() => setCadError(null)}>
+          <div className="ui-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="ui-dialog__header">
+              <h3 className="ui-dialog__title">{cadError.title}</h3>
+              <button type="button" onClick={() => setCadError(null)} aria-label="关闭 CAD 错误窗口" className="ui-dialog__close">×</button>
+            </div>
+            <div className="ui-dialog__body">
+              <div className="whitespace-pre-wrap break-words bg-[#FFF2F1] px-4 py-3 text-sm leading-6 text-[#C93531]">
               {cadError.message}
+              </div>
             </div>
-            <div className="mt-5 flex justify-end">
-              <button type="button" onClick={() => setCadError(null)} className="rounded-lg bg-[#007AFF] px-4 py-2 text-sm font-medium text-white">
-                知道了
-              </button>
-            </div>
+            <div className="ui-dialog__footer"><button type="button" onClick={() => setCadError(null)} className="ui-button ui-button--primary">知道了</button></div>
           </div>
         </div>
       )}
@@ -631,7 +621,7 @@ export default function DashboardPage() {
             {module !== "图纸绘制" && (
               <button
                 onClick={handleSaveEdit}
-                className="ml-auto px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all"
+                className="ui-button ui-button--primary ml-auto"
               >
                 保存修改
               </button>
@@ -682,11 +672,11 @@ export default function DashboardPage() {
           <DoorForm data={formData} onChange={setFormData} />
 
           {module === "图纸绘制" && (
-            <div className="mt-5 flex justify-end border-t border-[#E5E5EA] pt-5">
+            <div className="ui-action-bar mt-5">
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="min-w-36 rounded-lg bg-[#007AFF] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0066D6]"
+                className="ui-button ui-button--primary min-w-36"
               >
                 保存修改
               </button>
@@ -985,7 +975,7 @@ export default function DashboardPage() {
                       <button
                         type="button"
                         onClick={startNewDrawing}
-                        className="flex min-h-20 items-center justify-between rounded-lg border border-[#007AFF] bg-[#007AFF] px-4 py-3 text-left text-white shadow-sm transition-colors hover:bg-[#0066D6]"
+                        className="flex min-h-20 items-center justify-between rounded-lg border border-[#2B2B30] bg-[#2B2B30] px-4 py-3 text-left text-white shadow-sm transition-colors hover:bg-[#3B3B42]"
                       >
                         <span>
                           <span className="block text-xs text-white/75">新建任务</span>
@@ -1011,7 +1001,7 @@ export default function DashboardPage() {
               )}
 
               {/* 筛选栏 */}
-              <div className="flex flex-wrap items-center gap-3 mb-4 bg-white rounded-xl border border-black/5 shadow-sm px-5 py-3">
+              <div className="ui-toolbar mb-4">
                 <label className="text-[13px] font-medium text-[#8E8E93]">筛选:</label>
                 <input
                   type="text"

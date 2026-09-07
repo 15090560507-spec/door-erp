@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { X } from "lucide-react";
 import { getQuotes, deleteQuote, getQuote } from "@/lib/quoteApi";
 import type { QuoteResponse, QuoteDoorGroupResponse } from "@/lib/quoteTypes";
 
@@ -102,46 +103,49 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="ui-dialog-backdrop" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[75vh] flex flex-col mx-4"
+        className="ui-dialog ui-dialog--wide"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5EA]/60">
-          <h3 className="text-[16px] font-semibold text-[#1C1C1E]">最近报价</h3>
+        <div className="ui-dialog__header">
+          <div>
+            <h3 className="ui-dialog__title">最近报价</h3>
+            <p className="ui-dialog__description">检索历史记录并载入继续编辑。</p>
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleBatchDelete}
               disabled={selectedIds.length === 0}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-[#FF3B30]/10 text-[#FF3B30] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="ui-button ui-button--danger"
             >
               批量删除
             </button>
-            <button onClick={onClose} className="text-[#8E8E93] hover:text-[#1C1C1E] text-[20px] leading-none transition-colors">&times;</button>
+            <button onClick={onClose} className="ui-dialog__close" aria-label="关闭"><X size={18} /></button>
           </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="ui-dialog__body">
           <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_170px_auto]">
             <input
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               placeholder="搜索报价单号、客户、项目"
-              className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] outline-none focus:border-[#007AFF]"
+              className="border border-[#D7D7DE] px-3 py-2 text-sm outline-none focus:border-[#007AFF]"
             />
             <input
               type="date"
               value={quoteDate}
               onChange={(event) => setQuoteDate(event.target.value)}
-              className="rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] outline-none focus:border-[#007AFF]"
+              className="border border-[#D7D7DE] px-3 py-2 text-sm outline-none focus:border-[#007AFF]"
             />
-            <button type="button" onClick={() => { setKeyword(""); setQuoteDate(""); }} className="rounded-lg px-3 py-2 text-[13px] text-[#007AFF] hover:bg-[#F2F2F7]">清除筛选</button>
+            <button type="button" onClick={() => { setKeyword(""); setQuoteDate(""); }} className="ui-button ui-button--quiet">清除筛选</button>
           </div>
           {status && (
-            <p className={`text-[12px] mb-3 ${status.includes("失败") ? "text-[#FF3B30]" : "text-[#34C759]"}`}>{status}</p>
+            <p className={`mb-3 text-[13px] ${status.includes("失败") ? "text-[#C93531]" : "text-[#248A3D]"}`}>{status}</p>
           )}
 
           {filteredQuotes.length === 0 ? (
@@ -186,7 +190,7 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                   >
                     <span className="w-20 shrink-0 text-[13px] font-medium text-[#1C1C1E]">#{quote.id}</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[#1C1C1E]">{[quote.customerName, quote.projectName].filter(Boolean).join(" / ") || "未命名报价"}</span>
-                    <span className="w-56 shrink-0 pr-3 text-[11px] text-[#3A3A3C]">
+                    <span className="w-56 shrink-0 pr-3 text-xs text-[#3A3A3C]">
                       {doors.map((door, index) => (
                         <span key={index} className="flex items-baseline gap-1">
                           <span className="block truncate max-w-[190px]">{door.name}</span>
@@ -194,14 +198,14 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                         </span>
                       ))}
                     </span>
-                    <span className="w-28 shrink-0 text-[11px] text-[#8E8E93]">{quote.quoteDate || "-"}</span>
+                    <span className="w-28 shrink-0 text-xs text-[#777780]">{quote.quoteDate || "-"}</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(quote.id, quote.customerName);
                     }}
-                    className="text-[11px] text-[#FF3B30]/60 hover:text-[#FF3B30] opacity-0 group-hover:opacity-100 transition-all px-2 py-1 whitespace-nowrap"
+                    className="whitespace-nowrap px-2 py-1 text-xs text-[#C93531] opacity-70 transition-all hover:opacity-100 group-hover:opacity-100"
                   >
                     删除
                   </button>
@@ -210,6 +214,10 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
               })}
             </div>
           )}
+        </div>
+        <div className="ui-dialog__footer justify-between">
+          <span className="text-xs text-[#777780]">共 {filteredQuotes.length} 条记录</span>
+          <button type="button" onClick={onClose} className="ui-button ui-button--secondary">关闭</button>
         </div>
       </div>
     </div>

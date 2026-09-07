@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
 import {
@@ -131,7 +132,7 @@ export default function ProductionPage() {
     </main>
     <datalist id="fulfillment-people">{people.map((person)=><option key={person.uid} value={person.uid}>{person.name} · {person.role}</option>)}</datalist>
     {busy && <div className="fixed bottom-5 right-5 z-40 border border-[#D1D1D6] bg-white px-4 py-3 text-sm shadow-lg">正在处理...</div>}
-    {notice && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setNotice(null)}><div className="w-full max-w-md border border-[#D1D1D6] bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}><h3 className="font-semibold">{notice.title}</h3><p className={`mt-3 whitespace-pre-wrap text-sm ${notice.error ? "text-[#C62828]" : "text-[#248A3D]"}`}>{notice.message}</p><div className="mt-5 text-right"><button onClick={() => setNotice(null)} className="h-9 bg-[#007AFF] px-5 text-sm text-white">知道了</button></div></div></div>}
+    {notice && <NoticeDialog title={notice.title} message={notice.message} onConfirm={() => setNotice(null)} />}
   </div>;
 }
 

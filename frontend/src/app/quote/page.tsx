@@ -994,32 +994,23 @@ export default function QuotePage() {
         />
       )}
       {feedback && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => setFeedback(null)}>
-          <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setFeedback(null)}
-              aria-label="关闭反馈窗口"
-              className="absolute right-3 top-3 h-7 w-7 rounded-full text-[18px] leading-7 text-[#8E8E93] hover:bg-[#F2F2F7]"
-            >
-              ×
-            </button>
-            <h2 className="pr-8 text-[16px] font-semibold text-[#1C1C1E]">{feedback.title}</h2>
-            <div className={`mt-4 rounded-lg px-3 py-3 text-[13px] leading-6 ${
+        <div className="ui-dialog-backdrop" onClick={() => setFeedback(null)}>
+          <div className="ui-dialog max-w-md" onClick={(event) => event.stopPropagation()}>
+            <div className="ui-dialog__header">
+              <h2 className="ui-dialog__title">{feedback.title}</h2>
+              <button type="button" onClick={() => setFeedback(null)} aria-label="关闭反馈窗口" className="ui-dialog__close">×</button>
+            </div>
+            <div className="ui-dialog__body">
+              <div className={`px-3 py-3 text-sm leading-6 ${
               feedback.tone === "success"
                 ? "bg-[#34C759]/10 text-[#248A3D]"
                 : "bg-[#FF3B30]/10 text-[#D70015]"
             }`}>
               {feedback.message}
+              </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setFeedback(null)}
-                className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white"
-              >
-                知道了
-              </button>
+            <div className="ui-dialog__footer">
+              <button type="button" onClick={() => setFeedback(null)} className="ui-button ui-button--primary">知道了</button>
             </div>
           </div>
         </div>
