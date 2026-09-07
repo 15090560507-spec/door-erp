@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import TopNav from "@/components/TopNav";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function DoorCadFrameLayout({ children }: { children: React.ReactNode }) {
@@ -20,5 +19,5 @@ export default function DoorCadFrameLayout({ children }: { children: React.React
     }
   }, [loading, router, setModule, user]);
   if (loading || !user || user.uid !== "A") return null;
-  return <div className="min-h-screen bg-[#F2F2F7]"><TopNav />{children}</div>;
+  return <div className="min-h-screen bg-[#F2F2F7]">{children}</div>;
 }

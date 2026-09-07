@@ -117,8 +117,8 @@ export interface ModelConfigInput {
   enabled: boolean;
 }
 
-export async function listRenderModelConfigs(includeDisabled = true): Promise<RenderModelConfig[]> {
-  const { data } = await api.get<{ configs: RenderModelConfig[] }>("/render/model-configs", { params: { includeDisabled } });
+export async function listRenderModelConfigs(includeDisabled = true, signal?: AbortSignal): Promise<RenderModelConfig[]> {
+  const { data } = await api.get<{ configs: RenderModelConfig[] }>("/render/model-configs", { params: { includeDisabled }, signal });
   return data.configs || [];
 }
 
@@ -136,8 +136,8 @@ export async function deleteRenderModelConfig(id: string): Promise<void> {
   await api.delete(`/render/model-configs/${id}`);
 }
 
-export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean; limit?: number; offset?: number }): Promise<RenderAsset[]> {
-  const { data } = await api.get<{ assets: RenderAsset[] }>("/render/assets", { params });
+export async function listRenderAssets(params?: { category?: string; q?: string; favorite?: boolean; limit?: number; offset?: number }, signal?: AbortSignal): Promise<RenderAsset[]> {
+  const { data } = await api.get<{ assets: RenderAsset[] }>("/render/assets", { params, signal });
   return data.assets || [];
 }
 
@@ -196,8 +196,8 @@ export async function createRenderTask(input: {
   }
 }
 
-export async function listRenderTasks(limit = 30): Promise<RenderTask[]> {
-  const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", { params: { limit } });
+export async function listRenderTasks(limit = 30, signal?: AbortSignal): Promise<RenderTask[]> {
+  const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", { params: { limit }, signal });
   return data.tasks || [];
 }
 

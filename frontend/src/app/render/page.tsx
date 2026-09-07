@@ -146,8 +146,40 @@ export default function RenderPage() {
   const referencePromptGuidance = buildReferencePromptGuidance(selectedReferenceCategories);
 
   useEffect(() => {
-    refreshAll();
-    void getTasks({ limit: 100, offset: 0 }).then((result) => setDrawingTasks(result.tasks || [])).catch(() => setDrawingTasks([]));
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const initialize = async () => {
+      try {
+        const [nextConfigs, nextTasks, drawings, nextAssets] = await Promise.all([
+          listRenderModelConfigs(true, controller.signal),
+          listRenderTasks(TASK_LIST_LIMIT, controller.signal),
+          getTasks({ limit: 100, offset: 0 }),
+          listRenderAssets({ limit: ASSET_PAGE_SIZE, offset: 0 }, controller.signal),
+        ]);
+        if (cancelled) return;
+        setConfigs(nextConfigs);
+        setTasks(nextTasks);
+        setDrawingTasks(drawings.tasks || []);
+        setAssets(nextAssets);
+        setAssetOffset(nextAssets.length);
+        setAssetHasMore(nextAssets.length === ASSET_PAGE_SIZE);
+        const defaultConfig = pickDefaultConfig(nextConfigs);
+        setSelectedConfigId(defaultConfig?.id || "");
+        setEditingConfigId(defaultConfig?.id || "");
+        if (defaultConfig) setConfigForm(formFromConfig(defaultConfig));
+        setActiveTask(nextTasks[0] || null);
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setMessage(`效果渲染数据加载失败：${(error as Error).message || "请检查网络连接"}`);
+      }
+    };
+
+    void initialize();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   async function refreshAll() {
@@ -172,12 +204,6 @@ export default function RenderPage() {
       return nextTasks[0];
     });
   }
-
-  useEffect(() => {
-    if (!assets.length && !assetLoading) {
-      void loadAssets({ reset: true });
-    }
-  }, []);
 
   async function loadAssets(options: { reset?: boolean; categoryValue?: string; searchValue?: string } = {}) {
     const reset = Boolean(options.reset);
@@ -416,9 +442,17 @@ export default function RenderPage() {
   useEffect(() => {
     if (!submitWatchSince) return;
     let stopped = false;
+    let timer: number | undefined;
+    let controller: AbortController | null = null;
     const poll = async () => {
+      if (stopped) return;
+      if (document.hidden) {
+        timer = window.setTimeout(poll, 3000);
+        return;
+      }
+      controller = new AbortController();
       try {
-        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT, controller.signal);
         if (stopped) return;
         setTasks(nextTasks);
         const recentTask = findRecentRenderTask(nextTasks, submitWatchSince);
@@ -436,22 +470,33 @@ export default function RenderPage() {
         }
       } catch {
         // Submit recovery is best-effort; manual refresh still works.
+      } finally {
+        controller = null;
+        if (!stopped) timer = window.setTimeout(poll, 3000);
       }
     };
     void poll();
-    const timer = window.setInterval(poll, 3000);
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      controller?.abort();
+      if (timer) window.clearTimeout(timer);
     };
   }, [submitWatchSince]);
 
   useEffect(() => {
     if (submitWatchSince || !activeTask || !isLiveRenderStatus(activeTask.status)) return;
     let stopped = false;
-    const timer = window.setInterval(async () => {
+    let timer: number | undefined;
+    let controller: AbortController | null = null;
+    const poll = async () => {
+      if (stopped) return;
+      if (document.hidden) {
+        timer = window.setTimeout(poll, 3000);
+        return;
+      }
+      controller = new AbortController();
       try {
-        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT);
+        const nextTasks = await listRenderTasks(TASK_LIST_LIMIT, controller.signal);
         if (stopped) return;
         setTasks(nextTasks);
         const refreshed = nextTasks.find((task) => task.id === activeTask.id);
@@ -463,11 +508,16 @@ export default function RenderPage() {
         }
       } catch {
         // Polling is best-effort; manual refresh still works.
+      } finally {
+        controller = null;
+        if (!stopped) timer = window.setTimeout(poll, 3000);
       }
-    }, 3000);
+    };
+    timer = window.setTimeout(poll, 3000);
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      controller?.abort();
+      if (timer) window.clearTimeout(timer);
     };
   }, [activeTask?.id, activeTask?.status, submitWatchSince]);
 

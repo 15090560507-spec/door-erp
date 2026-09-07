@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import TopNav from "@/components/TopNav";
-import { useAuth } from "@/hooks/useAuth";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
 import {
@@ -38,7 +36,6 @@ import type {
 
 const STATUS_CARDS = ["待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中", "待成品质检", "返工中", "待成品入库", "已入库待发货"];
 export default function ProductionPage() {
-  const { setModule } = useAuth();
   const [dashboard, setDashboard] = useState<FulfillmentDashboard | null>(null);
   const [pending, setPending] = useState<PendingFulfillmentTask[]>([]);
   const [orders, setOrders] = useState<FulfillmentOrder[]>([]);
@@ -59,7 +56,6 @@ export default function ProductionPage() {
     setDashboard(nextDashboard); setPending(nextPending); setOrders(nextOrders); setPeople(nextPeople);
   }, [q, status]);
 
-  useEffect(() => { setModule("生产管理"); }, [setModule]);
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -97,7 +93,6 @@ export default function ProductionPage() {
   };
 
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-    <TopNav />
     <main className="mx-auto max-w-[1680px] space-y-4 px-4 py-5 sm:px-6">
       <header className="flex flex-wrap items-end gap-4">
         <div className="flex-1"><h1 className="text-xl font-semibold">门樘履约中心</h1><p className="mt-1 text-sm text-[#636366]">每樘门独立编号、独立技术版本和执行记录；整单负责人协调，执行人提交实际完成。</p></div>

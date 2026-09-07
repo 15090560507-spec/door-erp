@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import TopNav from "@/components/TopNav";
 import { useAuth } from "@/hooks/useAuth";
 import { cancelSalesOrder, confirmSalesOrder, createSalesOrder, getSalesOrder, getSalesOrderCandidates, getSalesOrders, updateSalesOrder } from "@/lib/salesOrderApi";
 import type { SalesOrder, SalesOrderCandidate, SalesOrderPayload, SalesOrderQuoteChoice, SalesOrderSummary } from "@/lib/salesOrderTypes";
@@ -52,7 +51,7 @@ function orderToEditor(order: SalesOrder): Editor {
 }
 
 export default function OrdersPage() {
-  const { user, setModule } = useAuth();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<SalesOrderSummary[]>([]);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
   const [editor, setEditor] = useState<Editor>(() => emptyEditor());
@@ -77,7 +76,6 @@ export default function OrdersPage() {
     finally { setLoading(false); }
   }, [q, status]);
 
-  useEffect(() => { setModule("订单确认"); }, [setModule]);
   useEffect(() => { void loadOrders(); }, [loadOrders]);
 
   const subtotal = useMemo(() => editor.lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0), [editor.lines]);
@@ -193,7 +191,6 @@ export default function OrdersPage() {
   };
 
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-    <TopNav />
     <main className="mx-auto max-w-[1680px] space-y-4 px-4 py-5 sm:px-6">
       <header className="flex flex-wrap items-end gap-3">
         <div className="flex-1"><h1 className="text-xl font-semibold">订单确认</h1><p className="mt-1 text-sm text-[#636366]">从已录入图纸中整理销售订单；完成报价后正式确认，再进入生产待下达。</p></div>
