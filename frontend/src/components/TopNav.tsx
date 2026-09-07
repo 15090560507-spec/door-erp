@@ -6,7 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BadgeCheck,
   Calculator,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   ClipboardList,
   Database,
@@ -32,6 +34,7 @@ import { MODULE_OPTIONS, type ModuleName } from "@/lib/types";
 const DRAWING_MODULES: ModuleName[] = ["任务总览", "图纸绘制", "图纸初审", "图纸终审"];
 const BUSINESS_MODULES: ModuleName[] = ["订单确认", "生产管理", "采购管理", "库存管理", "基础资料"];
 const PINNED_KEY = "door_business_pinned_modules_v1";
+const BUSINESS_OPEN_KEY = "door_business_group_open_v1";
 
 const MODULE_ICONS: Record<ModuleName, ComponentType<{ size?: number; strokeWidth?: number }>> = {
   任务总览: LayoutDashboard,
@@ -88,6 +91,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
   const pathname = usePathname();
   const router = useRouter();
   const [pinned, setPinned] = useState<ModuleName[]>([]);
+  const [businessOpen, setBusinessOpen] = useState(false);
 
   const availableItems = useMemo(
     () => MODULE_OPTIONS.filter((item) => item.module !== "下料" || user?.uid === "A"),
@@ -98,20 +102,40 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
   const pinnedItems = availableItems.filter((item) => pinned.includes(item.module));
   const pathModule = moduleFromPath(pathname);
   const activeModule = pathname.startsWith("/dashboard") ? dashboardModule : (pathModule || dashboardModule);
+  const businessActive = BUSINESS_MODULES.includes(activeModule);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(PINNED_KEY) || "[]") as string[];
-      setPinned(stored.filter((item): item is ModuleName => MODULE_OPTIONS.some((option) => option.module === item)));
-    } catch {
-      setPinned([]);
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(localStorage.getItem(PINNED_KEY) || "[]") as string[];
+        setPinned(stored.filter((item): item is ModuleName => MODULE_OPTIONS.some((option) => option.module === item)));
+      } catch {
+        setPinned([]);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const remembered = localStorage.getItem(BUSINESS_OPEN_KEY) === "1";
+      setBusinessOpen(businessActive || remembered);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [businessActive]);
 
   const togglePinned = (module: ModuleName) => {
     setPinned((current) => {
       const next = current.includes(module) ? current.filter((item) => item !== module) : [...current, module];
       localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleBusiness = () => {
+    setBusinessOpen((current) => {
+      const next = !current;
+      localStorage.setItem(BUSINESS_OPEN_KEY, next ? "1" : "0");
       return next;
     });
   };
@@ -161,16 +185,19 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
     <>
       <header className="app-mobile-bar">
         <button type="button" className="app-icon-button" onClick={onOpenMobile} aria-label="打开导航"><Menu size={21} /></button>
-        <div className="app-mobile-brand"><span className="app-brand-mark">西</span><span>西州将军</span></div>
-        <span className="app-mobile-page">{activeModule}</span>
+        <strong className="app-mobile-title">{activeModule}</strong>
+        <span className="app-mobile-user">{user?.name}</span>
       </header>
 
       {mobileOpen && <button type="button" className="app-sidebar__scrim" onClick={onCloseMobile} aria-label="关闭导航" />}
 
       <aside className={`app-sidebar ${mobileOpen ? "is-mobile-open" : ""}`} aria-label="主导航">
-        <div className="app-sidebar__brand">
-          <span className="app-brand-mark">西</span>
-          <span className="app-sidebar__brand-copy"><strong>西州将军</strong><small>Door ERP</small></span>
+        <div className="app-sidebar__top">
+          <button type="button" className="app-sidebar__top-toggle" onClick={onToggleCollapsed} aria-label={collapsed ? "展开导航" : "收起导航"} title={collapsed ? "展开导航" : "收起导航"}>
+            {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+            <span>主导航</span>
+            {!collapsed && <ChevronLeft size={14} />}
+          </button>
           <button type="button" className="app-sidebar__mobile-close" onClick={onCloseMobile} aria-label="关闭导航"><X size={20} /></button>
         </div>
 
@@ -185,9 +212,13 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
             <div className="app-sidebar__group-title"><PackageSearch size={12} /><span>图纸业务</span></div>
             {drawingItems.map((item) => renderItem(item))}
           </section>
-          <section className="app-sidebar__group">
-            <div className="app-sidebar__group-title"><Factory size={12} /><span>经营管理</span></div>
-            {businessItems.map((item) => renderItem(item, true))}
+          <section className={`app-sidebar__group app-sidebar__group--collapsible ${businessActive ? "is-current" : ""}`}>
+            <button type="button" className="app-sidebar__group-toggle" onClick={toggleBusiness} aria-expanded={businessOpen} title={collapsed ? "经营管理" : undefined}>
+              <Factory size={15} />
+              <span>经营管理</span>
+              {businessOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {businessOpen && <div className="app-sidebar__subnav">{businessItems.map((item) => renderItem(item, true))}</div>}
           </section>
         </nav>
 
@@ -198,11 +229,6 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
           </div>
           <button type="button" className="app-sidebar__footer-button" onClick={logout} aria-label="退出登录" title="退出登录">
             <LogOut size={18} /><span>退出登录</span>
-          </button>
-          <button type="button" className="app-sidebar__collapse" onClick={onToggleCollapsed} aria-label={collapsed ? "展开导航" : "收起导航"} title={collapsed ? "展开导航" : "收起导航"}>
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-            <span>{collapsed ? "展开" : "收起导航"}</span>
-            {!collapsed && <ChevronLeft size={14} />}
           </button>
         </div>
       </aside>

@@ -21,6 +21,7 @@ import ProductionReleaseButton from "@/components/production/ProductionReleaseBu
 import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateCompact } from "@/lib/dateTime";
+import { Inbox } from "lucide-react";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
 const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
@@ -878,6 +879,12 @@ export default function DashboardPage() {
               activeStatus={filterStatus}
               onStatus={setFilterStatus}
               onQuery={applyOverviewQuery}
+              onCreate={startNewDrawing}
+              onRefresh={() => {
+                void fetchOverview();
+                void fetchTasks(filterDate, filterStatus, page);
+                void fetchStatusCounts(filterDate);
+              }}
             />
           )}
           {module === "任务总览" && <AdminSettingsPanel />}
@@ -1076,8 +1083,10 @@ export default function DashboardPage() {
               {loading ? (
                 <TaskListSkeleton count={5} />
               ) : tasks.length === 0 ? (
-                <div className="text-center py-10 text-[#8E8E93]">
-                  <div className="text-4xl mb-3">📭</div>
+                <div className="flex flex-col items-center py-10 text-center text-[#8E8E93]">
+                  <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#777780] shadow-sm ring-1 ring-[#E4E4E9]">
+                    <Inbox size={19} strokeWidth={1.7} />
+                  </span>
                   <p className="text-sm">暂无待处理任务</p>
                 </div>
               ) : (

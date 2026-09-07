@@ -193,7 +193,7 @@ export default function DoorCadFramePage() {
   ];
 
   return (
-    <main className="mx-auto max-w-[1600px] px-3 py-4 sm:px-5 sm:py-5">
+    <main className="workspace-page workspace-page--wide">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-[#1C1C1E]">门框下料</h1>

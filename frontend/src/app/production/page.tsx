@@ -93,7 +93,7 @@ export default function ProductionPage() {
   };
 
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-    <main className="mx-auto max-w-[1680px] space-y-4 px-4 py-5 sm:px-6">
+    <main className="workspace-page workspace-page--wide space-y-4">
       <header className="flex flex-wrap items-end gap-4">
         <div className="flex-1"><h1 className="text-xl font-semibold">门樘履约中心</h1><p className="mt-1 text-sm text-[#636366]">每樘门独立编号、独立技术版本和执行记录；整单负责人协调，执行人提交实际完成。</p></div>
         <button className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm" onClick={() => void refresh()}>刷新</button>

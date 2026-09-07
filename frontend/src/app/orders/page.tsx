@@ -191,7 +191,7 @@ export default function OrdersPage() {
   };
 
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
-    <main className="mx-auto max-w-[1680px] space-y-4 px-4 py-5 sm:px-6">
+    <main className="workspace-page workspace-page--wide space-y-4">
       <header className="flex flex-wrap items-end gap-3">
         <div className="flex-1"><h1 className="text-xl font-semibold">订单确认</h1><p className="mt-1 text-sm text-[#636366]">从已录入图纸中整理销售订单；完成报价后正式确认，再进入生产待下达。</p></div>
         <button onClick={startNew} className="h-9 bg-[#007AFF] px-4 text-sm font-medium text-white">新建订单</button>

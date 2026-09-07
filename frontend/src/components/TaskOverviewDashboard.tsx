@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  CalendarDays,
+  CheckCircle2,
+  CircleAlert,
+  FileStack,
+  PencilLine,
+  Plus,
+  RefreshCw,
+  TrendingUp,
+} from "lucide-react";
+import type { ComponentType } from "react";
 import type { TaskOverviewData } from "@/lib/types";
 
 interface Props {
@@ -7,141 +18,183 @@ interface Props {
   activeStatus: string;
   onStatus: (status: string) => void;
   onQuery: (query: string) => void;
+  onCreate: () => void;
+  onRefresh: () => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  待绘制: "#636366",
-  待初审: "#FF9F0A",
-  待终审: "#BF6A02",
-  待修改: "#FF3B30",
-  已通过: "#34C759",
-};
+const STATUS_META = [
+  { status: "待绘制", color: "#DFF45F", text: "等待绘图" },
+  { status: "待初审", color: "#73A7FF", text: "等待初审" },
+  { status: "待终审", color: "#B298F2", text: "等待终审" },
+  { status: "待修改", color: "#FF7D78", text: "退回修改" },
+  { status: "已通过", color: "#65D394", text: "终审完成" },
+] as const;
 
-export default function TaskOverviewDashboard({ data, activeStatus, onStatus, onQuery }: Props) {
-  const metrics = [
-    { label: "全部图纸", value: data.total, status: "" },
-    { label: "今日新增", value: data.today_created, status: "" },
-    { label: "待绘制", value: data.status_counts["待绘制"] || 0, status: "待绘制" },
-    { label: "待修改", value: data.status_counts["待修改"] || 0, status: "待修改" },
-    { label: "已通过", value: data.status_counts["已通过"] || 0, status: "已通过" },
+interface MetricDefinition {
+  label: string;
+  value: number;
+  caption: string;
+  status: string;
+  tone: "dark" | "lime" | "plain" | "risk" | "success";
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+}
+
+export default function TaskOverviewDashboard({ data, activeStatus, onStatus, onQuery, onCreate, onRefresh }: Props) {
+  const metrics: MetricDefinition[] = [
+    { label: "全部图纸", value: data.total, caption: "累计录入图纸", status: "", tone: "dark", icon: FileStack },
+    { label: "今日新增", value: data.today_created, caption: "今日新建任务", status: "", tone: "lime", icon: CalendarDays },
+    { label: "待绘制", value: data.status_counts["待绘制"] || 0, caption: "等待绘图处理", status: "待绘制", tone: "plain", icon: PencilLine },
+    { label: "待修改", value: data.status_counts["待修改"] || 0, caption: "需要优先处理", status: "待修改", tone: "risk", icon: CircleAlert },
+    { label: "已通过", value: data.status_counts["已通过"] || 0, caption: "已完成终审", status: "已通过", tone: "success", icon: CheckCircle2 },
   ];
-  const maxTrend = Math.max(1, ...data.trend.flatMap((item) => [item.created, item.approved]));
-  const chartWidth = 700;
-  const chartHeight = 180;
-  const chartTop = 18;
-  const chartBottom = 34;
-  const plotHeight = chartHeight - chartTop - chartBottom;
-  const slot = chartWidth / Math.max(data.trend.length, 1);
 
   return (
-    <section className="mb-5 overflow-hidden rounded-lg border border-[#D9E7F5] bg-white shadow-sm">
-      <div className="grid grid-cols-2 border-b border-[#E5E5EA] md:grid-cols-5">
-        {metrics.map((metric) => {
-          const active = Boolean(metric.status) && activeStatus === metric.status;
-          return (
-            <button
-              key={metric.label}
-              type="button"
-              onClick={() => metric.status && onStatus(active ? "" : metric.status)}
-              className={`min-h-[88px] border-b border-r border-[#E5E5EA] px-5 py-4 text-left transition-colors md:border-b-0 ${
-                metric.status ? "hover:bg-[#F5FAFF]" : "cursor-default"
-              } ${active ? "bg-[#EAF4FF]" : "bg-white"}`}
-            >
-              <div className="text-[12px] font-medium text-[#636366]">{metric.label}</div>
-              <div className="mt-1 text-[28px] font-semibold tabular-nums text-[#1C1C1E]">{metric.value}</div>
-            </button>
-          );
-        })}
+    <section className="overview-dashboard">
+      <header className="overview-hero">
+        <div>
+          <div className="overview-eyebrow"><TrendingUp size={14} /> 图纸协同工作台</div>
+          <h1>任务总览</h1>
+          <p>集中查看图纸流转、积压风险、客户分布和门型结构。</p>
+        </div>
+        <div className="overview-hero__actions">
+          <button type="button" className="overview-refresh" onClick={onRefresh} title="刷新任务数据"><RefreshCw size={16} />刷新</button>
+          <button type="button" className="overview-create" onClick={onCreate}><Plus size={17} />图纸信息录入</button>
+        </div>
+      </header>
+
+      <div className="overview-metrics">
+        {metrics.map((metric) => (
+          <MetricCard
+            key={metric.label}
+            metric={metric}
+            active={Boolean(metric.status) && activeStatus === metric.status}
+            onClick={metric.status ? () => onStatus(activeStatus === metric.status ? "" : metric.status) : undefined}
+          />
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
-        <div className="border-b border-[#E5E5EA] p-5 xl:border-b-0 xl:border-r">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-[15px] font-semibold text-[#1C1C1E]">近 14 天图纸流转</h3>
-            <div className="flex gap-4 text-[11px] text-[#636366]">
-              <span><i className="mr-1 inline-block h-2 w-2 bg-[#007AFF]" />新增</span>
-              <span><i className="mr-1 inline-block h-2 w-2 bg-[#34C759]" />终审通过</span>
-            </div>
-          </div>
-          <div className="aspect-[3.9/1] min-h-[190px] w-full">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-full w-full" role="img" aria-label="近十四天新增和终审通过趋势">
-              {[0, 0.5, 1].map((ratio) => {
-                const y = chartTop + plotHeight * ratio;
-                return <line key={ratio} x1="0" x2={chartWidth} y1={y} y2={y} stroke="#E5E5EA" strokeWidth="1" />;
-              })}
-              {data.trend.map((item, index) => {
-                const x = index * slot + slot * 0.22;
-                const createdHeight = (item.created / maxTrend) * plotHeight;
-                const approvedHeight = (item.approved / maxTrend) * plotHeight;
-                return (
-                  <g key={item.date}>
-                    <rect x={x} y={chartTop + plotHeight - createdHeight} width={Math.max(5, slot * 0.22)} height={createdHeight} fill="#007AFF" rx="1" />
-                    <rect x={x + slot * 0.27} y={chartTop + plotHeight - approvedHeight} width={Math.max(5, slot * 0.22)} height={approvedHeight} fill="#34C759" rx="1" />
-                    {(index % 2 === 0 || index === data.trend.length - 1) && (
-                      <text x={index * slot + slot / 2} y={chartHeight - 10} textAnchor="middle" fontSize="10" fill="#8E8E93">{item.label}</text>
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-        </div>
-
-        <div className="p-5">
-          <h3 className="mb-4 text-[15px] font-semibold text-[#1C1C1E]">当前流程分布</h3>
-          <div className="space-y-3">
-            {Object.entries(STATUS_COLORS).map(([status, color]) => {
-              const count = data.status_counts[status] || 0;
-              const ratio = data.total ? Math.max(2, (count / data.total) * 100) : 0;
-              return (
-                <button key={status} type="button" onClick={() => onStatus(activeStatus === status ? "" : status)} className="block w-full text-left">
-                  <div className="mb-1 flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-[#3A3A3C]">{status}</span>
-                    <span className="tabular-nums text-[#636366]">{count}</span>
-                  </div>
-                  <div className="h-2 overflow-hidden bg-[#F2F2F7]">
-                    <div className="h-full transition-[width]" style={{ width: `${ratio}%`, backgroundColor: color }} />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      <div className="overview-primary-grid">
+        <TrendPanel data={data} />
+        <FlowPanel data={data} activeStatus={activeStatus} onStatus={onStatus} />
       </div>
 
-      <div className="grid grid-cols-1 border-t border-[#E5E5EA] md:grid-cols-2">
-        <Ranking title="客户图纸量" items={data.customers} onQuery={onQuery} />
-        <Ranking title="门型分布" items={data.door_types} onQuery={onQuery} divider />
+      <div className="overview-secondary-grid">
+        <Ranking title="客户图纸量" caption="按累计图纸数量排序" items={data.customers} onQuery={onQuery} />
+        <Ranking title="门型分布" caption="当前产品结构占比" items={data.door_types} onQuery={onQuery} variant="soft" />
       </div>
     </section>
   );
 }
 
-function Ranking({ title, items, onQuery, divider = false }: {
+function MetricCard({ metric, active, onClick }: { metric: MetricDefinition; active: boolean; onClick?: () => void }) {
+  const Icon = metric.icon;
+  const content = (
+    <>
+      <span className="overview-metric__icon"><Icon size={18} strokeWidth={1.8} /></span>
+      <span className="overview-metric__label">{metric.label}</span>
+      <strong>{metric.value}</strong>
+      <small>{metric.caption}</small>
+      {onClick && <span className="overview-metric__action">查看任务 <span aria-hidden="true">↗</span></span>}
+    </>
+  );
+  const className = `overview-metric overview-metric--${metric.tone} ${active ? "is-active" : ""}`;
+  return onClick
+    ? <button type="button" className={className} onClick={onClick}>{content}</button>
+    : <div className={className}>{content}</div>;
+}
+
+function TrendPanel({ data }: { data: TaskOverviewData }) {
+  const width = 760;
+  const height = 250;
+  const top = 30;
+  const bottom = 42;
+  const left = 28;
+  const right = 12;
+  const plotHeight = height - top - bottom;
+  const plotWidth = width - left - right;
+  const max = Math.max(1, ...data.trend.flatMap((item) => [item.created, item.approved]));
+  const slot = plotWidth / Math.max(1, data.trend.length);
+  const barWidth = Math.max(5, Math.min(14, slot * 0.24));
+
+  return (
+    <section className="overview-panel overview-trend">
+      <div className="overview-panel__header">
+        <div><h2>近 14 天图纸流转</h2><p>新增任务与终审通过趋势</p></div>
+        <div className="overview-legend"><span><i className="is-created" />新增</span><span><i className="is-approved" />终审通过</span></div>
+      </div>
+      <div className="overview-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="近十四天新增任务与终审通过趋势图">
+          {[0, 0.33, 0.66, 1].map((ratio) => {
+            const y = top + plotHeight * ratio;
+            return <line key={ratio} x1={left} x2={width - right} y1={y} y2={y} className="overview-chart-grid" />;
+          })}
+          {data.trend.map((item, index) => {
+            const baseX = left + index * slot + slot / 2;
+            const createdHeight = Math.max(item.created ? 3 : 0, (item.created / max) * plotHeight);
+            const approvedHeight = Math.max(item.approved ? 3 : 0, (item.approved / max) * plotHeight);
+            return (
+              <g key={item.date}>
+                <rect className="overview-bar overview-bar--created" x={baseX - barWidth - 2} y={top + plotHeight - createdHeight} width={barWidth} height={createdHeight} rx={barWidth / 2} style={{ animationDelay: `${index * 22}ms` }}><title>{`${item.label} 新增 ${item.created}`}</title></rect>
+                <rect className="overview-bar overview-bar--approved" x={baseX + 2} y={top + plotHeight - approvedHeight} width={barWidth} height={approvedHeight} rx={barWidth / 2} style={{ animationDelay: `${index * 22 + 40}ms` }}><title>{`${item.label} 通过 ${item.approved}`}</title></rect>
+                {(index % 2 === 0 || index === data.trend.length - 1) && <text x={baseX} y={height - 13} textAnchor="middle" className="overview-chart-label">{item.label}</text>}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </section>
+  );
+}
+
+function FlowPanel({ data, activeStatus, onStatus }: { data: TaskOverviewData; activeStatus: string; onStatus: (status: string) => void }) {
+  return (
+    <section className="overview-panel overview-flow">
+      <div className="overview-panel__header overview-panel__header--dark">
+        <div><h2>流程健康度</h2><p>当前任务状态与积压占比</p></div>
+        <span className="overview-total">{data.total} 项</span>
+      </div>
+      <div className="overview-flow__list">
+        {STATUS_META.map((item) => {
+          const count = data.status_counts[item.status] || 0;
+          const ratio = data.total ? (count / data.total) * 100 : 0;
+          const active = activeStatus === item.status;
+          return (
+            <button key={item.status} type="button" className={`overview-flow__item ${active ? "is-active" : ""}`} onClick={() => onStatus(active ? "" : item.status)}>
+              <span className="overview-flow__name"><i style={{ backgroundColor: item.color }} />{item.status}<small>{item.text}</small></span>
+              <strong>{count}</strong><span className="overview-flow__percent">{Math.round(ratio)}%</span>
+              <span className="overview-flow__track"><i style={{ width: `${ratio}%`, backgroundColor: item.color }} /></span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function Ranking({ title, caption, items, onQuery, variant = "plain" }: {
   title: string;
+  caption: string;
   items: { name: string; count: number }[];
   onQuery: (query: string) => void;
-  divider?: boolean;
+  variant?: "plain" | "soft";
 }) {
   const max = Math.max(1, ...items.map((item) => item.count));
+  const total = items.reduce((sum, item) => sum + item.count, 0);
   return (
-    <div className={`p-5 ${divider ? "border-t border-[#E5E5EA] md:border-l md:border-t-0" : ""}`}>
-      <h3 className="mb-3 text-[15px] font-semibold text-[#1C1C1E]">{title}</h3>
+    <section className={`overview-panel overview-ranking overview-ranking--${variant}`}>
+      <div className="overview-panel__header"><div><h2>{title}</h2><p>{caption}</p></div><span className="overview-ranking__total">{total}</span></div>
       {items.length === 0 ? (
-        <div className="py-5 text-sm text-[#8E8E93]">暂无数据</div>
+        <div className="overview-ranking__empty"><FileStack size={22} /><span>暂无可统计数据</span></div>
       ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {items.map((item) => (
-            <button key={item.name} type="button" onClick={() => onQuery(item.name)} className="group min-w-0 py-1 text-left">
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="min-w-0 flex-1 truncate text-[#3A3A3C] group-hover:text-[#007AFF]">{item.name}</span>
-                <span className="tabular-nums text-[#8E8E93]">{item.count}</span>
-              </div>
-              <div className="mt-1 h-1.5 bg-[#F2F2F7]"><div className="h-full bg-[#6AAFF8]" style={{ width: `${(item.count / max) * 100}%` }} /></div>
+        <div className="overview-ranking__list">
+          {items.slice(0, 8).map((item, index) => (
+            <button key={item.name} type="button" onClick={() => onQuery(item.name)} className="overview-ranking__item">
+              <span className="overview-ranking__index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="overview-ranking__main"><span><strong>{item.name}</strong><small>{item.count} 项</small></span><i><b style={{ width: `${(item.count / max) * 100}%` }} /></i></span>
             </button>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
