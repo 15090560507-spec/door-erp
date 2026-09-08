@@ -120,13 +120,20 @@
 
 ### 4.5 确认结果
 
-订单确认时在同一事务内：
+订单确认时先在销售订单库的同一事务内：
 
 1. 固化订单头和订单行快照。
-2. 按订单行数量创建独立门樘生产编号。
-3. 为每樘门保存生产技术包快照。
-4. 创建 `草稿 V1` 基础 BOM 生成任务。
-5. 写入订单时间线。
+2. 创建一条带幂等键的履约生成任务。
+3. 写入订单时间线和生成状态。
+
+订单库提交后，系统立即执行履约生成任务，在履约库的一个事务内：
+
+1. 按订单行数量创建独立门樘生产编号。
+2. 为每樘门保存生产技术包快照。
+3. 创建 `草稿 V1` 基础 BOM 生成记录。
+4. 记录销售订单、订单行和门樘之间的稳定关联。
+
+两个数据库不能使用一个本地 SQLite 事务，因此跨库一致性采用可重试任务而不是伪造分布式事务。履约库以销售订单 ID 为唯一幂等键；生成失败时订单保持已确认并显示具体错误，可自动或手工重试，不会重复创建门樘。
 
 重复点击确认必须保持幂等，不得重复创建门樘或 BOM。
 
@@ -345,34 +352,34 @@ BOM 发布、库存预留、采购到货、领料和退料必须由统一领域�
 
 ## 9. 数据模型
 
-建议新增或扩展以下领域对象：
+优先扩展现有领域对象，不创建与履约中心平行的第二套 BOM 表：
 
 ### 9.1 订单来源与快照
 
-- `sales_order_sources`：订单与终审图纸、报价的关联
-- `sales_order_line_snapshots`：确认时技术与价格快照
-- `production_door_units`：每樘门的独立生产编号
+- `sales_order_door_lines`：继续保存订单与终审图纸、报价的关联及确认快照
+- `sales_orders`：增加履约生成状态、错误、重试次数和履约订单关联
+- `fulfillment_orders`：增加销售订单来源关联
+- `fulfillment_door_units`：继续承载每樘门的独立生产编号，并增加销售订单行关联
 
 ### 9.2 BOM
 
-- `manufacturing_boms`
-- `manufacturing_bom_versions`
-- `manufacturing_bom_items`
-- `manufacturing_bom_generation_runs`
-- `manufacturing_bom_generation_warnings`
+- `fulfillment_technical_packages`：作为 BOM 版本头
+- `fulfillment_components`：作为 BOM 明细
+- `fulfillment_bom_generation_runs`：记录自动生成批次
+- `fulfillment_bom_generation_warnings`：记录缺项、歧义和阻断错误
 
-BOM 明细预留 `parent_item_id`、`bom_level`、`source_type`、`source_rule_version` 和 `generation_payload`，支持后续多层 BOM 和规则审计。
+BOM 明细预留 `parent_id`、`bom_level`、`source_type`、`source_rule_version` 和 `source_payload_json`，支持后续多层 BOM 和规则审计。现有手工技术包按 `legacy_manual` 来源迁移，原 ID 和执行记录保持不变。
 
 ### 9.3 计划与执行
 
 - `material_requirements` 与 `material_requirement_items`
 - `inventory_reservations` 与 `inventory_transactions`
 - `purchase_demands` 与 `purchase_demand_allocations`
-- `work_packages` 与 `work_package_dependencies`
-- `work_package_events`
-- `production_change_impacts`
+- `fulfillment_work_packages` 与 `fulfillment_work_package_dependencies`
+- `fulfillment_events`
+- `fulfillment_changes` 及变更影响明细
 
-所有下游记录必须携带 `door_unit_id` 和 `bom_version_id`；采购合并表通过分配表保留来源。
+所有下游记录必须携带 `door_unit_id` 和 `technical_package_id`；采购合并表通过分配表保留来源。
 
 ## 10. 接口边界
 
@@ -463,7 +470,8 @@ BOM 明细预留 `parent_item_id`、`bom_level`、`source_type`、`source_rule_v
 - BOM 生成失败：指出订单、门樘、分组、规则和输入参数。
 - 库存不足：进入待采购或异常，不伪装为已齐套。
 - 已采购、领料或加工后发生变更：发布新版前展示影响。
-- 重复保存、确认、发布和生成工作包：通过幂等键和状态校验防止重复单据。
+- 重复保存、确认、履约生成、发布和生成工作包：通过幂等键和状态校验防止重复单据。
+- 跨订单库与履约库的生成失败：保留订单确认事实和失败原因，通过同一幂等键重试，不回滚或复制已经确认的订单。
 - 任一模块加载失败：保留其他已成功加载区域，并提供局部重试。
 
 ## 14. 历史数据与迁移
@@ -531,4 +539,3 @@ BOM 明细预留 `parent_item_id`、`bom_level`、`source_type`、`source_rule_v
   https://www.odoo.com/documentation/19.0/applications/inventory_and_mrp/manufacturing/advanced_configuration/product_variants.html
 - Microsoft Dynamics 365 Routes and Operations：工艺路线、工序关系和版本  
   https://learn.microsoft.com/en-us/dynamics365/supply-chain/production-control/routes-operations
-
