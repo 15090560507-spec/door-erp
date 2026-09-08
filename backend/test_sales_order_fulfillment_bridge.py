@@ -189,6 +189,10 @@ class SalesOrderFulfillmentBridgeTest(unittest.TestCase):
             [("drawing-1", 1), ("drawing-1", 2), ("drawing-2", 1)],
         )
         self.assertEqual(len({door["sales_order_line_id"] for door in doors}), 2)
+        for door in doors:
+            package = self.client.get(f"/api/fulfillment/door-units/{door['id']}").json()["door_unit"]["technical_package"]
+            self.assertIn(package["generation_status"], {"已生成", "待完善"})
+            self.assertTrue(package["rule_version"])
 
     def test_retry_is_idempotent(self):
         order = self.create_and_confirm()

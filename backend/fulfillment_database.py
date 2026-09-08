@@ -137,6 +137,11 @@ class FulfillmentDatabase:
                     product_snapshot_json TEXT NOT NULL,
                     product_summary TEXT NOT NULL DEFAULT '',
                     special_requirements TEXT NOT NULL DEFAULT '',
+                    generation_status TEXT NOT NULL DEFAULT '未生成',
+                    rule_version TEXT NOT NULL DEFAULT '',
+                    generated_at TEXT,
+                    generation_summary_json TEXT NOT NULL DEFAULT '{}',
+                    blocking_warning_count INTEGER NOT NULL DEFAULT 0,
                     source_version_id INTEGER,
                     created_by TEXT NOT NULL,
                     confirmed_by TEXT,
@@ -161,8 +166,61 @@ class FulfillmentDatabase:
                     acquisition_method TEXT NOT NULL DEFAULT '待确定',
                     remark TEXT NOT NULL DEFAULT '',
                     sequence_no INTEGER NOT NULL DEFAULT 0,
+                    line_no INTEGER NOT NULL DEFAULT 0,
+                    group_code TEXT NOT NULL DEFAULT 'other',
+                    theoretical_quantity REAL NOT NULL DEFAULT 0,
+                    waste_rate REAL NOT NULL DEFAULT 0,
+                    planned_quantity REAL NOT NULL DEFAULT 0,
+                    source_type TEXT NOT NULL DEFAULT 'legacy_manual',
+                    source_rule_version TEXT NOT NULL DEFAULT '',
+                    source_payload_json TEXT NOT NULL DEFAULT '{}',
+                    match_status TEXT NOT NULL DEFAULT '待匹配',
+                    verification_status TEXT NOT NULL DEFAULT '待核验',
+                    operation_code TEXT NOT NULL DEFAULT '',
+                    supplier_id INTEGER,
+                    required_date TEXT NOT NULL DEFAULT '',
+                    attachments_json TEXT NOT NULL DEFAULT '[]',
                     FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE,
                     FOREIGN KEY(parent_id) REFERENCES fulfillment_components(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS fulfillment_bom_generation_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    door_unit_id INTEGER NOT NULL,
+                    technical_package_id INTEGER NOT NULL,
+                    rule_version TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT '进行中',
+                    generated_count INTEGER NOT NULL DEFAULT 0,
+                    matched_count INTEGER NOT NULL DEFAULT 0,
+                    warning_count INTEGER NOT NULL DEFAULT 0,
+                    blocking_warning_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT NOT NULL DEFAULT '',
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    created_by TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(order_id) REFERENCES fulfillment_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(door_unit_id) REFERENCES fulfillment_door_units(id) ON DELETE CASCADE,
+                    FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS fulfillment_bom_generation_warnings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL,
+                    order_id INTEGER NOT NULL,
+                    door_unit_id INTEGER NOT NULL,
+                    technical_package_id INTEGER NOT NULL,
+                    rule_version TEXT NOT NULL,
+                    severity TEXT NOT NULL DEFAULT 'warning',
+                    field_path TEXT NOT NULL DEFAULT '',
+                    code TEXT NOT NULL DEFAULT '',
+                    message TEXT NOT NULL,
+                    blocking INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(run_id) REFERENCES fulfillment_bom_generation_runs(id) ON DELETE CASCADE,
+                    FOREIGN KEY(order_id) REFERENCES fulfillment_orders(id) ON DELETE CASCADE,
+                    FOREIGN KEY(door_unit_id) REFERENCES fulfillment_door_units(id) ON DELETE CASCADE,
+                    FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS fulfillment_work_packages (
@@ -343,9 +401,47 @@ class FulfillmentDatabase:
                 );
                 """
             )
+            package_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_technical_packages)").fetchall()}
+            for name, definition in (
+                ("generation_status", "TEXT NOT NULL DEFAULT '未生成'"),
+                ("rule_version", "TEXT NOT NULL DEFAULT ''"),
+                ("generated_at", "TEXT"),
+                ("generation_summary_json", "TEXT NOT NULL DEFAULT '{}'"),
+                ("blocking_warning_count", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if name not in package_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_technical_packages ADD COLUMN {name} {definition}")
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_components)").fetchall()}
-            if "material_id" not in columns:
-                conn.execute("ALTER TABLE fulfillment_components ADD COLUMN material_id INTEGER")
+            component_definitions = (
+                ("material_id", "INTEGER"),
+                ("line_no", "INTEGER NOT NULL DEFAULT 0"),
+                ("group_code", "TEXT NOT NULL DEFAULT 'other'"),
+                ("theoretical_quantity", "REAL NOT NULL DEFAULT 0"),
+                ("waste_rate", "REAL NOT NULL DEFAULT 0"),
+                ("planned_quantity", "REAL NOT NULL DEFAULT 0"),
+                ("source_type", "TEXT NOT NULL DEFAULT 'legacy_manual'"),
+                ("source_rule_version", "TEXT NOT NULL DEFAULT ''"),
+                ("source_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
+                ("match_status", "TEXT NOT NULL DEFAULT '待匹配'"),
+                ("verification_status", "TEXT NOT NULL DEFAULT '待核验'"),
+                ("operation_code", "TEXT NOT NULL DEFAULT ''"),
+                ("supplier_id", "INTEGER"),
+                ("required_date", "TEXT NOT NULL DEFAULT ''"),
+                ("attachments_json", "TEXT NOT NULL DEFAULT '[]'"),
+            )
+            for name, definition in component_definitions:
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE fulfillment_components ADD COLUMN {name} {definition}")
+            conn.execute(
+                """UPDATE fulfillment_components
+                   SET theoretical_quantity=quantity, planned_quantity=quantity
+                   WHERE source_type='legacy_manual' AND theoretical_quantity=0 AND planned_quantity=0"""
+            )
+            conn.execute(
+                """UPDATE fulfillment_components SET source_type='seed_default'
+                   WHERE source_type='legacy_manual' AND specification='' AND remark=''
+                     AND name IN ('门扇与面板','门框','锁具与拉手','合页与五金','玻璃与花件','包装')"""
+            )
             order_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_orders)").fetchall()}
             for name, definition in (
                 ("sales_order_id", "INTEGER"),
@@ -545,8 +641,14 @@ class FulfillmentDatabase:
         ]
         for sequence, (name, category, method) in enumerate(defaults, start=1):
             conn.execute(
-                """INSERT INTO fulfillment_components(technical_package_id, name, category, quantity, unit, acquisition_method, sequence_no)
-                   VALUES (?, ?, ?, 1, '套', ?, ?)""", (package_id, name, category, method, sequence),
+                """INSERT INTO fulfillment_components(
+                       technical_package_id, name, category, quantity, unit,
+                       acquisition_method, sequence_no, line_no, group_code,
+                       theoretical_quantity, planned_quantity, source_type,
+                       match_status, verification_status
+                   ) VALUES (?, ?, ?, 1, '套', ?, ?, ?, 'other', 1, 1,
+                             'seed_default', '待匹配', '待核验')""",
+                (package_id, name, category, method, sequence, sequence),
             )
 
     def _seed_work_packages(self, conn: sqlite3.Connection, package_id: int, door_id: int, now: str) -> None:
@@ -619,6 +721,7 @@ class FulfillmentDatabase:
         package = self.fetch_one("SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1", (door_id,))
         if package:
             package["product_snapshot"] = json_loads(package.pop("product_snapshot_json", ""), {})
+            package["generation_summary"] = json_loads(package.pop("generation_summary_json", ""), {})
             package["components"] = self.fetch_all(
                 """SELECT c.*, m.code AS material_code, m.name AS material_name,
                           m.specification AS material_specification, m.unit AS material_unit
@@ -627,7 +730,15 @@ class FulfillmentDatabase:
                    WHERE c.technical_package_id=? ORDER BY c.sequence_no, c.id""",
                 (package["id"],),
             )
+            for component in package["components"]:
+                component["source_payload"] = json_loads(component.pop("source_payload_json", ""), {})
+                component["attachments"] = json_loads(component.pop("attachments_json", ""), [])
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
+            package["generation_warnings"] = self.fetch_all(
+                """SELECT * FROM fulfillment_bom_generation_warnings
+                   WHERE technical_package_id=? ORDER BY blocking DESC, id""",
+                (package["id"],),
+            )
         door["unfinished_work_packages"] = [
             {"id": item["id"], "name": item["name"], "status": item["status"]}
             for item in (package.get("work_packages", []) if package else [])
@@ -692,9 +803,26 @@ class FulfillmentDatabase:
             for sequence, item in enumerate(payload.components, start=1):
                 parent_id = component_ids.get(item.parent_id or -1)
                 cursor = conn.execute(
-                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, material_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (package_id, parent_id, item.material_id, item.name.strip(), item.category, item.specification, item.quantity, item.unit, item.acquisition_method, item.remark, sequence),
+                    """INSERT INTO fulfillment_components(
+                           technical_package_id, parent_id, material_id, name, category,
+                           specification, quantity, unit, acquisition_method, remark,
+                           sequence_no, line_no, group_code, theoretical_quantity,
+                           waste_rate, planned_quantity, source_type, source_rule_version,
+                           source_payload_json, match_status, verification_status,
+                           operation_code, supplier_id, required_date, attachments_json
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        package_id, parent_id, item.material_id, item.name.strip(), item.category,
+                        item.specification, item.planned_quantity if item.planned_quantity is not None else item.quantity,
+                        item.unit, item.acquisition_method, item.remark, sequence,
+                        item.line_no or sequence, item.group_code,
+                        item.theoretical_quantity if item.theoretical_quantity is not None else item.quantity,
+                        item.waste_rate,
+                        item.planned_quantity if item.planned_quantity is not None else item.quantity,
+                        item.source_type, item.source_rule_version, json_dumps(item.source_payload),
+                        item.match_status, item.verification_status, item.operation_code,
+                        item.supplier_id, item.required_date, json_dumps(item.attachments),
+                    ),
                 )
                 if item.id is not None:
                     component_ids[item.id] = int(cursor.lastrowid)
@@ -943,9 +1071,18 @@ class FulfillmentDatabase:
                 (door_id, change_no, source["version"], next_version, payload.reason, payload.impact_note, str(user.get("uid") or ""), now),
             )
             package_cursor = conn.execute(
-                """INSERT INTO fulfillment_technical_packages(door_unit_id, version, status, product_snapshot_json, product_summary, special_requirements, source_version_id, created_by, created_at, updated_at)
-                   VALUES (?, ?, '草稿', ?, ?, ?, ?, ?, ?, ?)""",
-                (door_id, next_version, source["product_snapshot_json"], source["product_summary"], source["special_requirements"], source["id"], str(user.get("uid") or ""), now, now),
+                """INSERT INTO fulfillment_technical_packages(
+                       door_unit_id, version, status, product_snapshot_json,
+                       product_summary, special_requirements, generation_status,
+                       rule_version, generation_summary_json, blocking_warning_count,
+                       source_version_id, created_by, created_at, updated_at
+                   ) VALUES (?, ?, '草稿', ?, ?, ?, '已复制', ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    door_id, next_version, source["product_snapshot_json"], source["product_summary"],
+                    source["special_requirements"], source["rule_version"],
+                    source["generation_summary_json"], source["blocking_warning_count"],
+                    source["id"], str(user.get("uid") or ""), now, now,
+                ),
             )
             new_package_id = int(package_cursor.lastrowid)
             conn.execute(
@@ -956,9 +1093,24 @@ class FulfillmentDatabase:
             old_to_new: Dict[int, int] = {}
             for component in conn.execute("SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():
                 cursor = conn.execute(
-                    """INSERT INTO fulfillment_components(technical_package_id, parent_id, material_id, name, category, specification, quantity, unit, acquisition_method, remark, sequence_no)
-                       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (new_package_id, component["material_id"], component["name"], component["category"], component["specification"], component["quantity"], component["unit"], component["acquisition_method"], component["remark"], component["sequence_no"]),
+                    """INSERT INTO fulfillment_components(
+                           technical_package_id, parent_id, material_id, name, category,
+                           specification, quantity, unit, acquisition_method, remark,
+                           sequence_no, line_no, group_code, theoretical_quantity,
+                           waste_rate, planned_quantity, source_type, source_rule_version,
+                           source_payload_json, match_status, verification_status,
+                           operation_code, supplier_id, required_date, attachments_json
+                       ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        new_package_id, component["material_id"], component["name"], component["category"],
+                        component["specification"], component["quantity"], component["unit"],
+                        component["acquisition_method"], component["remark"], component["sequence_no"],
+                        component["line_no"], component["group_code"], component["theoretical_quantity"],
+                        component["waste_rate"], component["planned_quantity"], component["source_type"],
+                        component["source_rule_version"], component["source_payload_json"],
+                        component["match_status"], component["verification_status"], component["operation_code"],
+                        component["supplier_id"], component["required_date"], component["attachments_json"],
+                    ),
                 )
                 old_to_new[int(component["id"])] = int(cursor.lastrowid)
             for work in conn.execute("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():

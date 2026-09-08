@@ -23,6 +23,20 @@ class ComponentInput(BaseModel):
     unit: str = "件"
     acquisition_method: str = "待确定"
     remark: str = ""
+    line_no: int = Field(default=0, ge=0)
+    group_code: str = "other"
+    theoretical_quantity: Optional[float] = Field(default=None, ge=0)
+    waste_rate: float = Field(default=0, ge=0, le=100)
+    planned_quantity: Optional[float] = Field(default=None, ge=0)
+    source_type: str = "manual"
+    source_rule_version: str = ""
+    source_payload: dict = Field(default_factory=dict)
+    match_status: str = "待匹配"
+    verification_status: str = "待核验"
+    operation_code: str = ""
+    supplier_id: Optional[int] = None
+    required_date: str = ""
+    attachments: List[dict] = Field(default_factory=list)
 
 
 class WorkPackageInput(BaseModel):

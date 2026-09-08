@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from bom_generation_service import BomGenerationService
+
 
 class SalesOrderFulfillmentService:
     def __init__(self, sales_order_db: Any, fulfillment_db: Any):
         self.sales_order_db = sales_order_db
         self.fulfillment_db = fulfillment_db
+        self.bom_generator = BomGenerationService(fulfillment_db)
 
     def provision(self, order_id: int, user: Dict[str, Any]) -> Dict[str, Any]:
         order = self.sales_order_db.get(order_id)
@@ -27,6 +30,25 @@ class SalesOrderFulfillmentService:
             fulfillment_order_id = int(fulfillment_order.get("id") or 0)
             if fulfillment_order_id <= 0:
                 raise RuntimeError("履约订单创建后未返回有效ID")
+            generation_errors = []
+            for door in fulfillment_order.get("door_units") or []:
+                door_id = int(door.get("id") or 0)
+                package = self.fulfillment_db.fetch_one(
+                    """SELECT status, generation_status
+                       FROM fulfillment_technical_packages
+                       WHERE door_unit_id=? ORDER BY version DESC LIMIT 1""",
+                    (door_id,),
+                )
+                if not package or package["status"] != "草稿":
+                    continue
+                if package["generation_status"] not in {"未生成", "生成失败"}:
+                    continue
+                try:
+                    self.bom_generator.generate(door_id, user)
+                except Exception as generation_error:
+                    generation_errors.append(f"{door.get('production_no') or door_id}：{generation_error}")
+            if generation_errors:
+                raise RuntimeError("；".join(generation_errors))
         except Exception as exc:
             self.sales_order_db.mark_provisioning_failed(order_id, str(exc), operator)
             raise RuntimeError(f"门樘和BOM草稿生成失败：{exc}") from exc
