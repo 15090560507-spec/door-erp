@@ -140,7 +140,12 @@ INNER_OUTER_OPENINGS = {"内开", "外开", "内外开"}
 
 
 def _opening_selected(value: object, option: str) -> bool:
-    return option in str(value or "")
+    text = str(value or "").strip()
+    if text == "左右开" and option in {"左开", "右开"}:
+        return True
+    if text == "内外开" and option in {"内开", "外开"}:
+        return True
+    return option in text
 
 
 def _validate_task_params(params: Dict) -> None:

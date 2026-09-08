@@ -33,6 +33,13 @@ VALID_PARAMS = {
 }
 
 
+def test_combined_openings_select_both_directions():
+    assert app_module._opening_selected("左右开", "左开")
+    assert app_module._opening_selected("左右开", "右开")
+    assert app_module._opening_selected("内外开", "内开")
+    assert app_module._opening_selected("内外开", "外开")
+
+
 def test_required_fields_copy_and_overview_flow():
     for field, message in (
         ("ys", "颜色为必填项"),

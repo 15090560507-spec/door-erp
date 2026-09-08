@@ -276,6 +276,8 @@ export default function DashboardPage() {
     if (!data.sel_nk.trim()) missing.push("内外开向");
     if (!data.zmks.trim()) missing.push("正面款式");
     if (!data.fmks.trim()) missing.push("反面款式");
+    if (!data.zmls.trim()) missing.push("正面拉手");
+    if (!data.fmls.trim()) missing.push("反面拉手");
     if (!data.st_val.trim()) missing.push("锁体类型");
     if (!data.sel_hys.trim()) missing.push("开启机构");
     if (!data.fingerprint_lock.trim()) missing.push("指纹锁");

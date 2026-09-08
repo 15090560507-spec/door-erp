@@ -347,7 +347,7 @@ export const GLASS_LINE_STYLES = ["无线条", "单圈外围线", "单圈外围�
 export const DEFAULT_FORM_DATA: DoorFormData = {
   dhdw: "", gdmc: "", ys: "", zzcl: "", material: "0.8mm", product_name: "不锈钢镀铜门", order_title: "浙江西州将军铜门订货单",
   zmks: "", fmks: "",
-  zmls: "标配拉手", fmls: "标配拉手", handle_size: "", st_val: "", fingerprint_lock: "",
+  zmls: "", fmls: "", handle_size: "", st_val: "", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: "",
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
   door_panel_style: "无造型", back_panel_same_as_front: true, back_door_panel_style: "无造型",

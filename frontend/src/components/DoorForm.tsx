@@ -186,8 +186,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     second: string,
     combined: string,
   ) => {
-    let hasFirst = current.includes(first);
-    let hasSecond = current.includes(second);
+    let hasFirst = current === combined || current.includes(first);
+    let hasSecond = current === combined || current.includes(second);
     if (option === first) hasFirst = !hasFirst;
     if (option === second) hasSecond = !hasSecond;
     if (hasFirst && hasSecond) return combined;
@@ -684,7 +684,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={data.sel_kx.includes(opt)}
+                    checked={data.sel_kx === "左右开" || data.sel_kx.includes(opt)}
                     onChange={() => onChange(applyFrameDefaults({
                       ...data,
                       sel_kx: toggleOpening(data.sel_kx, opt, "左开", "右开", "左右开"),
@@ -702,7 +702,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={data.sel_nk.includes(opt)}
+                    checked={data.sel_nk === "内外开" || data.sel_nk.includes(opt)}
                     onChange={() => set("sel_nk", toggleOpening(data.sel_nk, opt, "内开", "外开", "内外开"))}
                   />
                   {opt}
@@ -1017,8 +1017,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       {!isSimpleProduct && <div className="space-y-4">
         <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="正面拉手" value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
-            <Combobox label="反面拉手" value={data.fmls} options={o("HANDLES", HANDLES).filter((handle) => !frontOnlyHandles.has(handle))} onChange={(v) => set("fmls", v)} />
+            <Combobox label="正面拉手" required value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
+            <Combobox label="反面拉手" required value={data.fmls} options={o("HANDLES", HANDLES).filter((handle) => !frontOnlyHandles.has(handle))} onChange={(v) => set("fmls", v)} />
             <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
             <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
