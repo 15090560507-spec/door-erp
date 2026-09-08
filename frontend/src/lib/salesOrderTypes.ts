@@ -18,6 +18,7 @@ export interface SalesOrderCandidate {
   opening_direction: string;
   color: string;
   drawing_status: string;
+  approved_at: string;
   quote_status: string;
   quotes: SalesOrderQuoteChoice[];
 }
@@ -25,6 +26,7 @@ export interface SalesOrderCandidate {
 export interface SalesOrderLine {
   id: number;
   line_no: number;
+  source_type: "drawing" | "manual";
   task_id: string;
   quote_id: number | null;
   quote_group_index: number | null;
@@ -71,6 +73,9 @@ export interface SalesOrderSummary {
   door_count: number;
   releasable_count: number;
   updated_at: string;
+  provisioning_status?: "not_started" | "pending" | "processing" | "ready" | "failed";
+  provisioning_error?: string;
+  fulfillment_order_id?: number | null;
 }
 
 export interface SalesOrder extends SalesOrderSummary {
@@ -91,10 +96,18 @@ export interface SalesOrder extends SalesOrderSummary {
 }
 
 export interface SalesOrderLineInput {
-  task_id: string;
+  source_type?: "drawing" | "manual";
+  task_id?: string;
   quote_id?: number | null;
   quote_group_index?: number | null;
+  product_name?: string;
+  door_type?: string;
+  width?: number | null;
+  height?: number | null;
+  opening_direction?: string;
+  color?: string;
   quantity: number;
+  unit?: string;
   unit_price?: number | null;
   remark: string;
 }

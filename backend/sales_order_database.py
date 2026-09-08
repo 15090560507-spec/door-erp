@@ -356,7 +356,7 @@ class SalesOrderDatabase:
             SELECT DISTINCT line.task_id
             FROM sales_order_door_lines line
             JOIN sales_orders orders ON orders.id = line.sales_order_id
-            WHERE orders.status != 'cancelled'
+            WHERE orders.status != 'cancelled' AND line.source_type = 'drawing'
         """
         params: List[object] = []
         if exclude_order_id is not None:
@@ -372,7 +372,8 @@ class SalesOrderDatabase:
                           orders.customer_name, orders.project_name, orders.status AS sales_order_status
                    FROM sales_order_door_lines line
                    JOIN sales_orders orders ON orders.id=line.sales_order_id
-                   WHERE line.task_id=? AND orders.status IN ('confirmed', 'fulfilling')
+                   WHERE line.task_id=? AND line.source_type='drawing'
+                         AND orders.status IN ('confirmed', 'fulfilling')
                    ORDER BY orders.id DESC LIMIT 1""",
                 (task_id,),
             ).fetchone()

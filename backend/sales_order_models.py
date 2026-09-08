@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class SalesOrderLineInput(BaseModel):
-    task_id: str
+    source_type: Literal["drawing", "manual"] = "drawing"
+    task_id: str = ""
     quote_id: Optional[int] = None
     quote_group_index: Optional[int] = None
+    product_name: str = ""
+    door_type: str = ""
+    width: Optional[float] = None
+    height: Optional[float] = None
+    opening_direction: str = ""
+    color: str = ""
     quantity: int = Field(default=1, ge=1, le=999)
+    unit: str = "樘"
     unit_price: Optional[float] = Field(default=None, ge=0)
     remark: str = ""
 

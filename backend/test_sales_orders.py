@@ -25,7 +25,8 @@ class FakeTasks:
         self.tasks = {
             "task-1": {
                 "id": "task-1",
-                "status": "待初审",
+                "status": "已通过",
+                "approved_at": "2026-09-05T09:00:00+08:00",
                 "customer": "测试客户",
                 "project": "别墅项目",
                 "door_type": "单门",
@@ -53,6 +54,14 @@ class FakeTasks:
                 "size": "1800 x 2600",
                 "params": {"dw": 1800, "dh": 2600},
             },
+            "task-pending": {
+                "id": "task-pending",
+                "status": "待终审",
+                "customer": "测试客户",
+                "project": "别墅项目",
+                "door_type": "子母门",
+                "params": {"dw": 1300, "dh": 2400},
+            },
         }
 
     def get_task(self, task_id):
@@ -69,11 +78,12 @@ class FakeTasks:
 class FakeQuotes:
     def __init__(self):
         self.enabled = False
+        self.alternates = False
 
     def find_groups_by_task(self, task_id):
         if not self.enabled or task_id != "task-1":
             return []
-        return [{
+        current = {
             "quote_id": 7,
             "quote_date": "2026-09-05",
             "updated_at": "2026-09-05T08:00:00Z",
@@ -91,7 +101,14 @@ class FakeQuotes:
                     "unitPrice": 1000,
                 }],
             },
-        }]
+        }
+        if not self.alternates:
+            return [current]
+        latest = dict(current)
+        latest.update({"quote_id": 9, "quote_date": "2026-09-07", "updated_at": "2026-09-07T10:00:00Z"})
+        latest["group"] = dict(current["group"])
+        latest["group"]["items"] = [dict(current["group"]["items"][0], unitPrice=1200)]
+        return [current, latest]
 
 
 class SalesOrderApiTest(unittest.TestCase):
@@ -159,8 +176,84 @@ class SalesOrderApiTest(unittest.TestCase):
         self.assertNotIn("task-1", {item["task_id"] for item in candidates})
 
         response = self.client.post(f"/api/sales-orders/{order['id']}/confirm")
-        self.assertEqual(response.status_code, 400, response.text)
-        self.assertIn("报价", response.json()["detail"])
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("报价", response.json()["detail"]["message"])
+
+    def test_candidates_only_return_approved_drawings_and_support_filters(self):
+        response = self.client.get(
+            "/api/sales-orders/candidates",
+            params={
+                "customer": "测试客户",
+                "project": "别墅项目",
+                "door_type": "单门",
+                "width": 1000,
+                "height": 2200,
+                "quote_state": "未报价",
+                "final_review_from": "2026-09-05",
+                "final_review_to": "2026-09-05",
+                "page": 1,
+                "page_size": 20,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["total"], 1)
+        self.assertEqual([item["task_id"] for item in data["candidates"]], ["task-1"])
+        self.assertEqual(data["page"], 1)
+        self.assertNotIn("task-pending", {item["task_id"] for item in data["candidates"]})
+
+    def test_latest_quote_is_default_and_alternates_are_preserved(self):
+        self.quotes.enabled = True
+        self.quotes.alternates = True
+        response = self.client.get("/api/sales-orders/candidates")
+        self.assertEqual(response.status_code, 200, response.text)
+        candidate = next(item for item in response.json()["candidates"] if item["task_id"] == "task-1")
+        self.assertEqual([choice["quote_id"] for choice in candidate["quotes"]], [9, 7])
+
+        response = self.client.post("/api/sales-orders", json=self.payload())
+        self.assertEqual(response.status_code, 201, response.text)
+        line = response.json()["order"]["lines"][0]
+        self.assertEqual(line["quote_id"], 9)
+        self.assertEqual(line["unit_price"], 2640)
+
+    def test_manual_line_can_confirm_without_drawing_or_quote(self):
+        payload = self.payload()
+        payload["lines"] = [{
+            "source_type": "manual",
+            "product_name": "庭院门",
+            "door_type": "平开门",
+            "width": 3200,
+            "height": 1800,
+            "quantity": 2,
+            "unit": "樘",
+            "unit_price": 6800,
+            "remark": "现场复尺后生产",
+        }]
+        response = self.client.post("/api/sales-orders", json=payload)
+        self.assertEqual(response.status_code, 201, response.text)
+        order = response.json()["order"]
+        self.assertEqual(order["lines"][0]["source_type"], "manual")
+        self.assertEqual(order["total_amount"], 13600)
+
+        response = self.client.post(f"/api/sales-orders/{order['id']}/confirm")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["order"]["status"], "confirmed")
+
+    def test_manual_line_validation_returns_line_and_field(self):
+        payload = self.payload()
+        payload["lines"] = [{
+            "source_type": "manual",
+            "product_name": "庭院门",
+            "width": 0,
+            "height": 1800,
+            "quantity": 1,
+            "unit_price": 6800,
+        }]
+        response = self.client.post("/api/sales-orders", json=payload)
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["errors"][0]["line_no"], 1)
+        self.assertEqual(detail["errors"][0]["field"], "width")
 
     def test_quote_snapshot_confirmation_and_cancel_release_task(self):
         self.quotes.enabled = True
@@ -231,8 +324,8 @@ class SalesOrderApiTest(unittest.TestCase):
         detail = self.client.get(f"/api/sales-orders/{order['id']}").json()["order"]
         self.assertTrue(detail["lines"][0]["source_changed"])
         response = self.client.post(f"/api/sales-orders/{order['id']}/confirm")
-        self.assertEqual(response.status_code, 400, response.text)
-        self.assertIn("图纸已变更", response.json()["detail"])
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("图纸已变更", response.json()["detail"]["message"])
 
 
 if __name__ == "__main__":
