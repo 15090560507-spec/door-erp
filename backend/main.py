@@ -53,10 +53,17 @@ from fulfillment_routes import (
     configure_sales_order_repository as configure_fulfillment_sales_orders,
     configure_task_repository as configure_fulfillment_tasks,
     configure_user_repository as configure_fulfillment_users,
+    fulfillment_db,
     router as fulfillment_router,
 )
 from inventory_routes import router as inventory_router
-from sales_order_routes import configure_task_repository as configure_sales_order_tasks, router as sales_order_router, sales_order_db
+from sales_order_routes import (
+    configure_fulfillment_provisioner,
+    configure_task_repository as configure_sales_order_tasks,
+    router as sales_order_router,
+    sales_order_db,
+)
+from sales_order_fulfillment_service import SalesOrderFulfillmentService
 from production_models import ProductionReleaseRequest
 from production_routes import (
     configure_task_repository,
@@ -106,6 +113,7 @@ configure_fulfillment_tasks(task_db)
 configure_fulfillment_users(user_db)
 configure_sales_order_tasks(task_db)
 configure_fulfillment_sales_orders(sales_order_db)
+configure_fulfillment_provisioner(SalesOrderFulfillmentService(sales_order_db, fulfillment_db))
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")

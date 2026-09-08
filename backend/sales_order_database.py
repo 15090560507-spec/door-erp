@@ -62,7 +62,13 @@ class SalesOrderDatabase:
                     updated_at TEXT NOT NULL,
                     confirmed_at TEXT,
                     cancelled_at TEXT,
-                    cancel_reason TEXT NOT NULL DEFAULT ''
+                    cancel_reason TEXT NOT NULL DEFAULT '',
+                    provisioning_status TEXT NOT NULL DEFAULT 'not_started',
+                    provisioning_error TEXT NOT NULL DEFAULT '',
+                    provisioning_attempts INTEGER NOT NULL DEFAULT 0,
+                    provisioning_key TEXT NOT NULL DEFAULT '',
+                    provisioned_at TEXT,
+                    fulfillment_order_id INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS sales_order_door_lines (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +91,7 @@ class SalesOrderDatabase:
                     drawing_revision TEXT NOT NULL DEFAULT '',
                     drawing_snapshot TEXT NOT NULL DEFAULT '{}',
                     quote_snapshot TEXT NOT NULL DEFAULT '{}',
+                    source_type TEXT NOT NULL DEFAULT 'drawing',
                     remark TEXT NOT NULL DEFAULT '',
                     UNIQUE(sales_order_id, task_id)
                 );
@@ -113,6 +120,20 @@ class SalesOrderDatabase:
                 );
                 """
             )
+            order_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales_orders)").fetchall()}
+            for name, definition in (
+                ("provisioning_status", "TEXT NOT NULL DEFAULT 'not_started'"),
+                ("provisioning_error", "TEXT NOT NULL DEFAULT ''"),
+                ("provisioning_attempts", "INTEGER NOT NULL DEFAULT 0"),
+                ("provisioning_key", "TEXT NOT NULL DEFAULT ''"),
+                ("provisioned_at", "TEXT"),
+                ("fulfillment_order_id", "INTEGER"),
+            ):
+                if name not in order_columns:
+                    connection.execute(f"ALTER TABLE sales_orders ADD COLUMN {name} {definition}")
+            line_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales_order_door_lines)").fetchall()}
+            if "source_type" not in line_columns:
+                connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN source_type TEXT NOT NULL DEFAULT 'drawing'")
 
     def _next_order_no(self, connection: sqlite3.Connection, order_date: str) -> str:
         day = "".join(character for character in order_date if character.isdigit())[:8]
@@ -143,8 +164,8 @@ class SalesOrderDatabase:
                     sales_order_id, line_no, task_id, quote_id, quote_group_index,
                     product_name, door_type, width, height, opening_direction, color,
                     quantity, unit, unit_price, amount, drawing_status, drawing_revision,
-                    drawing_snapshot, quote_snapshot, remark
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    drawing_snapshot, quote_snapshot, source_type, remark
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id, index, line["task_id"], line.get("quote_id"), line.get("quote_group_index"),
@@ -153,7 +174,8 @@ class SalesOrderDatabase:
                     line.get("quantity", 1), line.get("unit", "樘"), line.get("unit_price", 0),
                     line.get("amount", 0), line.get("drawing_status", ""), line.get("drawing_revision", ""),
                     json.dumps(line.get("drawing_snapshot") or {}, ensure_ascii=False),
-                    json.dumps(line.get("quote_snapshot") or {}, ensure_ascii=False), line.get("remark", ""),
+                    json.dumps(line.get("quote_snapshot") or {}, ensure_ascii=False),
+                    line.get("source_type", "drawing"), line.get("remark", ""),
                 ),
             )
 
@@ -241,12 +263,72 @@ class SalesOrderDatabase:
             if order["status"] != "draft":
                 raise RuntimeError("只有草稿订单可以正式确认")
             connection.execute(
-                "UPDATE sales_orders SET status = 'confirmed', confirmed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
-                (now, now, order_id),
+                """UPDATE sales_orders SET status = 'confirmed', confirmed_at = ?, updated_at = ?,
+                       version = version + 1, provisioning_status = 'pending', provisioning_error = '',
+                       provisioning_key = ? WHERE id = ?""",
+                (now, now, f"sales-order:{order_id}", order_id),
             )
             connection.execute(
                 "INSERT INTO sales_order_events (sales_order_id, event_type, detail, operator, created_at) VALUES (?, 'confirmed', ?, ?, ?)",
                 (order_id, "订单正式确认", operator, now),
+            )
+        return self.get(order_id) or {}
+
+    def mark_provisioning_started(self, order_id: int, operator: str) -> Dict:
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            order = connection.execute("SELECT status FROM sales_orders WHERE id = ?", (order_id,)).fetchone()
+            if not order:
+                raise LookupError("订单不存在")
+            if order["status"] not in {"confirmed", "fulfilling"}:
+                raise RuntimeError("只有已确认订单可以生成履约门樘")
+            connection.execute(
+                """UPDATE sales_orders SET provisioning_status='processing', provisioning_error='',
+                       provisioning_attempts=provisioning_attempts+1, updated_at=? WHERE id=?""",
+                (now, order_id),
+            )
+            connection.execute(
+                """INSERT INTO sales_order_events
+                       (sales_order_id, event_type, detail, operator, created_at)
+                       VALUES (?, 'provisioning_started', '开始生成门樘和BOM草稿', ?, ?)""",
+                (order_id, operator, now),
+            )
+        return self.get(order_id) or {}
+
+    def mark_provisioned(self, order_id: int, fulfillment_order_id: int, operator: str) -> Dict:
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """UPDATE sales_orders SET status='fulfilling', provisioning_status='ready',
+                       provisioning_error='', fulfillment_order_id=?, provisioned_at=?, updated_at=?
+                   WHERE id=?""",
+                (fulfillment_order_id, now, now, order_id),
+            )
+            connection.execute(
+                """INSERT INTO sales_order_events
+                       (sales_order_id, event_type, detail, operator, created_at)
+                       VALUES (?, 'provisioned', ?, ?, ?)""",
+                (order_id, f"已生成履约订单 #{fulfillment_order_id}", operator, now),
+            )
+        return self.get(order_id) or {}
+
+    def mark_provisioning_failed(self, order_id: int, message: str, operator: str) -> Dict:
+        now = _now()
+        detail = str(message or "履约生成失败")[:1000]
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """UPDATE sales_orders SET provisioning_status='failed', provisioning_error=?,
+                       updated_at=? WHERE id=?""",
+                (detail, now, order_id),
+            )
+            connection.execute(
+                """INSERT INTO sales_order_events
+                       (sales_order_id, event_type, detail, operator, created_at)
+                       VALUES (?, 'provisioning_failed', ?, ?, ?)""",
+                (order_id, detail, operator, now),
             )
         return self.get(order_id) or {}
 

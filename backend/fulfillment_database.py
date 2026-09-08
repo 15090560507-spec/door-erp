@@ -97,7 +97,9 @@ class FulfillmentDatabase:
                     created_by TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT '进行中'
+                    status TEXT NOT NULL DEFAULT '进行中',
+                    sales_order_id INTEGER,
+                    sales_order_no TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE UNIQUE INDEX IF NOT EXISTS ux_fulfillment_source
@@ -119,6 +121,9 @@ class FulfillmentDatabase:
                     progress INTEGER NOT NULL DEFAULT 0,
                     active_version INTEGER NOT NULL DEFAULT 0,
                     risk_tags_json TEXT NOT NULL DEFAULT '[]',
+                    sales_order_line_id INTEGER,
+                    source_task_id TEXT NOT NULL DEFAULT '',
+                    source_quantity_index INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(order_id) REFERENCES fulfillment_orders(id) ON DELETE CASCADE
@@ -341,6 +346,25 @@ class FulfillmentDatabase:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_components)").fetchall()}
             if "material_id" not in columns:
                 conn.execute("ALTER TABLE fulfillment_components ADD COLUMN material_id INTEGER")
+            order_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_orders)").fetchall()}
+            for name, definition in (
+                ("sales_order_id", "INTEGER"),
+                ("sales_order_no", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in order_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_orders ADD COLUMN {name} {definition}")
+            door_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_door_units)").fetchall()}
+            for name, definition in (
+                ("sales_order_line_id", "INTEGER"),
+                ("source_task_id", "TEXT NOT NULL DEFAULT ''"),
+                ("source_quantity_index", "INTEGER NOT NULL DEFAULT 1"),
+            ):
+                if name not in door_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_door_units ADD COLUMN {name} {definition}")
+            conn.execute(
+                """CREATE UNIQUE INDEX IF NOT EXISTS ux_fulfillment_sales_order
+                   ON fulfillment_orders(sales_order_id) WHERE sales_order_id IS NOT NULL"""
+            )
 
     def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -400,6 +424,112 @@ class FulfillmentDatabase:
                 self._seed_work_packages(conn, package_id, door_id, now)
                 self.add_event(conn, order_id=order_id, door_unit_id=door_id, entity_type="door_unit", entity_id=door_id, action="创建门樘生产单", detail=f"创建技术包草稿 V1", user=user)
             self.add_event(conn, order_id=order_id, door_unit_id=None, entity_type="order", entity_id=order_id, action="下达客户订单", detail=f"共 {request.door_count} 樘门", user=user)
+        return self.get_order(order_id) or {}
+
+    def create_from_sales_order(self, sales_order: Dict[str, Any], idempotency_key: str, user: Dict[str, Any]) -> Dict[str, Any]:
+        sales_order_id = int(sales_order.get("id") or 0)
+        if sales_order_id <= 0:
+            raise ValueError("销售订单ID无效")
+        existing = self.fetch_one(
+            "SELECT id FROM fulfillment_orders WHERE sales_order_id=? AND status!='已作废'",
+            (sales_order_id,),
+        )
+        if existing:
+            return self.get_order(int(existing["id"])) or {}
+
+        lines = sales_order.get("lines") or []
+        if not lines:
+            raise ValueError("销售订单没有可生成的门樘明细")
+        now = fulfillment_now()
+        customer = str(sales_order.get("customer_name") or "").strip()
+        if not customer:
+            raise ValueError("销售订单客户不能为空")
+
+        with self.transaction() as conn:
+            existing_row = conn.execute(
+                "SELECT id FROM fulfillment_orders WHERE sales_order_id=? AND status!='已作废'",
+                (sales_order_id,),
+            ).fetchone()
+            if existing_row:
+                order_id = int(existing_row["id"])
+            else:
+                order_no = self._next_order_no(conn, now)
+                cursor = conn.execute(
+                    """INSERT INTO fulfillment_orders(
+                           order_no, source_task_id, source_revision, customer, project,
+                           due_date, sales_note, task_snapshot_json, created_by, created_at,
+                           updated_at, sales_order_id, sales_order_no
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        order_no, f"sales-order:{sales_order_id}", idempotency_key, customer,
+                        str(sales_order.get("project_name") or ""), str(sales_order.get("delivery_date") or ""),
+                        str(sales_order.get("remark") or ""), json_dumps(sales_order),
+                        str(user.get("uid") or ""), now, now, sales_order_id,
+                        str(sales_order.get("order_no") or ""),
+                    ),
+                )
+                order_id = int(cursor.lastrowid)
+                sequence = 0
+                for line in lines:
+                    quantity = int(line.get("quantity") or 0)
+                    if quantity <= 0:
+                        raise ValueError(f"订单第{line.get('line_no') or '?'}行数量必须大于0")
+                    drawing_snapshot = line.get("drawing_snapshot") or {}
+                    if not isinstance(drawing_snapshot, dict):
+                        drawing_snapshot = json_loads(str(drawing_snapshot), {})
+                    params = dict(drawing_snapshot.get("params") or {})
+                    params.update({
+                        "product_name": str(line.get("product_name") or params.get("product_name") or "门"),
+                        "door_type": str(line.get("door_type") or params.get("door_type") or ""),
+                        "dw": float(line.get("width") or params.get("dw") or 0),
+                        "dh": float(line.get("height") or params.get("dh") or 0),
+                        "ys": str(line.get("color") or params.get("ys") or ""),
+                        "opening_direction": str(line.get("opening_direction") or ""),
+                        "sales_order_id": sales_order_id,
+                        "sales_order_line_id": int(line.get("id") or 0),
+                        "source_task_id": str(line.get("task_id") or ""),
+                    })
+                    for quantity_index in range(1, quantity + 1):
+                        sequence += 1
+                        production_no = f"{order_no}-{sequence:02d}"
+                        specification = f"{params.get('dw') or ''} x {params.get('dh') or ''}".strip(" x")
+                        door_cursor = conn.execute(
+                            """INSERT INTO fulfillment_door_units(
+                                   order_id, production_no, sequence_no, product_name, specification,
+                                   opening, due_date, owner_uid, sales_order_line_id, source_task_id,
+                                   source_quantity_index, created_at, updated_at
+                               ) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)""",
+                            (
+                                order_id, production_no, sequence, str(params.get("product_name") or "门"),
+                                specification, str(line.get("opening_direction") or ""),
+                                str(sales_order.get("delivery_date") or ""), int(line.get("id") or 0),
+                                str(line.get("task_id") or ""), quantity_index, now, now,
+                            ),
+                        )
+                        door_id = int(door_cursor.lastrowid)
+                        package_cursor = conn.execute(
+                            """INSERT INTO fulfillment_technical_packages(
+                                   door_unit_id, version, product_snapshot_json, product_summary,
+                                   created_by, created_at, updated_at
+                               ) VALUES (?, 1, ?, ?, ?, ?, ?)""",
+                            (
+                                door_id, json_dumps(params), self._default_product_summary(params),
+                                str(user.get("uid") or ""), now, now,
+                            ),
+                        )
+                        package_id = int(package_cursor.lastrowid)
+                        self._seed_components(conn, package_id, params)
+                        self._seed_work_packages(conn, package_id, door_id, now)
+                        self.add_event(
+                            conn, order_id=order_id, door_unit_id=door_id, entity_type="door_unit",
+                            entity_id=door_id, action="从销售订单创建门樘",
+                            detail=f"{sales_order.get('order_no')} 第{line.get('line_no')}行 第{quantity_index}樘，技术包草稿 V1",
+                            user=user,
+                        )
+                self.add_event(
+                    conn, order_id=order_id, door_unit_id=None, entity_type="order", entity_id=order_id,
+                    action="销售订单自动下达", detail=f"共生成 {sequence} 樘门", user=user,
+                )
         return self.get_order(order_id) or {}
 
     @staticmethod

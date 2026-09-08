@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -18,6 +18,7 @@ from sales_order_models import SalesOrderCancel, SalesOrderCreate, SalesOrderUpd
 router = APIRouter(prefix="/api/sales-orders", tags=["sales-orders"])
 sales_order_db = SalesOrderDatabase()
 task_repository = None
+fulfillment_provisioner: Any = None
 
 
 def configure_task_repository(repository) -> None:
@@ -28,6 +29,11 @@ def configure_task_repository(repository) -> None:
 def configure_sales_order_database(database: SalesOrderDatabase) -> None:
     global sales_order_db
     sales_order_db = database
+
+
+def configure_fulfillment_provisioner(provisioner: Any) -> None:
+    global fulfillment_provisioner
+    fulfillment_provisioner = provisioner
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -335,7 +341,28 @@ def confirm_order(order_id: int, current_user: Dict = Depends(get_current_user))
                 _require_tasks().update_task(str(line["task_id"]), {"confirm_status": "已确认"})
             except Exception:
                 pass
-        return {"order": _enrich_order(confirmed), "message": "订单已正式确认，已进入生产待下达"}
+        message = "订单已正式确认"
+        if fulfillment_provisioner is not None:
+            try:
+                confirmed = fulfillment_provisioner.provision(order_id, current_user)
+                message = "订单已正式确认，并已生成独立门樘和BOM草稿"
+            except Exception as provision_error:
+                confirmed = sales_order_db.get(order_id) or confirmed
+                message = f"订单已确认，但门樘生成失败，可稍后重试：{provision_error}"
+        else:
+            message = "订单已正式确认，履约生成服务尚未连接"
+        return {"order": _enrich_order(confirmed), "message": message}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/{order_id}/retry-provisioning")
+def retry_provisioning(order_id: int, current_user: Dict = Depends(get_current_user)):
+    if fulfillment_provisioner is None:
+        raise HTTPException(status_code=503, detail="履约生成服务尚未连接")
+    try:
+        order = fulfillment_provisioner.provision(order_id, current_user)
+        return {"order": _enrich_order(order), "message": "门樘和BOM草稿已生成"}
     except Exception as exc:
         raise _error(exc) from exc
 
