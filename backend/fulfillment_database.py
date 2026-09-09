@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from config import FULFILLMENT_DB_FILE, FULFILLMENT_FILES_DIR
 from inventory_database import InventoryDatabase
 from requirement_service import RequirementService
+from work_package_service import WorkPackageService
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -254,6 +255,17 @@ class FulfillmentDatabase:
                     FOREIGN KEY(component_id) REFERENCES fulfillment_components(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS fulfillment_work_package_dependencies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    predecessor_id INTEGER NOT NULL,
+                    successor_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(predecessor_id, successor_id),
+                    CHECK(predecessor_id != successor_id),
+                    FOREIGN KEY(predecessor_id) REFERENCES fulfillment_work_packages(id) ON DELETE CASCADE,
+                    FOREIGN KEY(successor_id) REFERENCES fulfillment_work_packages(id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS fulfillment_exceptions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     door_unit_id INTEGER NOT NULL,
@@ -433,6 +445,21 @@ class FulfillmentDatabase:
             for name, definition in component_definitions:
                 if name not in columns:
                     conn.execute(f"ALTER TABLE fulfillment_components ADD COLUMN {name} {definition}")
+            work_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_work_packages)").fetchall()}
+            for name, definition in (
+                ("operation_code", "TEXT NOT NULL DEFAULT ''"),
+                ("weight", "REAL NOT NULL DEFAULT 1"),
+                ("readiness_status", "TEXT NOT NULL DEFAULT '待前序'"),
+                ("material_ready", "INTEGER NOT NULL DEFAULT 0"),
+                ("blocked_reason", "TEXT NOT NULL DEFAULT ''"),
+                ("ready_at", "TEXT"),
+                ("submitted_at", "TEXT"),
+                ("scrap_quantity", "REAL NOT NULL DEFAULT 0"),
+                ("actual_minutes", "REAL NOT NULL DEFAULT 0"),
+                ("skip_reason", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in work_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_work_packages ADD COLUMN {name} {definition}")
             conn.execute(
                 """UPDATE fulfillment_components
                    SET theoretical_quantity=quantity, planned_quantity=quantity
@@ -735,6 +762,14 @@ class FulfillmentDatabase:
                 component["source_payload"] = json_loads(component.pop("source_payload_json", ""), {})
                 component["attachments"] = json_loads(component.pop("attachments_json", ""), [])
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
+            for work in package["work_packages"]:
+                work["predecessor_ids"] = [
+                    int(item["predecessor_id"])
+                    for item in self.fetch_all(
+                        "SELECT predecessor_id FROM fulfillment_work_package_dependencies WHERE successor_id=? ORDER BY predecessor_id",
+                        (work["id"],),
+                    )
+                ]
             package["generation_warnings"] = self.fetch_all(
                 """SELECT * FROM fulfillment_bom_generation_warnings
                    WHERE technical_package_id=? ORDER BY blocking DESC, id""",
@@ -1132,6 +1167,9 @@ class FulfillmentDatabase:
             from purchasing_service import PurchasingService
 
             PurchasingService(self.inventory_db).sync_demands(conn)
+            generated_work_count = WorkPackageService().generate_for_package(
+                conn, door_id=door_id, package_id=int(package["id"]), now=now,
+            )
             if not already_published:
                 conn.execute(
                     """UPDATE fulfillment_technical_packages
@@ -1149,11 +1187,12 @@ class FulfillmentDatabase:
                     conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
                     entity_id=int(package["id"]), action="发布BOM版本",
                     detail=(
-                        f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}"
+                        f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}，释放工作包 {generated_work_count} 项"
                         f"{'；' + remark if remark else ''}"
                     ),
                     user=user,
                 )
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
             return already_published
 
     def diff_bom_versions(self, door_id: int, from_version: int, to_version: int) -> Dict[str, Any]:
@@ -1294,6 +1333,7 @@ class FulfillmentDatabase:
             )
             conn.execute("UPDATE fulfillment_technical_packages SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?", (str(user.get("uid") or ""), now, now, package_id))
             conn.execute("UPDATE fulfillment_work_packages SET status='待排单', updated_at=? WHERE technical_package_id=? AND status='草稿'", (now, package_id))
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
             conn.execute(
                 """UPDATE fulfillment_supplies SET status='已取消', remark=CASE WHEN remark='' THEN '技术版本已变更' ELSE remark END, updated_at=?
                    WHERE door_unit_id=? AND status NOT IN ('已入库','已取消')""",
@@ -1324,15 +1364,22 @@ class FulfillmentDatabase:
                 raise ValueError("无效的工作包状态")
             if target != current and target not in WORK_TRANSITIONS.get(current, set()):
                 raise RuntimeError(f"工作包不能从“{current}”直接变为“{target}”")
+            if target == "进行中" and current != "进行中":
+                row = WorkPackageService().ensure_startable(conn, work_id=work_id, now=now)
             if bool(row["inspection_required"]) and target == "已完成" and current not in {"待质检", "返工"}:
                 raise RuntimeError("该工作包要求质检，必须先提交到“待质检”")
             executor = payload.executor_uid or row["executor_uid"] or str(user.get("uid") or "")
             started_at = row["started_at"] or (now if target == "进行中" else None)
             completed_at = now if target == "已完成" else row["completed_at"]
             actual = row["actual_quantity"] if payload.actual_quantity is None else payload.actual_quantity
+            scrap = row["scrap_quantity"] if payload.scrap_quantity is None else payload.scrap_quantity
+            actual_minutes = row["actual_minutes"] if payload.actual_minutes is None else payload.actual_minutes
+            submitted_at = now if target in {"待质检", "已完成"} else row["submitted_at"]
             conn.execute(
-                """UPDATE fulfillment_work_packages SET status=?, executor_uid=?, actual_quantity=?, remark=?, started_at=?, completed_at=?, updated_at=? WHERE id=?""",
-                (target, executor, actual, payload.remark, started_at, completed_at, now, work_id),
+                """UPDATE fulfillment_work_packages
+                   SET status=?, executor_uid=?, actual_quantity=?, scrap_quantity=?, actual_minutes=?,
+                       remark=?, started_at=?, submitted_at=?, completed_at=?, updated_at=? WHERE id=?""",
+                (target, executor, actual, scrap, actual_minutes, payload.remark, started_at, submitted_at, completed_at, now, work_id),
             )
             door_id = int(row["door_unit_id"])
             if target == "已完成" and float(row["piece_rate"] or 0) > 0:
@@ -1343,7 +1390,7 @@ class FulfillmentDatabase:
                        ON CONFLICT(work_package_id) DO UPDATE SET employee_uid=excluded.employee_uid, quantity=excluded.quantity, piece_rate=excluded.piece_rate, amount=excluded.amount""",
                     (door_id, work_id, executor, row["name"], quantity, row["piece_rate"], quantity * float(row["piece_rate"]), now),
                 )
-            self._refresh_door_progress(conn, door_id, now)
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
             self.add_event(conn, order_id=None, door_unit_id=door_id, entity_type="work_package", entity_id=work_id, action="更新工作包", detail=f"{row['name']}：{current} → {target}", user=user)
         return self.get_door_unit(int(row["door_unit_id"])) or {}
 
@@ -1370,7 +1417,8 @@ class FulfillmentDatabase:
             placeholders = ",".join("?" for _ in requested_ids)
             rows = conn.execute(
                 f"""SELECT * FROM fulfillment_work_packages
-                    WHERE door_unit_id=? AND technical_package_id=? AND id IN ({placeholders})""",
+                    WHERE door_unit_id=? AND technical_package_id=? AND id IN ({placeholders})
+                    ORDER BY sequence_no, id""",
                 (door_id, latest["id"], *sorted(requested_ids)),
             ).fetchall()
             if len(rows) != len(requested_ids):
@@ -1383,22 +1431,33 @@ class FulfillmentDatabase:
                     continue
                 if payload.action == "开始" and current not in {"待排单", "已排单", "暂停", "异常", "返工"}:
                     raise RuntimeError(f"{row['name']} 当前为“{current}”，不能批量开始")
+                if payload.action == "开始":
+                    row = WorkPackageService().ensure_startable(conn, work_id=int(row["id"]), now=now)
                 if payload.action == "提交质检" and current not in {"待排单", "已排单", "进行中", "返工"}:
                     raise RuntimeError(f"{row['name']} 当前为“{current}”，不能提交质检")
+                if payload.action == "提交质检" and current in {"待排单", "已排单", "返工"}:
+                    row = WorkPackageService().ensure_startable(conn, work_id=int(row["id"]), now=now)
                 if payload.action == "确认完成":
                     if bool(row["inspection_required"]) and current not in {"待质检", "返工"}:
                         raise RuntimeError(f"{row['name']}要求过程检验，请先提交质检")
                     if current not in {"待排单", "已排单", "进行中", "待质检", "返工"}:
                         raise RuntimeError(f"{row['name']} 当前为“{current}”，不能确认完成")
+                    if current in {"待排单", "已排单", "返工"}:
+                        row = WorkPackageService().ensure_startable(conn, work_id=int(row["id"]), now=now)
                 executor = payload.executor_uid or row["executor_uid"] or str(user.get("uid") or "")
                 started_at = row["started_at"] or (now if target in {"进行中", "待质检", "已完成"} else None)
                 completed_at = now if target in {"已完成", "已取消"} else row["completed_at"]
+                submitted_at = now if target in {"待质检", "已完成"} else row["submitted_at"]
                 actual = row["quantity"] if target == "已完成" else row["actual_quantity"]
+                scrap = row["scrap_quantity"] if payload.scrap_quantity is None else payload.scrap_quantity
+                actual_minutes = row["actual_minutes"] if payload.actual_minutes is None else payload.actual_minutes
                 remark = str(payload.remark or row["remark"] or "")
                 conn.execute(
-                    """UPDATE fulfillment_work_packages SET status=?, executor_uid=?, actual_quantity=?, remark=?,
-                       started_at=?, completed_at=?, updated_at=? WHERE id=?""",
-                    (target, executor, actual, remark, started_at, completed_at, now, row["id"]),
+                    """UPDATE fulfillment_work_packages SET status=?, executor_uid=?, actual_quantity=?,
+                       scrap_quantity=?, actual_minutes=?, remark=?,
+                       started_at=?, submitted_at=?, completed_at=?, skip_reason=?, updated_at=? WHERE id=?""",
+                    (target, executor, actual, scrap, actual_minutes, remark, started_at, submitted_at, completed_at,
+                     remark if payload.action == "跳过" else str(row["skip_reason"] or ""), now, row["id"]),
                 )
                 if target == "已完成" and float(row["piece_rate"] or 0) > 0:
                     quantity = float(actual or row["quantity"] or 0)
@@ -1413,24 +1472,11 @@ class FulfillmentDatabase:
                     action=f"批量{payload.action}", detail=f"{row['name']}：{current} → {target}{'；' + remark if remark else ''}", user=user,
                 )
                 changed += 1
-            self._refresh_door_progress(conn, door_id, now)
+                WorkPackageService().recompute(conn, door_id=door_id, now=now)
         return self.get_door_unit(door_id) or {}, changed
 
     def _refresh_door_progress(self, conn: sqlite3.Connection, door_id: int, now: str) -> None:
-        latest = conn.execute("SELECT id FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1", (door_id,)).fetchone()
-        rows = conn.execute("SELECT status FROM fulfillment_work_packages WHERE door_unit_id=? AND technical_package_id=?", (door_id, latest["id"] if latest else -1)).fetchall()
-        if not rows:
-            progress = 0
-        else:
-            weights = {"草稿": 0, "待排单": 0, "已排单": 10, "进行中": 50, "待质检": 80, "已完成": 100, "暂停": 30, "异常": 30, "返工": 60, "已取消": 100}
-            progress = int(sum(weights.get(str(row["status"]), 0) for row in rows) / len(rows))
-        all_done = bool(rows) and all(str(row["status"]) in {"已完成", "已取消"} for row in rows)
-        conn.execute(
-            """UPDATE fulfillment_door_units SET progress=?,
-               status=CASE WHEN ? AND status IN ('备料与加工中','可局部装配','总装中') THEN '待成品质检' ELSE status END,
-               updated_at=? WHERE id=?""",
-            (progress, int(all_done), now, door_id),
-        )
+        WorkPackageService().refresh_progress(conn, door_id=door_id, now=now)
 
     def list_supply_workbench(self, scope: str, q: str = "") -> List[Dict[str, Any]]:
         if scope not in {"purchase", "warehouse"}:
@@ -1552,6 +1598,7 @@ class FulfillmentDatabase:
                     (new_package_id, door_id, old_to_new.get(work["component_id"]), work["name"], work["category"], work["route"], work["acquisition_method"], work["executor_uid"], work["planned_start"], work["planned_end"], work["opening_condition"], work["blocking_node"], work["quantity"], work["unit"], work["piece_rate"], work["inspection_required"], work["remark"], work["sequence_no"], now),
                 )
             conn.execute("UPDATE fulfillment_door_units SET status='技术准备中', updated_at=? WHERE id=?", (now, door_id))
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
             self.add_event(conn, order_id=None, door_unit_id=door_id, entity_type="change", entity_id=int(change_cursor.lastrowid), action="发起生产变更", detail=f"V{source['version']} → V{next_version}：{payload.reason}", user=user)
         return self.get_door_unit(door_id) or {}
 
@@ -1634,6 +1681,7 @@ class FulfillmentDatabase:
             if payload.inspection_type == "成品质检":
                 next_status = "待成品入库" if payload.result in {"合格", "让步接收"} else "返工中"
                 conn.execute("UPDATE fulfillment_door_units SET status=?, updated_at=? WHERE id=?", (next_status, now, door_id))
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
             self.add_event(conn, order_id=None, door_unit_id=door_id, entity_type="inspection", entity_id=int(cursor.lastrowid), action=payload.inspection_type, detail=f"{payload.target_name or door['production_no']}：{payload.result}", user=user)
         return self.get_door_unit(door_id) or {}
 

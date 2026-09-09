@@ -69,6 +69,8 @@ class WorkPackageAction(BaseModel):
     status: str
     executor_uid: str = ""
     actual_quantity: Optional[float] = Field(default=None, ge=0)
+    scrap_quantity: Optional[float] = Field(default=None, ge=0)
+    actual_minutes: Optional[float] = Field(default=None, ge=0)
     remark: str = ""
 
 
@@ -76,7 +78,14 @@ class WorkPackageBatchAction(BaseModel):
     work_ids: List[int] = Field(min_length=1)
     action: str
     executor_uid: str = ""
+    scrap_quantity: Optional[float] = Field(default=None, ge=0)
+    actual_minutes: Optional[float] = Field(default=None, ge=0)
     remark: str = ""
+
+
+class WorkPackageSkip(BaseModel):
+    reason: str = Field(min_length=1)
+    executor_uid: str = ""
 
 
 class ExceptionCreate(BaseModel):

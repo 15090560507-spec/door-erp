@@ -27,6 +27,7 @@ from fulfillment_models import (
     TechnicalPackageUpdate,
     WorkPackageAction,
     WorkPackageBatchAction,
+    WorkPackageSkip,
 )
 
 
@@ -277,6 +278,23 @@ def batch_work_packages(door_id: int, req: WorkPackageBatchAction, current_user:
     try:
         door, changed = fulfillment_db.batch_work_packages(door_id, req, current_user)
         return {"door_unit": door, "changed": changed, "message": f"已批量更新 {changed} 个工作包"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/work-packages/{work_id}/skip")
+def skip_work_package(work_id: int, req: WorkPackageSkip, current_user: Dict = Depends(get_current_user)):
+    try:
+        row = fulfillment_db.fetch_one(
+            "SELECT door_unit_id FROM fulfillment_work_packages WHERE id=?", (work_id,)
+        )
+        if not row:
+            raise LookupError("工作包不存在")
+        request = WorkPackageBatchAction(
+            work_ids=[work_id], action="跳过", executor_uid=req.executor_uid, remark=req.reason,
+        )
+        door, changed = fulfillment_db.batch_work_packages(int(row["door_unit_id"]), request, current_user)
+        return {"door_unit": door, "changed": changed, "message": "工作包已受控跳过并记录原因"}
     except Exception as exc:
         raise _translate_error(exc) from exc
 

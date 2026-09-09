@@ -227,6 +227,9 @@ class RequirementService:
                 "UPDATE material_requirements SET status=?, updated_at=? WHERE id=?",
                 ("有缺口" if shortage > EPSILON else ("采购覆盖" if in_transit > EPSILON else "已预留"), now, requirement_id),
             )
+        from work_package_service import WorkPackageService
+
+        WorkPackageService().recompute_for_material(conn, material_id=material_id, now=now)
 
     @staticmethod
     def _allocate_item(
