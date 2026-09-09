@@ -136,6 +136,7 @@ class BomGenerationService:
                     if match_status == "已匹配":
                         matched_count += 1
                     planned_quantity = item.planned_quantity
+                    verification_status = "已核验" if match_status == "无需物料" else "待核验"
                     connection.execute(
                         """INSERT INTO fulfillment_components(
                                technical_package_id, material_id, name, category, specification,
@@ -144,13 +145,13 @@ class BomGenerationService:
                                source_rule_version, source_payload_json, match_status,
                                verification_status, operation_code, required_date, attachments_json
                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                     'rule_generated', ?, ?, ?, '待核验', ?, ?, '[]')""",
+                                     'rule_generated', ?, ?, ?, ?, ?, ?, '[]')""",
                         (
                             package_id, material_id, item.name, item.category, item.specification,
                             planned_quantity, item.unit, item.acquisition_method, base_line + sequence,
                             base_line + sequence, item.group_code, item.theoretical_quantity,
                             item.waste_rate, planned_quantity, rule_version,
-                            json_dumps(item.source_payload), match_status, item.operation_code,
+                            json_dumps(item.source_payload), match_status, verification_status, item.operation_code,
                             str(params.get("required_date") or ""),
                         ),
                     )

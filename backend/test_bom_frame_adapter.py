@@ -80,6 +80,17 @@ class BomFrameAdapterTest(unittest.TestCase):
         fields = {issue.field for issue in result.errors}
         self.assertTrue({"product_name", "sel_hys", "hysl"}.issubset(fields))
 
+    def test_non_frame_product_is_not_a_frame_error(self):
+        params = dict(self.params, product_name="雨棚")
+        door_id = create_door(self.db, params, sales_order_id=4)
+
+        result = adapt_fulfillment_frame(self.db, door_id)
+
+        self.assertFalse(result.applicable)
+        self.assertFalse(result.can_calculate)
+        self.assertFalse(result.errors)
+        self.assertEqual(result.warnings[0].code, "FRAME_NOT_APPLICABLE")
+
 
 if __name__ == "__main__":
     unittest.main()

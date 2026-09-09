@@ -12,7 +12,8 @@ from door_cad.services.frame_calculator import calculate_frame_project
 from fulfillment_database import json_loads
 
 
-UNSUPPORTED_FRAME_PRODUCTS = {"平移门", "地弹簧门", "天弹簧门", "铝艺栅栏", "雨棚", "牌匾", "其他"}
+UNSUPPORTED_FRAME_PRODUCTS = {"平移门", "地弹簧门", "天弹簧门"}
+NON_FRAME_PRODUCTS = {"铝艺栅栏", "雨棚", "牌匾", "其他"}
 
 
 class FrameMappingIssue(BaseModel):
@@ -30,6 +31,7 @@ class FrameInputAdaptation(BaseModel):
     doorUnitId: int
     technicalPackageId: int
     version: int
+    applicable: bool = True
     inputs: Optional[FrameInput] = None
     project: ProjectMeta
     errors: list[FrameMappingIssue] = Field(default_factory=list)
@@ -78,6 +80,19 @@ def adapt_fulfillment_frame(database: Any, door_unit_id: int) -> FrameInputAdapt
     warnings: list[FrameMappingIssue] = []
 
     product_name = str(params.get("product_name") or "").strip()
+    if product_name in NON_FRAME_PRODUCTS:
+        warnings.append(FrameMappingIssue(
+            code="FRAME_NOT_APPLICABLE", field="product_name",
+            message=f"{product_name}不适用标准门框下料模块", severity="warning",
+        ))
+        return FrameInputAdaptation(
+            doorUnitId=door_unit_id,
+            technicalPackageId=int(row["package_id"]),
+            version=int(row["version"]),
+            applicable=False,
+            project=project,
+            warnings=warnings,
+        )
     if product_name in UNSUPPORTED_FRAME_PRODUCTS:
         errors.append(FrameMappingIssue(
             code="FRAME_PRODUCT_UNSUPPORTED", field="product_name",

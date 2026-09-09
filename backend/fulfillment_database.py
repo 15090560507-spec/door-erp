@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -776,6 +777,421 @@ class FulfillmentDatabase:
         door["available_payment"] = max(0.0, door["paid_amount"] - door["allocated_payment"])
         door["events"] = self.fetch_all("SELECT * FROM fulfillment_events WHERE door_unit_id=? ORDER BY created_at DESC, id DESC LIMIT 100", (door_id,))
         return door
+
+    def latest_bom_package(self, door_id: int) -> Dict[str, Any]:
+        package = self.fetch_one(
+            """SELECT p.*, d.order_id, d.production_no
+               FROM fulfillment_technical_packages p
+               JOIN fulfillment_door_units d ON d.id=p.door_unit_id
+               WHERE p.door_unit_id=? ORDER BY p.version DESC LIMIT 1""",
+            (door_id,),
+        )
+        if not package:
+            raise LookupError("门樘生产单或BOM不存在")
+        return package
+
+    def list_bom_workbench(self, q: str = "", status: str = "", page: int = 1, page_size: int = 30) -> Dict[str, Any]:
+        where = [
+            "p.id=(SELECT p2.id FROM fulfillment_technical_packages p2 WHERE p2.door_unit_id=d.id ORDER BY p2.version DESC LIMIT 1)"
+        ]
+        params: List[Any] = []
+        if q:
+            term = f"%{q}%"
+            where.append(
+                "(o.order_no LIKE ? OR o.sales_order_no LIKE ? OR d.production_no LIKE ? OR "
+                "o.customer LIKE ? OR o.project LIKE ? OR d.product_name LIKE ?)"
+            )
+            params.extend([term] * 6)
+        rows = self.fetch_all(
+            f"""SELECT p.id AS technical_package_id, p.version, p.status,
+                       p.generation_status, p.rule_version, p.generated_at,
+                       p.blocking_warning_count, p.updated_at,
+                       d.id AS door_unit_id, d.production_no, d.product_name,
+                       d.specification, d.status AS door_status, d.due_date,
+                       o.id AS order_id, o.order_no, o.sales_order_no, o.customer, o.project,
+                       (SELECT COUNT(*) FROM fulfillment_components c
+                        WHERE c.technical_package_id=p.id) AS item_count,
+                       (SELECT COUNT(*) FROM fulfillment_components c
+                        WHERE c.technical_package_id=p.id
+                          AND c.verification_status!='已核验') AS pending_verification_count,
+                       (SELECT COUNT(*) FROM fulfillment_components c
+                        WHERE c.technical_package_id=p.id
+                          AND ((c.match_status NOT IN ('已匹配','无需物料'))
+                               OR (c.match_status='已匹配' AND c.material_id IS NULL)
+                               OR c.planned_quantity<=0)) AS missing_data_count,
+                       COALESCE((SELECT SUM(i.shortage_quantity)
+                         FROM material_requirements r
+                         JOIN material_requirement_items i ON i.requirement_id=r.id
+                         WHERE r.technical_package_id=p.id), 0) AS shortage_quantity
+                FROM fulfillment_technical_packages p
+                JOIN fulfillment_door_units d ON d.id=p.door_unit_id
+                JOIN fulfillment_orders o ON o.id=d.order_id
+                WHERE {' AND '.join(where)}
+                ORDER BY CASE p.status WHEN '草稿' THEN 0 ELSE 1 END,
+                         p.updated_at DESC, d.production_no""",
+            params,
+        )
+        summary = {
+            "total": len(rows),
+            "pending_generation": 0,
+            "pending_verification": 0,
+            "missing_data": 0,
+            "shortage": 0,
+            "published": 0,
+            "changed": 0,
+        }
+        for row in rows:
+            row["states"] = []
+            if row["generation_status"] in {"未生成", "生成失败"}:
+                row["states"].append("待生成")
+                summary["pending_generation"] += 1
+            if int(row["pending_verification_count"] or 0) > 0:
+                row["states"].append("待核验")
+                summary["pending_verification"] += 1
+            if int(row["missing_data_count"] or 0) > 0 or int(row["blocking_warning_count"] or 0) > 0:
+                row["states"].append("缺少资料")
+                summary["missing_data"] += 1
+            if float(row["shortage_quantity"] or 0) > 1e-9:
+                row["states"].append("缺料")
+                summary["shortage"] += 1
+            if row["status"] == "已确认":
+                row["states"].append("已发布")
+                summary["published"] += 1
+            if int(row["version"] or 1) > 1:
+                row["states"].append("已变更")
+                summary["changed"] += 1
+        filtered = [row for row in rows if not status or status in row["states"]]
+        total = len(filtered)
+        offset = (page - 1) * page_size
+        return {
+            "summary": summary,
+            "items": filtered[offset:offset + page_size],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "pages": (total + page_size - 1) // page_size,
+            },
+        }
+
+    def get_bom_detail(self, door_id: int, version: Optional[int] = None) -> Dict[str, Any]:
+        version_clause = "AND p.version=?" if version is not None else ""
+        params: Sequence[Any] = (door_id, version) if version is not None else (door_id,)
+        package = self.fetch_one(
+            f"""SELECT p.*, d.order_id, d.production_no, d.product_name,
+                       d.specification, d.status AS door_status, d.due_date,
+                       o.order_no, o.sales_order_no, o.customer, o.project
+                FROM fulfillment_technical_packages p
+                JOIN fulfillment_door_units d ON d.id=p.door_unit_id
+                JOIN fulfillment_orders o ON o.id=d.order_id
+                WHERE p.door_unit_id=? {version_clause}
+                ORDER BY p.version DESC LIMIT 1""",
+            params,
+        )
+        if not package:
+            raise LookupError("指定门樘或BOM版本不存在")
+        package["product_snapshot"] = json_loads(package.pop("product_snapshot_json", ""), {})
+        package["generation_summary"] = json_loads(package.pop("generation_summary_json", ""), {})
+        rows = self.fetch_all(
+            """SELECT c.*, m.code AS material_code, m.name AS material_name,
+                      m.specification AS material_specification, m.unit AS material_unit,
+                      s.name AS supplier_name
+               FROM fulfillment_components c
+               LEFT JOIN inventory_materials m ON m.id=c.material_id
+               LEFT JOIN inventory_suppliers s ON s.id=c.supplier_id
+               WHERE c.technical_package_id=? ORDER BY c.line_no, c.id""",
+            (package["id"],),
+        )
+        for row in rows:
+            row["source_payload"] = json_loads(row.pop("source_payload_json", ""), {})
+            row["attachments"] = json_loads(row.pop("attachments_json", ""), [])
+        group_labels = {
+            "frame": "门框与门槛", "panel": "门扇与面板", "skeleton": "骨架与型材",
+            "trim": "门套/门头/门柱", "glass": "玻璃与线条", "hardware": "五金与开启机构",
+            "ornament": "花件与外购装饰", "consumable": "辅料与耗材", "packaging": "包装",
+            "subcontract": "外协加工", "other": "其他",
+        }
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["group_code"] or "other"), []).append(row)
+        groups = [
+            {"code": code, "label": group_labels.get(code, code), "count": len(items), "rows": items}
+            for code, items in grouped.items()
+        ]
+        warnings = self.fetch_all(
+            """SELECT * FROM fulfillment_bom_generation_warnings
+               WHERE technical_package_id=? ORDER BY created_at DESC, blocking DESC, id DESC""",
+            (package["id"],),
+        )
+        history = self.fetch_all(
+            """SELECT id AS technical_package_id, version, status, generation_status,
+                      rule_version, blocking_warning_count, source_version_id,
+                      created_by, confirmed_by, created_at, updated_at, confirmed_at
+               FROM fulfillment_technical_packages
+               WHERE door_unit_id=? ORDER BY version DESC""",
+            (door_id,),
+        )
+        downstream = {
+            "requirement_count": int((self.fetch_one(
+                "SELECT COUNT(*) AS value FROM material_requirements WHERE technical_package_id=?",
+                (package["id"],),
+            ) or {"value": 0})["value"] or 0),
+            "supply_count": int((self.fetch_one(
+                "SELECT COUNT(*) AS value FROM fulfillment_supplies WHERE technical_package_id=?",
+                (package["id"],),
+            ) or {"value": 0})["value"] or 0),
+            "work_package_count": int((self.fetch_one(
+                "SELECT COUNT(*) AS value FROM fulfillment_work_packages WHERE technical_package_id=?",
+                (package["id"],),
+            ) or {"value": 0})["value"] or 0),
+        }
+        package.update({
+            "rows": rows,
+            "groups": groups,
+            "warnings": warnings,
+            "version_history": history,
+            "downstream_impact": downstream,
+        })
+        return package
+
+    def update_bom_draft(self, door_id: int, payload: Any, user: Dict[str, Any]) -> None:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            if package["status"] != "草稿":
+                raise RuntimeError("BOM版本已确认冻结，请创建新版本后修改")
+            package_id = int(package["id"])
+            if payload.product_summary is not None or payload.special_requirements is not None:
+                conn.execute(
+                    """UPDATE fulfillment_technical_packages
+                       SET product_summary=COALESCE(?, product_summary),
+                           special_requirements=COALESCE(?, special_requirements), updated_at=?
+                       WHERE id=?""",
+                    (payload.product_summary, payload.special_requirements, now, package_id),
+                )
+            for item_id in payload.delete_item_ids:
+                row = conn.execute(
+                    "SELECT id FROM fulfillment_components WHERE id=? AND technical_package_id=?",
+                    (item_id, package_id),
+                ).fetchone()
+                if not row:
+                    raise ValueError(f"BOM行 {item_id} 不存在或不属于当前版本")
+                conn.execute("DELETE FROM fulfillment_components WHERE id=?", (item_id,))
+
+            allowed = {
+                "material_id", "name", "category", "specification", "theoretical_quantity",
+                "waste_rate", "planned_quantity", "quantity", "unit", "acquisition_method",
+                "group_code", "operation_code", "supplier_id", "required_date", "remark",
+            }
+            for item in payload.items:
+                values = item.model_dump(exclude_unset=True)
+                item_id = values.pop("id", None)
+                material_explicit = "material_id" in values
+                if material_explicit and values["material_id"] is not None:
+                    material = conn.execute(
+                        "SELECT id FROM inventory_materials WHERE id=? AND is_active=1",
+                        (values["material_id"],),
+                    ).fetchone()
+                    if not material:
+                        raise ValueError(f"物料档案 {values['material_id']} 不存在或已停用")
+                if item_id is not None:
+                    current = conn.execute(
+                        "SELECT * FROM fulfillment_components WHERE id=? AND technical_package_id=?",
+                        (item_id, package_id),
+                    ).fetchone()
+                    if not current:
+                        raise ValueError(f"BOM行 {item_id} 不存在或不属于当前版本")
+                    updates = {key: value for key, value in values.items() if key in allowed}
+                    if "planned_quantity" in updates:
+                        updates["quantity"] = updates["planned_quantity"]
+                    elif "quantity" in updates:
+                        updates["planned_quantity"] = updates["quantity"]
+                    elif "theoretical_quantity" in updates or "waste_rate" in updates:
+                        theoretical = float(updates.get("theoretical_quantity", current["theoretical_quantity"]) or 0)
+                        waste_rate = float(updates.get("waste_rate", current["waste_rate"]) or 0)
+                        calculated = theoretical * (1 + max(0.0, waste_rate) / 100)
+                        unit = str(updates.get("unit", current["unit"]) or "件")
+                        planned = float(math.ceil(calculated)) if unit in {"个", "件", "扇", "块", "套"} else round(calculated, 4)
+                        updates["planned_quantity"] = planned
+                        updates["quantity"] = planned
+                    if material_explicit:
+                        updates["match_status"] = "已匹配" if updates.get("material_id") is not None else "待匹配"
+                    if updates:
+                        updates["verification_status"] = "待核验"
+                        assignments = ", ".join(f"{key}=?" for key in updates)
+                        conn.execute(
+                            f"UPDATE fulfillment_components SET {assignments} WHERE id=?",
+                            (*updates.values(), item_id),
+                        )
+                else:
+                    name = str(values.get("name") or "").strip()
+                    if not name:
+                        raise ValueError("新增BOM行必须填写名称")
+                    line_no = int((conn.execute(
+                        "SELECT COALESCE(MAX(line_no), 0) AS value FROM fulfillment_components WHERE technical_package_id=?",
+                        (package_id,),
+                    ).fetchone() or {"value": 0})["value"] or 0) + 1
+                    if "planned_quantity" in values or "quantity" in values:
+                        planned = float(values.get("planned_quantity", values.get("quantity", 0)) or 0)
+                        theoretical = float(values.get("theoretical_quantity", planned) or 0)
+                    else:
+                        theoretical = float(values.get("theoretical_quantity") or 0)
+                        waste_rate = float(values.get("waste_rate") or 0)
+                        calculated = theoretical * (1 + max(0.0, waste_rate) / 100)
+                        unit = str(values.get("unit") or "件")
+                        planned = float(math.ceil(calculated)) if unit in {"个", "件", "扇", "块", "套"} else round(calculated, 4)
+                    material_id = values.get("material_id")
+                    conn.execute(
+                        """INSERT INTO fulfillment_components(
+                               technical_package_id, material_id, name, category, specification,
+                               quantity, unit, acquisition_method, remark, sequence_no, line_no,
+                               group_code, theoretical_quantity, waste_rate, planned_quantity,
+                               source_type, source_payload_json, match_status, verification_status,
+                               operation_code, supplier_id, required_date, attachments_json
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                     'manual', '{}', ?, '待核验', ?, ?, ?, '[]')""",
+                        (
+                            package_id, material_id, name, str(values.get("category") or "其他"),
+                            str(values.get("specification") or ""), planned,
+                            str(values.get("unit") or "件"), str(values.get("acquisition_method") or "待确定"),
+                            str(values.get("remark") or ""), line_no, line_no,
+                            str(values.get("group_code") or "other"), theoretical,
+                            float(values.get("waste_rate") or 0), planned,
+                            "已匹配" if material_id is not None else "待匹配",
+                            str(values.get("operation_code") or "MANUAL"), values.get("supplier_id"),
+                            str(values.get("required_date") or ""),
+                        ),
+                    )
+            unresolved = int((conn.execute(
+                """SELECT COUNT(*) AS value FROM fulfillment_components
+                   WHERE technical_package_id=?
+                     AND ((match_status NOT IN ('已匹配','无需物料'))
+                          OR (match_status='已匹配' AND material_id IS NULL)
+                          OR planned_quantity<=0)""",
+                (package_id,),
+            ).fetchone() or {"value": 0})["value"] or 0)
+            conn.execute(
+                """UPDATE fulfillment_technical_packages
+                   SET blocking_warning_count=?, generation_status=CASE WHEN ?>0 THEN '待完善' ELSE '已生成' END,
+                       updated_at=? WHERE id=?""",
+                (unresolved, unresolved, now, package_id),
+            )
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
+                entity_id=package_id, action="保存BOM草稿",
+                detail=f"更新 {len(payload.items)} 项，删除 {len(payload.delete_item_ids)} 项",
+                user=user,
+            )
+
+    def verify_bom_items(self, door_id: int, item_ids: List[int], user: Dict[str, Any]) -> None:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            if package["status"] != "草稿":
+                raise RuntimeError("BOM版本已确认冻结，不能继续核验")
+            placeholders = ",".join("?" for _ in item_ids)
+            conn.execute(
+                f"""UPDATE fulfillment_components SET verification_status='已核验'
+                    WHERE technical_package_id=? AND id IN ({placeholders})""",
+                (package["id"], *item_ids),
+            )
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
+                entity_id=int(package["id"]), action="核验BOM明细",
+                detail=f"核验 {len(item_ids)} 项", user=user,
+            )
+
+    def publish_bom(self, door_id: int, remark: str, user: Dict[str, Any]) -> None:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            if package["status"] != "草稿":
+                raise RuntimeError("BOM版本已确认冻结，不能重复发布")
+            conn.execute(
+                """UPDATE fulfillment_technical_packages
+                   SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?""",
+                (str(user.get("uid") or ""), now, now, package["id"]),
+            )
+            conn.execute(
+                """UPDATE fulfillment_door_units
+                   SET active_version=?, technical_uid=?,
+                       status=CASE WHEN status='待生产确认' THEN '技术准备中' ELSE status END,
+                       updated_at=? WHERE id=?""",
+                (package["version"], str(user.get("uid") or ""), now, door_id),
+            )
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
+                entity_id=int(package["id"]), action="发布BOM版本",
+                detail=f"冻结 V{package['version']}{'；' + remark if remark else ''}", user=user,
+            )
+
+    def diff_bom_versions(self, door_id: int, from_version: int, to_version: int) -> Dict[str, Any]:
+        packages = self.fetch_all(
+            """SELECT id, version FROM fulfillment_technical_packages
+               WHERE door_unit_id=? AND version IN (?, ?)""",
+            (door_id, from_version, to_version),
+        )
+        package_ids = {int(row["version"]): int(row["id"]) for row in packages}
+        if from_version not in package_ids or to_version not in package_ids:
+            raise LookupError("对比的BOM版本不存在")
+
+        def version_rows(package_id: int) -> Dict[str, Dict[str, Any]]:
+            result: Dict[str, Dict[str, Any]] = {}
+            for row in self.fetch_all(
+                "SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY line_no, id",
+                (package_id,),
+            ):
+                source = json_loads(row.pop("source_payload_json", ""), {})
+                row.pop("attachments_json", None)
+                key = str(source.get("geometry_ref") or "")
+                if not key:
+                    key = "|".join((
+                        str(row.get("line_no") or ""), str(row.get("group_code") or ""),
+                        str(row.get("operation_code") or ""), str(row.get("name") or ""),
+                    ))
+                row["source_payload"] = source
+                result[key] = row
+            return result
+
+        before = version_rows(package_ids[from_version])
+        after = version_rows(package_ids[to_version])
+        comparable = (
+            "material_id", "name", "category", "specification", "theoretical_quantity",
+            "waste_rate", "planned_quantity", "unit", "acquisition_method", "group_code",
+            "operation_code", "supplier_id", "required_date", "remark",
+        )
+        changed = []
+        for key in sorted(before.keys() & after.keys()):
+            fields = {
+                field: {"from": before[key].get(field), "to": after[key].get(field)}
+                for field in comparable if before[key].get(field) != after[key].get(field)
+            }
+            if fields:
+                changed.append({"key": key, "fields": fields, "from": before[key], "to": after[key]})
+        return {
+            "door_unit_id": door_id,
+            "from_version": from_version,
+            "to_version": to_version,
+            "added": [after[key] for key in sorted(after.keys() - before.keys())],
+            "removed": [before[key] for key in sorted(before.keys() - after.keys())],
+            "changed": changed,
+            "unchanged_count": len(before.keys() & after.keys()) - len(changed),
+        }
 
     def dashboard(self) -> Dict[str, Any]:
         counts = {status: 0 for status in DOOR_STATUSES}
