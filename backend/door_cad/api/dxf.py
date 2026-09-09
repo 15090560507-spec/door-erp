@@ -25,19 +25,38 @@ class DxfExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     projectId: str | None = None
+    doorUnitId: int | None = None
     inputs: FrameInput | None = None
     project: ProjectMeta | None = None
     acknowledgeWarnings: bool = False
 
 
 def resolve_geometry(request: DxfExportRequest, repository: DoorCadProjectRepository) -> ProjectGeometry:
+    source_count = sum((bool(request.projectId), request.doorUnitId is not None, request.inputs is not None))
+    if source_count > 1:
+        raise domain_error(
+            "SOURCE_CONFLICT",
+            "已保存下料项目、门樘生产单和直接参数只能选择一种来源",
+            "projectId",
+        )
     if request.projectId:
         try:
             return ProjectGeometry.model_validate(repository.get(request.projectId)["geometry"])
         except KeyError as exc:
             raise domain_error("PROJECT_NOT_FOUND", "下料项目不存在", "projectId", 404) from exc
+    if request.doorUnitId is not None:
+        from door_cad.services.fulfillment_adapter import calculate_fulfillment_frame
+        from fulfillment_routes import fulfillment_db
+
+        try:
+            _adaptation, geometry = calculate_fulfillment_frame(fulfillment_db, request.doorUnitId)
+            return geometry
+        except LookupError as exc:
+            raise domain_error("DOOR_UNIT_NOT_FOUND", str(exc), "doorUnitId", 404) from exc
+        except ValueError as exc:
+            raise domain_error("FRAME_INPUT_INCOMPLETE", str(exc), "doorUnitId") from exc
     if request.inputs is None:
-        raise domain_error("INPUT_REQUIRED", "必须提交参数或已保存项目 ID", "inputs")
+        raise domain_error("INPUT_REQUIRED", "必须提交参数、已保存项目 ID 或门樘生产单 ID", "inputs")
     return calculate_frame_project(request.inputs, request.project or ProjectMeta())
 
 

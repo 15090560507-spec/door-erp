@@ -1,9 +1,12 @@
 import ezdxf
+import fulfillment_routes
 
 from door_cad.exporters import build_combined_dxf, combined_dxf_filename
 from door_cad.exporters.dxf_exporter import _renderer_parameters
 from door_cad.models import FrameInput, ProjectMeta
 from door_cad.services import calculate_frame_project
+from fulfillment_database import FulfillmentDatabase
+from test_bom_generation import create_door
 from test_door_cad_api import _client, _request
 
 
@@ -106,3 +109,38 @@ def test_combined_dxf_endpoint_returns_authenticated_download(tmp_path):
     path = tmp_path / "api.dxf"
     path.write_bytes(response.content)
     assert not ezdxf.readfile(path).audit().errors
+
+
+def test_combined_dxf_endpoint_uses_frozen_door_unit_geometry(tmp_path):
+    database = FulfillmentDatabase(tmp_path / "fulfillment.db", tmp_path / "files")
+    door_id = create_door(database, {
+        "product_name": "不锈钢镀铜门",
+        "door_type": "单门",
+        "frame_process": "新工艺",
+        "dw": 1000,
+        "dh": 2200,
+        "fw_left_str": "55/75",
+        "fw_right_str": "55/75",
+        "fw_top_str": "85/100",
+        "threshold_type": "高低槛",
+        "th_str": "45/60",
+        "sel_hys": "半钢暗合页",
+        "hysl": "3个/扇",
+    }, sales_order_id=91)
+    original_database = fulfillment_routes.fulfillment_db
+    fulfillment_routes.fulfillment_db = database
+    try:
+        response = _client(tmp_path).post(
+            "/api/door-cad/frame/export-dxf",
+            json={"doorUnitId": door_id, "acknowledgeWarnings": True},
+        )
+    finally:
+        fulfillment_routes.fulfillment_db = original_database
+
+    assert response.status_code == 200
+    path = tmp_path / "door-unit.dxf"
+    path.write_bytes(response.content)
+    document = ezdxf.readfile(path)
+    notes = "\n".join(entity.plain_text() for entity in document.modelspace().query("MTEXT"))
+    assert "SO0091" in notes
+    assert not document.audit().errors

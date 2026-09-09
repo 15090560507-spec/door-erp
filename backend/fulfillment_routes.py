@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import get_current_user
+from bom_generation_service import BomGenerationService
+from door_cad.services.fulfillment_adapter import adapt_fulfillment_frame
 from fulfillment_database import FulfillmentDatabase
 from fulfillment_models import (
     ChangeCreate,
@@ -214,6 +216,36 @@ def get_door_unit(door_id: int, current_user: Dict = Depends(get_current_user)):
     if not door:
         raise HTTPException(status_code=404, detail="门樘生产单不存在")
     return {"door_unit": door}
+
+
+@router.get("/door-units/{door_id}/frame-input")
+def get_door_unit_frame_input(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        adaptation = adapt_fulfillment_frame(fulfillment_db, door_id)
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return {"frame": adaptation.model_dump(mode="json")}
+
+
+@router.post("/door-units/{door_id}/bom/frame/recalculate")
+def recalculate_door_unit_frame_bom(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        adaptation = adapt_fulfillment_frame(fulfillment_db, door_id)
+        if not adaptation.can_calculate:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "FRAME_INPUT_INCOMPLETE",
+                    "message": "门框加工参数不完整，请按字段提示处理",
+                    "fields": [issue.model_dump(mode="json") for issue in adaptation.errors],
+                },
+            )
+        result = BomGenerationService(fulfillment_db).recalculate_frame(door_id, current_user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return {"bom": result, "message": "门框加工零件已按 v1.4.3 规则重新计算"}
 
 
 @router.put("/door-units/{door_id}/technical-package")
