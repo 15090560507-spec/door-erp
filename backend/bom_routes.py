@@ -161,8 +161,15 @@ def verify_bom(door_unit_id: int, request: BomVerifyRequest, current_user: Dict 
 def publish_bom(door_unit_id: int, request: BomPublishRequest, current_user: Dict = Depends(get_current_user)):
     try:
         package = fulfillment_db.latest_bom_package(door_unit_id)
+        if package["status"] == "已确认":
+            fulfillment_db.publish_bom(door_unit_id, request.remark, current_user)
+            return {
+                "bom": _detail(door_unit_id),
+                "message": "该BOM版本已经发布，未重复生成物料需求",
+                "idempotent": True,
+            }
         if package["status"] != "草稿":
-            raise RuntimeError("BOM版本已确认冻结，不能重复发布")
+            raise RuntimeError("当前BOM状态不能发布")
         rows = fulfillment_db.fetch_all(
             "SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY line_no, id",
             (package["id"],),
@@ -191,7 +198,7 @@ def publish_bom(door_unit_id: int, request: BomPublishRequest, current_user: Dic
                 "blockers": blockers,
             })
         fulfillment_db.publish_bom(door_unit_id, request.remark, current_user)
-        return {"bom": _detail(door_unit_id), "message": "BOM版本已发布并冻结"}
+        return {"bom": _detail(door_unit_id), "message": "BOM版本已发布并冻结", "idempotent": False}
     except HTTPException:
         raise
     except Exception as exc:

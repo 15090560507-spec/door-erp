@@ -208,12 +208,19 @@ class InventoryDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     requirement_id INTEGER NOT NULL,
                     component_id INTEGER,
+                    bom_item_id INTEGER,
+                    technical_package_id INTEGER NOT NULL DEFAULT 0,
+                    bom_version INTEGER NOT NULL DEFAULT 0,
+                    door_unit_id INTEGER NOT NULL DEFAULT 0,
+                    production_no TEXT NOT NULL DEFAULT '',
                     material_id INTEGER NOT NULL,
                     material_code TEXT NOT NULL,
                     material_name TEXT NOT NULL,
                     specification TEXT NOT NULL DEFAULT '',
                     required_quantity REAL NOT NULL,
+                    planned_quantity REAL NOT NULL DEFAULT 0,
                     unit TEXT NOT NULL,
+                    acquisition_method TEXT NOT NULL DEFAULT '',
                     reserved_quantity REAL NOT NULL DEFAULT 0,
                     purchased_quantity REAL NOT NULL DEFAULT 0,
                     received_quantity REAL NOT NULL DEFAULT 0,
@@ -594,6 +601,20 @@ class InventoryDatabase:
             ):
                 if name not in material_columns:
                     conn.execute(f"ALTER TABLE inventory_materials ADD COLUMN {name} {definition}")
+            requirement_item_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(material_requirement_items)").fetchall()
+            }
+            for name, definition in (
+                ("bom_item_id", "INTEGER"),
+                ("technical_package_id", "INTEGER NOT NULL DEFAULT 0"),
+                ("bom_version", "INTEGER NOT NULL DEFAULT 0"),
+                ("door_unit_id", "INTEGER NOT NULL DEFAULT 0"),
+                ("production_no", "TEXT NOT NULL DEFAULT ''"),
+                ("planned_quantity", "REAL NOT NULL DEFAULT 0"),
+                ("acquisition_method", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in requirement_item_columns:
+                    conn.execute(f"ALTER TABLE material_requirement_items ADD COLUMN {name} {definition}")
             conn.executemany(
                 """INSERT INTO inventory_warehouses(
                        code, name, warehouse_type, created_at, updated_at

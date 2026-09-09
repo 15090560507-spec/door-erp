@@ -21,13 +21,18 @@ class PurchasingService:
         with self.db.transaction(conn) as tx:
             rows = tx.execute(
                 """SELECT i.id, i.material_id, i.shortage_quantity, i.unit,
+                          i.acquisition_method,
                           q.due_date, q.production_no, q.status AS requirement_status
                    FROM material_requirement_items i
                    JOIN material_requirements q ON q.id=i.requirement_id"""
             ).fetchall()
             for row in rows:
                 quantity = max(0.0, float(row["shortage_quantity"] or 0))
-                status = "已冻结" if row["requirement_status"] == "已冻结" else ("待采购" if quantity > EPSILON else "已覆盖")
+                purchase_enabled = str(row["acquisition_method"] or "") in {"采购", "库存/采购", "外购", "外协采购"}
+                status = (
+                    "已冻结" if row["requirement_status"] == "已冻结"
+                    else ("待采购" if purchase_enabled and quantity > EPSILON else "已覆盖")
+                )
                 tx.execute(
                     """INSERT INTO purchase_demands(
                            requirement_item_id, material_id, demand_quantity, unit,
@@ -54,7 +59,10 @@ class PurchasingService:
             params.extend([term, term, term, term])
         return self.db.fetch_all(
             f"""SELECT d.*, m.code AS material_code, m.name AS material_name,
-                       m.specification, m.default_supplier, i.requirement_id
+                       m.specification, m.default_supplier, i.requirement_id,
+                       i.component_id, i.bom_item_id, i.technical_package_id,
+                       i.bom_version, i.door_unit_id, i.production_no AS source_production_no,
+                       i.acquisition_method
                 FROM purchase_demands d
                 JOIN inventory_materials m ON m.id=d.material_id
                 JOIN material_requirement_items i ON i.id=d.requirement_item_id
@@ -252,6 +260,8 @@ class PurchasingService:
         for item in order["items"]:
             item["allocations"] = self.db.fetch_all(
                 """SELECT a.*, i.material_name AS requirement_material_name,
+                          i.component_id, i.bom_item_id, i.technical_package_id,
+                          i.bom_version, i.door_unit_id,
                           q.requirement_no, q.production_no, q.due_date
                    FROM purchase_allocations a
                    JOIN material_requirement_items i ON i.id=a.requirement_item_id

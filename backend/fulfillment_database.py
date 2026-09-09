@@ -1111,7 +1111,7 @@ class FulfillmentDatabase:
                 detail=f"核验 {len(item_ids)} 项", user=user,
             )
 
-    def publish_bom(self, door_id: int, remark: str, user: Dict[str, Any]) -> None:
+    def publish_bom(self, door_id: int, remark: str, user: Dict[str, Any]) -> bool:
         now = fulfillment_now()
         with self.transaction() as conn:
             package = conn.execute(
@@ -1120,25 +1120,41 @@ class FulfillmentDatabase:
             ).fetchone()
             if not package:
                 raise LookupError("门樘生产单或BOM不存在")
-            if package["status"] != "草稿":
-                raise RuntimeError("BOM版本已确认冻结，不能重复发布")
-            conn.execute(
-                """UPDATE fulfillment_technical_packages
-                   SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?""",
-                (str(user.get("uid") or ""), now, now, package["id"]),
+            if package["status"] not in {"草稿", "已确认"}:
+                raise RuntimeError("当前BOM状态不能发布")
+            already_published = package["status"] == "已确认"
+            requirement = self.requirement_service.create_for_package(
+                conn=conn,
+                door_id=door_id,
+                package_id=int(package["id"]),
+                created_by=str(user.get("uid") or ""),
             )
-            conn.execute(
-                """UPDATE fulfillment_door_units
-                   SET active_version=?, technical_uid=?,
-                       status=CASE WHEN status='待生产确认' THEN '技术准备中' ELSE status END,
-                       updated_at=? WHERE id=?""",
-                (package["version"], str(user.get("uid") or ""), now, door_id),
-            )
-            self.add_event(
-                conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
-                entity_id=int(package["id"]), action="发布BOM版本",
-                detail=f"冻结 V{package['version']}{'；' + remark if remark else ''}", user=user,
-            )
+            from purchasing_service import PurchasingService
+
+            PurchasingService(self.inventory_db).sync_demands(conn)
+            if not already_published:
+                conn.execute(
+                    """UPDATE fulfillment_technical_packages
+                       SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?""",
+                    (str(user.get("uid") or ""), now, now, package["id"]),
+                )
+                conn.execute(
+                    """UPDATE fulfillment_door_units
+                       SET active_version=?, technical_uid=?,
+                           status=CASE WHEN status='待生产确认' THEN '技术准备中' ELSE status END,
+                           updated_at=? WHERE id=?""",
+                    (package["version"], str(user.get("uid") or ""), now, door_id),
+                )
+                self.add_event(
+                    conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
+                    entity_id=int(package["id"]), action="发布BOM版本",
+                    detail=(
+                        f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}"
+                        f"{'；' + remark if remark else ''}"
+                    ),
+                    user=user,
+                )
+            return already_published
 
     def diff_bom_versions(self, door_id: int, from_version: int, to_version: int) -> Dict[str, Any]:
         packages = self.fetch_all(

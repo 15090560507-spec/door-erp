@@ -53,7 +53,7 @@ class RequirementService:
         if not package or not door:
             raise LookupError("技术包或门樘生产单不存在")
 
-        components = conn.execute(
+        all_components = conn.execute(
             """SELECT c.*, m.code AS material_code, m.name AS material_name,
                       m.specification AS material_specification, m.unit AS material_unit,
                       m.is_active, m.default_warehouse_id, m.default_location_id
@@ -62,6 +62,7 @@ class RequirementService:
                WHERE c.technical_package_id=? ORDER BY c.sequence_no, c.id""",
             (package_id,),
         ).fetchall()
+        components = [row for row in all_components if str(row["match_status"] or "") != "无需物料"]
         missing = [str(row["name"]) for row in components if row["material_id"] is None]
         invalid = [str(row["name"]) for row in components if row["material_id"] is not None and row["material_code"] is None]
         inactive = [str(row["name"]) for row in components if row["material_code"] is not None and not bool(row["is_active"])]
@@ -101,22 +102,31 @@ class RequirementService:
         requirement_id = int(cursor.lastrowid)
         affected_material_ids: set[int] = set()
         for sequence, component in enumerate(components, start=1):
-            required = float(component["quantity"] or 0)
+            required = float(component["planned_quantity"] or component["quantity"] or 0)
             item_cursor = conn.execute(
                 """INSERT INTO material_requirement_items(
-                       requirement_id, component_id, material_id, material_code,
-                       material_name, specification, required_quantity, unit,
+                       requirement_id, component_id, bom_item_id, technical_package_id,
+                       bom_version, door_unit_id, production_no, material_id, material_code,
+                       material_name, specification, required_quantity, planned_quantity, unit,
+                       acquisition_method,
                        shortage_quantity, sequence_no, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     requirement_id,
                     component["id"],
+                    component["id"],
+                    package_id,
+                    package["version"],
+                    door_id,
+                    door["production_no"],
                     component["material_id"],
                     component["material_code"],
                     component["material_name"],
                     component["material_specification"] or component["specification"],
                     required,
+                    required,
                     component["material_unit"],
+                    component["acquisition_method"],
                     required,
                     sequence,
                     now,
