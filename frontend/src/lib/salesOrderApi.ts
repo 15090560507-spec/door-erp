@@ -6,7 +6,7 @@ import type {
   SalesOrderSummary,
 } from "./salesOrderTypes";
 
-export async function getSalesOrderCandidates(params?: {
+export type SalesOrderCandidateFilters = {
   q?: string;
   customer?: string;
   project?: string;
@@ -19,17 +19,19 @@ export async function getSalesOrderCandidates(params?: {
   page?: number;
   page_size?: number;
   current_order_id?: number;
-}) {
+};
+
+export async function getSalesOrderCandidates(params?: SalesOrderCandidateFilters): Promise<SalesOrderCandidate[]> {
   const { data } = await api.get<{ candidates: SalesOrderCandidate[]; total: number; page: number; page_size: number }>("/sales-orders/candidates", { params });
   return data.candidates;
 }
 
-export async function getSalesOrders(params?: { q?: string; status?: string }) {
+export async function getSalesOrders(params?: { q?: string; status?: string }): Promise<SalesOrderSummary[]> {
   const { data } = await api.get<{ orders: SalesOrderSummary[]; total: number }>("/sales-orders", { params });
   return data.orders;
 }
 
-export async function getSalesOrder(orderId: number) {
+export async function getSalesOrder(orderId: number): Promise<SalesOrder> {
   const { data } = await api.get<{ order: SalesOrder }>(`/sales-orders/${orderId}`);
   return data.order;
 }

@@ -7,6 +7,9 @@ export interface SalesOrderQuoteChoice {
   amount: number;
 }
 
+export type SalesOrderStatus = "draft" | "confirmed" | "fulfilling" | "completed" | "cancelled";
+export type SalesOrderProvisioningStatus = "not_started" | "pending" | "processing" | "ready" | "failed";
+
 export interface SalesOrderCandidate {
   task_id: string;
   customer_name: string;
@@ -73,7 +76,7 @@ export interface SalesOrderSummary {
   door_count: number;
   releasable_count: number;
   updated_at: string;
-  provisioning_status?: "not_started" | "pending" | "processing" | "ready" | "failed";
+  provisioning_status?: SalesOrderProvisioningStatus;
   provisioning_error?: string;
   fulfillment_order_id?: number | null;
 }
@@ -124,4 +127,34 @@ export interface SalesOrderPayload {
   discount_amount: number;
   lines: SalesOrderLineInput[];
   payment_nodes: SalesOrderPaymentNode[];
+}
+
+export interface SalesOrderEditorLine {
+  source_type: "drawing" | "manual";
+  task_id: string;
+  product_name: string;
+  door_type: string;
+  width: number;
+  height: number;
+  opening_direction: string;
+  color: string;
+  drawing_status: string;
+  drawing_revision?: string;
+  source_approved_at?: string;
+  quote_id: number | null;
+  quote_group_index: number | null;
+  quoteChoices: SalesOrderQuoteChoice[];
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  remark: string;
+  source_changed?: boolean;
+}
+
+export type SalesOrderEditor = Omit<SalesOrderPayload, "lines"> & { lines: SalesOrderEditorLine[] };
+
+export interface SalesOrderValidationWarning {
+  key: string;
+  message: string;
+  lineNo?: number;
 }
