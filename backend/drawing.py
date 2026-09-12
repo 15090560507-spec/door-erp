@@ -2197,6 +2197,10 @@ def draw_door_in_frame(
     handle_size = parse_handle_size(str(p.get("handle_size", "")))
     non_sized_handles = {"", "无", "标配拉手", "A1022", "A635", "分体拉手", "背包拉手", "凹槽拉手", "凹槽拉手+灯带"}
     current_sized_handle = bool(handle_size and str(current_handle).strip() not in non_sized_handles)
+
+    def a1022_block_for_target(handle_block: str) -> str:
+        return "Y1022" if handle_block == "YBPLS" else "Z1022"
+
     # 半圆拉手：铝雕圆形拉手/铝雕滑盖圆环拉手。直径方向平行于门板锁边，圆弧向板内凸出。
     semicircle_handles = {"铝雕圆形拉手", "铝雕滑盖圆环拉手", "铝雕圆形滑盖拉手"}
     current_semicircle = str(current_handle).strip() in semicircle_handles
@@ -2228,7 +2232,7 @@ def draw_door_in_frame(
                 mask_targets = [(right_x1 + 60, 1, "YBPLS")]
         for hx, _toward_hinge, hblock in mask_targets:
             if current_handle == "A1022":
-                block_name = ("Y1022" if hblock == "YBPLS" else "Z1022") if is_back else ("Z1022" if hblock == "YBPLS" else "Y1022")
+                block_name = a1022_block_for_target(hblock)
             elif current_handle == "A635":
                 block_name = "A635"
             elif current_handle == "分体拉手":
@@ -2265,10 +2269,7 @@ def draw_door_in_frame(
     if current_handle == "A1022" and not current_sized_handle:
         handle_y = panel_y_bot + 1000
         for hx, _toward_hinge, hblock in handle_targets(60):
-            if is_back:
-                a1022_block = "Y1022" if hblock == "YBPLS" else "Z1022"
-            else:
-                a1022_block = "Z1022" if hblock == "YBPLS" else "Y1022"
+            a1022_block = a1022_block_for_target(hblock)
             drawer.insert_custom_block(a1022_block, off((hx, handle_y)), layer="A-DOOR-PANEL")
 
     if current_handle == "A635" and not current_sized_handle:

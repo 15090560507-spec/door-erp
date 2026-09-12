@@ -33,7 +33,11 @@ function exposedSize(width: unknown, overlap: unknown): number {
 
 export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
   const frameWidth = numeric(params.dw);
-  const frameHeight = numeric(params.dh);
+  const baseFrameHeight = numeric(params.dh);
+  // CAD treats dh as the door portion below the transom; quoting uses the full frame height.
+  const hasTransom = ["玻璃", "封闭"].includes(String(params.sel_qc || "").trim());
+  const transomHeight = hasTransom ? Math.max(0, numeric(params.qc_height)) : 0;
+  const frameHeight = baseFrameHeight + transomHeight;
   const hasFrontOuter = Boolean(
     params.has_outer ||
     params.has_outer_portal ||

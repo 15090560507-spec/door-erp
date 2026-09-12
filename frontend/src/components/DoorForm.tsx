@@ -220,7 +220,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       : maxSectionValue(data.th_str);
   const calculatedLightHeight = data.use_light_size
     ? Number(data.light_h || 0)
-    : Math.max(0, frameHeight - maxSectionValue(data.fw_top_str) - calculatedThreshold);
+    : Math.max(0, Number(data.dh || 0) - maxSectionValue(data.fw_top_str) - calculatedThreshold);
   const showLubanInline = Boolean(data.use_light_size || data.mark_light_size);
   const legacyMidClearWidth = (() => {
     const leafWidth = Number(data.mid_door_width || 0);

@@ -225,18 +225,17 @@ def test_back_a1022_handle_direction_blocks():
         return
 
     doc = ezdxf.read(io.StringIO(buffer.getvalue()))
-    y1022_x = [
-        float(entity.dxf.insert.x) for entity in doc.modelspace().query("INSERT")
-        if entity.dxf.name == "Y1022"
-    ]
-    z1022_x = [
-        float(entity.dxf.insert.x) for entity in doc.modelspace().query("INSERT")
-        if entity.dxf.name == "Z1022"
-    ]
+    directional = sorted(
+        (float(entity.dxf.insert.x), entity.dxf.name)
+        for entity in doc.modelspace().query("INSERT")
+        if entity.dxf.name in {"Y1022", "Z1022"}
+    )
+    front_blocks = [name for _x, name in directional[:2]]
+    back_blocks = [name for _x, name in directional[-2:]]
     check(
-        "back A1022 right leaf uses Y1022 and left leaf uses Z1022",
-        bool(y1022_x and z1022_x and min(z1022_x) < max(y1022_x)),
-        f"Y1022 x: {y1022_x}, Z1022 x: {z1022_x}",
+        "A1022 uses Z1022 on the left and Y1022 on the right in both views",
+        front_blocks == ["Z1022", "Y1022"] and back_blocks == ["Z1022", "Y1022"],
+        f"directional blocks: {directional}",
     )
 
 
