@@ -56,7 +56,7 @@ function moduleRoute(module: ModuleName) {
   if (DRAWING_MODULES.includes(module)) return "/dashboard";
   if (module === "报价系统") return "/quote";
   if (module === "效果渲染") return "/render";
-  if (module === "下料") return "/door-cad/frame";
+  if (module === "下料") return "/cutting";
   if (module === "订单确认") return "/orders";
   if (module === "生产管理") return "/production";
   if (module === "采购管理") return "/purchasing";
@@ -68,7 +68,7 @@ function moduleRoute(module: ModuleName) {
 function moduleFromPath(pathname: string): ModuleName | null {
   if (pathname.startsWith("/quote")) return "报价系统";
   if (pathname.startsWith("/render")) return "效果渲染";
-  if (pathname.startsWith("/door-cad/frame")) return "下料";
+  if (pathname.startsWith("/cutting") || pathname.startsWith("/door-cad/frame")) return "下料";
   if (pathname.startsWith("/orders")) return "订单确认";
   if (pathname.startsWith("/production")) return "生产管理";
   if (pathname.startsWith("/purchasing")) return "采购管理";
