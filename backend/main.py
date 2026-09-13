@@ -72,7 +72,7 @@ from production_routes import (
     production_db,
 )
 from rendering.cad_line_art import export_dxf_line_art
-from rendering.layered_routes import layered_router
+from rendering.legacy_cleanup import cleanup_legacy_layered_outputs
 from erpnext_bridge import sync_order_to_erpnext
 from door_cad.router import router as door_cad_router
 from bom_routes import router as bom_router
@@ -98,7 +98,6 @@ app.add_middleware(
 
 app.include_router(quote_router)
 app.include_router(render_router)
-app.include_router(layered_router)
 if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
 app.include_router(fulfillment_router)
@@ -106,6 +105,7 @@ app.include_router(inventory_router)
 app.include_router(sales_order_router)
 app.include_router(door_cad_router)
 app.include_router(bom_router)
+cleanup_legacy_layered_outputs()
 
 # ===================== 数据库实例 =====================
 user_db = UserDatabaseManager()

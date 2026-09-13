@@ -1,6 +1,15 @@
 import { api } from "./api";
 
-export const RENDER_CATEGORIES = ["款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"];
+export const RENDER_CATEGORIES = ["门扇", "门框", "款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"];
+export type RenderMode = "quick" | "precise";
+export type RenderReferenceRole = "panel" | "trim" | "frame" | "glass" | "hardware";
+
+export interface RenderReferenceBinding {
+  assetIds: string[];
+  files?: Array<{ id?: string; url?: string; originalName?: string; targetRole?: string }>;
+}
+
+export type RenderReferenceBindings = Record<RenderReferenceRole, RenderReferenceBinding>;
 
 export interface ProviderCapabilities {
   textToImage: boolean;
@@ -68,6 +77,16 @@ export interface RenderTask {
   count: number;
   files: unknown[];
   selectedAssetIds: string[];
+  renderMode: RenderMode;
+  sourceType: "task" | "dxf" | "image";
+  sourceSide: "front" | "back";
+  sourceTaskId?: string;
+  referenceBindings: Partial<RenderReferenceBindings>;
+  segmentation?: Record<string, unknown>;
+  componentLayers?: Record<string, unknown>;
+  compositeImage?: RenderResultImage | null;
+  psdStatus?: "not_requested" | "generating" | "completed" | "failed" | string;
+  psdFile?: { url?: string; originalName?: string } | null;
   images: RenderResultImage[];
   errorType: string;
   errorMessage: string;
@@ -92,7 +111,7 @@ export interface LineArtView {
 
 export interface LineArtExtraction {
   id: string;
-  sourceType?: "task" | "upload";
+  sourceType?: "task" | "upload" | "dxf";
   taskId?: string;
   sourceUrl?: string;
   sourceWidth?: number;
@@ -101,6 +120,24 @@ export interface LineArtExtraction {
   front: LineArtView;
   back: LineArtView;
   reviewRequired: boolean;
+  warnings: string[];
+}
+
+export interface RenderSegmentationFile {
+  url: string;
+  filePath?: string;
+  originalName?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface RenderSegmentation {
+  id: string;
+  source: RenderSegmentationFile;
+  masks: Record<RenderReferenceRole, RenderSegmentationFile>;
+  overlay: RenderSegmentationFile;
+  confidence: number;
+  confirmed: boolean;
   warnings: string[];
 }
 
@@ -178,6 +215,14 @@ export async function createRenderTask(input: {
   lineArt: File;
   styleReference?: File | null;
   tempAssets: File[];
+  renderMode?: RenderMode;
+  sourceType?: "task" | "dxf" | "image";
+  sourceSide?: "front" | "back";
+  sourceTaskId?: string;
+  referenceBindings?: Partial<RenderReferenceBindings>;
+  referenceFiles?: Partial<Record<RenderReferenceRole, File[]>>;
+  segmentationId?: string;
+  sourceDxf?: File | null;
 }): Promise<RenderTask> {
   const formData = new FormData();
   formData.append("modelConfigId", input.modelConfigId);
@@ -185,15 +230,59 @@ export async function createRenderTask(input: {
   formData.append("size", input.size || "original");
   formData.append("count", "1");
   formData.append("selectedAssetIds", JSON.stringify(input.selectedAssetIds || []));
+  formData.append("renderMode", input.renderMode || "quick");
+  formData.append("sourceType", input.sourceType || "image");
+  formData.append("sourceSide", input.sourceSide || "front");
+  formData.append("sourceTaskId", input.sourceTaskId || "");
+  formData.append("referenceBindings", JSON.stringify(input.referenceBindings || {}));
+  formData.append("segmentationId", input.segmentationId || "");
   formData.append("lineArt", input.lineArt);
   if (input.styleReference) formData.append("styleReference", input.styleReference);
+  if (input.sourceDxf) formData.append("sourceDxf", input.sourceDxf);
   input.tempAssets.forEach((file) => formData.append("tempAssets", file));
+  const fieldByRole: Record<RenderReferenceRole, string> = {
+    panel: "panelReferences",
+    trim: "trimReferences",
+    frame: "frameReferences",
+    glass: "glassReferences",
+    hardware: "hardwareReferences",
+  };
+  (Object.keys(fieldByRole) as RenderReferenceRole[]).forEach((role) => {
+    (input.referenceFiles?.[role] || []).forEach((file) => formData.append(fieldByRole[role], file));
+  });
   try {
     const { data } = await api.post<{ task: RenderTask }>("/render/tasks", formData, { timeout: 30000 });
     return data.task;
   } catch (error: unknown) {
     throw normalizeRenderError(error);
   }
+}
+
+export async function createRenderSegmentation(lineArt: File): Promise<RenderSegmentation> {
+  const formData = new FormData();
+  formData.append("lineArt", lineArt);
+  const { data } = await api.post<{ segmentation: RenderSegmentation }>("/render/segmentations", formData, { timeout: 120000 });
+  return data.segmentation;
+}
+
+export async function confirmRenderSegmentation(
+  id: string,
+  masks: Partial<Record<RenderReferenceRole, Blob>>,
+): Promise<RenderSegmentation> {
+  const formData = new FormData();
+  const fieldByRole: Record<RenderReferenceRole, string> = {
+    panel: "panelMask",
+    trim: "trimMask",
+    frame: "frameMask",
+    glass: "glassMask",
+    hardware: "hardwareMask",
+  };
+  (Object.keys(fieldByRole) as RenderReferenceRole[]).forEach((role) => {
+    const blob = masks[role];
+    if (blob) formData.append(fieldByRole[role], blob, `${role}-mask.png`);
+  });
+  const { data } = await api.put<{ segmentation: RenderSegmentation }>(`/render/segmentations/${id}`, formData, { timeout: 120000 });
+  return data.segmentation;
 }
 
 export async function listRenderTasks(limit = 30, signal?: AbortSignal): Promise<RenderTask[]> {
@@ -205,11 +294,28 @@ export async function deleteRenderTask(id: string): Promise<void> {
   await api.delete(`/render/tasks/${id}`);
 }
 
+export async function regenerateRenderComponent(id: string, role: RenderReferenceRole): Promise<RenderTask> {
+  const { data } = await api.post<{ task: RenderTask }>(`/render/tasks/${id}/components/${role}/regenerate`);
+  return data.task;
+}
+
+export async function generateRenderTaskPsd(id: string): Promise<RenderTask> {
+  const { data } = await api.post<{ task: RenderTask }>(`/render/tasks/${id}/psd`, undefined, { timeout: 120000 });
+  return data.task;
+}
+
 export async function extractUploadedLineArt(file: File): Promise<LineArtExtraction> {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post<{ extraction: LineArtExtraction }>("/render/line-art/extractions", formData, { timeout: 120000 });
   return { ...data.extraction, sourceType: "upload" };
+}
+
+export async function extractDxfLineArt(file: File): Promise<LineArtExtraction> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post<{ extraction: LineArtExtraction }>("/render/line-art/dxf", formData, { timeout: 120000 });
+  return { ...data.extraction, sourceType: "dxf" };
 }
 
 export async function updateLineArtCrop(

@@ -400,6 +400,12 @@ def _to_pil(arr: np.ndarray) -> Image.Image:
     return Image.fromarray(arr, "RGBA")
 
 
+def _to_png(arr: np.ndarray) -> bytes:
+    buf = io.BytesIO()
+    Image.fromarray(arr, "RGBA").save(buf, "PNG")
+    return buf.getvalue()
+
+
 def _to_jpg(arr: np.ndarray, quality: int = 88) -> bytes:
     pil = Image.fromarray(arr[..., :3], "RGB")
     buf = io.BytesIO()
@@ -422,7 +428,7 @@ def _crop(arr: np.ndarray, bbox: tuple[float, float, float, float], canvas: _Can
     return arr[y_top:y_bot, x1:x2]
 
 
-def _apply_ai_material(flat_rgb: np.ndarray, ai_config: dict, references: list[dict]) -> np.ndarray:
+def _apply_ai_material(flat_rgb: np.ndarray, ai_config: dict, references: list[dict], prompt: str = AI_MATERIAL_PROMPT) -> np.ndarray:
     """调用效果渲染模型接口给平整底图添加材质纹理，返回与底图等大的 RGB 数组。"""
     flat_pil = Image.fromarray(flat_rgb, "RGB")
     buffer = io.BytesIO()
@@ -431,7 +437,7 @@ def _apply_ai_material(flat_rgb: np.ndarray, ai_config: dict, references: list[d
 
     request = RenderProviderRequest(
         config=ai_config,
-        prompt=AI_MATERIAL_PROMPT,
+        prompt=prompt,
         size="original",
         count=1,
         line_art={
@@ -468,6 +474,8 @@ def render_layered_dxf(
     target_long_edge: int = 2600,
     ai_config: Optional[dict] = None,
     references: Optional[list[dict]] = None,
+    reference_bindings: Optional[dict[str, list[dict]]] = None,
+    include_psd: bool = True,
 ) -> dict:
     """生成分层效果图，返回 PSD 与 JPG 字节流。
 
@@ -528,25 +536,56 @@ def render_layered_dxf(
     # ---------- 材质处理：AI 纹理 或 默认平整色 ----------
     material_mode = "flat"
     material_note = ""
-    ai_rgb: Optional[np.ndarray] = None
+    ai_rgb_by_category: dict[str, np.ndarray] = {}
     if ai_config:
-        try:
-            flat_complete = _composite([
-                white_bg,
-                _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
-                render_filled("panel", prims("panel")),
-                render_filled("frame", prims("frame")),
-                render_filled("trim", prims("trim")),
-                render_filled("accessory", prims("accessory")),
-                outline_arr,
-            ])
-            ai_rgb = _apply_ai_material(flat_complete[..., :3], ai_config, references or [])
+        flat_complete = _composite([
+            white_bg,
+            _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
+            render_filled("panel", prims("panel")),
+            render_filled("frame", prims("frame")),
+            render_filled("trim", prims("trim")),
+            render_filled("accessory", prims("accessory")),
+            outline_arr,
+        ])
+        role_by_category = {"panel": "panel", "frame": "frame", "trim": "trim", "accessory": "hardware"}
+        prompts = {
+            "panel": "只为门扇区域生成参考图中的门扇款式、颜色与材质。严格保持线稿比例、门扇分格和边界，不得改变门框、门套或五金。",
+            "frame": "只为门框区域生成表面颜色与材质。门框没有独立造型，严格保持线稿中的宽度、边界和比例，不得改变门扇或门套。",
+            "trim": "只为门套、门头和门柱区域生成参考款式与材质。严格保持线稿外轮廓、尺寸和遮挡关系，不得改变门扇或门框。",
+            "accessory": "只为线稿中已有的拉手、锁具、合页、花件等五金区域生成参考款式与材质。不得移动、增加或删除配件。",
+        }
+        errors: list[str] = []
+        if reference_bindings is None:
+            try:
+                shared_rgb = _apply_ai_material(flat_complete[..., :3], ai_config, references or [])
+                ai_rgb_by_category = {
+                    category_name: shared_rgb
+                    for category_name in role_by_category
+                    if prims(category_name)
+                }
+            except Exception as exc:
+                errors.append(str(exc))
+        else:
+            for category_name, role in role_by_category.items():
+                if not prims(category_name):
+                    continue
+                role_refs = reference_bindings.get(role, [])
+                if not role_refs and category_name == "frame" and "panel" in ai_rgb_by_category:
+                    ai_rgb_by_category[category_name] = ai_rgb_by_category["panel"]
+                    continue
+                if not role_refs:
+                    continue
+                try:
+                    ai_rgb_by_category[category_name] = _apply_ai_material(flat_complete[..., :3], ai_config, role_refs, prompts[category_name])
+                except Exception as exc:
+                    errors.append(f"{role}：{exc}")
+        if ai_rgb_by_category:
             material_mode = "ai"
-        except Exception as exc:
-            material_note = f"AI 材质处理失败，已回退默认材质：{exc}"
-            ai_rgb = None
+        if errors:
+            material_note = "部分部件 AI 处理失败并使用默认材质：" + "；".join(errors)
 
     def part_layer(cat: str, prim_list: list[Primitive]) -> np.ndarray:
+        ai_rgb = ai_rgb_by_category.get(cat)
         if ai_rgb is not None:
             alpha = part_mask(prim_list)[..., 3:4]
             return np.concatenate([ai_rgb, alpha], axis=2)
@@ -583,8 +622,8 @@ def render_layered_dxf(
         PsdNode("07_白色背景", _to_pil(white_bg)),
     ]
 
-    compression = Compression.ZIP if ai_rgb is not None else Compression.RLE
-    psd_bytes = write_psd(nodes, (canvas.width, canvas.height), dpi=dpi, compression=compression)
+    compression = Compression.ZIP if ai_rgb_by_category else Compression.RLE
+    psd_bytes = write_psd(nodes, (canvas.width, canvas.height), dpi=dpi, compression=compression) if include_psd else b""
 
     # 完整合成（白色背景 + 阴影 + 部件 + 轮廓 + 文字标注）
     complete = _composite([
@@ -604,6 +643,18 @@ def render_layered_dxf(
     front_jpg = _to_jpg(_crop(complete, front_bbox, canvas) if front_bbox else complete)
     back_jpg = _to_jpg(_crop(complete, back_bbox, canvas) if back_bbox else complete)
     complete_jpg = _to_jpg(complete)
+    layer_arrays = {
+        "panel": part_layer("panel", prims("panel")),
+        "frame": part_layer("frame", prims("frame")),
+        "trim": part_layer("trim", prims("trim")),
+        "glass": _blank_rgba(canvas.width, canvas.height),
+        "hardware": part_layer("accessory", prims("accessory")),
+        "lighting": _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
+        "outline": outline_arr,
+    }
+
+    def encoded_layers(bbox: Optional[tuple[float, float, float, float]] = None) -> dict[str, bytes]:
+        return {name: _to_png(_crop(layer, bbox, canvas) if bbox else layer) for name, layer in layer_arrays.items()}
 
     return {
         "psd_bytes": psd_bytes,
@@ -615,6 +666,9 @@ def render_layered_dxf(
         "scale": canvas.scale,
         "material_mode": material_mode,
         "material_note": material_note,
+        "layer_pngs": encoded_layers(),
+        "front_layer_pngs": encoded_layers(front_bbox) if front_bbox else encoded_layers(),
+        "back_layer_pngs": encoded_layers(back_bbox) if back_bbox else encoded_layers(),
     }
 
 

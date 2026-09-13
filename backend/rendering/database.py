@@ -16,6 +16,7 @@ MODEL_CONFIGS_FILE = os.path.join(RENDER_DB_DIR, "model_configs.json")
 ASSETS_FILE = os.path.join(RENDER_DB_DIR, "assets.json")
 TASKS_FILE = os.path.join(RENDER_DB_DIR, "tasks.json")
 LINE_ART_EXTRACTIONS_FILE = os.path.join(RENDER_DB_DIR, "line_art_extractions.json")
+SEGMENTATIONS_FILE = os.path.join(RENDER_DB_DIR, "segmentations.json")
 RENDER_BACKUP_DIR = os.path.join(BACKUP_DIR, "render")
 
 
@@ -76,6 +77,7 @@ class RenderDatabase:
         self.assets = JsonTable(ASSETS_FILE, [])
         self.tasks = JsonTable(TASKS_FILE, [])
         self.line_art_extractions = JsonTable(LINE_ART_EXTRACTIONS_FILE, [])
+        self.segmentations = JsonTable(SEGMENTATIONS_FILE, [])
         self._ensure_default_config()
 
     def list_model_configs(self, include_disabled: bool = False) -> list[dict]:
@@ -211,6 +213,16 @@ class RenderDatabase:
             "count": int(data.get("count", 1) or 1),
             "files": data.get("files", []),
             "selectedAssetIds": data.get("selectedAssetIds", []),
+            "renderMode": data.get("renderMode", "quick"),
+            "sourceType": data.get("sourceType", "image"),
+            "sourceSide": data.get("sourceSide", "front"),
+            "sourceTaskId": data.get("sourceTaskId", ""),
+            "referenceBindings": data.get("referenceBindings", {}),
+            "segmentation": data.get("segmentation", {}),
+            "componentLayers": data.get("componentLayers", {}),
+            "compositeImage": data.get("compositeImage"),
+            "psdStatus": data.get("psdStatus", "not_requested"),
+            "psdFile": data.get("psdFile"),
             "images": [],
             "errorType": "",
             "errorMessage": "",
@@ -235,7 +247,7 @@ class RenderDatabase:
     def get_task(self, task_id: str) -> dict | None:
         for item in self.tasks.load():
             if item.get("id") == task_id:
-                return dict(item)
+                return _task_defaults(item)
         return None
 
     def delete_task(self, task_id: str) -> bool:
@@ -248,7 +260,7 @@ class RenderDatabase:
 
     def list_tasks(self, limit: int = 30) -> list[dict]:
         items = self.tasks.load()
-        return sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)[:limit]
+        return [_task_defaults(item) for item in sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)[:limit]]
 
     def create_line_art_extraction(self, data: dict) -> dict:
         now = utc_now_iso()
@@ -287,6 +299,37 @@ class RenderDatabase:
 
         return self.line_art_extractions.update(mutate)
 
+    def create_segmentation(self, data: dict) -> dict:
+        now = utc_now_iso()
+        item = {
+            "id": uuid.uuid4().hex[:12],
+            "source": data.get("source", {}),
+            "masks": data.get("masks", {}),
+            "overlay": data.get("overlay", {}),
+            "confidence": float(data.get("confidence", 0) or 0),
+            "confirmed": bool(data.get("confirmed", False)),
+            "warnings": data.get("warnings", []),
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        return self.segmentations.update(lambda items: items.append(item) or item)
+
+    def get_segmentation(self, segmentation_id: str) -> dict | None:
+        for item in self.segmentations.load():
+            if item.get("id") == segmentation_id:
+                return dict(item)
+        return None
+
+    def update_segmentation(self, segmentation_id: str, patch: dict) -> dict | None:
+        def mutate(items):
+            for item in items:
+                if item.get("id") == segmentation_id:
+                    item.update(patch)
+                    item["updatedAt"] = utc_now_iso()
+                    return item
+            return None
+        return self.segmentations.update(mutate)
+
     def _ensure_default_config(self):
         if self.model_configs.load():
             return
@@ -321,3 +364,18 @@ def _capabilities_dict(value) -> dict:
 
 
 render_db = RenderDatabase()
+
+
+def _task_defaults(item: dict) -> dict:
+    task = dict(item)
+    task.setdefault("renderMode", "quick")
+    task.setdefault("sourceType", "image")
+    task.setdefault("sourceSide", "front")
+    task.setdefault("sourceTaskId", "")
+    task.setdefault("referenceBindings", {})
+    task.setdefault("segmentation", {})
+    task.setdefault("componentLayers", {})
+    task.setdefault("compositeImage", task.get("images", [None])[0] if task.get("images") else None)
+    task.setdefault("psdStatus", "not_requested")
+    task.setdefault("psdFile", None)
+    return task

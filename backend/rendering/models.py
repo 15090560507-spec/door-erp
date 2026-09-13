@@ -3,7 +3,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ASSET_CATEGORIES = ["款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"]
+ASSET_CATEGORIES = ["门扇", "门框", "款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"]
+REFERENCE_ROLES = ["panel", "trim", "frame", "glass", "hardware"]
 
 
 class ProviderCapabilities(BaseModel):

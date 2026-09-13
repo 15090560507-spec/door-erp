@@ -1,7 +1,6 @@
 import axios from "axios";
 import type {
   DoorFormData,
-  LayeredRenderRecord,
   LoginResponse,
   TaskItem,
   TaskListResponse,
@@ -301,32 +300,6 @@ export async function generateCadPreview(formData: DoorFormData): Promise<string
     }
     throw requestError;
   }
-}
-
-export async function generateLayeredRender(input: {
-  taskId: string;
-  dpi?: number;
-  targetLongEdge?: number;
-  faces?: string;
-  modelConfigId?: string;
-  referenceAssetIds?: string[];
-}): Promise<{ record: LayeredRenderRecord }> {
-  const { data } = await api.post<{ record: LayeredRenderRecord }>("/layered-render/generate", input, {
-    timeout: 300000,
-  });
-  return data;
-}
-
-export async function listLayeredRecords(limit = 30): Promise<{ records: LayeredRenderRecord[] }> {
-  const { data } = await api.get<{ records: LayeredRenderRecord[] }>("/layered-render/records", {
-    params: { limit },
-  });
-  return data;
-}
-
-export async function deleteLayeredRecord(recordId: string) {
-  const { data } = await api.delete(`/layered-render/records/${recordId}`);
-  return data;
 }
 
 /** 通过带鉴权头的请求下载后端文件（PSD/JPG 等），避免 cookie/代理导致的下载失败。 */

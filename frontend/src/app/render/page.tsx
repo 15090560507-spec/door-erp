@@ -3,21 +3,26 @@
 import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
-import { getTasks } from "@/lib/api";
+import { downloadFileFromUrl, getTasks } from "@/lib/api";
 import type { TaskItem } from "@/lib/types";
 import {
   RENDER_CATEGORIES,
   createRenderModelConfig,
+  createRenderSegmentation,
   createRenderTask,
+  confirmRenderSegmentation,
   deleteRenderAsset,
   deleteRenderModelConfig,
   deleteRenderTask,
+  extractDxfLineArt,
   extractTaskLineArt,
   extractUploadedLineArt,
+  generateRenderTaskPsd,
   lineArtViewToFile,
   listRenderAssets,
   listRenderModelConfigs,
   listRenderTasks,
+  regenerateRenderComponent,
   updateRenderModelConfig,
   updateLineArtCrop,
   uploadRenderAsset,
@@ -26,35 +31,30 @@ import {
   type RenderModelConfig,
   type RenderTask,
   type LineArtExtraction,
+  type RenderMode,
+  type RenderReferenceRole,
+  type RenderSegmentation,
 } from "@/lib/renderApi";
 
 const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
 const ASSET_PAGE_SIZE = 24;
 const TASK_LIST_LIMIT = 20;
-const DEFAULT_REFERENCE_GROUPS = ["款式", "拉手", "花件", "合页"];
-const ASSET_PROMPT_USAGE: Record<string, string> = {
-  款式: "款式素材用于整体门型风格、比例、颜色倾向和主视觉参考。",
-  花件: "花件素材只用于花件图案、雕花细节和对应装饰位置参考。",
-  拉手: "拉手素材只用于拉手款式、材质、比例和安装位置参考。",
-  锁具: "锁具素材只用于锁具外观、颜色和安装位置参考。",
-  合页: "合页素材只用于合页外观、颜色和位置参考。",
-  颜色: "颜色素材用于整体色彩、金属漆面和表面观感参考。",
-  纹理: "纹理素材用于门板表面材质、拉丝、木纹或铜纹细节参考。",
-  玻璃: "玻璃素材用于玻璃颜色、透明度、纹理和反光效果参考。",
-  门头: "门头素材用于门头造型、比例和顶部装饰参考。",
-  包套: "包套素材用于包套造型、线条层次和外框效果参考。",
-  其他: "其他素材仅用于对应部件的局部细节参考。",
-};
-
+const REFERENCE_ROLE_OPTIONS: Array<{ role: RenderReferenceRole; label: string; description: string; required?: boolean }> = [
+  { role: "panel", label: "门扇款式", description: "控制门扇内部款式、颜色和质感", required: true },
+  { role: "trim", label: "门套 / 门头门柱", description: "控制门套、门头和门柱的造型与材质" },
+  { role: "frame", label: "门框材质", description: "为空时继承门扇颜色与材质" },
+  { role: "glass", label: "玻璃", description: "控制玻璃颜色、透明度、纹理和反光" },
+  { role: "hardware", label: "五金配件", description: "拉手、锁具、合页、花件及其他配件" },
+];
+const REFERENCE_ROLE_LABEL = Object.fromEntries(REFERENCE_ROLE_OPTIONS.map((item) => [item.role, item.label])) as Record<RenderReferenceRole, string>;
 const LineArtCropEditor = dynamic(() => import("@/components/LineArtCropEditor"), {
   ssr: false,
   loading: () => <div className="flex min-h-72 items-center justify-center text-sm text-[#8E8E93]">正在加载裁剪工具...</div>,
 });
-const LayeredRenderPanel = dynamic(() => import("@/components/LayeredRenderPanel"), {
+const RenderSegmentationEditor = dynamic(() => import("@/components/RenderSegmentationEditor"), {
   ssr: false,
-  loading: () => <div className="flex min-h-44 items-center justify-center text-sm text-[#8E8E93]">正在加载分层效果工具...</div>,
+  loading: () => <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 text-sm text-white">正在加载区域校对工具...</div>,
 });
-
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
   provider: "image2_proxy",
@@ -70,38 +70,34 @@ const EMPTY_CONFIG: ModelConfigInput = {
 
 interface ReferenceGroup {
   id: string;
+  role: RenderReferenceRole;
   label: string;
-  category: string;
   assetIds: string[];
   files: File[];
 }
 
 function createDefaultReferenceGroups(): ReferenceGroup[] {
-  return DEFAULT_REFERENCE_GROUPS.map((category) => ({
-    id: `${category}-${Math.random().toString(36).slice(2, 8)}`,
-    label: category,
-    category,
+  return REFERENCE_ROLE_OPTIONS.map(({ role, label }) => ({
+    id: `${role}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    label,
     assetIds: [],
     files: [],
   }));
 }
 
-function getSelectedReferenceCategories(referenceGroups: ReferenceGroup[], assets: RenderAsset[]) {
-  const categories = new Set<string>();
+function getSelectedReferenceRoles(referenceGroups: ReferenceGroup[]) {
+  const roles = new Set<RenderReferenceRole>();
   for (const group of referenceGroups) {
-    if (group.files.length && group.category) categories.add(group.category);
-    for (const assetId of group.assetIds) {
-      const asset = assets.find((item) => item.id === assetId);
-      categories.add(asset?.category || group.category || "其他");
-    }
+    if (group.files.length || group.assetIds.length) roles.add(group.role);
   }
-  return Array.from(categories).filter(Boolean);
+  return Array.from(roles);
 }
 
-function buildReferencePromptGuidance(categories: string[]) {
-  if (!categories.length) return "";
-  const lines = categories.map((category) => ASSET_PROMPT_USAGE[category] || `${category}素材只作为对应部件的局部参考。`);
-  return `本次参考素材使用规则：${lines.join(" ")}`;
+function buildReferencePromptGuidance(roles: RenderReferenceRole[]) {
+  if (!roles.length) return "";
+  const lines = roles.map((role) => `${REFERENCE_ROLE_LABEL[role]}参考图只能作用于${REFERENCE_ROLE_LABEL[role]}区域，不得影响其他部件。`);
+  return `本次参考素材使用规则：${lines.join(" ")}线稿的结构、比例、分格和五金位置优先级最高。`;
 }
 
 function buildRenderPrompt(prompt: string, guidance: string) {
@@ -125,16 +121,20 @@ export default function RenderPage() {
   const [assetHasMore, setAssetHasMore] = useState(false);
   const [assetLoading, setAssetLoading] = useState(false);
   const [lineArt, setLineArt] = useState<File | null>(null);
-  const [lineArtSource, setLineArtSource] = useState<"task" | "upload" | "direct">("task");
+  const [lineArtSource, setLineArtSource] = useState<"task" | "dxf" | "upload" | "direct">("task");
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
   const [selectedDrawingTaskId, setSelectedDrawingTaskId] = useState("");
   const [orderSheet, setOrderSheet] = useState<File | null>(null);
+  const [dxfFile, setDxfFile] = useState<File | null>(null);
   const [lineArtExtraction, setLineArtExtraction] = useState<LineArtExtraction | null>(null);
   const [selectedLineArtSide, setSelectedLineArtSide] = useState<"front" | "back">("front");
   const [lineArtBusy, setLineArtBusy] = useState(false);
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
-  const [styleReference, setStyleReference] = useState<File | null>(null);
+  const [segmentation, setSegmentation] = useState<RenderSegmentation | null>(null);
+  const [segmentationEditorOpen, setSegmentationEditorOpen] = useState(false);
+  const [psdConvertPrompt, setPsdConvertPrompt] = useState(false);
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
+  const [activeReferenceRole, setActiveReferenceRole] = useState<RenderReferenceRole>("panel");
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [size, setSize] = useState("original");
   const [count, setCount] = useState(1);
@@ -150,8 +150,11 @@ export default function RenderPage() {
   const selectedReferenceFiles = referenceGroups.flatMap((group) => group.files);
   const selectedReferenceAssetCount = selectedReferenceAssetIds.length;
   const uploadedReferenceFileCount = selectedReferenceFiles.length;
-  const selectedReferenceCategories = getSelectedReferenceCategories(referenceGroups, assets);
-  const referencePromptGuidance = buildReferencePromptGuidance(selectedReferenceCategories);
+  const activeReferenceGroup = referenceGroups.find((group) => group.role === activeReferenceRole) || referenceGroups[0];
+  const selectedReferenceRoles = getSelectedReferenceRoles(referenceGroups);
+  const referencePromptGuidance = buildReferencePromptGuidance(selectedReferenceRoles);
+  const activeTaskId = activeTask?.id || "";
+  const activeTaskStatus = activeTask?.status || "";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -293,9 +296,8 @@ export default function RenderPage() {
       if (exists) {
         return current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== asset.id) }));
       }
-      const targetIndex = Math.max(0, current.findIndex((group) => group.category === asset.category));
       const next = current.length ? [...current] : createDefaultReferenceGroups();
-      const index = targetIndex >= 0 ? targetIndex : 0;
+      const index = Math.max(0, next.findIndex((group) => group.role === activeReferenceRole));
       next[index] = { ...next[index], assetIds: [...next[index].assetIds, asset.id] };
       return next;
     });
@@ -305,11 +307,11 @@ export default function RenderPage() {
     setReferenceGroups((current) => current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== assetId) })));
   }
 
-  function addReferenceFiles(files: File[]) {
+  function addReferenceFiles(files: File[], role: RenderReferenceRole = activeReferenceRole) {
     if (!files.length) return;
     setReferenceGroups((current) => {
       const next = current.length ? [...current] : createDefaultReferenceGroups();
-      const index = Math.max(0, next.findIndex((group) => group.category === (category || "款式")));
+      const index = Math.max(0, next.findIndex((group) => group.role === role));
       next[index] = { ...next[index], files: [...next[index].files, ...files] };
       return next;
     });
@@ -322,26 +324,55 @@ export default function RenderPage() {
     })));
   }
 
-  async function submitTask() {
+  async function selectedLineArtFile(): Promise<File | null> {
+    if (lineArtSource === "direct") return lineArt;
+    if (!lineArtExtraction) return null;
+    return lineArtViewToFile(
+      lineArtExtraction[selectedLineArtSide],
+      `${selectedLineArtSide === "front" ? "front" : "back"}-line-art.png`,
+    );
+  }
+
+  async function submitTask(renderMode: RenderMode, segmentationOverride?: RenderSegmentation) {
     if (lineArtSource === "direct" && !lineArt) return setMessage("请上传线稿图");
+    if (lineArtSource === "dxf" && !dxfFile) return setMessage("请上传 DXF 文件");
     if (lineArtSource !== "direct" && !lineArtExtraction) return setMessage("请先生成正面和反面线稿");
-    if (!styleReference) return setMessage("请上传参考款式图");
+    const panelReferences = referenceGroups.find((group) => group.role === "panel");
+    if (!panelReferences || (!panelReferences.assetIds.length && !panelReferences.files.length)) return setMessage("请为门扇款式选择或上传至少一张参考图");
     if (!prompt.trim()) return setMessage("请填写提示词");
+    let selectedLineArt: File | null = null;
+    try {
+      selectedLineArt = await selectedLineArtFile();
+    } catch (error) {
+      setErrorDialog({ title: "线稿读取失败", message: (error as Error).message || "无法读取当前线稿" });
+      return;
+    }
+    if (!selectedLineArt) return setMessage("未选择可用线稿");
+    const confirmedSegmentation = segmentationOverride || segmentation;
+    if (renderMode === "precise" && !["task", "dxf"].includes(lineArtSource) && !confirmedSegmentation?.confirmed) {
+      setLineArtBusy(true);
+      setMessage("正在识别门扇、门框、门套和五金区域...");
+      try {
+        const next = await createRenderSegmentation(selectedLineArt);
+        setSegmentation(next);
+        setSegmentationEditorOpen(true);
+        setMessage("请确认彩色部件区域后继续精准生成");
+      } catch (error) {
+        setErrorDialog({ title: "部件区域识别失败", message: (error as Error).message || "请检查线稿图片后重试" });
+      } finally {
+        setLineArtBusy(false);
+      }
+      return;
+    }
     setLoading(true);
     setSubmitConfigText("正在保存当前模型配置...");
     setMessage("正在保存当前模型配置...");
     const submittedAt = Date.now();
     setSubmitWatchSince(submittedAt);
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
-    const taskTempAssets = referenceGroups.flatMap((group) => group.files);
+    const referenceBindings = Object.fromEntries(referenceGroups.map((group) => [group.role, { assetIds: group.assetIds }])) as Record<RenderReferenceRole, { assetIds: string[] }>;
+    const referenceFiles = Object.fromEntries(referenceGroups.map((group) => [group.role, group.files])) as Record<RenderReferenceRole, File[]>;
     try {
-      const selectedLineArt = lineArtSource === "direct"
-        ? lineArt
-        : await lineArtViewToFile(
-          lineArtExtraction![selectedLineArtSide],
-          `${selectedLineArtSide === "front" ? "front" : "back"}-line-art.png`,
-        );
-      if (!selectedLineArt) throw new Error("未选择可用线稿");
       const saved = await saveConfig({ silent: true });
       if (!saved) {
         setLoading(false);
@@ -358,8 +389,16 @@ export default function RenderPage() {
           count: 1,
           selectedAssetIds: taskAssetIds,
           lineArt: selectedLineArt,
-          styleReference,
-          tempAssets: taskTempAssets,
+          styleReference: null,
+          tempAssets: [],
+          renderMode,
+          sourceType: lineArtSource === "task" ? "task" : lineArtSource === "dxf" ? "dxf" : "image",
+          sourceSide: selectedLineArtSide,
+          sourceTaskId: lineArtSource === "task" ? selectedDrawingTaskId : "",
+          referenceBindings,
+          referenceFiles,
+          segmentationId: confirmedSegmentation?.id,
+          sourceDxf: lineArtSource === "dxf" ? dxfFile : null,
         }),
         wait(8000).then(() => null),
       ]);
@@ -376,7 +415,7 @@ export default function RenderPage() {
       }
       setActiveTask(task);
       setTasks(await listRenderTasks());
-      setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
+      setMessage(task.status === "completed" ? `${renderMode === "precise" ? "精准分区" : "快速 AI"}效果图生成完成` : `任务状态：${task.status}`);
       if (!isLiveRenderStatus(task.status)) setSubmitWatchSince(null);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
@@ -419,6 +458,7 @@ export default function RenderPage() {
     try {
       const extraction = await extractTaskLineArt(selectedDrawingTaskId);
       setLineArtExtraction(extraction);
+      setSegmentation(null);
       setSelectedLineArtSide("front");
       setMessage("正面和反面线稿已生成，请选择本次要使用的一面");
     } catch (error) {
@@ -431,6 +471,7 @@ export default function RenderPage() {
   async function handleOrderSheet(file: File | null) {
     setOrderSheet(file);
     setLineArtExtraction(null);
+    setSegmentation(null);
     if (!file) return;
     setLineArtBusy(true);
     setMessage("正在识别订单图中的正面和反面门体...");
@@ -447,10 +488,30 @@ export default function RenderPage() {
     }
   }
 
+  async function handleDxf(file: File | null) {
+    setDxfFile(file);
+    setLineArtExtraction(null);
+    setSegmentation(null);
+    if (!file) return;
+    setLineArtBusy(true);
+    setMessage("正在从 DXF 提取正面和反面结构线稿...");
+    try {
+      const extraction = await extractDxfLineArt(file);
+      setLineArtExtraction(extraction);
+      setSelectedLineArtSide("front");
+      setMessage("DXF 结构已读取，请选择本次生成的一面");
+    } catch (error) {
+      setErrorDialog({ title: "DXF 读取失败", message: (error as Error).message || "请检查 DXF 文件" });
+    } finally {
+      setLineArtBusy(false);
+    }
+  }
+
   async function saveLineArtCrop(value: Parameters<typeof updateLineArtCrop>[1]) {
     if (!lineArtExtraction) return;
     const updated = await updateLineArtCrop(lineArtExtraction.id, value);
     setLineArtExtraction(updated);
+    setSegmentation(null);
     setCropEditorOpen(false);
     setMessage("正面和反面裁剪已更新");
   }
@@ -500,7 +561,7 @@ export default function RenderPage() {
   }, [submitWatchSince]);
 
   useEffect(() => {
-    if (submitWatchSince || !activeTask || !isLiveRenderStatus(activeTask.status)) return;
+    if (submitWatchSince || !activeTaskId || !isLiveRenderStatus(activeTaskStatus)) return;
     let stopped = false;
     let timer: number | undefined;
     let controller: AbortController | null = null;
@@ -515,7 +576,7 @@ export default function RenderPage() {
         const nextTasks = await listRenderTasks(TASK_LIST_LIMIT, controller.signal);
         if (stopped) return;
         setTasks(nextTasks);
-        const refreshed = nextTasks.find((task) => task.id === activeTask.id);
+        const refreshed = nextTasks.find((task) => task.id === activeTaskId);
         if (refreshed) {
           setActiveTask(refreshed);
           if (!isLiveRenderStatus(refreshed.status)) {
@@ -535,7 +596,7 @@ export default function RenderPage() {
       controller?.abort();
       if (timer) window.clearTimeout(timer);
     };
-  }, [activeTask?.id, activeTask?.status, submitWatchSince]);
+  }, [activeTaskId, activeTaskStatus, submitWatchSince]);
 
   async function removeConfig(configId: string) {
     await deleteRenderModelConfig(configId);
@@ -560,6 +621,43 @@ export default function RenderPage() {
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string };
       setMessage(err.userMessage || err.message || "历史记录删除失败");
+    }
+  }
+
+  async function regenerateComponent(role: RenderReferenceRole) {
+    if (!activeTask) return;
+    try {
+      const next = await regenerateRenderComponent(activeTask.id, role);
+      setActiveTask(next);
+      setMessage(`${REFERENCE_ROLE_LABEL[role]}正在重新生成，其他部件保持不变`);
+    } catch (error) {
+      setErrorDialog({ title: "部件重新生成失败", message: (error as Error).message || "请稍后重试" });
+    }
+  }
+
+  async function generatePsd() {
+    if (!activeTask) return;
+    if (activeTask.renderMode !== "precise") {
+      setPsdConvertPrompt(true);
+      return;
+    }
+    try {
+      setMessage("正在将透明部件层打包为 PSD...");
+      const next = await generateRenderTaskPsd(activeTask.id);
+      setActiveTask(next);
+      setTasks((current) => current.map((item) => item.id === next.id ? next : item));
+      setMessage("分层 PSD 已生成");
+    } catch (error) {
+      setErrorDialog({ title: "PSD 生成失败", message: (error as Error).message || "请稍后重试" });
+    }
+  }
+
+  async function downloadPsd() {
+    if (!activeTask?.psdFile?.url) return;
+    try {
+      await downloadFileFromUrl(activeTask.psdFile.url, activeTask.psdFile.originalName || `${activeTask.id}-分层效果图.psd`);
+    } catch (error) {
+      setErrorDialog({ title: "PSD 下载失败", message: (error as Error).message || "请稍后重试" });
     }
   }
 
@@ -592,6 +690,18 @@ export default function RenderPage() {
           </div>
         </div>
       )}
+      {psdConvertPrompt && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/35 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-white/60 bg-white p-5 shadow-2xl">
+            <h2 className="text-[16px] font-semibold text-[#1C1C1E]">需要先生成精准分区结果</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#636366]">快速 AI 图片没有可靠的独立部件层。系统将沿用当前线稿和参考素材转为精准分区生成，完成后即可生成 PSD。</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setPsdConvertPrompt(false)} className="rounded-lg border border-[#D1D1D6] px-4 py-2 text-[13px] font-medium text-[#3C3C43]">取消</button>
+              <button type="button" onClick={() => { setPsdConvertPrompt(false); void submitTask("precise"); }} className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white">转为精准生成</button>
+            </div>
+          </div>
+        </div>
+      )}
       {previewImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5" onClick={() => setPreviewImage(null)}>
           <div className="relative max-h-full max-w-[92vw]" onClick={(event) => event.stopPropagation()}>
@@ -609,6 +719,23 @@ export default function RenderPage() {
       )}
       {cropEditorOpen && lineArtExtraction?.sourceUrl && (
         <LineArtCropEditor extraction={lineArtExtraction} onCancel={() => setCropEditorOpen(false)} onSave={saveLineArtCrop} />
+      )}
+      {segmentationEditorOpen && segmentation && (
+        <RenderSegmentationEditor
+          segmentation={segmentation}
+          onCancel={() => setSegmentationEditorOpen(false)}
+          onConfirm={async (masks) => {
+            try {
+              const confirmed = await confirmRenderSegmentation(segmentation.id, masks);
+              setSegmentation(confirmed);
+              setSegmentationEditorOpen(false);
+              setMessage("部件区域已确认，正在提交精准分区生成...");
+              await submitTask("precise", confirmed);
+            } catch (error) {
+              setErrorDialog({ title: "部件区域保存失败", message: (error as Error).message || "请稍后重试" });
+            }
+          }}
+        />
       )}
       {loading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/65 px-4 backdrop-blur-[2px]">
@@ -677,14 +804,14 @@ export default function RenderPage() {
             <p className="mt-1 text-[12px] text-[#8E8E93]">生成两张独立线稿后，选择正面或反面作为本次输入。</p>
           </div>
           <div className="flex-1" />
-          {(["task", "upload", "direct"] as const).map((value) => (
+          {(["task", "dxf", "upload", "direct"] as const).map((value) => (
             <button
               key={value}
               type="button"
-              onClick={() => { setLineArtSource(value); setLineArtExtraction(null); }}
+              onClick={() => { setLineArtSource(value); setLineArtExtraction(null); setSegmentation(null); }}
               className={`rounded-lg px-3 py-2 text-[12px] font-medium ${lineArtSource === value ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#3C3C43]"}`}
             >
-              {value === "task" ? "关联图纸项目" : value === "upload" ? "上传完整订单图" : "直接上传线稿"}
+              {value === "task" ? "关联图纸项目" : value === "dxf" ? "上传 DXF" : value === "upload" ? "上传完整订单图" : "直接上传线稿"}
             </button>
           ))}
         </div>
@@ -693,7 +820,7 @@ export default function RenderPage() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
             <div>
               <span className="text-[12px] font-medium text-[#8E8E93]">选择图纸项目</span>
-              <TaskProjectCombobox tasks={drawingTasks} value={selectedDrawingTaskId} onChange={(value) => { setSelectedDrawingTaskId(value); setLineArtExtraction(null); }} />
+              <TaskProjectCombobox tasks={drawingTasks} value={selectedDrawingTaskId} onChange={(value) => { setSelectedDrawingTaskId(value); setLineArtExtraction(null); setSegmentation(null); }} />
             </div>
             <button type="button" onClick={() => void generateTaskLineArt()} disabled={lineArtBusy || !selectedDrawingTaskId} className="self-end rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{lineArtBusy ? "生成中..." : "生成正反面线稿"}</button>
           </div>
@@ -706,8 +833,12 @@ export default function RenderPage() {
           </div>
         )}
 
+        {lineArtSource === "dxf" && (
+          <CompactDxfUpload file={dxfFile} busy={lineArtBusy} onPick={(file) => void handleDxf(file)} />
+        )}
+
         {lineArtSource === "direct" && (
-          <UploadBox title="线稿图" file={lineArt} onPick={(file) => setLineArt(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+          <UploadBox title="线稿图" file={lineArt} onPick={(file) => { setLineArt(file); setSegmentation(null); }} onPreview={(src, title) => setPreviewImage({ src, title })} required />
         )}
 
         {lineArtSource !== "direct" && lineArtExtraction && (
@@ -729,9 +860,51 @@ export default function RenderPage() {
             </div>
           </div>
         )}
+        {["upload", "direct"].includes(lineArtSource) && segmentation && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] px-3 py-2">
+            <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${segmentation.confirmed ? "bg-[#34C759]/12 text-[#248A3D]" : "bg-[#FF9500]/12 text-[#9A5A00]"}`}>
+              {segmentation.confirmed ? "部件区域已确认" : `识别置信度 ${Math.round(segmentation.confidence * 100)}%`}
+            </span>
+            <span className="flex-1 text-[11px] text-[#8E8E93]">精准模式将严格沿用当前区域边界。</span>
+            <button type="button" onClick={() => setSegmentationEditorOpen(true)} className="rounded-lg border border-[#D1D1D6] bg-white px-3 py-1.5 text-[12px] font-medium text-[#3C3C43]">检查区域</button>
+          </div>
+        )}
       </section>
 
-      <UploadBox title="参考款式图" file={styleReference} onPick={(file) => setStyleReference(file)} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+        <div className="mb-3">
+          <h2 className="text-[15px] font-semibold text-[#1C1C1E]">部件参考</h2>
+          <p className="mt-1 text-[12px] text-[#8E8E93]">先选择作用部件，再从素材库选择或上传参考图；系统不会把门扇、门套和五金素材混用。</p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {REFERENCE_ROLE_OPTIONS.map((item) => {
+            const group = referenceGroups.find((candidate) => candidate.role === item.role);
+            const amount = (group?.assetIds.length || 0) + (group?.files.length || 0);
+            const active = activeReferenceRole === item.role;
+            return (
+              <button
+                key={item.role}
+                type="button"
+                onClick={() => setActiveReferenceRole(item.role)}
+                className={`min-h-24 rounded-xl border p-3 text-left transition-colors ${active ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA] bg-[#F7F7FA] hover:bg-white"}`}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-semibold text-[#1C1C1E]">{item.label}{item.required ? " *" : ""}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${amount ? "bg-[#34C759]/12 text-[#248A3D]" : "bg-white text-[#8E8E93]"}`}>{amount}</span>
+                </span>
+                <span className="mt-2 block text-[11px] leading-5 text-[#8E8E93]">{item.description}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-[#1C1C1E]">当前作用于：{REFERENCE_ROLE_LABEL[activeReferenceRole]}</p>
+            <p className="mt-1 text-[11px] text-[#8E8E93]">在下方素材库点“选择”的图片也会归入当前部件。</p>
+          </div>
+          <CompactImageUpload files={activeReferenceGroup?.files || []} onChange={(files) => addReferenceFiles(files, activeReferenceRole)} />
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -749,7 +922,6 @@ export default function RenderPage() {
                 placeholder="搜索素材"
                 className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
               />
-              <CompactImageUpload files={selectedReferenceFiles} onChange={addReferenceFiles} />
               <LibraryUploadButton
                 category={category}
                 onUploaded={(asset) => {
@@ -805,7 +977,7 @@ export default function RenderPage() {
                             onClick={() => toggleReferenceAsset(asset)}
                             className={`flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium ${selected ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#1C1C1E]"}`}
                           >
-                            {selected ? "已选" : "选择"}
+                            {selected ? "已选" : `用于${REFERENCE_ROLE_LABEL[activeReferenceRole]}`}
                           </button>
                           <button type="button" onClick={() => removeAsset(asset.id)} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px] text-[#FF3B30]">删除</button>
                         </div>
@@ -837,6 +1009,7 @@ export default function RenderPage() {
             <div className="flex flex-wrap gap-2">
               {selectedReferenceAssetIds.map((assetId) => {
                 const asset = assets.find((item) => item.id === assetId);
+                const role = referenceGroups.find((group) => group.assetIds.includes(assetId))?.role;
                 return (
                   <span key={assetId} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-[#3C3C43]">
                     <button
@@ -844,20 +1017,18 @@ export default function RenderPage() {
                       onClick={() => asset && setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
                       className="max-w-[180px] truncate"
                     >
-                      {asset?.category ? `${asset.category}：` : ""}{asset?.name || assetId}
+                      {role ? `${REFERENCE_ROLE_LABEL[role]}：` : ""}{asset?.name || assetId}
                     </button>
                     <button type="button" onClick={() => removeReferenceAsset(assetId)} className="text-[#FF3B30]">×</button>
                   </span>
                 );
               })}
-              {selectedReferenceFiles.map((file, index) => (
-                <TempFileChip
-                  key={`${file.name}-${file.lastModified}-${index}`}
-                  file={file}
-                  onPreview={(src, title) => setPreviewImage({ src, title })}
-                  onRemove={() => removeReferenceFile(file)}
-                />
-              ))}
+              {referenceGroups.flatMap((group) => group.files.map((file, index) => (
+                  <span key={`${group.role}-${file.name}-${file.lastModified}-${index}`} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-[#3C3C43]">
+                    <span className="text-[#8E8E93]">{REFERENCE_ROLE_LABEL[group.role]}：</span>
+                    <TempFileChip file={file} onPreview={(src, title) => setPreviewImage({ src, title })} onRemove={() => removeReferenceFile(file)} />
+                  </span>
+                ))) }
             </div>
           ) : (
             <p className="text-[12px] text-[#8E8E93]">还没有选择素材。可以在上方素材库点“选择”，或用“上传图”添加本次专用参考图。</p>
@@ -883,7 +1054,12 @@ export default function RenderPage() {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
           <div className="flex-1" />
-          <button type="button" onClick={submitTask} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">{loading ? "生成中..." : "提交渲染任务"}</button>
+          <button type="button" onClick={() => void submitTask("quick")} disabled={loading} className="rounded-lg border border-[#D1D1D6] bg-white px-5 py-2 text-[13px] font-medium text-[#1C1C1E] disabled:opacity-50">
+            {loading ? "提交中..." : "快速 AI 生成"}
+          </button>
+          <button type="button" onClick={() => void submitTask("precise")} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">
+            {loading ? "提交中..." : "精准分区生成"}
+          </button>
         </div>
       </section>
 
@@ -894,6 +1070,38 @@ export default function RenderPage() {
             <button type="button" onClick={() => refreshAll()} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px]">刷新</button>
           </div>
           {activeTask?.status === "failed" && <p className="mb-3 rounded-lg bg-[#FF3B30]/10 px-3 py-2 text-[13px] text-[#FF3B30]">{activeTask.errorMessage}</p>}
+          {activeTask && (
+            <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+              <span className={`rounded-full px-2 py-1 font-medium ${activeTask.renderMode === "precise" ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#636366]"}`}>
+                {activeTask.renderMode === "precise" ? "精准分区" : "快速 AI"}
+              </span>
+              <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[#636366]">{activeTask.sourceSide === "back" ? "反面" : "正面"}</span>
+              {activeTask.renderMode === "precise" && <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[#636366]">PSD：{activeTask.psdStatus === "completed" ? "已生成" : "未生成"}</span>}
+            </div>
+          )}
+          {activeTask?.status === "completed" && activeTask.images?.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+              <span className="mr-1 text-[12px] font-semibold text-[#1C1C1E]">结果操作</span>
+              {activeTask.renderMode === "precise" && REFERENCE_ROLE_OPTIONS.map((item) => (
+                <button
+                  key={item.role}
+                  type="button"
+                  onClick={() => void regenerateComponent(item.role)}
+                  disabled={!taskRoleHasReferences(activeTask, item.role)}
+                  className="rounded-lg border border-[#D1D1D6] bg-white px-3 py-1.5 text-[11px] font-medium text-[#3C3C43] disabled:cursor-not-allowed disabled:opacity-40"
+                  title={taskRoleHasReferences(activeTask, item.role) ? `只重新生成${item.label}` : `${item.label}没有独立参考图`}
+                >
+                  重生成{item.label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              {activeTask.psdStatus === "completed" && activeTask.psdFile?.url ? (
+                <button type="button" onClick={() => void downloadPsd()} className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white">下载分层 PSD</button>
+              ) : (
+                <button type="button" onClick={() => void generatePsd()} className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white">生成分层 PSD</button>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {(activeTask?.images || []).slice(0, 1).map((image) => (
               <div key={image.id} className="rounded-xl border border-[#E5E5EA] bg-[#F2F2F7] p-2">
@@ -914,6 +1122,7 @@ export default function RenderPage() {
                 <div className="flex items-start gap-2">
                   <button type="button" onClick={() => setActiveTask(task)} className="min-w-0 flex-1 cursor-pointer text-left">
                     <span className="font-medium">{task.status}</span>
+                    <span className="ml-2 rounded-full bg-white px-1.5 py-0.5 text-[10px]">{task.renderMode === "precise" ? "精准" : "快速"}</span>
                     <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
                     <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
                     {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
@@ -927,7 +1136,6 @@ export default function RenderPage() {
         </div>
       </section>
 
-      <LayeredRenderPanel />
     </div>
   );
 }
@@ -971,6 +1179,19 @@ function UploadBox({ title, file, onPick, onPreview, required }: { title: string
         )}
       </label>
     </section>
+  );
+}
+
+function CompactDxfUpload({ file, busy, onPick }: { file: File | null; busy: boolean; onPick: (file: File | null) => void }) {
+  return (
+    <label className="flex min-h-20 cursor-pointer items-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F7F7FA] px-4 py-3">
+      <input type="file" accept=".dxf,application/dxf" className="hidden" onChange={(event) => { onPick(event.target.files?.[0] || null); event.currentTarget.value = ""; }} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-[#1C1C1E]">{busy ? "正在读取 DXF..." : file ? file.name : "点击上传 DXF 文件"}</p>
+        <p className="mt-1 text-[11px] text-[#8E8E93]">精准模式直接读取门扇、门框、门套和五金图层</p>
+      </div>
+      {file && <button type="button" onClick={(event) => { event.preventDefault(); onPick(null); }} className="ml-3 rounded-lg bg-white px-3 py-1.5 text-[12px] text-[#FF3B30]">清空</button>}
+    </label>
   );
 }
 
@@ -1161,6 +1382,11 @@ function pickDefaultConfig(configs: RenderModelConfig[]): RenderModelConfig | un
   return [...configs]
     .filter((item) => item.enabled)
     .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
+}
+
+function taskRoleHasReferences(task: RenderTask, role: RenderReferenceRole): boolean {
+  const binding = task.referenceBindings?.[role];
+  return Boolean(binding?.assetIds?.length || binding?.files?.length);
 }
 
 function formatRenderTime(value: string): string {

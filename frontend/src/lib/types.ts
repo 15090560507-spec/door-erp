@@ -254,33 +254,6 @@ export interface TaskOverviewData {
   door_types: { name: string; count: number }[];
 }
 
-// ===================== 分层效果图 =====================
-export interface LayeredRenderFile {
-  url: string;
-  originalName: string;
-}
-
-export interface LayeredRenderRecord {
-  id: string;
-  taskId: string;
-  customer: string;
-  faces: string;
-  dpi: number;
-  targetLongEdge: number;
-  canvasSize: [number, number];
-  files: {
-    psd: LayeredRenderFile;
-    complete: LayeredRenderFile;
-    front: LayeredRenderFile;
-    back: LayeredRenderFile;
-  };
-  materialMode?: "ai" | "flat";
-  materialNote?: string;
-  modelConfig?: { name?: string; provider?: string; model?: string };
-  createdAt: string;
-  version: number;
-}
-
 // ===================== 模块 =====================
 export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "下料" | "任务总览" | "订单确认" | "生产管理" | "采购管理" | "库存管理" | "基础资料";
 

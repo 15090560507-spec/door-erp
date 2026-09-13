@@ -85,4 +85,4 @@ def temp_expiry(days: int = 7) -> str:
 
 def _safe_ext(filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
-    return ext if ext in {".png", ".jpg", ".jpeg", ".webp", ".psd"} else ".png"
+    return ext if ext in {".png", ".jpg", ".jpeg", ".webp", ".psd", ".dxf"} else ".png"
