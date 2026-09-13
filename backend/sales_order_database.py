@@ -260,6 +260,8 @@ class SalesOrderDatabase:
             order = connection.execute("SELECT * FROM sales_orders WHERE id = ?", (order_id,)).fetchone()
             if not order:
                 raise LookupError("订单不存在")
+            if order["status"] in {"confirmed", "fulfilling"}:
+                return self.get(order_id) or {}
             if order["status"] != "draft":
                 raise RuntimeError("只有草稿订单可以正式确认")
             connection.execute(

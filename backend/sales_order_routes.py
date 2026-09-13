@@ -443,6 +443,11 @@ def confirm_order(order_id: int, current_user: Dict = Depends(get_current_user))
         if not order:
             raise LookupError("订单不存在")
         order = _enrich_order(order)
+        if order.get("status") in {"confirmed", "fulfilling"}:
+            return {
+                "order": order,
+                "message": "订单已经确认，未重复生成门樘或BOM草稿",
+            }
         errors: List[Dict[str, Any]] = []
         if not str(order.get("delivery_date") or "").strip():
             errors.append({"code": "required", "line_no": None, "field": "delivery_date", "message": "订单交期不能为空"})
