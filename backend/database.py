@@ -108,7 +108,7 @@ class ImageStore:
         self.base_dir = base_dir
         os.makedirs(base_dir, exist_ok=True)
 
-    def _save_single(self, task_id: str, field: str, val: str):
+    def _save_single(self, task_id: str, field: str, val: Optional[str]):
         """保存单张图片，返回文件名引用"""
         if val and len(val) > 200:
             try:
@@ -171,6 +171,9 @@ class ImageStore:
     def save_from_task(self, task: dict) -> dict:
         """从 task 字典中提取 Base64 图片 → 写入文件 → 替换为文件名引用"""
         task_id = task.get("id", "")
+        if "ref_img_b64" in task and "ref_images" not in task:
+            old_val = task.pop("ref_img_b64")
+            task["ref_images"] = [old_val] if old_val else []
         # 多图字段
         for field in _IMAGE_ARRAY_FIELDS:
             val = task.get(field)
@@ -180,17 +183,9 @@ class ImageStore:
                 task[field] = []
         # 单图字段
         for field in _IMAGE_SINGLE_FIELDS:
-            val = task.get(field)
-            if val is not None:
-                task[field] = self._save_single(task_id, field, str(val) if val else "")
-        # 兼容旧 ref_img_b64
-        if "ref_img_b64" in task and "ref_images" not in task:
-            old_val = task.pop("ref_img_b64")
-            if old_val:
-                saved = self._save_single(task_id, "ref_img_b64", old_val)
-                task["ref_images"] = [saved] if saved else []
-            else:
-                task["ref_images"] = []
+            if field in task:
+                val = task.get(field)
+                task[field] = self._save_single(task_id, field, str(val) if val is not None else None)
         return task
 
     def _load_single(self, task_id: str, field: str, val: str) -> Optional[str]:
@@ -225,6 +220,9 @@ class ImageStore:
     def load_to_task(self, task: dict) -> dict:
         """读取 task 时，将文件名引用还原为完整的 Base64"""
         task_id = task.get("id", "")
+        if "ref_img_b64" in task and "ref_images" not in task:
+            old_val = task.pop("ref_img_b64")
+            task["ref_images"] = [old_val] if old_val else []
         # 多图字段
         for field in _IMAGE_ARRAY_FIELDS:
             val = task.get(field)
@@ -236,23 +234,6 @@ class ImageStore:
         for field in _IMAGE_SINGLE_FIELDS:
             val = task.get(field)
             task[field] = self._load_single(task_id, field, val) if val else None
-        # 兼容旧数据
-        if "ref_img_b64" in task and "ref_images" not in task:
-            old_val = task.pop("ref_img_b64")
-            if old_val and len(str(old_val)) < 200:
-                filepath = os.path.join(self.base_dir, str(old_val))
-                if os.path.exists(filepath):
-                    try:
-                        with open(filepath, "rb") as f:
-                            task["ref_images"] = [base64.b64encode(f.read()).decode("utf-8")]
-                    except OSError:
-                        task["ref_images"] = []
-                else:
-                    task["ref_images"] = []
-            elif old_val and len(str(old_val)) > 200:
-                task["ref_images"] = [old_val]
-            else:
-                task["ref_images"] = []
         return task
 
     def delete_task_images(self, task_id: str):

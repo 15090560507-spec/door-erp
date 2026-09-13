@@ -65,19 +65,19 @@ test_b64_2 = base64.b64encode(b"ANOTHER_IMAGE_" * 100).decode("utf-8")
 task = {"id": "test001", "ref_img_b64": test_b64, "drawing_img_b64": None}
 result = store.save_from_task(task)
 
-check("save: ref_img_b64 被替换为文件名（非 Base64）",
-      len(result.get("ref_img_b64", "")) < 200)
-check("save: 文件名格式正确",
-      result["ref_img_b64"] == "test001_ref_img_b64.png")
+check("save: 旧 ref_img_b64 被迁移到 ref_images",
+      "ref_img_b64" not in result and len(result.get("ref_images", [])) == 1)
+check("save: 多图文件名格式正确",
+      result["ref_images"] == ["test001_ref_images_0.png"])
 check("save: 图片文件已创建",
-      os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_img_b64.png")))
+      os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_images_0.png")))
 check("save: drawing_img_b64(None) 不创建文件",
       result.get("drawing_img_b64") is None)
 
 # 1b. 加载图片
 loaded = store.load_to_task(dict(result))
-check("load: ref_img_b64 还原为 Base64",
-      loaded.get("ref_img_b64") == test_b64)
+check("load: ref_images 还原为 Base64 数组",
+      loaded.get("ref_images") == [test_b64])
 check("load: drawing_img_b64 保持 None",
       loaded.get("drawing_img_b64") is None)
 
@@ -97,17 +97,19 @@ check("load: drawing_img_b64 还原",
 task3 = {"id": "test001", "ref_img_b64": None, "drawing_img_b64": None}
 store.save_from_task(task3)
 check("clear: ref 图片文件已删除",
-      not os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_img_b64.png")))
+      not os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_images_0.png")))
 check("clear: drawing 图片文件已删除",
       not os.path.exists(os.path.join(IMAGES_DIR, "test001_drawing_img_b64.png")))
 
 # 1e. 删除任务图片
 # 重新创建图片文件
-open(os.path.join(IMAGES_DIR, "test001_ref_img_b64.png"), "wb").write(b"test")
+open(os.path.join(IMAGES_DIR, "test001_ref_images_0.png"), "wb").write(b"test")
+open(os.path.join(IMAGES_DIR, "test001_ref_img_b64.png"), "wb").write(b"legacy")
 open(os.path.join(IMAGES_DIR, "test001_drawing_img_b64.png"), "wb").write(b"test")
 store.delete_task_images("test001")
 check("delete: 图片文件被清理",
       not os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_img_b64.png")) and
+      not os.path.exists(os.path.join(IMAGES_DIR, "test001_ref_images_0.png")) and
       not os.path.exists(os.path.join(IMAGES_DIR, "test001_drawing_img_b64.png")))
 
 
@@ -149,12 +151,12 @@ migrated, modified = store.migrate_existing_tasks(old_tasks)
 
 check("migrate: 检测到需要迁移",
       modified is True)
-check("migrate: task1 ref_img_b64 变为文件名",
-      migrated[0]["ref_img_b64"] == "mig001_ref_img_b64.png")
+check("migrate: task1 ref_img_b64 变为 ref_images",
+      migrated[0].get("ref_images") == ["mig001_ref_images_0.png"] and "ref_img_b64" not in migrated[0])
 check("migrate: task2 drawing_img_b64 变为文件名",
       migrated[1]["drawing_img_b64"] == "mig002_drawing_img_b64.png")
 check("migrate: 图片文件已创建",
-      os.path.exists(os.path.join(IMAGES_DIR, "mig001_ref_img_b64.png")) and
+      os.path.exists(os.path.join(IMAGES_DIR, "mig001_ref_images_0.png")) and
       os.path.exists(os.path.join(IMAGES_DIR, "mig002_drawing_img_b64.png")))
 
 # 二次迁移（不应重复）
@@ -235,6 +237,7 @@ new_task = {
     "ref_img_b64": test_b64,
     "drawing_img_b64": None,
     "review_feedback": "",
+    "history": [],
 }
 task_db.add_task(new_task)
 check("task: 创建成功", True)
@@ -245,12 +248,12 @@ with open(task_db.file_path, "r", encoding="utf-8") as f:
 check("task: JSON 不含大型 Base64",
       test_b64 not in raw_json)
 check("task: JSON 包含文件名引用",
-      "task001_ref_img_b64.png" in raw_json)
+      "task001_ref_images_0.png" in raw_json)
 
 # 4c. 读取任务（图片应还原）
 loaded_task = task_db.get_task("task001")
-check("task: 读取后 ref_img_b64 还原为 Base64",
-      loaded_task["ref_img_b64"] == test_b64)
+check("task: 读取后 ref_images 还原为 Base64",
+      loaded_task["ref_images"] == [test_b64])
 check("task: 读取后 drawing_img_b64 为 None",
       loaded_task["drawing_img_b64"] is None)
 
@@ -293,7 +296,7 @@ except ValueError as e:
 task_db.delete_task("task001")
 check("task: 删除成功", True)
 check("task: 删除后图片文件已清理",
-      not os.path.exists(os.path.join(IMAGES_DIR, "task001_ref_img_b64.png")) and
+      not os.path.exists(os.path.join(IMAGES_DIR, "task001_ref_images_0.png")) and
       not os.path.exists(os.path.join(IMAGES_DIR, "task001_drawing_img_b64.png")))
 check("task: 删除后 get_task 返回 None",
       task_db.get_task("task001") is None)
