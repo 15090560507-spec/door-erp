@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/hooks/useAuth";
+import { canAccessManagement, isManagementPath } from "@/lib/managementAccess";
 
 const COLLAPSED_KEY = "door_sidebar_collapsed_v1";
 const COLLAPSED_EVENT = "door-sidebar-collapsed-change";
@@ -23,10 +24,25 @@ function getCollapsedSnapshot() {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, loading, setModule } = useAuth();
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, () => false);
   const [mobileState, setMobileState] = useState({ open: false, pathname });
   const mobileOpen = mobileState.open && mobileState.pathname === pathname;
+  const managementPath = isManagementPath(pathname);
+  const managementBlocked = Boolean(user && managementPath && !canAccessManagement(user));
+
+  useEffect(() => {
+    if (!managementPath || loading) return;
+    if (!user) {
+      router.replace("/");
+      return;
+    }
+    if (managementBlocked) {
+      setModule("任务总览");
+      router.replace("/dashboard");
+    }
+  }, [loading, managementBlocked, managementPath, router, setModule, user]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -46,7 +62,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event(COLLAPSED_EVENT));
   };
 
-  if (pathname === "/" || !user) return children;
+  if (pathname === "/") return children;
+  if (managementPath && (loading || !user || managementBlocked)) return null;
+  if (!user) return children;
 
   return (
     <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`}>

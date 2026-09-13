@@ -325,7 +325,7 @@ class UserDatabaseManager:
         if not os.path.exists(self.file_path):
             default_users = {
                 "admin": {"password": hash_password("admin888"), "role": "超级管理员", "name": "系统管理员", "default_module": "后台管理"},
-                "A": {"password": hash_password("123"), "role": "录入员", "name": "销售小A", "default_module": "图纸信息录入"},
+                "A": {"password": hash_password("123654"), "role": "录入员", "name": "销售小A", "default_module": "图纸信息录入"},
                 "B": {"password": hash_password("123"), "role": "绘图员", "name": "技术小B", "default_module": "图纸绘制"},
                 "C": {"password": hash_password("123"), "role": "初审员", "name": "初审小C", "default_module": "图纸初审"},
                 "D": {"password": hash_password("123"), "role": "总工", "name": "总工小D", "default_module": "图纸终审"}
@@ -399,6 +399,14 @@ class UserDatabaseManager:
                 pwd = info.get("password", "")
                 if pwd and not is_hashed(pwd):
                     info["password"] = hash_password(pwd)
+                    changed = True
+
+            # 4. 一次性迁移销售小A的旧默认密码，后续人工修改不会被启动过程覆盖。
+            sales_a = users.get("A")
+            if sales_a:
+                stored = sales_a.get("password", "")
+                if stored and verify_password("123", stored):
+                    sales_a["password"] = hash_password("123654")
                     changed = True
 
             if changed:

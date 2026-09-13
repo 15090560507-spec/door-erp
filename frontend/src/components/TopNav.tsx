@@ -29,10 +29,10 @@ import {
   X,
 } from "lucide-react";
 import { useAuth, useModule } from "@/hooks/useAuth";
+import { canAccessManagement, MANAGEMENT_MODULES } from "@/lib/managementAccess";
 import { MODULE_OPTIONS, type ModuleName } from "@/lib/types";
 
 const DRAWING_MODULES: ModuleName[] = ["任务总览", "图纸绘制", "图纸初审", "图纸终审"];
-const BUSINESS_MODULES: ModuleName[] = ["订单确认", "下料", "生产管理", "采购管理", "库存管理", "基础资料"];
 const PINNED_KEY = "door_business_pinned_modules_v1";
 const BUSINESS_OPEN_KEY = "door_business_group_open_v1";
 
@@ -94,16 +94,16 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
   const [businessOpen, setBusinessOpen] = useState(false);
 
   const availableItems = useMemo(
-    () => MODULE_OPTIONS.filter((item) => item.module !== "下料" || user?.uid === "A"),
-    [user?.uid],
+    () => MODULE_OPTIONS.filter((item) => canAccessManagement(user) || !MANAGEMENT_MODULES.includes(item.module)),
+    [user],
   );
-  const drawingItems = availableItems.filter((item) => !BUSINESS_MODULES.includes(item.module));
-  const businessItems = availableItems.filter((item) => BUSINESS_MODULES.includes(item.module));
+  const drawingItems = availableItems.filter((item) => !MANAGEMENT_MODULES.includes(item.module));
+  const businessItems = availableItems.filter((item) => MANAGEMENT_MODULES.includes(item.module));
   const pinnedItems = availableItems.filter((item) => pinned.includes(item.module));
   const pathModule = moduleFromPath(pathname);
   const activeModule = pathname.startsWith("/dashboard") ? dashboardModule : (pathModule || dashboardModule);
   const activeTitle = MODULE_OPTIONS.find((item) => item.module === activeModule)?.title || activeModule;
-  const businessActive = BUSINESS_MODULES.includes(activeModule);
+  const businessActive = MANAGEMENT_MODULES.includes(activeModule);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -213,14 +213,14 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
             <div className="app-sidebar__group-title"><PackageSearch size={12} /><span>图纸业务</span></div>
             {drawingItems.map((item) => renderItem(item))}
           </section>
-          <section className={`app-sidebar__group app-sidebar__group--collapsible ${businessActive ? "is-current" : ""}`}>
+          {businessItems.length > 0 && <section className={`app-sidebar__group app-sidebar__group--collapsible ${businessActive ? "is-current" : ""}`}>
             <button type="button" className="app-sidebar__group-toggle" onClick={toggleBusiness} aria-expanded={businessOpen} title={collapsed ? "经营管理" : undefined}>
               <Factory size={15} />
               <span>经营管理</span>
               {businessOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
             {businessOpen && <div className="app-sidebar__subnav">{businessItems.map((item) => renderItem(item, true))}</div>}
-          </section>
+          </section>}
         </nav>
 
         <div className="app-sidebar__footer">
