@@ -538,6 +538,30 @@ class InventoryDatabase:
                     FOREIGN KEY(supplier_item_id) REFERENCES inventory_supplier_items(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS inventory_bom_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    group_code TEXT NOT NULL,
+                    product_name TEXT NOT NULL DEFAULT '',
+                    door_type TEXT NOT NULL DEFAULT '',
+                    condition_field TEXT NOT NULL DEFAULT '',
+                    condition_value TEXT NOT NULL DEFAULT '',
+                    quantity_value REAL NOT NULL DEFAULT 1,
+                    quantity_basis TEXT NOT NULL DEFAULT '每樘',
+                    waste_rate REAL NOT NULL DEFAULT 0,
+                    operation_code TEXT NOT NULL DEFAULT 'CUSTOM',
+                    acquisition_method TEXT NOT NULL DEFAULT '库存/采购',
+                    priority INTEGER NOT NULL DEFAULT 100,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(material_id) REFERENCES inventory_materials(id)
+                );
+
                 CREATE INDEX IF NOT EXISTS ix_inventory_material_search
                     ON inventory_materials(name, category, specification, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_transaction_material
@@ -572,6 +596,8 @@ class InventoryDatabase:
                     ON inventory_suppliers(name, short_name, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_supplier_items_material
                     ON inventory_supplier_items(material_id, is_preferred, is_active);
+                CREATE INDEX IF NOT EXISTS ix_inventory_bom_rules_match
+                    ON inventory_bom_rules(is_active, product_name, door_type, priority);
 
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions

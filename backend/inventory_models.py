@@ -76,6 +76,28 @@ class SupplierItemUpdate(SupplierItemCreate):
     is_active: bool = True
 
 
+class BomRuleCreate(BaseModel):
+    code: str
+    name: str
+    material_id: int
+    group_code: str
+    product_name: str = ""
+    door_type: str = ""
+    condition_field: str = ""
+    condition_value: str = ""
+    quantity_value: float = Field(default=1, gt=0)
+    quantity_basis: str = "每樘"
+    waste_rate: float = Field(default=0, ge=0, le=100)
+    operation_code: str = "CUSTOM"
+    acquisition_method: str = "库存/采购"
+    priority: int = Field(default=100, ge=0, le=9999)
+    remark: str = ""
+
+
+class BomRuleUpdate(BomRuleCreate):
+    is_active: bool = True
+
+
 class WarehouseCreate(BaseModel):
     code: str
     name: str

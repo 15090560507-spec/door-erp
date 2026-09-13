@@ -94,6 +94,29 @@ def main() -> None:
         relations = response.json().get("supplier_items", [])
         check("商品可反查首选供应商和采购价", response.status_code == 200 and len(relations) == 1 and relations[0].get("tax_inclusive_price") == 680, response.text)
 
+        rule_payload = {
+            "code": "RULE-PLATE-01", "name": "标准板材规则", "material_id": material.get("id"),
+            "group_code": "panel", "product_name": "不锈钢镀铜门", "door_type": "单门",
+            "condition_field": "ys", "condition_value": "2号色|2.5号色",
+            "quantity_value": 2, "quantity_basis": "每扇", "waste_rate": 5,
+            "operation_code": "PANEL_SKIN", "acquisition_method": "库存/采购",
+            "priority": 20, "remark": "接口测试",
+        }
+        response = client.post("/api/inventory/bom-rules", headers=headers(), json=rule_payload)
+        rule = response.json().get("rule", {})
+        check("可创建BOM规则并关联内部物料", response.status_code == 201 and rule.get("material_code") == "PLATE-08", response.text)
+
+        response = client.get("/api/inventory/bom-rules?q=板材", headers=headers())
+        rules = response.json().get("rules", [])
+        check("BOM规则支持搜索", response.status_code == 200 and len(rules) == 1, response.text)
+
+        response = client.put(
+            f"/api/inventory/bom-rules/{rule.get('id')}",
+            headers=headers(),
+            json={**rule_payload, "quantity_value": 3, "is_active": False},
+        )
+        check("BOM规则可更新停用", response.status_code == 200 and response.json().get("rule", {}).get("is_active") == 0, response.text)
+
         response = client.post("/api/inventory/materials", headers=headers(), json=material_payload)
         check("重复物料编码返回409", response.status_code == 409, response.text)
 

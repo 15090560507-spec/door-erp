@@ -11,6 +11,8 @@ from auth import get_current_user
 from inventory_database import InventoryDatabase
 from inventory_models import (
     AdjustmentCreate,
+    BomRuleCreate,
+    BomRuleUpdate,
     IncomingInspectionCreate,
     LocationCreate,
     MaterialIssueCreate,
@@ -65,6 +67,8 @@ def _error(exc: Exception) -> HTTPException:
             message = "供应商编码已经存在"
         elif "inventory_supplier_items.supplier_id, inventory_supplier_items.material_id" in message:
             message = "该供应商与商品的供货关系已经存在"
+        elif "inventory_bom_rules.code" in message:
+            message = "BOM规则编码已经存在"
         elif "inventory_warehouses.code" in message:
             message = "仓库编码已经存在"
         elif "inventory_locations.warehouse_id, inventory_locations.code" in message:
@@ -172,6 +176,35 @@ def update_supplier_item(
             req.model_dump(), str(current_user.get("uid") or ""), supplier_item_id=supplier_item_id,
         )
         return {"supplier_item": item, "message": "供应商供货关系已更新"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/bom-rules")
+def list_bom_rules(
+    q: str = Query(""),
+    include_inactive: bool = Query(False),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"rules": inventory_service.list_bom_rules(q=q, active_only=not include_inactive)}
+
+
+@router.post("/bom-rules", status_code=201)
+def create_bom_rule(req: BomRuleCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        rule = inventory_service.save_bom_rule(req.model_dump(), str(current_user.get("uid") or ""))
+        return {"rule": rule, "message": "BOM规则已创建"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.put("/bom-rules/{bom_rule_id}")
+def update_bom_rule(bom_rule_id: int, req: BomRuleUpdate, current_user: Dict = Depends(get_current_user)):
+    try:
+        rule = inventory_service.save_bom_rule(
+            req.model_dump(), str(current_user.get("uid") or ""), bom_rule_id=bom_rule_id,
+        )
+        return {"rule": rule, "message": "BOM规则已更新"}
     except Exception as exc:
         raise _error(exc) from exc
 

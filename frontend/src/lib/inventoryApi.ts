@@ -1,6 +1,8 @@
 import { api } from "./api";
 import type {
   AdjustmentItemPayload,
+  BomRulePayload,
+  InventoryBomRule,
   InventoryBalance,
   InventoryMaterial,
   InventoryTransaction,
@@ -68,6 +70,21 @@ export async function createInventorySupplierItem(payload: SupplierItemPayload) 
 
 export async function updateInventorySupplierItem(id: number, payload: SupplierItemPayload) {
   const { data } = await api.put<{ supplier_item: InventorySupplierItem; message: string }>(`/inventory/supplier-items/${id}`, payload);
+  return data;
+}
+
+export async function getInventoryBomRules(params?: { q?: string; include_inactive?: boolean }) {
+  const { data } = await api.get<{ rules: InventoryBomRule[] }>("/inventory/bom-rules", { params });
+  return data.rules;
+}
+
+export async function createInventoryBomRule(payload: BomRulePayload) {
+  const { data } = await api.post<{ rule: InventoryBomRule; message: string }>("/inventory/bom-rules", payload);
+  return data;
+}
+
+export async function updateInventoryBomRule(id: number, payload: BomRulePayload) {
+  const { data } = await api.put<{ rule: InventoryBomRule; message: string }>(`/inventory/bom-rules/${id}`, payload);
   return data;
 }
 

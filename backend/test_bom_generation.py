@@ -121,6 +121,33 @@ class BomGenerationTest(unittest.TestCase):
         self.assertTrue(any(item["field_path"] == "hysl" for item in result["warnings"]))
         self.assertGreater(result["blocking_warning_count"], 0)
 
+    def test_active_custom_rule_matches_scope_and_multiplies_per_leaf_quantity(self):
+        params = self.base_params()
+        params["door_type"] = "对开门"
+        material_id = self.add_material("MAT-SEAL", "门扇密封条", "标准型", unit="米")
+        now = fulfillment_now()
+        with self.db.transaction() as connection:
+            connection.execute(
+                """INSERT INTO inventory_bom_rules(
+                       code, name, material_id, group_code, product_name, door_type,
+                       condition_field, condition_value, quantity_value, quantity_basis,
+                       waste_rate, operation_code, acquisition_method, priority,
+                       is_active, remark, created_by, created_at, updated_at
+                   ) VALUES ('RULE-SEAL', '对开门密封条', ?, 'consumable', '不锈钢镀铜门', '对开门',
+                             'ys', '紫铜色|2号色', 2.5, '每扇', 10, 'DOOR_SEAL', '库存/采购', 10,
+                             1, '', 'A', ?, ?)""",
+                (material_id, now, now),
+            )
+        door_id = create_door(self.db, params, sales_order_id=3)
+
+        result = self.service.generate(door_id, self.user)
+
+        custom = next(item for item in result["components"] if item["operation_code"] == "DOOR_SEAL")
+        self.assertEqual(custom["material_id"], material_id)
+        self.assertEqual(custom["theoretical_quantity"], 5)
+        self.assertEqual(custom["planned_quantity"], 5.5)
+        self.assertEqual(custom["match_status"], "已匹配")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -174,6 +174,36 @@ export interface SupplierItemPayload {
   is_active?: boolean;
 }
 
+export interface InventoryBomRule {
+  id: number;
+  code: string;
+  name: string;
+  material_id: number;
+  material_code: string;
+  material_name: string;
+  material_specification: string;
+  material_unit: string;
+  group_code: string;
+  product_name: string;
+  door_type: string;
+  condition_field: string;
+  condition_value: string;
+  quantity_value: number;
+  quantity_basis: "每樘" | "每扇";
+  waste_rate: number;
+  operation_code: string;
+  acquisition_method: string;
+  priority: number;
+  is_active: number;
+  remark: string;
+  updated_at: string;
+}
+
+export type BomRulePayload = Omit<
+  InventoryBomRule,
+  "id" | "material_code" | "material_name" | "material_specification" | "material_unit" | "is_active" | "updated_at"
+> & { is_active?: boolean };
+
 export interface AdjustmentItemPayload {
   material_id: number;
   warehouse_id: number;

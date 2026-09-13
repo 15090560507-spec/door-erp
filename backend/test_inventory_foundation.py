@@ -78,6 +78,48 @@ def main() -> None:
             duplicate_material_blocked = True
         check("物料编码不可重复", duplicate_material_blocked)
 
+        bom_rule = service.save_bom_rule(
+            {
+                "code": "RULE-PLATE-01",
+                "name": "标准板材规则",
+                "material_id": material["id"],
+                "group_code": "panel",
+                "product_name": "不锈钢镀铜门",
+                "door_type": "单门",
+                "condition_field": "ys",
+                "condition_value": "2号色|2.5号色",
+                "quantity_value": 2,
+                "quantity_basis": "每扇",
+                "waste_rate": 5,
+                "operation_code": "PANEL_SKIN",
+                "acquisition_method": "库存/采购",
+                "priority": 20,
+                "remark": "规则维护测试",
+            },
+            "admin",
+        )
+        listed_rules = service.list_bom_rules(q="板材")
+        check(
+            "BOM规则可创建并关联内部物料",
+            bom_rule["material_code"] == "PLATE-08" and len(listed_rules) == 1,
+            str(listed_rules),
+        )
+        updated_rule = service.save_bom_rule(
+            {
+                **bom_rule,
+                "quantity_value": 3,
+                "is_active": False,
+            },
+            "admin",
+            bom_rule_id=bom_rule["id"],
+        )
+        check(
+            "BOM规则可更新和停用",
+            updated_rule["quantity_value"] == 3 and updated_rule["is_active"] == 0
+            and service.list_bom_rules() == [] and len(service.list_bom_rules(active_only=False)) == 1,
+            str(updated_rule),
+        )
+
         location = service.create_location(raw["id"], "A-01", "板材一区")
         duplicate_location_blocked = False
         try:

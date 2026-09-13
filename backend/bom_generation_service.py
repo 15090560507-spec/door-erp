@@ -6,12 +6,75 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from bom_rules import CURRENT_BOM_RULE_VERSION, BomRuleItem, BomRuleWarning, build_baseline_bom
+from bom_rules import CURRENT_BOM_RULE_VERSION, GROUP_LABELS, BomRuleItem, BomRuleWarning, build_baseline_bom
 from fulfillment_database import fulfillment_now, json_dumps, json_loads
 
 
 def _normalized(value: Any) -> str:
     return re.sub(r"[\s\-_./]+", "", str(value or "")).lower()
+
+
+def _leaf_count(door_type: str) -> int:
+    if any(name in door_type for name in ("四开", "两定两开")):
+        return 4
+    if any(name in door_type for name in ("对开", "子母")):
+        return 2
+    return 1
+
+
+def _rule_matches(rule: Any, params: Dict[str, Any]) -> bool:
+    for rule_key, param_key in (("product_name", "product_name"), ("door_type", "door_type")):
+        expected = str(rule[rule_key] or "").strip()
+        if expected and _normalized(params.get(param_key)) != _normalized(expected):
+            return False
+    field = str(rule["condition_field"] or "").strip()
+    expected = str(rule["condition_value"] or "").strip()
+    if not field:
+        return True
+    actual = _normalized(params.get(field))
+    accepted = [_normalized(value) for value in expected.split("|") if value.strip()]
+    return bool(actual) if not accepted else actual in accepted
+
+
+def _custom_rule_items(connection: Any, params: Dict[str, Any]) -> List[BomRuleItem]:
+    rows = connection.execute(
+        """SELECT r.*, m.code AS material_code, m.name AS material_name,
+                  m.specification AS material_specification, m.unit AS material_unit
+           FROM inventory_bom_rules r
+           JOIN inventory_materials m ON m.id=r.material_id
+           WHERE r.is_active=1 ORDER BY r.priority, r.id"""
+    ).fetchall()
+    leaf_count = _leaf_count(str(params.get("door_type") or ""))
+    items: List[BomRuleItem] = []
+    for rule in rows:
+        if not _rule_matches(rule, params):
+            continue
+        quantity = float(rule["quantity_value"] or 0)
+        if str(rule["quantity_basis"] or "") == "每扇":
+            quantity *= leaf_count
+        group_code = str(rule["group_code"] or "consumable")
+        if group_code not in GROUP_LABELS:
+            group_code = "consumable"
+        items.append(BomRuleItem(
+            group_code=group_code,
+            name=str(rule["material_name"] or rule["name"]),
+            specification=str(rule["material_specification"] or rule["name"]),
+            theoretical_quantity=quantity,
+            unit=str(rule["material_unit"] or "件"),
+            operation_code=str(rule["operation_code"] or "CUSTOM"),
+            acquisition_method=str(rule["acquisition_method"] or "库存/采购"),
+            material_code=str(rule["material_code"] or ""),
+            waste_rate=float(rule["waste_rate"] or 0),
+            source_payload={
+                "bom_rule_id": int(rule["id"]),
+                "bom_rule_code": str(rule["code"]),
+                "bom_rule_updated_at": str(rule["updated_at"]),
+                "quantity_basis": str(rule["quantity_basis"]),
+                "condition_field": str(rule["condition_field"]),
+                "condition_value": str(rule["condition_value"]),
+            },
+        ))
+    return items
 
 
 class BomGenerationService:
@@ -112,6 +175,7 @@ class BomGenerationService:
         try:
             items, rule_warnings = build_baseline_bom(params)
             with self.db.transaction() as connection:
+                items.extend(_custom_rule_items(connection, params))
                 current = connection.execute(
                     "SELECT status FROM fulfillment_technical_packages WHERE id=?",
                     (package_id,),

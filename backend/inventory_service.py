@@ -337,6 +337,105 @@ class InventoryService:
             row = conn.execute("SELECT * FROM inventory_supplier_items WHERE id=?", (supplier_item_id,)).fetchone()
             return dict(row)
 
+    def list_bom_rules(self, q: str = "", active_only: bool = True) -> List[Dict[str, Any]]:
+        where: List[str] = []
+        params: List[Any] = []
+        if active_only:
+            where.append("r.is_active=1")
+        if q:
+            keyword = f"%{q.strip()}%"
+            where.append("(r.code LIKE ? OR r.name LIKE ? OR m.code LIKE ? OR m.name LIKE ?)")
+            params.extend([keyword, keyword, keyword, keyword])
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        return self.db.fetch_all(
+            f"""SELECT r.*, m.code AS material_code, m.name AS material_name,
+                       m.specification AS material_specification, m.unit AS material_unit
+                FROM inventory_bom_rules r
+                JOIN inventory_materials m ON m.id=r.material_id
+                {clause}
+                ORDER BY r.is_active DESC, r.priority, r.code, r.id""",
+            params,
+        )
+
+    def save_bom_rule(
+        self,
+        payload: Dict[str, Any],
+        operator_uid: str,
+        bom_rule_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        code = str(payload.get("code") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        group_code = str(payload.get("group_code") or "").strip()
+        condition_field = str(payload.get("condition_field") or "").strip()
+        condition_value = str(payload.get("condition_value") or "").strip()
+        material_id = int(payload.get("material_id") or 0)
+        quantity_value = float(payload.get("quantity_value") or 0)
+        quantity_basis = str(payload.get("quantity_basis") or "每樘").strip()
+        if not code or not name or not group_code or not material_id:
+            raise ValueError("规则编码、名称、BOM分组和内部物料不能为空")
+        if condition_value and not condition_field:
+            raise ValueError("填写参数值前请先选择参数字段")
+        if quantity_value <= 0:
+            raise ValueError("规则数量必须大于零")
+        if quantity_basis not in {"每樘", "每扇"}:
+            raise ValueError("数量口径只能是每樘或每扇")
+        if group_code not in {
+            "frame", "panel", "skeleton", "trim", "glass", "hardware",
+            "ornament", "consumable", "packaging", "subcontract",
+        }:
+            raise ValueError("BOM分组不受支持")
+        now = inventory_now()
+        priority = payload.get("priority")
+        values = (
+            code, name, material_id, group_code,
+            str(payload.get("product_name") or "").strip(),
+            str(payload.get("door_type") or "").strip(),
+            condition_field, condition_value, quantity_value, quantity_basis,
+            float(payload.get("waste_rate") or 0),
+            str(payload.get("operation_code") or "CUSTOM").strip().upper(),
+            str(payload.get("acquisition_method") or "库存/采购").strip(),
+            int(100 if priority is None else priority),
+            int(bool(payload.get("is_active", True))),
+            str(payload.get("remark") or ""), now,
+        )
+        with self.db.transaction() as conn:
+            material = conn.execute(
+                "SELECT id FROM inventory_materials WHERE id=? AND is_active=1",
+                (material_id,),
+            ).fetchone()
+            if not material:
+                raise LookupError("内部物料不存在或已停用")
+            if bom_rule_id is None:
+                cursor = conn.execute(
+                    """INSERT INTO inventory_bom_rules(
+                           code, name, material_id, group_code, product_name, door_type,
+                           condition_field, condition_value, quantity_value, quantity_basis,
+                           waste_rate, operation_code, acquisition_method, priority,
+                           is_active, remark, created_by, created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (*values[:-1], operator_uid, now, now),
+                )
+                bom_rule_id = int(cursor.lastrowid)
+            else:
+                if not conn.execute("SELECT id FROM inventory_bom_rules WHERE id=?", (bom_rule_id,)).fetchone():
+                    raise LookupError("BOM规则不存在")
+                conn.execute(
+                    """UPDATE inventory_bom_rules SET
+                           code=?, name=?, material_id=?, group_code=?, product_name=?, door_type=?,
+                           condition_field=?, condition_value=?, quantity_value=?, quantity_basis=?,
+                           waste_rate=?, operation_code=?, acquisition_method=?, priority=?,
+                           is_active=?, remark=?, updated_at=? WHERE id=?""",
+                    (*values, bom_rule_id),
+                )
+            row = conn.execute(
+                """SELECT r.*, m.code AS material_code, m.name AS material_name,
+                          m.specification AS material_specification, m.unit AS material_unit
+                   FROM inventory_bom_rules r
+                   JOIN inventory_materials m ON m.id=r.material_id WHERE r.id=?""",
+                (bom_rule_id,),
+            ).fetchone()
+            return dict(row)
+
     def create_warehouse(self, code: str, name: str, warehouse_type: str = "", remark: str = "") -> Dict[str, Any]:
         code = code.strip()
         name = name.strip()
