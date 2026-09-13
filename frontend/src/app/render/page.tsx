@@ -1,8 +1,7 @@
 "use client";
 
 import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
-import LineArtCropEditor from "@/components/LineArtCropEditor";
-import LayeredRenderPanel from "@/components/LayeredRenderPanel";
+import dynamic from "next/dynamic";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { getTasks } from "@/lib/api";
 import type { TaskItem } from "@/lib/types";
@@ -46,6 +45,15 @@ const ASSET_PROMPT_USAGE: Record<string, string> = {
   包套: "包套素材用于包套造型、线条层次和外框效果参考。",
   其他: "其他素材仅用于对应部件的局部细节参考。",
 };
+
+const LineArtCropEditor = dynamic(() => import("@/components/LineArtCropEditor"), {
+  ssr: false,
+  loading: () => <div className="flex min-h-72 items-center justify-center text-sm text-[#8E8E93]">正在加载裁剪工具...</div>,
+});
+const LayeredRenderPanel = dynamic(() => import("@/components/LayeredRenderPanel"), {
+  ssr: false,
+  loading: () => <div className="flex min-h-44 items-center justify-center text-sm text-[#8E8E93]">正在加载分层效果工具...</div>,
+});
 
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
@@ -110,7 +118,7 @@ export default function RenderPage() {
   const [assets, setAssets] = useState<RenderAsset[]>([]);
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [modelConfigOpen, setModelConfigOpen] = useState(false);
-  const [assetLibraryOpen, setAssetLibraryOpen] = useState(true);
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
@@ -151,19 +159,15 @@ export default function RenderPage() {
 
     const initialize = async () => {
       try {
-        const [nextConfigs, nextTasks, drawings, nextAssets] = await Promise.all([
+        const [nextConfigs, nextTasks, drawings] = await Promise.all([
           listRenderModelConfigs(true, controller.signal),
           listRenderTasks(TASK_LIST_LIMIT, controller.signal),
-          getTasks({ limit: 100, offset: 0 }),
-          listRenderAssets({ limit: ASSET_PAGE_SIZE, offset: 0 }, controller.signal),
+          getTasks({ limit: 100, offset: 0 }, controller.signal),
         ]);
         if (cancelled) return;
         setConfigs(nextConfigs);
         setTasks(nextTasks);
         setDrawingTasks(drawings.tasks || []);
-        setAssets(nextAssets);
-        setAssetOffset(nextAssets.length);
-        setAssetHasMore(nextAssets.length === ASSET_PAGE_SIZE);
         const defaultConfig = pickDefaultConfig(nextConfigs);
         setSelectedConfigId(defaultConfig?.id || "");
         setEditingConfigId(defaultConfig?.id || "");
@@ -223,6 +227,18 @@ export default function RenderPage() {
       setAssetHasMore(nextAssets.length === ASSET_PAGE_SIZE);
     } finally {
       setAssetLoading(false);
+    }
+  }
+
+  async function toggleAssetLibrary() {
+    const nextOpen = !assetLibraryOpen;
+    setAssetLibraryOpen(nextOpen);
+    if (nextOpen && assets.length === 0 && !assetLoading) {
+      try {
+        await loadAssets({ reset: true });
+      } catch (error) {
+        setErrorDialog({ title: "素材库加载失败", message: (error as { userMessage?: string; message?: string }).userMessage || (error as Error).message || "请稍后重试" });
+      }
     }
   }
 
@@ -719,7 +735,7 @@ export default function RenderPage() {
 
       <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setAssetLibraryOpen((value) => !value)} className="text-left">
+          <button type="button" onClick={() => void toggleAssetLibrary()} className="text-left">
             <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 素材库</h2>
             <p className="mt-1 text-[12px] text-[#8E8E93]">从个人素材库选择，或上传本次专用参考图；选中的内容会统一放到下方本次素材栏。</p>
           </button>

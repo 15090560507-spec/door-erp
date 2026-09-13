@@ -129,8 +129,8 @@ export async function getTasks(params?: {
   q?: string;
   limit?: number;
   offset?: number;
-}): Promise<TaskListResponse> {
-  const { data } = await api.get<TaskListResponse>("/tasks", { params });
+}, signal?: AbortSignal): Promise<TaskListResponse> {
+  const { data } = await api.get<TaskListResponse>("/tasks", { params, signal });
   return data;
 }
 
