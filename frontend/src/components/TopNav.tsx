@@ -32,7 +32,7 @@ import { useAuth, useModule } from "@/hooks/useAuth";
 import { MODULE_OPTIONS, type ModuleName } from "@/lib/types";
 
 const DRAWING_MODULES: ModuleName[] = ["任务总览", "图纸绘制", "图纸初审", "图纸终审"];
-const BUSINESS_MODULES: ModuleName[] = ["订单确认", "生产管理", "采购管理", "库存管理", "基础资料"];
+const BUSINESS_MODULES: ModuleName[] = ["订单确认", "下料", "生产管理", "采购管理", "库存管理", "基础资料"];
 const PINNED_KEY = "door_business_pinned_modules_v1";
 const BUSINESS_OPEN_KEY = "door_business_group_open_v1";
 
@@ -102,6 +102,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
   const pinnedItems = availableItems.filter((item) => pinned.includes(item.module));
   const pathModule = moduleFromPath(pathname);
   const activeModule = pathname.startsWith("/dashboard") ? dashboardModule : (pathModule || dashboardModule);
+  const activeTitle = MODULE_OPTIONS.find((item) => item.module === activeModule)?.title || activeModule;
   const businessActive = BUSINESS_MODULES.includes(activeModule);
 
   useEffect(() => {
@@ -185,7 +186,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
     <>
       <header className="app-mobile-bar">
         <button type="button" className="app-icon-button" onClick={onOpenMobile} aria-label="打开导航"><Menu size={21} /></button>
-        <strong className="app-mobile-title">{activeModule}</strong>
+        <strong className="app-mobile-title">{activeTitle}</strong>
         <span className="app-mobile-user">{user?.name}</span>
       </header>
 
