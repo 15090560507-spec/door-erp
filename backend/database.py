@@ -76,6 +76,10 @@ def backup_file_before_replace(file_path: str, backup_dir: str):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     basename = os.path.basename(file_path)
     backup_path = os.path.join(backup_dir, f"{basename}.{timestamp}.bak")
+    sequence = 1
+    while os.path.exists(backup_path):
+        backup_path = os.path.join(backup_dir, f"{basename}.{timestamp}_{sequence:03d}.bak")
+        sequence += 1
     try:
         shutil.copy2(file_path, backup_path)
     except OSError:
