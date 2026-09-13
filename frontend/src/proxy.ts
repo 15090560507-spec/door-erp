@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-/** 需要登录才能访问的路由前缀 */
 const PROTECTED_PATHS = [
   "/dashboard",
   "/admin",
@@ -15,18 +14,14 @@ const PROTECTED_PATHS = [
   "/door-cad",
 ];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  // 仅检查受保护路由
-  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
+  const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
   if (!isProtected) return NextResponse.next();
 
-  // 检查 auth_token cookie（登录时由 useAuth 写入）
   const token = request.cookies.get("auth_token")?.value;
   if (!token) {
-    const loginUrl = new URL("/", request.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

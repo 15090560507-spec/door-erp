@@ -22,6 +22,7 @@ import MetricStrip from "@/components/workspace/MetricStrip";
 import StatusChip from "@/components/workspace/StatusChip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
+import { apiErrorMessage } from "@/lib/api";
 import {
   createDoorBomVersion,
   generateDoorBom,
@@ -39,13 +40,6 @@ const emptySummary: BomWorkbenchSummary = {
   total: 0, pending_generation: 0, pending_verification: 0, missing_data: 0,
   shortage: 0, published: 0, changed: 0,
 };
-
-function apiMessage(error: unknown, fallback: string) {
-  if (typeof error === "object" && error && "userMessage" in error) {
-    return String((error as { userMessage?: string }).userMessage || fallback);
-  }
-  return error instanceof Error ? error.message : fallback;
-}
 
 function asDraftItem(row: BomRow): BomDraftItem {
   return {
@@ -86,7 +80,7 @@ export default function BomWorkbench() {
         ? current : result.items[0]?.door_unit_id || null);
       setError("");
     } catch (requestError) {
-      setError(apiMessage(requestError, "整单 BOM 列表加载失败"));
+      setError(apiErrorMessage(requestError, "整单 BOM 列表加载失败"));
     } finally {
       setLoadingList(false);
     }
@@ -100,7 +94,7 @@ export default function BomWorkbench() {
       setError("");
     } catch (requestError) {
       setDetail(null);
-      setError(apiMessage(requestError, "BOM 详情加载失败"));
+      setError(apiErrorMessage(requestError, "BOM 详情加载失败"));
     } finally {
       setLoadingDetail(false);
     }
@@ -150,7 +144,7 @@ export default function BomWorkbench() {
       setNotice({ title: "操作完成", message: result.message || fallback });
       await loadList();
     } catch (requestError) {
-      setNotice({ title: "操作未完成", message: apiMessage(requestError, fallback), error: true });
+      setNotice({ title: "操作未完成", message: apiErrorMessage(requestError, fallback), error: true });
     } finally {
       setBusy(false);
     }

@@ -6,7 +6,7 @@ import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
   generateCad, generateCadPreview, downloadCadBlob,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
-  resetPassword as apiResetPassword,
+  resetPassword as apiResetPassword, apiErrorMessage,
 } from "@/lib/api";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
@@ -21,7 +21,7 @@ import ProductionReleaseButton from "@/components/production/ProductionReleaseBu
 import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateCompact } from "@/lib/dateTime";
-import { Inbox } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
 const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
@@ -61,7 +61,7 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [cadError, setCadError] = useState<{ title: string; message: string } | null>(null);
+  const [cadError, setCadError] = useState<{ title: string; message: string; retry: () => void } | null>(null);
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -243,11 +243,11 @@ export default function DashboardPage() {
     flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
   };
 
-  const showCadError = (title: string, error: unknown) => {
-    const requestError = error as { userMessage?: string; message?: string };
+  const showCadError = (title: string, error: unknown, retry: () => void) => {
     setCadError({
       title,
-      message: requestError?.userMessage || requestError?.message || "服务器未返回具体错误，请查看后端日志",
+      message: apiErrorMessage(error, "服务器未返回具体错误，请检查后端服务后重试"),
+      retry,
     });
   };
 
@@ -400,7 +400,7 @@ export default function DashboardPage() {
       downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("CAD 生成完成！", "success");
     } catch (error: unknown) {
-      showCadError("CAD 生成失败", error);
+      showCadError("CAD 生成失败", error, () => void handleQuickCad());
     } finally {
       setCadLoading(false);
     }
@@ -420,7 +420,7 @@ export default function DashboardPage() {
       setCadPreviewSvg(svg);
       flash("CAD 预览已生成", "success");
     } catch (error: unknown) {
-      showCadError("CAD 预览生成失败", error);
+      showCadError("CAD 预览生成失败", error, () => void handleGeneratePreview());
     } finally {
       setPreviewLoading(false);
     }
@@ -440,7 +440,7 @@ export default function DashboardPage() {
       downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("基准 CAD 底图已生成", "success");
     } catch (error: unknown) {
-      showCadError("CAD 生成失败", error);
+      showCadError("CAD 生成失败", error, () => void handleGenerateCad());
     } finally {
       setCadLoading(false);
     }
@@ -588,7 +588,10 @@ export default function DashboardPage() {
               {cadError.message}
               </div>
             </div>
-            <div className="ui-dialog__footer"><button type="button" onClick={() => setCadError(null)} className="ui-button ui-button--primary">知道了</button></div>
+            <div className="ui-dialog__footer">
+              <button type="button" onClick={() => setCadError(null)} className="ui-button ui-button--secondary">关闭</button>
+              <button type="button" onClick={() => { const retry = cadError.retry; setCadError(null); retry(); }} className="ui-button ui-button--primary"><RefreshCw size={15} />重新尝试</button>
+            </div>
           </div>
         </div>
       )}

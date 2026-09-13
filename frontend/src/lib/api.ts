@@ -41,14 +41,18 @@ api.interceptors.response.use(
       }
     }
 
-    const detail = error.response?.data?.detail;
+    const responseData = error.response?.data;
+    const detail = responseData?.detail;
     if (typeof detail === "string" && detail.trim()) {
-      error.userMessage = detail;
+      error.userMessage = cleanupApiErrorText(detail);
     } else if (Array.isArray(detail) && detail.length > 0) {
-      error.userMessage = detail.map((item) => item?.msg || JSON.stringify(item)).join("; ");
+      error.userMessage = extractApiErrorMessage(detail);
     } else if (detail && typeof detail === "object") {
       const detailMessage = extractApiErrorMessage(detail);
       if (detailMessage) error.userMessage = detailMessage;
+    } else if (responseData) {
+      const responseMessage = extractApiErrorMessage(responseData);
+      if (responseMessage) error.userMessage = responseMessage;
     } else if (error.code === "ECONNABORTED") {
       error.userMessage = "请求超时，请检查网络后重试";
     } else if (!error.response) {
@@ -67,12 +71,56 @@ function extractApiErrorMessage(value: unknown): string {
   }
   if (typeof value !== "object") return "";
   const record = value as Record<string, unknown>;
-  for (const key of ["message", "errorMessage", "error", "reason"]) {
+  const validationMessage = formatValidationIssue(record);
+  if (validationMessage) return validationMessage;
+  for (const key of ["message", "errorMessage", "error", "reason", "msg"]) {
     const item = record[key];
     if (typeof item === "string" && item.trim()) return cleanupApiErrorText(item);
   }
   if (record.detail) return extractApiErrorMessage(record.detail);
   return "";
+}
+
+const API_FIELD_LABELS: Record<string, string> = {
+  outer_landscape_left_width: "左景宽度",
+  outer_landscape_right_width: "右景宽度",
+  outer_landscape_top_height: "上景高度",
+  width: "宽度",
+  height: "高度",
+  quantity: "数量",
+  unit_price: "单价",
+};
+
+function formatValidationIssue(record: Record<string, unknown>): string {
+  if (typeof record.msg !== "string" || !record.msg.trim()) return "";
+  const path = Array.isArray(record.loc)
+    ? record.loc.filter((part) => !["body", "query", "path"].includes(String(part)))
+    : [];
+  const rawField = path.length ? String(path[path.length - 1]) : "";
+  const field = API_FIELD_LABELS[rawField] || rawField.replaceAll("_", " ");
+  const type = typeof record.type === "string" ? record.type : "";
+  const message = type === "int_from_float"
+    ? "请输入整数，当前值含小数部分"
+    : cleanupApiErrorText(record.msg);
+  const input = record.input;
+  const inputText = input === undefined || input === null || typeof input === "object"
+    ? ""
+    : `（当前值：${String(input)}）`;
+  return `${field ? `${field}：` : ""}${message}${inputText}`;
+}
+
+export function apiErrorMessage(error: unknown, fallback = "操作失败"): string {
+  if (!error) return fallback;
+  if (typeof error === "string") return cleanupApiErrorText(error) || fallback;
+  if (typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.userMessage === "string" && record.userMessage.trim()) {
+      return cleanupApiErrorText(record.userMessage);
+    }
+    const responseMessage = extractApiErrorMessage((record.response as { data?: unknown } | undefined)?.data);
+    if (responseMessage) return responseMessage;
+  }
+  return error instanceof Error && error.message ? cleanupApiErrorText(error.message) : fallback;
 }
 
 function cleanupApiErrorText(text: string): string {
