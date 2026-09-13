@@ -592,6 +592,18 @@ textarea:focus-visible {
 .workspace-success { display: flex; width: 100%; min-height: 44px; align-items: center; padding: 10px 14px; border: 1px solid #CFE5D4; border-radius: 7px; background: #F4FAF5; color: #287A3C; font-size: 13px; text-align: left; }
 .workspace-success:hover { border-color: #B5D9BE; background: #EDF7EF; }
 
+.production-stage-strip { display: grid; min-width: 0; grid-template-columns: 150px minmax(0, 1fr); overflow: hidden; border: 1px solid #E1E1E7; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 24px rgba(21, 21, 26, 0.03); }
+.production-stage-strip__title { display: flex; flex-direction: column; justify-content: center; padding: 14px 16px; border-right: 1px solid #E8E8ED; }
+.production-stage-strip__title span { color: #29292E; font-size: 13px; font-weight: 680; }
+.production-stage-strip__title small { margin-top: 3px; color: #8A8A93; font-size: 11px; }
+.production-stage-strip__items { display: grid; min-width: 720px; grid-template-columns: repeat(9, minmax(80px, 1fr)); }
+.production-stage-strip__item { display: flex; min-width: 0; min-height: 64px; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 0; border-right: 1px solid #EEEEF2; background: #FFFFFF; color: #6F6F78; font-size: 11px; text-align: left; transition: background-color 140ms ease, color 140ms ease; }
+.production-stage-strip__item:last-child { border-right: 0; }
+.production-stage-strip__item:hover { background: #F8F9FB; color: #29292E; }
+.production-stage-strip__item.is-active { background: #EEF4FC; color: #1769D2; }
+.production-stage-strip__item strong { color: #29292E; font-size: 18px; font-weight: 690; font-variant-numeric: tabular-nums; }
+.production-stage-strip__item.is-active strong { color: #1769D2; }
+
 /* Management workspace primitives */
 .workspace-header {
   display: flex;
@@ -1073,6 +1085,10 @@ textarea:focus-visible {
 }
 
 @media (max-width: 760px) {
+  .production-stage-strip { display: block; overflow: hidden; }
+  .production-stage-strip__title { width: auto; border-right: 0; border-bottom: 1px solid #E8E8ED; }
+  .production-stage-strip__items { min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .production-stage-strip__item:nth-child(3n) { border-right: 0; }
   .workspace-header { min-height: auto; align-items: flex-start; flex-direction: column; gap: 14px; }
   .workspace-header__actions { width: 100%; justify-content: flex-start; }
   .workspace-header__actions .ui-button { flex: 1 1 auto; }

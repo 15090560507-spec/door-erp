@@ -1,7 +1,11 @@
 "use client";
 
+import { AlertTriangle, Boxes, ClipboardCheck, Factory, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
+import MetricStrip from "@/components/workspace/MetricStrip";
+import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
+import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
 import {
@@ -36,6 +40,7 @@ import type {
 } from "@/lib/fulfillmentTypes";
 
 const STATUS_CARDS = ["待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中", "待成品质检", "返工中", "待成品入库", "已入库待发货"];
+const ACTIVE_PRODUCTION_STATUSES = ["待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中", "返工中"];
 export default function ProductionPage() {
   const [dashboard, setDashboard] = useState<FulfillmentDashboard | null>(null);
   const [pending, setPending] = useState<PendingFulfillmentTask[]>([]);
@@ -93,18 +98,31 @@ export default function ProductionPage() {
     if (doorId || selectedDoor) setSelectedDoor(await getDoorUnit(doorId || selectedDoor!.id));
   };
 
+  const activeProduction = ACTIVE_PRODUCTION_STATUSES.reduce((total, item) => total + (dashboard?.status_counts?.[item] || 0), 0);
+
   return <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E]">
     <main className="workspace-page workspace-page--wide space-y-4">
-      <header className="flex flex-wrap items-end gap-4">
-        <div className="flex-1"><h1 className="text-xl font-semibold">门樘履约中心</h1><p className="mt-1 text-sm text-[#636366]">每樘门独立编号、独立技术版本和执行记录；整单负责人协调，执行人提交实际完成。</p></div>
-        <button className="h-9 border border-[#C7C7CC] bg-white px-4 text-sm" onClick={() => void refresh()}>刷新</button>
-      </header>
+      <WorkspaceHeader
+        title="门樘履约中心"
+        description="一张订单统一协调，每樘门按独立生产编号、技术版本、工作包、质检和入库记录推进。"
+        context={<><Factory size={14} />经营管理 / 生产履约</>}
+        actions={<button type="button" className="ui-button ui-button--secondary" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw size={15} className={loading ? "animate-spin" : ""} />刷新数据</button>}
+      />
 
-      <section className="grid grid-cols-2 gap-px border border-[#D1D1D6] bg-[#D1D1D6] md:grid-cols-4 xl:grid-cols-12">
-        <Metric label="待下达" value={dashboard?.pending_release || 0} accent />
-        {STATUS_CARDS.map((item) => <Metric key={item} label={item} value={dashboard?.status_counts?.[item] || 0} />)}
-        <Metric label="未解决异常" value={dashboard?.open_exceptions || 0} danger />
-        <Metric label="七日交期风险" value={dashboard?.due_risks || 0} warning />
+      <MetricStrip items={[
+        { key: "release", label: "待下达订单", value: dashboard?.pending_release || 0, detail: "终审通过、等待生成生产单", icon: <ClipboardCheck size={16} />, tone: (dashboard?.pending_release || 0) ? "amber" : "neutral" },
+        { key: "active", label: "生产中门樘", value: activeProduction, detail: "从技术准备至总装返工", icon: <Factory size={16} />, tone: "blue" },
+        { key: "quality", label: "待成品质检", value: dashboard?.status_counts?.["待成品质检"] || 0, detail: "工作包完成、等待终检", icon: <ShieldCheck size={16} />, tone: "violet" },
+        { key: "inbound", label: "待成品入库", value: dashboard?.status_counts?.["待成品入库"] || 0, detail: "质检合格、等待入成品仓", icon: <Boxes size={16} />, tone: "green" },
+        { key: "exceptions", label: "未解决异常", value: dashboard?.open_exceptions || 0, detail: "需要负责人处理", icon: <AlertTriangle size={16} />, tone: (dashboard?.open_exceptions || 0) ? "red" : "neutral" },
+        { key: "risk", label: "七日交期风险", value: dashboard?.due_risks || 0, detail: "交期临近且尚未完成", icon: <AlertTriangle size={16} />, tone: (dashboard?.due_risks || 0) ? "amber" : "neutral" },
+      ]} ariaLabel="生产履约关键指标" />
+
+      <section className="production-stage-strip" aria-label="门樘生产阶段">
+        <div className="production-stage-strip__title"><span>生产阶段</span><small>点击阶段筛选订单</small></div>
+        <div className="production-stage-strip__items">
+          {STATUS_CARDS.map((item) => <button key={item} type="button" className={`production-stage-strip__item${status === item ? " is-active" : ""}`} onClick={() => setStatus(status === item ? "" : item)}><span>{item}</span><strong>{dashboard?.status_counts?.[item] || 0}</strong></button>)}
+        </div>
       </section>
 
       {pending.length > 0 && <PendingPanel tasks={pending} busy={busy} onRelease={async (task, form) => {
@@ -136,11 +154,6 @@ export default function ProductionPage() {
   </div>;
 }
 
-function Metric({ label, value, accent, danger, warning }: { label: string; value: number; accent?: boolean; danger?: boolean; warning?: boolean }) {
-  const tone = accent ? "text-[#007AFF]" : danger ? "text-[#C62828]" : warning ? "text-[#A05A00]" : "text-[#1C1C1E]";
-  return <div className="bg-white px-3 py-3"><div className="truncate text-xs text-[#636366]">{label}</div><div className={`mt-1 text-xl font-semibold ${tone}`}>{value}</div></div>;
-}
-
 function StageNotice({ title, message }: { title: string; message: string }) {
   return <section className="border border-[#D1D1D6] bg-white p-6"><h2 className="font-semibold">{title}</h2><p className="mt-2 text-sm text-[#636366]">{message}</p></section>;
 }
@@ -159,7 +172,7 @@ function PendingPanel({ tasks, busy, onRelease }: { tasks: PendingFulfillmentTas
 function DoorUnitWorkbench({ door, busy, notify, onBusy, onChanged }: { door: DoorUnitDetail; busy: boolean; notify: (message: string, error?: boolean) => void; onBusy: (value: boolean) => void; onChanged: (door: DoorUnitDetail) => Promise<void> }) {
   const [tab, setTab] = useState<"technical" | "work" | "supply" | "quality" | "delivery" | "exceptions" | "timeline">("technical");
   const packageData = door.technical_package;
-  return <div><div className="flex flex-wrap items-center gap-3 border-b border-[#E5E5EA] px-4 py-3"><div className="mr-auto"><div className="font-semibold">{door.production_no}</div><div className="mt-1 text-xs text-[#636366]">{door.product_name} · {door.specification} · {door.opening || "未填写开向"} · V{packageData?.version || 0}</div></div><Status text={door.status} /><span className="text-sm font-semibold text-[#007AFF]">{door.progress}%</span></div><div className="flex overflow-x-auto border-b border-[#E5E5EA] px-4">{([['technical','生产技术包'],['work','执行工作包'],['supply','供应与仓储'],['quality','质检与成品'],['delivery','财务与发货'],['exceptions',`异常 ${door.exceptions.filter((item) => item.status !== '已解决').length}`],['timeline','时间线']] as const).map(([key,label]) => <button key={key} onClick={() => setTab(key)} className={`shrink-0 border-b-2 px-4 py-3 text-sm ${tab === key ? "border-[#007AFF] text-[#007AFF]" : "border-transparent text-[#636366]"}`}>{label}</button>)}</div>
+  return <div><div className="flex flex-wrap items-center gap-3 border-b border-[#E5E5EA] px-4 py-3"><div className="mr-auto"><div className="font-semibold">{door.production_no}</div><div className="mt-1 text-xs text-[#636366]">{door.product_name} · {door.specification} · {door.opening || "未填写开向"} · V{packageData?.version || 0}</div></div><Status text={door.status} /><span className="text-sm font-semibold text-[#007AFF]">{door.progress}%</span></div><div className="border-b border-[#E5E5EA] px-4 py-2"><WorkspaceTabs items={[{ key: 'technical', label: '生产技术包' }, { key: 'work', label: '执行工作包' }, { key: 'supply', label: '供应与仓储' }, { key: 'quality', label: '质检与成品' }, { key: 'delivery', label: '财务与发货' }, { key: 'exceptions', label: `异常 ${door.exceptions.filter((item) => item.status !== '已解决').length}` }, { key: 'timeline', label: '时间线' }] as const} value={tab} onChange={setTab} ariaLabel="门樘履约详情" /></div>
     <div className="p-4">{tab === "technical" && <TechnicalEditor key={`${door.id}-${packageData?.id}-${packageData?.status}`} door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "work" && <WorkBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "supply" && <SupplyBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "quality" && <QualityBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "delivery" && <DeliveryBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "exceptions" && <ExceptionBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "timeline" && <Timeline door={door} />}</div>
   </div>;
 }
