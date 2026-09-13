@@ -33,10 +33,34 @@ export default function SupplierCatalog({ notify }: { notify: (message: string, 
     finally { setLoading(false); }
   }, [notify, q]);
 
-  useEffect(() => { void loadSuppliers(); getInventoryMaterials().then(setMaterials).catch(() => undefined); }, [loadSuppliers]);
   useEffect(() => {
-    if (!selectedId) { setRelations([]); return; }
-    getInventorySupplierItems({ supplier_id: selectedId }).then(setRelations).catch((error) => notify(apiMessage(error, "供货商品加载失败"), true));
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void loadSuppliers();
+      getInventoryMaterials()
+        .then((items) => { if (!cancelled) setMaterials(items); })
+        .catch(() => undefined);
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [loadSuppliers]);
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!selectedId) {
+        setRelations([]);
+        return;
+      }
+      getInventorySupplierItems({ supplier_id: selectedId })
+        .then((items) => { if (!cancelled) setRelations(items); })
+        .catch((error) => { if (!cancelled) notify(apiMessage(error, "供货商品加载失败"), true); });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [notify, selectedId]);
 
   const selected = suppliers.find((item) => item.id === selectedId) || null;

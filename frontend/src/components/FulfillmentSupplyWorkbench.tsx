@@ -17,7 +17,10 @@ export default function FulfillmentSupplyWorkbench({ scope, notify }: { scope: S
     catch (error) { notify(apiMessage(error, `${scope === "purchase" ? "采购" : "仓库"}工作台加载失败`), true); }
     finally { setLoading(false); }
   }, [notify, q, scope]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   const update = async (item: FulfillmentWorkbenchSupply, status: string) => {
     setBusyId(item.id);

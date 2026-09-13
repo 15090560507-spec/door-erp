@@ -58,7 +58,9 @@ export default function LubanRulerModal({ open, width, height, kind, onKindChang
   const [activeDimension, setActiveDimension] = useState<DimensionKey>("width");
 
   useEffect(() => {
-    if (open) setActiveDimension("width");
+    if (!open) return;
+    const timer = window.setTimeout(() => setActiveDimension("width"), 0);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   const version = lubanRulerVersion(kind);

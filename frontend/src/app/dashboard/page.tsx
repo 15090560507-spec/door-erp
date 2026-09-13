@@ -42,7 +42,7 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
 }
 
 export default function DashboardPage() {
-  const module = useModule();
+  const activeModule = useModule();
   const { user, setModule } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
@@ -74,13 +74,11 @@ export default function DashboardPage() {
   const [overview, setOverview] = useState<TaskOverviewData | null>(null);
   const PAGE_SIZE = 20;
 
-  // 用 ref 保存 module，避免 fetchTasks 因 module 变化而重建导致双重请求
-  const moduleRef = useRef(module);
-  moduleRef.current = module;
+  // 用 ref 保存当前模块，保持 fetchTasks 引用稳定。
+  const moduleRef = useRef(activeModule);
 
   // 搜索防抖：输入 300ms 后生效
   const searchQRef = useRef(searchQ);
-  searchQRef.current = searchQ;
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // setTimeout 清理：防止组件卸载后更新状态
@@ -95,11 +93,19 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    moduleRef.current = activeModule;
+  }, [activeModule]);
+
+  useEffect(() => {
+    searchQRef.current = searchQ;
+  }, [searchQ]);
+
   const fetchTasks = useCallback(async (date?: string, status?: string, p: number = 0) => {
     setLoading(true);
     const m = moduleRef.current;
     try {
-      let params: { status?: string; date?: string; q?: string; limit: number; offset: number } = {
+      const params: { status?: string; date?: string; q?: string; limit: number; offset: number } = {
         limit: PAGE_SIZE,
         offset: p * PAGE_SIZE,
       };
@@ -152,35 +158,46 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    setPage(0);
-    fetchTasks(filterDate, filterStatus, 0);
-    fetchStatusCounts(filterDate);
-  }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, searchQ, module]); // module/搜索词变化时重新触发
+    const timer = window.setTimeout(() => {
+      setPage(0);
+      void fetchTasks(filterDate, filterStatus, 0);
+      void fetchStatusCounts(filterDate);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchTasks, fetchStatusCounts, filterDate, filterStatus, searchQ, activeModule]);
 
   useEffect(() => {
-    if (module === "任务总览" || module === "图纸绘制") fetchOverview();
-  }, [fetchOverview, module]);
+    if (activeModule !== "任务总览" && activeModule !== "图纸绘制") return;
+    const timer = window.setTimeout(() => void fetchOverview(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchOverview, activeModule]);
 
   // 切换模块时自动返回任务列表（保留表单数据以便返回继续编辑）
   useEffect(() => {
-    setActiveTaskId(null);
-    setActiveTask(null);
-    setTaskLoading(false);
-    // 非录入模块切换时才清理（录入模块切换任务不清理表单）
-    setRefText("");
-    setRefImages([]);
-    setUploadImgB64(null);
-    setReviewFeedback("");
-    setCadBlob(null);
-    setCadPreviewSvg(null);
-    setMessage(null);
-  }, [module]);
+    const timer = window.setTimeout(() => {
+      setActiveTaskId(null);
+      setActiveTask(null);
+      setTaskLoading(false);
+      setRefText("");
+      setRefImages([]);
+      setUploadImgB64(null);
+      setReviewFeedback("");
+      setCadBlob(null);
+      setCadPreviewSvg(null);
+      setMessage(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeModule]);
 
   useEffect(() => {
-    if (activeTaskId) {
+    if (!activeTaskId) return;
+    let cancelled = false;
+    const taskId = activeTaskId;
+    const timer = window.setTimeout(() => {
       setActiveTask(null);
       setTaskLoading(true);
-      getTask(activeTaskId).then((t) => {
+      getTask(taskId).then((t) => {
+        if (cancelled) return;
         setActiveTask(t);
         if (t.params) {
           setFormData({
@@ -198,9 +215,13 @@ export default function DashboardPage() {
         setCadBlob(null);
         setCadPreviewSvg(null);
       }).finally(() => {
-        setTaskLoading(false);
+        if (!cancelled) setTaskLoading(false);
       });
-    }
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [activeTaskId]);
 
   const backToList = () => {
@@ -459,8 +480,8 @@ export default function DashboardPage() {
 
   const handleApprove = async () => {
     if (!activeTaskId) return;
-    const nextStatus = module === "图纸初审" ? "待终审" : "已通过";
-    const msg = module === "图纸初审" ? "初审通过，已转终审" : "终审通过，可下发生产";
+    const nextStatus = activeModule === "图纸初审" ? "待终审" : "已通过";
+    const msg = activeModule === "图纸初审" ? "初审通过，已转终审" : "终审通过，可下发生产";
     try {
       await updateTask(activeTaskId, { status: nextStatus, review_feedback: msg });
       flash(msg, "success");
@@ -479,8 +500,9 @@ export default function DashboardPage() {
       fetchTasks(filterDate, filterStatus, page);
       fetchStatusCounts(filterDate);
       fetchOverview();
-    } catch (error: any) {
-      flash(error?.userMessage || "删除失败", "error");
+    } catch (error: unknown) {
+      const requestError = error as { userMessage?: string };
+      flash(requestError.userMessage || "删除失败", "error");
     }
   };
 
@@ -620,7 +642,7 @@ export default function DashboardPage() {
             <h4 className="text-lg font-semibold text-[#1C1C1E] m-0">
               正在处理：{activeTask.customer} - {activeTask.project} <StatusBadge status={activeTask.status} />
             </h4>
-            {module !== "图纸绘制" && (
+            {activeModule !== "图纸绘制" && (
               <button
                 onClick={handleSaveEdit}
                 className="ui-button ui-button--primary ml-auto"
@@ -631,7 +653,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 客户沟通记录与参考图：任务进入绘制后也允许继续补充/删除 */}
-          <details className="mb-4 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden" open={module === "图纸绘制"}>
+          <details className="mb-4 bg-white rounded-xl border border-black/5 shadow-sm overflow-hidden" open={activeModule === "图纸绘制"}>
             <summary className="px-5 py-3 font-medium text-[#007AFF] cursor-pointer select-none">
               沟通记录与参考图（可修改）
             </summary>
@@ -658,7 +680,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <p className="text-[12px] text-[#8E8E93]">
-                修改后点击{module === "图纸绘制" ? "表单下方" : "上方"}“保存修改”。
+                修改后点击{activeModule === "图纸绘制" ? "表单下方" : "上方"}“保存修改”。
               </p>
             </div>
           </details>
@@ -673,7 +695,7 @@ export default function DashboardPage() {
           {/* 表单 */}
           <DoorForm data={formData} onChange={setFormData} />
 
-          {module === "图纸绘制" && (
+          {activeModule === "图纸绘制" && (
             <div className="ui-action-bar mt-5">
               <button
                 type="button"
@@ -688,7 +710,7 @@ export default function DashboardPage() {
           {/* 模块特有操作 */}
           <div className="mt-6 space-y-4">
             {/* 绘制模块 */}
-            {module === "图纸绘制" && (
+            {activeModule === "图纸绘制" && (
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
                   <button
@@ -735,7 +757,7 @@ export default function DashboardPage() {
             )}
 
             {/* 初审模块 */}
-            {module === "图纸初审" && (
+            {activeModule === "图纸初审" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-3">图纸全屏预览</h4>
@@ -792,7 +814,7 @@ export default function DashboardPage() {
             )}
 
             {/* 终审模块 */}
-            {module === "图纸终审" && (
+            {activeModule === "图纸终审" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-3">图纸全屏预览</h4>
@@ -865,7 +887,7 @@ export default function DashboardPage() {
       {/* ---------- 任务列表模式 ---------- */}
       {!activeTaskId && (
         <div>
-          {module === "任务总览" && overview && (
+          {activeModule === "任务总览" && overview && (
             <TaskOverviewDashboard
               data={overview}
               activeStatus={filterStatus}
@@ -879,10 +901,10 @@ export default function DashboardPage() {
               }}
             />
           )}
-          {module === "任务总览" && <AdminSettingsPanel />}
+          {activeModule === "任务总览" && <AdminSettingsPanel />}
 
           {/* 录入模块 */}
-          {module === "图纸信息录入" && (
+          {activeModule === "图纸信息录入" && (
             <div>
               <div className="mb-4 flex items-center gap-3">
                 <button
@@ -964,12 +986,12 @@ export default function DashboardPage() {
           )}
 
           {/* 其他模块任务列表 */}
-          {module !== "图纸信息录入" && (
+          {activeModule !== "图纸信息录入" && (
             <div>
               {/* 统计概览卡片 */}
-              {module !== "任务总览" && !filterDate && !filterStatus && (
+              {activeModule !== "任务总览" && !filterDate && !filterStatus && (
                 <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {module === "图纸绘制" && (
+                  {activeModule === "图纸绘制" && (
                     <>
                       <StatCard label="待绘制" count={statusCounts["待绘制"] ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                       <StatCard label="待修改" count={statusCounts["待修改"] ?? 0} color="bg-[#FFEBEB] text-[#CC2F2A]" />
@@ -987,13 +1009,13 @@ export default function DashboardPage() {
                       </button>
                     </>
                   )}
-                  {module === "图纸初审" && (
+                  {activeModule === "图纸初审" && (
                     <>
                       <StatCard label="待初审" count={statusCounts["待初审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="今日提交" count={overview?.today_created ?? 0} color="bg-[#E8E8ED] text-[#48484A]" />
                     </>
                   )}
-                  {module === "图纸终审" && (
+                  {activeModule === "图纸终审" && (
                     <>
                       <StatCard label="待终审" count={statusCounts["待终审"] ?? 0} color="bg-[#FFF3E0] text-[#CC7A00]" />
                       <StatCard label="已通过" count={statusCounts["已通过"] ?? 0} color="bg-[#E5F9E5] text-[#248A3D]" />
@@ -1045,10 +1067,10 @@ export default function DashboardPage() {
 
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-lg font-semibold text-[#1C1C1E]">
-                  {module === "任务总览" && "全部任务"}
-                  {module === "图纸绘制" && "待绘制 / 待修改任务"}
-                  {module === "图纸初审" && "待初审任务"}
-                  {module === "图纸终审" && "待终审 / 已通过任务"}
+                  {activeModule === "任务总览" && "全部任务"}
+                  {activeModule === "图纸绘制" && "待绘制 / 待修改任务"}
+                  {activeModule === "图纸初审" && "待初审任务"}
+                  {activeModule === "图纸终审" && "待终审 / 已通过任务"}
                   {(filterDate || filterStatus) && " (已筛选)"}
                   {total > 0 && <span className="ml-2 text-sm font-normal text-[#8E8E93]">共 {total} 条</span>}
                 </h4>
@@ -1090,8 +1112,8 @@ export default function DashboardPage() {
                       onClick={(task) => {
                         setActiveTaskId(task.id);
                       }}
-                      onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(module) ? handleDeleteTask : undefined}
-                      onCopy={module === "图纸绘制" ? handleCopyTask : undefined}
+                      onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(activeModule) ? handleDeleteTask : undefined}
+                      onCopy={activeModule === "图纸绘制" ? handleCopyTask : undefined}
                       onToggleQuoteStatus={toggleTaskQuoteStatus}
                     />
                   ))}
@@ -1396,7 +1418,9 @@ function AdminSettingsPanel() {
   };
 
   useEffect(() => {
-    if (isSuperAdmin) fetchUsers();
+    if (!isSuperAdmin) return;
+    const timer = window.setTimeout(() => void fetchUsers(), 0);
+    return () => window.clearTimeout(timer);
   }, [isSuperAdmin]);
 
   const handleSave = async () => {

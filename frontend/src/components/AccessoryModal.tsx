@@ -61,11 +61,6 @@ export default function AccessoryModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    load(search).catch(() => setStatus("配件库加载失败"));
-  }, [open, load]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!open) return;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       load(search).catch(() => setStatus("配件库搜索失败"));

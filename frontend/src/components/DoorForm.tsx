@@ -118,7 +118,10 @@ const Combobox = memo(function Combobox({ label, value, options, onChange, requi
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setInputValue(value); }, [value]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setInputValue(value), 0);
+    return () => window.clearTimeout(timer);
+  }, [value]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

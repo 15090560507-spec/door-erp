@@ -31,7 +31,10 @@ export default function MaterialCatalog({ notify }: { notify: (message: string, 
     finally { setLoading(false); }
   }, [includeInactive, notify, q]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
   const categories = useMemo(() => Array.from(new Set(materials.map((item) => item.category).filter(Boolean))).sort(), [materials]);
 
   return <section className="border border-[#D1D1D6] bg-white">
