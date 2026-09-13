@@ -40,7 +40,10 @@ export default function InventoryPage() {
     }
   }, []);
 
-  useEffect(() => { void loadSummary(); }, [loadSummary]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadSummary(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadSummary]);
   const notify = useCallback((message: string, error = false) => {
     setNotice({ message, error });
     if (!error) void loadSummary();

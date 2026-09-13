@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   deleteLayeredRecord,
   downloadFileFromUrl,
@@ -56,11 +56,14 @@ export default function LayeredRenderPanel() {
     setAssets(assetRes || []);
   }, []);
 
-  useEffect(() => {
-    if (!open || loaded) return;
-    setLoaded(true);
-    loadData().catch((error) => notify(apiMessage(error, "分层效果图数据加载失败"), true));
-  }, [open, loaded, loadData, notify]);
+  const toggleOpen = () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && !loaded) {
+      setLoaded(true);
+      void loadData().catch((error) => notify(apiMessage(error, "分层效果图数据加载失败"), true));
+    }
+  };
 
   const generate = async () => {
     if (!taskId) { notify("请先选择一个图纸任务", true); return; }
@@ -122,7 +125,7 @@ export default function LayeredRenderPanel() {
 
   return (
     <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="text-left">
+      <button type="button" onClick={toggleOpen} className="text-left">
         <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{open ? "▼" : "▶"} 分层效果图（PSD）</h2>
         <p className="mt-1 text-[12px] text-[#8E8E93]">基于图纸任务的 CAD 结构生成正反面分层 PSD 与 JPG；可选接入上方模型配置做 AI 材质处理（CAD 管结构，AI 只上色/材质）。</p>
       </button>

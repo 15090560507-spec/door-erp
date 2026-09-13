@@ -51,7 +51,9 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
   }, []);
 
   useEffect(() => {
-    if (open) load();
+    if (!open) return;
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [open, load]);
 
   async function handleLoad(id: number) {
@@ -60,8 +62,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
       const quote = await getQuote(id);
       onClose();
       onLoad(quote);
-    } catch (err: any) {
-      setStatus(err?.userMessage || err?.message || "载入失败");
+    } catch (error: unknown) {
+      setStatus(errorMessage(error, "载入失败"));
     }
   }
 
@@ -71,8 +73,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
       await deleteQuote(id);
       setStatus(`报价单 #${id} 已删除`);
       await load();
-    } catch (err: any) {
-      setStatus(err?.userMessage || err?.message || "删除失败");
+    } catch (error: unknown) {
+      setStatus(errorMessage(error, "删除失败"));
     }
   }
 
@@ -87,8 +89,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
       setStatus(`已删除 ${selectedIds.length} 条报价单`);
       setSelectedIds([]);
       await load();
-    } catch (err: any) {
-      setStatus(err?.userMessage || err?.message || "批量删除失败");
+    } catch (error: unknown) {
+      setStatus(errorMessage(error, "批量删除失败"));
     }
   }
 
@@ -222,4 +224,8 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
       </div>
     </div>
   );
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return (error as { userMessage?: string; message?: string })?.userMessage || (error as { message?: string })?.message || fallback;
 }

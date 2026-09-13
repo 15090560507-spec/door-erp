@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 type ViewportDialogProps = {
@@ -15,6 +15,8 @@ type ViewportDialogProps = {
   onClose: () => void;
 };
 
+const subscribeClient = () => () => undefined;
+
 export default function ViewportDialog({
   open,
   title,
@@ -25,11 +27,9 @@ export default function ViewportDialog({
   closeOnBackdrop = true,
   onClose,
 }: ViewportDialogProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeClient, () => true, () => false);
   const titleId = useId();
   const descriptionId = useId();
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
