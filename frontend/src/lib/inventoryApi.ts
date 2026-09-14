@@ -9,6 +9,9 @@ import type {
   InventoryWarehouse,
   InventorySupplier,
   InventorySupplierItem,
+  MasterDataImportBatch,
+  MasterDataImportEntity,
+  MasterDataImportPreview,
   MaterialRequirement,
   MaterialRequirementSummary,
   MaterialPayload,
@@ -22,6 +25,34 @@ import type {
   SupplierItemPayload,
   SupplierPayload,
 } from "./inventoryTypes";
+
+export async function previewMasterDataImport(entityType: MasterDataImportEntity, file: File) {
+  const form = new FormData();
+  form.append("entity_type", entityType);
+  form.append("file", file);
+  const { data } = await api.post<MasterDataImportPreview>("/inventory/master-data/import/preview", form);
+  return data;
+}
+
+export async function validateMasterDataImport(id: number, mapping: Record<string, string>, duplicateStrategy: "skip" | "update") {
+  const { data } = await api.post<MasterDataImportPreview>(`/inventory/master-data/import/${id}/validate`, { mapping, duplicate_strategy: duplicateStrategy });
+  return data;
+}
+
+export async function executeMasterDataImport(id: number, mapping: Record<string, string>, duplicateStrategy: "skip" | "update") {
+  const { data } = await api.post<{ batch: MasterDataImportBatch; message: string }>(`/inventory/master-data/import/${id}/execute`, { mapping, duplicate_strategy: duplicateStrategy });
+  return data;
+}
+
+export async function rollbackMasterDataImport(id: number) {
+  const { data } = await api.post<{ batch: MasterDataImportBatch; message: string }>(`/inventory/master-data/import/${id}/rollback`);
+  return data;
+}
+
+export async function downloadMasterDataImportTemplate(entityType: MasterDataImportEntity) {
+  const { data } = await api.get<Blob>("/inventory/master-data/import/template", { params: { entity_type: entityType }, responseType: "blob" });
+  return data;
+}
 
 export async function getInventoryMaterials(params?: {
   q?: string;

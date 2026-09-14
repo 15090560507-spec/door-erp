@@ -134,6 +134,33 @@ export interface InventorySupplier {
 
 export type SupplierPayload = Omit<InventorySupplier, "id" | "item_count" | "is_active"> & { is_active?: boolean };
 
+export type MasterDataImportEntity = "materials" | "suppliers" | "supplier_items";
+
+export interface MasterDataImportBatch {
+  id: number;
+  batch_no: string;
+  entity_type: MasterDataImportEntity;
+  file_name: string;
+  status: string;
+  duplicate_strategy: "skip" | "update";
+  total_rows: number;
+  valid_rows: number;
+  imported_rows: number;
+  updated_rows: number;
+  skipped_rows: number;
+  error_rows: number;
+  errors: Array<{ row_number?: number; target_key?: string; message?: string }>;
+  created_at: string;
+}
+
+export interface MasterDataImportPreview {
+  batch: MasterDataImportBatch;
+  fields: Array<{ key: string; label: string; required: boolean }>;
+  headers: string[];
+  mapping: Record<string, string>;
+  rows: Array<{ row_number: number; values: Record<string, unknown>; errors: string[]; warnings: string[] }>;
+}
+
 export interface InventorySupplierItem {
   id: number;
   supplier_id: number;

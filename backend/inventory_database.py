@@ -538,6 +538,42 @@ class InventoryDatabase:
                     FOREIGN KEY(supplier_item_id) REFERENCES inventory_supplier_items(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS master_data_import_batches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_no TEXT NOT NULL UNIQUE,
+                    entity_type TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT '待执行',
+                    headers_json TEXT NOT NULL DEFAULT '[]',
+                    rows_json TEXT NOT NULL DEFAULT '[]',
+                    mapping_json TEXT NOT NULL DEFAULT '{}',
+                    duplicate_strategy TEXT NOT NULL DEFAULT 'skip',
+                    total_rows INTEGER NOT NULL DEFAULT 0,
+                    valid_rows INTEGER NOT NULL DEFAULT 0,
+                    imported_rows INTEGER NOT NULL DEFAULT 0,
+                    updated_rows INTEGER NOT NULL DEFAULT 0,
+                    skipped_rows INTEGER NOT NULL DEFAULT 0,
+                    error_rows INTEGER NOT NULL DEFAULT 0,
+                    errors_json TEXT NOT NULL DEFAULT '[]',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    executed_at TEXT,
+                    rolled_back_at TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS master_data_import_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_id INTEGER NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    target_key TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(batch_id, entity_type, target_id),
+                    FOREIGN KEY(batch_id) REFERENCES master_data_import_batches(id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS inventory_bom_rules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     code TEXT NOT NULL UNIQUE,
@@ -598,7 +634,8 @@ class InventoryDatabase:
                     ON inventory_supplier_items(material_id, is_preferred, is_active);
                 CREATE INDEX IF NOT EXISTS ix_inventory_bom_rules_match
                     ON inventory_bom_rules(is_active, product_name, door_type, priority);
-
+                CREATE INDEX IF NOT EXISTS ix_master_data_import_status
+                    ON master_data_import_batches(status, created_at);
                 CREATE TRIGGER IF NOT EXISTS inventory_transactions_no_update
                 BEFORE UPDATE ON inventory_transactions
                 BEGIN

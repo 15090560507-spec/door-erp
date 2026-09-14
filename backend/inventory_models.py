@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -123,6 +123,11 @@ class AdjustmentItem(BaseModel):
 class AdjustmentCreate(BaseModel):
     remark: str = ""
     items: List[AdjustmentItem]
+
+
+class MasterDataImportOptions(BaseModel):
+    mapping: Dict[str, str]
+    duplicate_strategy: Literal["skip", "update"] = "skip"
 
 
 class InventoryTransactionCreate(BaseModel):

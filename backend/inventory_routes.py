@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 from typing import Dict, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 
 from auth import get_current_user
 from inventory_database import InventoryDatabase
@@ -19,6 +21,7 @@ from inventory_models import (
     MaterialReturnCreate,
     MaterialCreate,
     MaterialUpdate,
+    MasterDataImportOptions,
     PurchaseOrderCreate,
     PurchaseReceiptCreate,
     RequirementSupplement,
@@ -34,6 +37,7 @@ from inventory_models import (
     WarehouseCreate,
 )
 from inventory_service import InventoryService
+from master_data_import_service import MasterDataImportService
 from material_flow_service import MaterialFlowService
 from purchasing_service import PurchasingService
 from requirement_service import RequirementService
@@ -45,15 +49,17 @@ inventory_service = InventoryService(inventory_db)
 requirement_service = RequirementService(inventory_db)
 purchasing_service = PurchasingService(inventory_db)
 material_flow_service = MaterialFlowService(inventory_db)
+master_data_import_service = MasterDataImportService(inventory_db)
 
 
 def configure_inventory_database(database: InventoryDatabase) -> None:
-    global inventory_db, inventory_service, requirement_service, purchasing_service, material_flow_service
+    global inventory_db, inventory_service, requirement_service, purchasing_service, material_flow_service, master_data_import_service
     inventory_db = database
     inventory_service = InventoryService(database)
     requirement_service = RequirementService(database)
     purchasing_service = PurchasingService(database)
     material_flow_service = MaterialFlowService(database)
+    master_data_import_service = MasterDataImportService(database)
 
 
 def _error(exc: Exception) -> HTTPException:
@@ -205,6 +211,81 @@ def update_bom_rule(bom_rule_id: int, req: BomRuleUpdate, current_user: Dict = D
             req.model_dump(), str(current_user.get("uid") or ""), bom_rule_id=bom_rule_id,
         )
         return {"rule": rule, "message": "BOM规则已更新"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/master-data/import/template")
+def download_master_data_template(entity_type: str = Query(...), current_user: Dict = Depends(get_current_user)):
+    try:
+        content, file_name = master_data_import_service.template(entity_type)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
+        )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/master-data/import/batches")
+def list_master_data_import_batches(current_user: Dict = Depends(get_current_user)):
+    return {"batches": master_data_import_service.list_batches()}
+
+
+@router.post("/master-data/import/preview", status_code=201)
+async def preview_master_data_import(
+    entity_type: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        content = await file.read()
+        if len(content) > 8 * 1024 * 1024:
+            raise ValueError("导入文件不能超过 8MB")
+        return master_data_import_service.preview(
+            content,
+            file.filename or "import.xlsx",
+            entity_type,
+            str(current_user.get("uid") or ""),
+        )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/master-data/import/{batch_id}/validate")
+def validate_master_data_import(
+    batch_id: int,
+    req: MasterDataImportOptions,
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        return master_data_import_service.validate(batch_id, req.mapping, req.duplicate_strategy)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/master-data/import/{batch_id}/execute")
+def execute_master_data_import(
+    batch_id: int,
+    req: MasterDataImportOptions,
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        return master_data_import_service.execute(
+            batch_id,
+            req.mapping,
+            req.duplicate_strategy,
+            str(current_user.get("uid") or ""),
+        )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/master-data/import/{batch_id}/rollback")
+def rollback_master_data_import(batch_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        return master_data_import_service.rollback(batch_id)
     except Exception as exc:
         raise _error(exc) from exc
 
