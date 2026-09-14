@@ -124,6 +124,25 @@ def main() -> None:
             "/api/inventory/adjustments",
             headers=headers(),
             json={
+                "remark": "待删除草稿",
+                "items": [{
+                    "material_id": material["id"], "warehouse_id": raw["id"],
+                    "location_id": location["id"], "quantity": 1, "unit": "张",
+                }],
+            },
+        )
+        adjustment = response.json().get("adjustment", {})
+        check("盘点先形成草稿", response.status_code == 201 and adjustment.get("status") == "草稿", response.text)
+
+        response = client.delete(f"/api/inventory/adjustments/{adjustment['id']}", headers=headers())
+        check("盘点草稿可删除", response.status_code == 200, response.text)
+        response = client.get(f"/api/inventory/adjustments/{adjustment['id']}", headers=headers())
+        check("已删除盘点草稿不可再访问", response.status_code == 404, response.text)
+
+        response = client.post(
+            "/api/inventory/adjustments",
+            headers=headers(),
+            json={
                 "remark": "期初盘点",
                 "items": [{
                     "material_id": material["id"], "warehouse_id": raw["id"],
@@ -132,10 +151,12 @@ def main() -> None:
             },
         )
         adjustment = response.json().get("adjustment", {})
-        check("盘点先形成草稿", response.status_code == 201 and adjustment.get("status") == "草稿", response.text)
 
         response = client.post(f"/api/inventory/adjustments/{adjustment['id']}/confirm", headers=headers())
         check("确认盘点后入账", response.status_code == 200 and response.json()["adjustment"]["status"] == "已确认", response.text)
+
+        response = client.delete(f"/api/inventory/adjustments/{adjustment['id']}", headers=headers())
+        check("已确认盘点禁止直接删除", response.status_code == 409, response.text)
 
         response = client.post(f"/api/inventory/adjustments/{adjustment['id']}/confirm", headers=headers())
         check("重复确认盘点返回409", response.status_code == 409, response.text)

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import ViewportDialog from "@/components/workspace/ViewportDialog";
 import { confirmInventoryAdjustment, createInventoryAdjustment, getInventoryBalances, getInventoryMaterials, getInventoryWarehouses } from "@/lib/inventoryApi";
 import type { InventoryBalance, InventoryMaterial, InventoryWarehouse } from "@/lib/inventoryTypes";
 
@@ -59,11 +61,35 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
 }
 
 function AdjustmentDialog({ materials, warehouses, onClose, onDone, notify }: { materials: InventoryMaterial[]; warehouses: InventoryWarehouse[]; onClose: () => void; onDone: (message: string) => Promise<void>; notify: Notice }) {
-  const firstWarehouse = warehouses[0];
-  const [materialId, setMaterialId] = useState(""); const [warehouseId, setWarehouseId] = useState(firstWarehouse?.id ? String(firstWarehouse.id) : ""); const selectedWarehouse = warehouses.find((item) => item.id === Number(warehouseId)); const [locationId, setLocationId] = useState(firstWarehouse?.locations?.[0]?.id ? String(firstWarehouse.locations[0].id) : ""); const [quantity, setQuantity] = useState(0); const [remark, setRemark] = useState(""); const [busy, setBusy] = useState(false);
-  const material = materials.find((item) => item.id === Number(materialId));
-  const submit = async () => { if (!material || !warehouseId || !locationId || quantity === 0) { notify("请选择物料、仓库、库位，并填写非零调整数量", true); return; } setBusy(true); try { const draft = await createInventoryAdjustment({ remark, items: [{ material_id: material.id, warehouse_id: Number(warehouseId), location_id: Number(locationId), quantity, unit: material.unit, remark }] }); const result = await confirmInventoryAdjustment(draft.adjustment.id); await onDone(`${result.message}：${result.adjustment.document_no}`); } catch (error) { notify(apiMessage(error, "盘点调整失败"), true); } finally { setBusy(false); } };
-  return <div className="ui-dialog-backdrop" onClick={onClose}><div className="ui-dialog ui-dialog--wide max-w-2xl p-5" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between"><div><h3 className="ui-dialog__title">库存盘点调整</h3><p className="ui-dialog__description">正数增加库存，负数减少库存；确认后形成不可篡改流水。</p></div><button onClick={onClose} aria-label="关闭" className="ui-dialog__close">×</button></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="物料"><select value={materialId} onChange={(event) => setMaterialId(event.target.value)} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm"><option value="">请选择物料</option>{materials.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name} {item.specification}</option>)}</select></Field><Field label="调整数量"><input type="number" step="0.001" value={quantity} onChange={(event) => setQuantity(Number(event.target.value) || 0)} className="h-10 w-full border border-[#C7C7CC] px-3 text-sm" /></Field><Field label="仓库"><select value={warehouseId} onChange={(event) => { const nextId = event.target.value; const nextWarehouse = warehouses.find((item) => item.id === Number(nextId)); setWarehouseId(nextId); setLocationId(nextWarehouse?.locations?.[0]?.id ? String(nextWarehouse.locations[0].id) : ""); }} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm">{warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="库位"><select value={locationId} onChange={(event) => setLocationId(event.target.value)} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm"><option value="">请选择库位</option>{selectedWarehouse?.locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><label className="text-xs text-[#636366] sm:col-span-2">调整原因<textarea value={remark} onChange={(event) => setRemark(event.target.value)} className="mt-1 min-h-20 w-full border border-[#C7C7CC] p-3 text-sm text-[#1C1C1E]" placeholder="例如：期初库存、盘盈、盘亏、计量修正" /></label></div><div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="ui-button ui-button--secondary">取消</button><button disabled={busy} onClick={() => void submit()} className="ui-button ui-button--primary">{busy ? "正在入账..." : "确认并入账"}</button></div></div></div>;
+  type Line = { key: string; materialId: string; warehouseId: string; locationId: string; quantity: string; remark: string };
+  const newLine = (): Line => { const warehouse = warehouses[0]; return { key: crypto.randomUUID(), materialId: "", warehouseId: warehouse?.id ? String(warehouse.id) : "", locationId: warehouse?.locations?.[0]?.id ? String(warehouse.locations[0].id) : "", quantity: "", remark: "" }; };
+  const [lines, setLines] = useState<Line[]>(() => [newLine()]);
+  const [remark, setRemark] = useState("");
+  const [busy, setBusy] = useState(false);
+  const update = (key: string, changes: Partial<Line>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...changes } : line));
+  const valid = lines.length > 0 && lines.every((line) => line.materialId && line.warehouseId && line.locationId && Number(line.quantity) !== 0);
+  const submit = async () => {
+    if (!valid) { notify("请完整选择物料、仓库、库位，并填写非零调整数量", true); return; }
+    setBusy(true);
+    try {
+      const draft = await createInventoryAdjustment({
+        remark,
+        items: lines.map((line) => {
+          const material = materials.find((item) => item.id === Number(line.materialId))!;
+          return { material_id: material.id, warehouse_id: Number(line.warehouseId), location_id: Number(line.locationId), quantity: Number(line.quantity), unit: material.unit, remark: line.remark };
+        }),
+      });
+      const result = await confirmInventoryAdjustment(draft.adjustment.id);
+      await onDone(`${result.message}：${result.adjustment.document_no}`);
+    } catch (error) { notify(apiMessage(error, "盘点调整失败"), true); }
+    finally { setBusy(false); }
+  };
+  return <ViewportDialog open title="库存盘点调整" description="可一次录入多种物料；正数增加、负数减少，确认后形成不可篡改流水。" size="wide" onClose={onClose} footer={<><button type="button" onClick={onClose} className="ui-button ui-button--secondary">取消</button><button type="button" disabled={busy || !valid} onClick={() => void submit()} className="ui-button ui-button--primary">{busy ? "正在入账..." : `确认 ${lines.length} 项并入账`}</button></>}>
+    <Field label="整单调整原因"><textarea value={remark} onChange={(event) => setRemark(event.target.value)} className="min-h-20 w-full border border-[#C7C7CC] p-3 text-sm text-[#1C1C1E]" placeholder="例如：期初库存、月末盘点、账实差异修正" /></Field>
+    <div className="mt-5 space-y-2"><div className="flex items-center justify-between"><strong className="text-sm">调整明细</strong><button type="button" className="ui-button ui-button--secondary" onClick={() => setLines((current) => [...current, newLine()])}><Plus size={15}/>添加物料</button></div>
+      {lines.map((line, index) => { const warehouse = warehouses.find((item) => item.id === Number(line.warehouseId)); const material = materials.find((item) => item.id === Number(line.materialId)); return <div key={line.key} className="grid gap-2 border border-[#E5E5EA] bg-[#FAFAFB] p-3 lg:grid-cols-[32px_minmax(220px,2fr)_135px_145px_120px_minmax(140px,1fr)_40px]"><span className="flex h-10 items-center text-xs text-[#8E8E93]">{index + 1}</span><Field label="物料 *"><select value={line.materialId} onChange={(event) => update(line.key, { materialId: event.target.value })} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm"><option value="">请选择</option>{materials.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name} {item.specification}</option>)}</select></Field><Field label="仓库 *"><select value={line.warehouseId} onChange={(event) => { const next = warehouses.find((item) => item.id === Number(event.target.value)); update(line.key, { warehouseId: event.target.value, locationId: next?.locations?.[0]?.id ? String(next.locations[0].id) : "" }); }} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm">{warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="库位 *"><select value={line.locationId} onChange={(event) => update(line.key, { locationId: event.target.value })} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm"><option value="">请选择</option>{warehouse?.locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label={`调整数量${material ? ` (${material.unit})` : ""} *`}><input type="number" step="0.001" value={line.quantity} onChange={(event) => update(line.key, { quantity: event.target.value })} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm" placeholder="正增负减" /></Field><Field label="行备注"><input value={line.remark} onChange={(event) => update(line.key, { remark: event.target.value })} className="h-10 w-full border border-[#C7C7CC] px-2 text-sm" /></Field><div className="flex items-end"><button type="button" title="删除本行" aria-label="删除本行" disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} className="ui-button ui-button--danger h-10 w-10 px-0"><Trash2 size={15}/></button></div></div>; })}
+    </div>
+  </ViewportDialog>;
 }
 
 function Metric({ label, value, danger = false }: { label: string; value: number | string; danger?: boolean }) { return <div className="bg-white px-4 py-3"><div className="text-xs text-[#636366]">{label}</div><div className={`mt-1 text-xl font-semibold ${danger ? "text-[#C62828]" : "text-[#1C1C1E]"}`}>{value}</div></div>; }

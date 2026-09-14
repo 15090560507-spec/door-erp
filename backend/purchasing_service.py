@@ -192,6 +192,23 @@ class PurchasingService:
             self.sync_demands(conn)
         return self.get_order(order_id)
 
+    def delete_order(self, order_id: int) -> None:
+        with self.db.transaction() as conn:
+            order = conn.execute("SELECT status FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+            if not order:
+                raise LookupError("采购单不存在")
+            if order["status"] != "草稿":
+                raise RuntimeError("只有草稿采购单可以删除，已下单采购请执行取消")
+            receipt_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS total FROM purchase_receipts WHERE purchase_order_id=?",
+                    (order_id,),
+                ).fetchone()["total"]
+            )
+            if receipt_count:
+                raise RuntimeError("采购单已有到货记录，不能删除")
+            conn.execute("DELETE FROM purchase_orders WHERE id=?", (order_id,))
+
     def cancel_order(self, order_id: int) -> Dict[str, Any]:
         now = inventory_now()
         with self.db.transaction() as conn:

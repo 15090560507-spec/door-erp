@@ -90,6 +90,46 @@ def main() -> None:
             default_location_id=location["id"],
             default_supplier="五金供应商",
         )
+        stock_order = purchasing.create_order(
+            {
+                "supplier": "五金供应商",
+                "expected_date": "2026-08-20",
+                "remark": "公共库存备货",
+                "items": [{
+                    "material_id": material["id"], "quantity": 20, "unit": "只",
+                    "unit_price": 18, "remark": "常备库存", "allocations": [],
+                }],
+            },
+            "buyer",
+        )
+        check("手工备库采购无需关联生产需求", stock_order["status"] == "草稿" and not stock_order["items"][0]["allocations"], str(stock_order))
+        purchasing.delete_order(stock_order["id"])
+        deleted = False
+        try:
+            purchasing.get_order(stock_order["id"])
+        except LookupError:
+            deleted = True
+        check("采购草稿可直接删除", deleted)
+
+        confirmed_stock_order = purchasing.create_order(
+            {
+                "supplier": "五金供应商",
+                "items": [{
+                    "material_id": material["id"], "quantity": 2, "unit": "只",
+                    "unit_price": 18, "remark": "", "allocations": [],
+                }],
+            },
+            "buyer",
+        )
+        purchasing.confirm_order(confirmed_stock_order["id"], "buyer")
+        confirmed_delete_blocked = False
+        try:
+            purchasing.delete_order(confirmed_stock_order["id"])
+        except RuntimeError:
+            confirmed_delete_blocked = True
+        check("已确认采购禁止直接删除", confirmed_delete_blocked)
+        purchasing.cancel_order(confirmed_stock_order["id"])
+
         first = create_requirement(db, material["id"], "EARLY", 3, "2026-09-01")
         second = create_requirement(db, material["id"], "LATE", 3, "2026-09-10")
         shortages = purchasing.list_shortages()

@@ -540,6 +540,20 @@ class InventoryService:
         )
         return document
 
+    def delete_adjustment(self, document_id: int) -> None:
+        with self.db.transaction() as conn:
+            document = conn.execute(
+                "SELECT document_type, status FROM inventory_documents WHERE id=?",
+                (document_id,),
+            ).fetchone()
+            if not document:
+                raise LookupError("盘点调整单不存在")
+            if document["document_type"] != "盘点调整":
+                raise ValueError("单据类型不是盘点调整")
+            if document["status"] != "草稿":
+                raise RuntimeError("只有草稿盘点调整单可以删除")
+            conn.execute("DELETE FROM inventory_documents WHERE id=?", (document_id,))
+
     def confirm_adjustment(self, document_id: int, confirmed_by: str) -> Dict[str, Any]:
         now = inventory_now()
         with self.db.transaction() as conn:

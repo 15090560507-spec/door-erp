@@ -123,6 +123,11 @@ export async function confirmInventoryAdjustment(id: number) {
   return data;
 }
 
+export async function deleteInventoryAdjustment(id: number) {
+  const { data } = await api.delete<{ message: string }>(`/inventory/adjustments/${id}`);
+  return data;
+}
+
 export async function getMaterialRequirements(params?: { q?: string; status?: string }) {
   const { data } = await api.get<{ requirements: MaterialRequirementSummary[] }>("/inventory/requirements", { params });
   return data.requirements;
@@ -177,6 +182,11 @@ export async function createPurchaseOrder(payload: {
 
 export async function confirmPurchaseOrder(id: number) {
   const { data } = await api.post<{ order: PurchaseOrder; message: string }>(`/inventory/purchasing/orders/${id}/confirm`);
+  return data;
+}
+
+export async function deletePurchaseOrder(id: number) {
+  const { data } = await api.delete<{ message: string }>(`/inventory/purchasing/orders/${id}`);
   return data;
 }
 

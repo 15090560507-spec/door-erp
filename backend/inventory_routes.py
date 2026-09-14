@@ -278,6 +278,15 @@ def get_adjustment(adjustment_id: int, current_user: Dict = Depends(get_current_
         raise _error(exc) from exc
 
 
+@router.delete("/adjustments/{adjustment_id}")
+def delete_adjustment(adjustment_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        inventory_service.delete_adjustment(adjustment_id)
+        return {"message": "盘点调整草稿已删除"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 @router.post("/adjustments/{adjustment_id}/confirm")
 def confirm_adjustment(adjustment_id: int, current_user: Dict = Depends(get_current_user)):
     try:
@@ -362,6 +371,15 @@ def create_purchase_order(req: PurchaseOrderCreate, current_user: Dict = Depends
 def get_purchase_order(order_id: int, current_user: Dict = Depends(get_current_user)):
     try:
         return {"order": purchasing_service.get_order(order_id)}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.delete("/purchasing/orders/{order_id}")
+def delete_purchase_order(order_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        purchasing_service.delete_order(order_id)
+        return {"message": "采购单草稿已删除"}
     except Exception as exc:
         raise _error(exc) from exc
 
