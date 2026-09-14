@@ -131,6 +131,47 @@ class BomApiTest(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["code"], "BOM_ITEM_NOT_MATCHED")
         self.assertEqual(response.json()["detail"]["bom_item_id"], unmatched["id"])
 
+    def test_draft_supports_manual_add_copy_and_delete(self):
+        door_id, generated = self.create_generated_door(sales_order_id=4)
+        original_ids = {row["id"] for row in generated["components"]}
+        response = self.client.put(
+            f"/api/bom/door-units/{door_id}/draft",
+            json={"items": [{
+                "name": "插销盒",
+                "category": "配件",
+                "specification": "通用",
+                "theoretical_quantity": 2,
+                "planned_quantity": 2,
+                "quantity": 2,
+                "unit": "件",
+                "acquisition_method": "库存领料",
+                "group_code": "hardware",
+                "operation_code": "MANUAL",
+                "remark": "人工补充",
+            }]},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        manual = next(row for row in response.json()["bom"]["rows"] if row["name"] == "插销盒")
+        self.assertEqual(manual["source_type"], "manual")
+
+        response = self.client.put(
+            f"/api/bom/door-units/{door_id}/draft",
+            json={"items": [{
+                "name": "插销盒（复制）",
+                "category": manual["category"],
+                "specification": manual["specification"],
+                "planned_quantity": manual["planned_quantity"],
+                "quantity": manual["quantity"],
+                "unit": manual["unit"],
+                "group_code": manual["group_code"],
+            }], "delete_item_ids": [manual["id"]]},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        rows = response.json()["bom"]["rows"]
+        self.assertNotIn(manual["id"], {row["id"] for row in rows})
+        self.assertTrue(any(row["name"] == "插销盒（复制）" for row in rows))
+        self.assertTrue(original_ids.issubset({row["id"] for row in rows}))
+
     def test_publish_blocks_incomplete_rows_then_freezes_and_creates_new_version(self):
         door_id, _generated = self.create_generated_door(sales_order_id=3)
 

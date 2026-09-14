@@ -5,13 +5,17 @@ import {
   Boxes,
   CheckCheck,
   ClipboardList,
+  Copy,
+  Database,
   FileClock,
   PackageCheck,
   Play,
+  Plus,
   RefreshCw,
   Save,
   Search,
   Send,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/workspace/EmptyState";
@@ -33,8 +37,8 @@ import {
   verifyDoorBomRows,
 } from "@/lib/bomApi";
 import type { BomDetail, BomDraftItem, BomRow, BomWorkbenchItem, BomWorkbenchState, BomWorkbenchSummary } from "@/lib/bomTypes";
-import { getInventoryMaterials } from "@/lib/inventoryApi";
-import type { InventoryMaterial } from "@/lib/inventoryTypes";
+import { createInventoryMaterial, getInventoryMaterials } from "@/lib/inventoryApi";
+import type { InventoryMaterial, MaterialPayload } from "@/lib/inventoryTypes";
 
 const emptySummary: BomWorkbenchSummary = {
   total: 0, pending_generation: 0, pending_verification: 0, missing_data: 0,
@@ -43,12 +47,44 @@ const emptySummary: BomWorkbenchSummary = {
 
 function asDraftItem(row: BomRow): BomDraftItem {
   return {
-    id: row.id, material_id: row.material_id, name: row.name, category: row.category,
+    id: row.id > 0 ? row.id : undefined, material_id: row.material_id, name: row.name, category: row.category,
     specification: row.specification, theoretical_quantity: Number(row.theoretical_quantity || 0),
     waste_rate: Number(row.waste_rate || 0), planned_quantity: Number(row.planned_quantity || 0),
     quantity: Number(row.quantity || 0), unit: row.unit, acquisition_method: row.acquisition_method,
     group_code: row.group_code, operation_code: row.operation_code, supplier_id: row.supplier_id,
     required_date: row.required_date || "", remark: row.remark || "",
+  };
+}
+
+let nextTemporaryRowId = -1;
+
+function newBomRow(source?: BomRow): BomRow {
+  return {
+    id: nextTemporaryRowId--,
+    parent_id: null,
+    material_id: source?.material_id || null,
+    material_code: source?.material_code || null,
+    material_name: source?.material_name || null,
+    material_specification: source?.material_specification || null,
+    material_unit: source?.material_unit || null,
+    supplier_id: source?.supplier_id || null,
+    supplier_name: source?.supplier_name || null,
+    name: source ? `${source.name}（复制）` : "",
+    category: source?.category || "其他",
+    specification: source?.specification || "",
+    quantity: source?.quantity || 1,
+    theoretical_quantity: source?.theoretical_quantity || 1,
+    waste_rate: source?.waste_rate || 0,
+    planned_quantity: source?.planned_quantity || 1,
+    unit: source?.unit || "件",
+    acquisition_method: source?.acquisition_method || "待确定",
+    group_code: source?.group_code || "other",
+    operation_code: source?.operation_code || "MANUAL",
+    required_date: source?.required_date || "",
+    remark: source?.remark || "",
+    match_status: source?.material_id ? "已匹配" : "待匹配",
+    verification_status: "待核验",
+    source_type: "manual",
   };
 }
 
@@ -61,6 +97,8 @@ export default function BomWorkbench() {
   const [detail, setDetail] = useState<BomDetail | null>(null);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [deletedRowIds, setDeletedRowIds] = useState<number[]>([]);
+  const [materialRow, setMaterialRow] = useState<BomRow | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,6 +129,7 @@ export default function BomWorkbench() {
     try {
       setDetail(await getDoorBom(doorId, version));
       setSelectedRows(new Set());
+      setDeletedRowIds([]);
       setError("");
     } catch (requestError) {
       setDetail(null);
@@ -132,8 +171,18 @@ export default function BomWorkbench() {
     const materialReady = row.match_status === "无需物料" || (row.match_status === "已匹配" && Boolean(row.material_id));
     return !materialReady || row.planned_quantity <= 0 || row.verification_status !== "已核验";
   }).length || 0;
-  const selectedVerifiable = detail?.rows.filter((row) => selectedRows.has(row.id) && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验") || [];
+  const selectedVerifiable = detail?.rows.filter((row) => row.id > 0 && selectedRows.has(row.id) && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验") || [];
   const rowsById = useMemo(() => new Map((detail?.rows || []).map((row) => [row.id, row])), [detail?.rows]);
+  const displayGroups = useMemo(() => {
+    if (!detail) return [];
+    const labels = new Map(detail.groups.map((group) => [group.code, group.label]));
+    const codes = [...detail.groups.map((group) => group.code)];
+    detail.rows.forEach((row) => { if (!codes.includes(row.group_code)) codes.push(row.group_code); });
+    return codes.map((code) => {
+      const rows = detail.rows.filter((row) => row.group_code === code);
+      return { code, label: labels.get(code) || (code === "other" ? "其他与临时项" : code), count: rows.length, rows };
+    }).filter((group) => group.rows.length);
+  }, [detail]);
 
   const runAction = async (action: () => Promise<{ bom: BomDetail; message?: string }>, fallback: string) => {
     setBusy(true);
@@ -141,6 +190,7 @@ export default function BomWorkbench() {
       const result = await action();
       setDetail(result.bom);
       setSelectedRows(new Set());
+      setDeletedRowIds([]);
       setNotice({ title: "操作完成", message: result.message || fallback });
       await loadList();
     } catch (requestError) {
@@ -157,10 +207,20 @@ export default function BomWorkbench() {
     } : current);
   };
 
+  const addRow = (source?: BomRow) => {
+    setDetail((current) => current ? { ...current, rows: [...current.rows, newBomRow(source)] } : current);
+  };
+
+  const removeRow = (row: BomRow) => {
+    setDetail((current) => current ? { ...current, rows: current.rows.filter((item) => item.id !== row.id) } : current);
+    setSelectedRows((current) => { const next = new Set(current); next.delete(row.id); return next; });
+    if (row.id > 0) setDeletedRowIds((current) => current.includes(row.id) ? current : [...current, row.id]);
+  };
+
   const saveDraft = () => {
     if (!detail || !editable) return;
     void runAction(
-      () => saveDoorBomDraft(detail.door_unit_id, { items: detail.rows.map(asDraftItem), product_summary: detail.product_summary, special_requirements: detail.special_requirements }),
+      () => saveDoorBomDraft(detail.door_unit_id, { items: detail.rows.map(asDraftItem), delete_item_ids: deletedRowIds, product_summary: detail.product_summary, special_requirements: detail.special_requirements }),
       "BOM 草稿保存失败",
     );
   };
@@ -171,7 +231,7 @@ export default function BomWorkbench() {
     const itemIds = selectedVerifiable.map((row) => row.id);
     const draftItems = detail.rows.map(asDraftItem);
     void runAction(async () => {
-      await saveDoorBomDraft(doorUnitId, { items: draftItems, product_summary: detail.product_summary, special_requirements: detail.special_requirements });
+      await saveDoorBomDraft(doorUnitId, { items: draftItems, delete_item_ids: deletedRowIds, product_summary: detail.product_summary, special_requirements: detail.special_requirements });
       return verifyDoorBomRows(doorUnitId, itemIds);
     }, "BOM 核验失败");
   };
@@ -251,6 +311,7 @@ export default function BomWorkbench() {
                 <div><span>共 {detail.rows.length} 项</span><span>待处理 {unresolved} 项</span><span>规则 {detail.rule_version || "未生成"}</span></div>
                 <div>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => void runAction(() => generateDoorBom(detail.door_unit_id), "BOM 生成失败")}><Play size={15} />{detail.rows.length ? "重新生成" : "生成 BOM"}</button>
+                  <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => addRow()}><Plus size={15} />新增项目</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={saveDraft}><Save size={15} />保存草稿</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable || !selectedVerifiable.length} onClick={verifySelected}><CheckCheck size={15} />核验选中</button>
                   {detail.status === "已确认" ? <button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={() => setVersionOpen(true)}><FileClock size={15} />新建版本</button> : <button type="button" className="ui-button ui-button--primary" disabled={busy || unresolved > 0 || !detail.rows.length} onClick={() => setPublishOpen(true)}><Send size={15} />发布 BOM</button>}
@@ -261,21 +322,22 @@ export default function BomWorkbench() {
 
               <div className="bom-table-wrap">
                 <table className="bom-table">
-                  <thead><tr><th className="bom-check"><input type="checkbox" aria-label="全选当前可核验项" checked={Boolean(selectedVerifiable.length) && selectedVerifiable.length === detail.rows.filter((row) => row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").length} onChange={(event) => setSelectedRows(event.target.checked ? new Set(detail.rows.filter((row) => row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").map((row) => row.id)) : new Set())} /></th><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>核验</th></tr></thead>
-                  <tbody>{detail.groups.map((group) => {
+                  <thead><tr><th className="bom-check"><input type="checkbox" aria-label="全选当前可核验项" checked={Boolean(selectedVerifiable.length) && selectedVerifiable.length === detail.rows.filter((row) => row.id > 0 && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").length} onChange={(event) => setSelectedRows(event.target.checked ? new Set(detail.rows.filter((row) => row.id > 0 && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").map((row) => row.id)) : new Set())} /></th><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>核验</th><th>操作</th></tr></thead>
+                  <tbody>{displayGroups.map((group) => {
                     const groupRows = group.rows.map((row) => rowsById.get(row.id)).filter((row): row is BomRow => Boolean(row));
-                    return [<tr className="bom-group-row" key={`${group.code}-title`}><td colSpan={10}>{group.label}<span>{groupRows.length} 项</span></td></tr>, ...groupRows.map((row) => (
+                    return [<tr className="bom-group-row" key={`${group.code}-title`}><td colSpan={11}>{group.label}<span>{groupRows.length} 项</span></td></tr>, ...groupRows.map((row) => (
                       <tr key={row.id} className={row.verification_status === "已核验" ? "is-verified" : ""}>
-                        <td className="bom-check"><input type="checkbox" aria-label={`选择 ${row.name}`} disabled={!editable || row.verification_status === "已核验"} checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.id); else next.delete(row.id); return next; })} /></td>
-                        <td><strong>{row.name}</strong><small>{row.operation_code || row.category}</small></td>
+                        <td className="bom-check"><input type="checkbox" aria-label={`选择 ${row.name}`} disabled={!editable || row.id < 0 || row.verification_status === "已核验"} checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.id); else next.delete(row.id); return next; })} /></td>
+                        <td><input disabled={!editable} value={row.name || ""} onChange={(event) => updateRow(row.id, { name: event.target.value })} /><small>{row.source_type === "manual" ? "手工项目" : row.operation_code || row.category}</small></td>
                         <td><input disabled={!editable} value={row.specification || ""} onChange={(event) => updateRow(row.id, { specification: event.target.value })} /></td>
-                        <td><select disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small></td>
+                        <td><select disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit, match_status: material ? "已匹配" : "待匹配" }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small></td>
                         <td className="bom-number">{Number(row.theoretical_quantity || 0).toLocaleString()}</td>
                         <td><input className="bom-number-input" type="number" min="0" max="100" step="0.1" disabled={!editable} value={row.waste_rate} onChange={(event) => updateRow(row.id, { waste_rate: Number(event.target.value) })} /></td>
                         <td><input className="bom-number-input" type="number" min="0" step="0.001" disabled={!editable} value={row.planned_quantity} onChange={(event) => updateRow(row.id, { planned_quantity: Number(event.target.value), quantity: Number(event.target.value) })} /></td>
                         <td><input className="bom-unit-input" disabled={!editable} value={row.unit || ""} onChange={(event) => updateRow(row.id, { unit: event.target.value })} /></td>
                         <td><select disabled={!editable} value={row.acquisition_method || "待确定"} onChange={(event) => updateRow(row.id, { acquisition_method: event.target.value })}><option>待确定</option><option>库存领料</option><option>采购</option><option>内部加工</option><option>外协加工</option></select></td>
-                        <td><StatusChip tone={row.verification_status === "已核验" ? "green" : row.material_id ? "amber" : "red"}>{row.verification_status}</StatusChip></td>
+                        <td><StatusChip tone={row.verification_status === "已核验" ? "green" : row.material_id ? "amber" : "red"}>{row.id < 0 ? "先保存" : row.verification_status}</StatusChip></td>
+                        <td><div className="bom-row-actions">{!row.material_id && <button type="button" disabled={!editable} title="把临时项建立为物料档案" aria-label={`将${row.name || "临时项"}建立为物料档案`} onClick={() => setMaterialRow(row)}><Database size={14} /></button>}<button type="button" disabled={!editable} title="复制项目" aria-label={`复制${row.name || "项目"}`} onClick={() => addRow(row)}><Copy size={14} /></button><button type="button" disabled={!editable} title="删除项目" aria-label={`删除${row.name || "项目"}`} className="is-danger" onClick={() => removeRow(row)}><Trash2 size={14} /></button></div></td>
                       </tr>
                     ))];
                   })}</tbody>
@@ -290,10 +352,33 @@ export default function BomWorkbench() {
         />
       </main>
 
+      {materialRow && <BomMaterialDialog row={materialRow} onClose={() => setMaterialRow(null)} onCreated={(material, message) => { setMaterials((current) => [...current.filter((item) => item.id !== material.id), material].sort((left, right) => left.code.localeCompare(right.code, "zh-CN"))); updateRow(materialRow.id, { material_id: material.id, material_code: material.code, material_name: material.name, material_specification: material.specification, material_unit: material.unit, unit: material.unit, match_status: "已匹配" }); setMaterialRow(null); setNotice({ title: "物料已建档", message }); }} />}
       <ViewportDialog open={publishOpen} title="发布当前 BOM？" description="发布后当前版本将冻结，并自动产生下游物料需求。" size="small" onClose={() => setPublishOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setPublishOpen(false)}>返回检查</button><button type="button" className="ui-button ui-button--primary" onClick={publish}><Send size={15} />确认发布</button></>}><p className="bom-dialog-copy">当前 V{detail?.version} 共 {detail?.rows.length || 0} 项，全部物料、计划数量和核验状态已经通过。</p></ViewportDialog>
       <ViewportDialog open={versionOpen} title="新建 BOM 版本" description="已发布版本保持不变，新版本用于记录生产变更。" size="small" onClose={() => setVersionOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setVersionOpen(false)}>取消</button><button type="button" className="ui-button ui-button--primary" disabled={!versionReason.trim()} onClick={createVersion}>创建版本</button></>}><label className="bom-dialog-field"><span>变更原因 *</span><textarea rows={4} value={versionReason} onChange={(event) => setVersionReason(event.target.value)} placeholder="例如：客户调整门板材质" /></label></ViewportDialog>
       <ViewportDialog open={Boolean(notice)} title={notice?.title || "提示"} size="small" onClose={() => setNotice(null)} footer={<button type="button" className="ui-button ui-button--primary" onClick={() => setNotice(null)}>知道了</button>}><p className={notice?.error ? "bom-dialog-copy is-error" : "bom-dialog-copy"}>{notice?.message}</p></ViewportDialog>
       {busy && <div className="fixed inset-0 z-[190] cursor-wait bg-black/[0.025]" aria-hidden="true" />}
     </div>
   );
+}
+
+function BomMaterialDialog({ row, onClose, onCreated }: { row: BomRow; onClose: () => void; onCreated: (material: InventoryMaterial, message: string) => void }) {
+  const [form, setForm] = useState<MaterialPayload>({
+    code: "", name: row.name || "", category: row.category || "其他", specification: row.specification || "",
+    unit: row.unit || "件", material_type: row.acquisition_method === "内部加工" ? "自制件" : "原材料",
+    default_supplier: "", minimum_stock: 0, brand: "", purchase_unit: row.unit || "件",
+    purchase_conversion: 1, standard_sale_price: 0, reference_purchase_price: 0, safety_stock: 0,
+    can_sell: false, can_purchase: row.acquisition_method !== "内部加工", manage_stock: true,
+    can_subcontract: row.acquisition_method === "外协加工", remark: "由 BOM 临时项建立", is_active: true,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const set = <K extends keyof MaterialPayload>(key: K, value: MaterialPayload[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = async () => {
+    if (!form.code.trim() || !form.name.trim() || !form.unit.trim()) { setError("物料编码、名称和单位为必填项"); return; }
+    setBusy(true); setError("");
+    try { const result = await createInventoryMaterial(form); onCreated(result.material, result.message); }
+    catch (requestError) { setError(apiErrorMessage(requestError, "物料档案创建失败")); }
+    finally { setBusy(false); }
+  };
+  return <ViewportDialog open title="临时项转为物料档案" description="建立一次通用物料资料，当前 BOM 行会自动关联；尺寸仍留在 BOM 规格中。" size="small" onClose={onClose} footer={<><button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={onClose}>取消</button><button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={() => void submit()}><Database size={15} />{busy ? "正在建档" : "创建并关联"}</button></>}><div className="bom-material-form"><label><span>物料编码 *</span><input autoFocus value={form.code} onChange={(event) => set("code", event.target.value)} placeholder="例如 PJ-CX-001" /></label><label><span>物料名称 *</span><input value={form.name} onChange={(event) => set("name", event.target.value)} /></label><label><span>分类</span><input value={form.category} onChange={(event) => set("category", event.target.value)} /></label><label><span>规格</span><input value={form.specification} onChange={(event) => set("specification", event.target.value)} /></label><label><span>单位 *</span><input value={form.unit} onChange={(event) => set("unit", event.target.value)} /></label><label><span>物料类型</span><select value={form.material_type} onChange={(event) => set("material_type", event.target.value)}>{["原材料", "配件", "半成品", "耗材", "采购件", "自制件", "外协件"].map((value) => <option key={value}>{value}</option>)}</select></label>{error && <p role="alert">{error}</p>}</div></ViewportDialog>;
 }

@@ -128,7 +128,7 @@ export interface BomDetail {
 }
 
 export interface BomDraftItem {
-  id: number;
+  id?: number;
   material_id: number | null;
   name: string;
   category: string;
