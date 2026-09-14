@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Boxes, Check, ChevronRight, ClipboardCheck, Factory, History, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, ClipboardCheck, Factory, History, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import BomWorkbench from "@/components/BomWorkbench";
@@ -9,6 +9,8 @@ import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
+import { getEmployees, saveAssemblyAssignment } from "@/lib/operationsApi";
+import type { WorkforceEmployee } from "@/lib/operationsTypes";
 import {
   confirmTechnicalPackage,
   batchFulfillmentWorkPackages,
@@ -264,6 +266,10 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
   const [selected, setSelected] = useState<number[]>([]);
   const [executor, setExecutor] = useState("");
   const [remark, setRemark] = useState("");
+  const [employees, setEmployees] = useState<WorkforceEmployee[]>([]);
+  const [assignment, setAssignment] = useState({ owner_id: door.assembly_owner_id || 0, collaborator_ids: door.assembly_collaborator_ids || [], work_center: door.assembly_work_center || "总装区", planned_date: door.assembly_planned_date || "", actual_date: door.assembly_actual_date || "", note: door.assembly_note || "" });
+  useEffect(()=>{void getEmployees().then(rows=>setEmployees(rows.filter(row=>row.is_active))).catch(error=>notify(apiMessage(error,"人员档案加载失败"),true));},[notify]);
+  useEffect(()=>setAssignment({ owner_id: door.assembly_owner_id || 0, collaborator_ids: door.assembly_collaborator_ids || [], work_center: door.assembly_work_center || "总装区", planned_date: door.assembly_planned_date || "", actual_date: door.assembly_actual_date || "", note: door.assembly_note || "" }),[door.id,door.assembly_owner_id,door.assembly_collaborator_ids,door.assembly_work_center,door.assembly_planned_date,door.assembly_actual_date,door.assembly_note]);
   const activeIds = works.filter((item) => item.id && !["已完成","已取消"].includes(item.status || "")).map((item) => item.id!);
   const selectedActive = selected.filter((id) => activeIds.includes(id));
   const runBatch = async (action: string) => {
@@ -276,11 +282,22 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
     catch (error) { notify(apiMessage(error, "批量更新工作包失败"), true); }
     finally { onBusy(false); }
   };
-  return <div className="production-process-board">
+  return <div className="production-process-board space-y-4">
+    <section className="border border-[#D1D1D6] bg-[#FAFAFB] p-4">
+      <div className="mb-3"><h3 className="text-sm font-semibold">拼装分配</h3><p className="mt-1 text-xs text-[#636366]">负责人会同步到“总装”工序；协作人员保留在本樘门的生产记录中。</p></div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_minmax(220px,1fr)_150px_150px_minmax(220px,1fr)_auto]">
+        <select value={assignment.owner_id||""} onChange={e=>setAssignment({...assignment,owner_id:Number(e.target.value)||0})} className="h-9 border border-[#C7C7CC] bg-white px-2 text-sm"><option value="">拼装负责人</option>{employees.map(row=><option key={row.id} value={row.id}>{row.employee_no} · {row.name}</option>)}</select>
+        <div className="flex min-h-9 flex-wrap gap-1 border border-[#C7C7CC] bg-white p-1">{employees.map(row=><label key={row.id} className={`flex items-center gap-1 px-2 py-1 text-xs ${assignment.collaborator_ids.includes(row.id)?"bg-[#EAF3FF] text-[#0066CC]":"bg-[#F2F2F7]"}`}><input type="checkbox" checked={assignment.collaborator_ids.includes(row.id)} onChange={e=>setAssignment({...assignment,collaborator_ids:e.target.checked?[...assignment.collaborator_ids,row.id]:assignment.collaborator_ids.filter(id=>id!==row.id)})}/>{row.name}</label>)}</div>
+        <input value={assignment.work_center} onChange={e=>setAssignment({...assignment,work_center:e.target.value})} placeholder="工作中心" className="h-9 border border-[#C7C7CC] bg-white px-2 text-sm"/>
+        <input type="date" value={assignment.planned_date} onChange={e=>setAssignment({...assignment,planned_date:e.target.value})} className="h-9 border border-[#C7C7CC] bg-white px-2 text-sm"/>
+        <input value={assignment.note} onChange={e=>setAssignment({...assignment,note:e.target.value})} placeholder="拼装交付说明" className="h-9 border border-[#C7C7CC] bg-white px-2 text-sm"/>
+        <button disabled={busy} onClick={async()=>{onBusy(true);try{const result=await saveAssemblyAssignment(door.id,{...assignment,owner_id:assignment.owner_id||null});notify(result.message);await onChanged(result.door_unit);}catch(error){notify(apiMessage(error,"拼装分配保存失败"),true);}finally{onBusy(false);}}} className="h-9 bg-[#007AFF] px-4 text-sm text-white disabled:bg-[#C7C7CC]">保存分配</button>
+      </div>
+    </section>
     <section className="production-process-toolbar">
       <label><input type="checkbox" checked={activeIds.length > 0 && selectedActive.length === activeIds.length} onChange={() => setSelected(selectedActive.length === activeIds.length ? [] : activeIds)} />全选未完成</label>
       <span>已选 {selectedActive.length} 项</span>
-      <input list="fulfillment-people" value={executor} onChange={(event) => setExecutor(event.target.value)} placeholder="批量执行人（可空）" />
+      <input list="workforce-employees" value={executor} onChange={(event) => setExecutor(event.target.value)} placeholder="批量执行人（可空）" />
       <input value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="批量说明（跳过时必填）" />
       {["开始","提交质检","确认完成","跳过"].map((action)=><button key={action} disabled={busy||!selectedActive.length} onClick={()=>void runBatch(action)} className={action === "确认完成" ? "is-success" : action === "跳过" ? "is-muted" : ""}>{action}</button>)}
     </section>
@@ -307,6 +324,7 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
         }) : <tr><td colSpan={9}><Empty text="BOM发布后，系统会按工艺路线生成执行项目" /></td></tr>}</tbody>
       </table>
     </div>
+    <datalist id="workforce-employees">{employees.map(row=><option key={row.id} value={row.employee_no}>{row.name} · {row.team||row.role_name||"员工"}</option>)}</datalist>
     <p className="production-process-note">工序状态可逐项调整，也可勾选后批量推进；需要过程检验的项目先提交质检，跳过时必须说明原因。</p>
   </div>;
 }
@@ -323,7 +341,7 @@ function WorkTableRow({ work, component, busy, selected, onSelect, onSave }: { w
     <td><strong>{component?.name || work.name}</strong><small>{work.name}{work.inspection_required ? " · 需过程检验" : ""}</small></td>
     <td><Status text={materialText} /></td>
     <td><span>{work.route || work.category || "未配置"}</span><small>{work.operation_code || component?.operation_code || work.acquisition_method}</small></td>
-    <td><input list="fulfillment-people" value={executor} onChange={(event)=>setExecutor(event.target.value)} placeholder="未分配" /></td>
+    <td><input list="workforce-employees" value={executor} onChange={(event)=>setExecutor(event.target.value)} placeholder="未分配" /></td>
     <td>{work.planned_end || "未设置"}</td>
     <td><select disabled={terminal} value={status} onChange={(event)=>setStatus(event.target.value)}>{["待排单","已排单","进行中","待质检","已完成","暂停","异常","返工","已取消"].map((value)=><option key={value}>{value}</option>)}</select></td>
     <td>{work.actual_quantity || 0} / {work.quantity} {work.unit}</td>
@@ -333,7 +351,7 @@ function WorkTableRow({ work, component, busy, selected, onSelect, onSave }: { w
 
 function SupplyBoard({ door }: WorkbenchProps) {
   const requirement = door.material_requirement;
-  if (!requirement) return <div><Empty text="BOM发布后，系统会自动生成物料需求并分配全厂库存" /><div className="flex justify-center"><a href={`/cutting?doorId=${door.id}`} className="ui-button ui-button--primary"><PackageCheck size={15} />检查BOM发布状态</a></div></div>;
+  if (!requirement) return <div><Empty text="请在本页“生产准备”阶段生成、核验并发布 BOM，发布后系统会自动生成物料需求并分配全厂库存" /></div>;
   return <div className="space-y-4"><section className="flex flex-wrap items-center gap-3 border border-[#B8D8F8] bg-[#F4F9FF] p-4"><div className="mr-auto"><h3 className="text-sm font-semibold">{requirement.requirement_no}</h3><p className="mt-1 text-xs text-[#636366]">技术版本 V{requirement.version} · 交期 {requirement.due_date || "未设置"}</p></div><Status text={requirement.status}/><span className="text-xs text-[#636366]">共 {requirement.items.length} 项物料</span></section><div className="overflow-x-auto border border-[#D1D1D6]"><table className="w-full min-w-[900px] table-fixed text-sm"><thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料","规格","需求","已预留","缺口","采购中","已到货","已领料","状态"].map((name)=><th key={name} className="px-3 py-2 font-medium">{name}</th>)}</tr></thead><tbody>{requirement.items.map((item)=><tr key={item.id} className="border-t border-[#E5E5EA]"><td className="px-3 py-3"><div className="font-medium">{item.material_name}</div><div className="mt-1 text-xs text-[#636366]">{item.material_code}</div></td><td className="px-3 py-3">{item.specification||"-"}</td><td className="px-3 py-3">{item.required_quantity} {item.unit}</td><td className="px-3 py-3 text-[#248A3D]">{item.reserved_quantity}</td><td className={`px-3 py-3 font-semibold ${item.shortage_quantity>0?"text-[#C62828]":""}`}>{item.shortage_quantity}</td><td className="px-3 py-3">{item.purchased_quantity}</td><td className="px-3 py-3">{item.received_quantity}</td><td className="px-3 py-3">{item.issued_quantity}</td><td className="px-3 py-3"><Status text={item.status}/></td></tr>)}</tbody></table></div><div className="flex flex-wrap items-center gap-2"><p className="mr-auto text-xs text-[#636366]">这里只汇总当前门樘需求，采购单、预留和领退料仍在各自业务台账办理。</p><a href="/inventory" className="ui-button ui-button--secondary"><Boxes size={15} />进入库存管理</a></div></div>;
 }
 

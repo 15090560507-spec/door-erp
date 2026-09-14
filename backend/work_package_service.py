@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
+import json
 from typing import Dict, Iterable, List, Sequence
 
 
@@ -19,6 +20,13 @@ class RouteNode:
     predecessors: Sequence[str] = field(default_factory=tuple)
     material_operations: Sequence[str] = field(default_factory=tuple)
     inspection_required: bool = False
+    template_id: int | None = None
+    template_step_id: int | None = None
+    standard_minutes: float = 0
+    piece_rate: float = 0
+    default_role: str = ""
+    work_center: str = ""
+    snapshot: dict = field(default_factory=dict)
 
 
 PANEL_OPERATIONS = ("PANEL", "SKELETON", "PANEL_SHEET", "PANEL_PROFILE")
@@ -80,6 +88,70 @@ class WorkPackageService:
         ])
         return nodes
 
+    def _route_from_template(self, conn: sqlite3.Connection, operation_codes: set[str]) -> List[RouteNode]:
+        if not self._table_exists(conn, "process_route_templates"):
+            return self._route(operation_codes)
+        template = conn.execute(
+            """SELECT * FROM process_route_templates
+               WHERE is_active=1 ORDER BY is_default DESC, id LIMIT 1"""
+        ).fetchone()
+        if not template:
+            return self._route(operation_codes)
+        step_rows = conn.execute(
+            """SELECT * FROM process_route_template_steps
+               WHERE template_id=? AND is_active=1 ORDER BY sequence_no, id""",
+            (template["id"],),
+        ).fetchall()
+        has_panel = bool(operation_codes.intersection(PANEL_ROUTE_OPERATIONS))
+        has_fittings = bool(operation_codes.intersection(FITTING_OPERATIONS))
+        skipped = set()
+        if not has_panel:
+            skipped.update({"PANEL_PREP", "PANEL_CUT", "BENDING", "BODY", "SURFACE"})
+        if not has_fittings:
+            skipped.add("FITTINGS_PREP")
+        nodes: List[RouteNode] = []
+        for row in step_rows:
+            code = str(row["step_code"])
+            if code in skipped:
+                continue
+            predecessors = [
+                value for value in json.loads(str(row["predecessor_codes_json"] or "[]"))
+                if value not in skipped
+            ]
+            if code == "ASSEMBLY" and not predecessors:
+                predecessors = ["TECH_PREP"]
+            material_operations = json.loads(str(row["material_operations_json"] or "[]"))
+            snapshot = {
+                "template_code": str(template["code"]),
+                "template_version": int(template["version"]),
+                "step_code": code,
+                "name": str(row["name"]),
+                "predecessors": predecessors,
+                "material_operations": material_operations,
+                "inspection_required": bool(row["inspection_required"]),
+                "standard_minutes": float(row["standard_minutes"] or 0),
+                "piece_rate": float(row["piece_rate"] or 0),
+                "default_role": str(row["default_role"] or ""),
+                "work_center": str(row["work_center"] or ""),
+            }
+            nodes.append(RouteNode(
+                code=code,
+                name=str(row["name"]),
+                category=str(row["category"]),
+                weight=float(row["weight"] or 1),
+                predecessors=tuple(predecessors),
+                material_operations=tuple(material_operations),
+                inspection_required=bool(row["inspection_required"]),
+                template_id=int(template["id"]),
+                template_step_id=int(row["id"]),
+                standard_minutes=float(row["standard_minutes"] or 0),
+                piece_rate=float(row["piece_rate"] or 0),
+                default_role=str(row["default_role"] or ""),
+                work_center=str(row["work_center"] or ""),
+                snapshot=snapshot,
+            ))
+        return nodes or self._route(operation_codes)
+
     def generate_for_package(
         self,
         conn: sqlite3.Connection,
@@ -117,7 +189,7 @@ class WorkPackageService:
         }
         # Frame BOM remains traceable, but frame cutting is deliberately deferred.
         operation_codes.difference_update(FRAME_OPERATIONS)
-        route = self._route(operation_codes)
+        route = self._route_from_template(conn, operation_codes)
         ids_by_code: Dict[str, int] = {}
         for sequence, node in enumerate(route, start=1):
             cursor = conn.execute(
@@ -126,13 +198,17 @@ class WorkPackageService:
                        acquisition_method, opening_condition, blocking_node,
                        quantity, unit, inspection_required, status, sequence_no,
                        operation_code, weight, readiness_status, material_ready,
-                       updated_at
+                       route_template_id, route_step_id, route_snapshot_json,
+                       standard_minutes, piece_rate, default_role, work_center, updated_at
                    ) VALUES (?, ?, ?, ?, ?, '内部加工', ?, ?, 1, '樘', ?,
-                             '待排单', ?, ?, ?, '待前序', 0, ?)""",
+                             '待排单', ?, ?, ?, '待前序', 0, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     package_id, door_id, node.name, node.category, node.name,
                     "BOM已发布", "、".join(node.predecessors),
-                    int(node.inspection_required), sequence, node.code, node.weight, now,
+                    int(node.inspection_required), sequence, node.code, node.weight,
+                    node.template_id, node.template_step_id,
+                    json.dumps(node.snapshot, ensure_ascii=False, separators=(",", ":")),
+                    node.standard_minutes, node.piece_rate, node.default_role, node.work_center, now,
                 ),
             )
             ids_by_code[node.code] = int(cursor.lastrowid)

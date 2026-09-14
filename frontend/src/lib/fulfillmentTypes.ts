@@ -103,6 +103,11 @@ export interface FulfillmentWorkPackage {
   material_ready?: number | boolean;
   operation_code?: string;
   weight?: number;
+  employee_id?: number | null;
+  work_center?: string;
+  standard_minutes?: number;
+  default_role?: string;
+  route_snapshot?: Record<string, unknown>;
 }
 
 export interface TechnicalPackage {
@@ -219,6 +224,14 @@ export interface DoorUnitDetail extends DoorUnitSummary {
     unpaid_amount: number;
   };
   workflow: FulfillmentWorkflow;
+  assembly_owner_id?: number | null;
+  assembly_owner?: { id: number; employee_no: string; name: string; team: string; role_name: string } | null;
+  assembly_collaborator_ids?: number[];
+  assembly_collaborators?: Array<{ id: number; employee_no: string; name: string; team: string; role_name: string }>;
+  assembly_work_center?: string;
+  assembly_planned_date?: string;
+  assembly_actual_date?: string;
+  assembly_note?: string;
 }
 
 export type FulfillmentStageKey = "preparation" | "materials" | "execution" | "quality" | "delivery";

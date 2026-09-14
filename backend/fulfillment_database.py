@@ -551,6 +551,101 @@ class FulfillmentDatabase:
                     FOREIGN KEY(door_unit_id) REFERENCES fulfillment_door_units(id) ON DELETE CASCADE,
                     FOREIGN KEY(work_package_id) REFERENCES fulfillment_work_packages(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS workforce_employees (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    employee_no TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    team TEXT NOT NULL DEFAULT '',
+                    role_name TEXT NOT NULL DEFAULT '',
+                    capabilities_json TEXT NOT NULL DEFAULT '[]',
+                    work_center TEXT NOT NULL DEFAULT '',
+                    wage_type TEXT NOT NULL DEFAULT '计件',
+                    base_salary REAL NOT NULL DEFAULT 0,
+                    hire_date TEXT NOT NULL DEFAULT '',
+                    leave_date TEXT NOT NULL DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS process_route_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    target_group TEXT NOT NULL DEFAULT 'door',
+                    version INTEGER NOT NULL DEFAULT 1,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS process_route_template_steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    template_id INTEGER NOT NULL,
+                    step_code TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '生产',
+                    sequence_no INTEGER NOT NULL,
+                    predecessor_codes_json TEXT NOT NULL DEFAULT '[]',
+                    material_operations_json TEXT NOT NULL DEFAULT '[]',
+                    inspection_required INTEGER NOT NULL DEFAULT 0,
+                    standard_minutes REAL NOT NULL DEFAULT 0,
+                    piece_rate REAL NOT NULL DEFAULT 0,
+                    default_role TEXT NOT NULL DEFAULT '',
+                    work_center TEXT NOT NULL DEFAULT '',
+                    weight REAL NOT NULL DEFAULT 1,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    UNIQUE(template_id, step_code),
+                    FOREIGN KEY(template_id) REFERENCES process_route_templates(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS workforce_attendance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    employee_id INTEGER NOT NULL,
+                    work_date TEXT NOT NULL,
+                    regular_hours REAL NOT NULL DEFAULT 0,
+                    overtime_hours REAL NOT NULL DEFAULT 0,
+                    leave_hours REAL NOT NULL DEFAULT 0,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(employee_id, work_date),
+                    FOREIGN KEY(employee_id) REFERENCES workforce_employees(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS payroll_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    month TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT '草稿',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    approved_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    approved_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS payroll_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    period_id INTEGER NOT NULL,
+                    employee_id INTEGER NOT NULL,
+                    base_salary REAL NOT NULL DEFAULT 0,
+                    piecework_amount REAL NOT NULL DEFAULT 0,
+                    overtime_amount REAL NOT NULL DEFAULT 0,
+                    allowance REAL NOT NULL DEFAULT 0,
+                    bonus REAL NOT NULL DEFAULT 0,
+                    deduction REAL NOT NULL DEFAULT 0,
+                    social_insurance REAL NOT NULL DEFAULT 0,
+                    tax REAL NOT NULL DEFAULT 0,
+                    other_withholding REAL NOT NULL DEFAULT 0,
+                    payable_amount REAL NOT NULL DEFAULT 0,
+                    remark TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(period_id, employee_id),
+                    FOREIGN KEY(period_id) REFERENCES payroll_periods(id) ON DELETE CASCADE,
+                    FOREIGN KEY(employee_id) REFERENCES workforce_employees(id)
+                );
                 """
             )
             package_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_technical_packages)").fetchall()}
@@ -624,12 +719,73 @@ class FulfillmentDatabase:
                 ("sales_order_line_id", "INTEGER"),
                 ("source_task_id", "TEXT NOT NULL DEFAULT ''"),
                 ("source_quantity_index", "INTEGER NOT NULL DEFAULT 1"),
+                ("assembly_owner_id", "INTEGER"),
+                ("assembly_collaborator_ids_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("assembly_work_center", "TEXT NOT NULL DEFAULT ''"),
+                ("assembly_planned_date", "TEXT NOT NULL DEFAULT ''"),
+                ("assembly_actual_date", "TEXT NOT NULL DEFAULT ''"),
+                ("assembly_note", "TEXT NOT NULL DEFAULT ''"),
             ):
                 if name not in door_columns:
                     conn.execute(f"ALTER TABLE fulfillment_door_units ADD COLUMN {name} {definition}")
+            for name, definition in (
+                ("route_template_id", "INTEGER"),
+                ("route_step_id", "INTEGER"),
+                ("route_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+                ("standard_minutes", "REAL NOT NULL DEFAULT 0"),
+                ("default_role", "TEXT NOT NULL DEFAULT ''"),
+                ("work_center", "TEXT NOT NULL DEFAULT ''"),
+                ("employee_id", "INTEGER"),
+            ):
+                if name not in work_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_work_packages ADD COLUMN {name} {definition}")
+            self._seed_process_routes(conn)
             conn.execute(
                 """CREATE UNIQUE INDEX IF NOT EXISTS ux_fulfillment_sales_order
                    ON fulfillment_orders(sales_order_id) WHERE sales_order_id IS NOT NULL"""
+            )
+
+    @staticmethod
+    def _seed_process_routes(conn: sqlite3.Connection) -> None:
+        now = fulfillment_now()
+        existing = conn.execute(
+            "SELECT id FROM process_route_templates WHERE code='DOOR_STANDARD'"
+        ).fetchone()
+        if existing:
+            return
+        cursor = conn.execute(
+            """INSERT INTO process_route_templates(
+                   code, name, target_group, version, is_default, is_active, updated_at
+               ) VALUES ('DOOR_STANDARD', '整樘门标准工艺', 'door', 1, 1, 1, ?)""",
+            (now,),
+        )
+        template_id = int(cursor.lastrowid)
+        steps = (
+            ("TECH_PREP", "技术准备", "技术", [], [], 0, 20, 0, "技术", "技术中心", 5),
+            ("PANEL_PREP", "门板与骨架备料", "备料", ["TECH_PREP"], ["PANEL", "SKELETON", "PANEL_SHEET", "PANEL_PROFILE"], 0, 30, 0, "仓储", "备料区", 10),
+            ("PANEL_CUT", "板材下料", "下料", ["PANEL_PREP"], [], 0, 60, 0, "下料", "下料区", 12),
+            ("BENDING", "折弯成型", "折弯", ["PANEL_CUT"], [], 0, 60, 0, "折弯", "折弯区", 10),
+            ("BODY", "门体焊接与制作", "门体", ["BENDING"], [], 0, 120, 0, "焊接", "焊接区", 20),
+            ("SURFACE", "表面处理", "表面", ["BODY"], [], 0, 120, 0, "油漆", "表面处理区", 14),
+            ("FITTINGS_PREP", "玻璃五金与门套配套", "配套", ["TECH_PREP"], ["TRIM", "GLASS", "HINGE", "LOCK_BODY", "FINGERPRINT_LOCK", "FRONT_HANDLE", "BACK_HANDLE", "ORNAMENT", "CONSUMABLE"], 0, 30, 0, "仓储", "配套区", 10),
+            ("ASSEMBLY", "总装配", "装配", ["SURFACE", "FITTINGS_PREP"], [], 0, 120, 0, "拼装", "总装区", 15),
+            ("PACKAGING", "成品包装", "包装", ["ASSEMBLY"], ["PACKAGING"], 0, 30, 0, "包装", "包装区", 5),
+            ("QC_HANDOFF", "成品质检交接", "质检", ["PACKAGING"], [], 1, 30, 0, "质检", "质检区", 5),
+        )
+        for sequence, step in enumerate(steps, start=1):
+            code, name, category, predecessors, material_operations, inspection, minutes, piece_rate, role, center, weight = step
+            conn.execute(
+                """INSERT INTO process_route_template_steps(
+                       template_id, step_code, name, category, sequence_no,
+                       predecessor_codes_json, material_operations_json,
+                       inspection_required, standard_minutes, piece_rate,
+                       default_role, work_center, weight, is_active
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                (
+                    template_id, code, name, category, sequence,
+                    json_dumps(predecessors), json_dumps(material_operations),
+                    inspection, minutes, piece_rate, role, center, weight,
+                ),
             )
 
     def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
@@ -896,6 +1052,20 @@ class FulfillmentDatabase:
         if not door:
             return None
         door["risk_tags"] = json_loads(door.pop("risk_tags_json", ""), [])
+        door["assembly_collaborator_ids"] = json_loads(door.pop("assembly_collaborator_ids_json", ""), [])
+        employee_ids = ([door.get("assembly_owner_id")] if door.get("assembly_owner_id") else []) + door["assembly_collaborator_ids"]
+        employees: Dict[int, Dict[str, Any]] = {}
+        if employee_ids:
+            placeholders = ",".join("?" for _ in employee_ids)
+            employees = {
+                int(row["id"]): dict(row)
+                for row in self.fetch_all(
+                    f"SELECT id, employee_no, name, team, role_name FROM workforce_employees WHERE id IN ({placeholders})",
+                    tuple(employee_ids),
+                )
+            }
+        door["assembly_owner"] = employees.get(int(door["assembly_owner_id"])) if door.get("assembly_owner_id") else None
+        door["assembly_collaborators"] = [employees[item] for item in door["assembly_collaborator_ids"] if item in employees]
         package = self.fetch_one("SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1", (door_id,))
         if package:
             package["product_snapshot"] = json_loads(package.pop("product_snapshot_json", ""), {})
@@ -914,6 +1084,7 @@ class FulfillmentDatabase:
                 component["drawing_parameters"] = json_loads(component.pop("drawing_parameter_json", ""), {})
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
             for work in package["work_packages"]:
+                work["route_snapshot"] = json_loads(work.pop("route_snapshot_json", ""), {})
                 work["predecessor_ids"] = [
                     int(item["predecessor_id"])
                     for item in self.fetch_all(
@@ -1559,6 +1730,10 @@ class FulfillmentDatabase:
             if bool(row["inspection_required"]) and target == "已完成" and current not in {"待质检", "返工"}:
                 raise RuntimeError("该工作包要求质检，必须先提交到“待质检”")
             executor = payload.executor_uid or row["executor_uid"] or str(user.get("uid") or "")
+            employee = conn.execute(
+                "SELECT id FROM workforce_employees WHERE employee_no=? AND is_active=1",
+                (executor,),
+            ).fetchone()
             started_at = row["started_at"] or (now if target == "进行中" else None)
             completed_at = now if target == "已完成" else row["completed_at"]
             actual = row["actual_quantity"] if payload.actual_quantity is None else payload.actual_quantity
@@ -1567,9 +1742,9 @@ class FulfillmentDatabase:
             submitted_at = now if target in {"待质检", "已完成"} else row["submitted_at"]
             conn.execute(
                 """UPDATE fulfillment_work_packages
-                   SET status=?, executor_uid=?, actual_quantity=?, scrap_quantity=?, actual_minutes=?,
+                   SET status=?, executor_uid=?, employee_id=?, actual_quantity=?, scrap_quantity=?, actual_minutes=?,
                        remark=?, started_at=?, submitted_at=?, completed_at=?, updated_at=? WHERE id=?""",
-                (target, executor, actual, scrap, actual_minutes, payload.remark, started_at, submitted_at, completed_at, now, work_id),
+                (target, executor, employee["id"] if employee else None, actual, scrap, actual_minutes, payload.remark, started_at, submitted_at, completed_at, now, work_id),
             )
             door_id = int(row["door_unit_id"])
             if target == "已完成" and float(row["piece_rate"] or 0) > 0:
@@ -1635,6 +1810,10 @@ class FulfillmentDatabase:
                     if current in {"待排单", "已排单", "返工"}:
                         row = WorkPackageService().ensure_startable(conn, work_id=int(row["id"]), now=now)
                 executor = payload.executor_uid or row["executor_uid"] or str(user.get("uid") or "")
+                employee = conn.execute(
+                    "SELECT id FROM workforce_employees WHERE employee_no=? AND is_active=1",
+                    (executor,),
+                ).fetchone()
                 started_at = row["started_at"] or (now if target in {"进行中", "待质检", "已完成"} else None)
                 completed_at = now if target in {"已完成", "已取消"} else row["completed_at"]
                 submitted_at = now if target in {"待质检", "已完成"} else row["submitted_at"]
@@ -1643,10 +1822,10 @@ class FulfillmentDatabase:
                 actual_minutes = row["actual_minutes"] if payload.actual_minutes is None else payload.actual_minutes
                 remark = str(payload.remark or row["remark"] or "")
                 conn.execute(
-                    """UPDATE fulfillment_work_packages SET status=?, executor_uid=?, actual_quantity=?,
+                    """UPDATE fulfillment_work_packages SET status=?, executor_uid=?, employee_id=?, actual_quantity=?,
                        scrap_quantity=?, actual_minutes=?, remark=?,
                        started_at=?, submitted_at=?, completed_at=?, skip_reason=?, updated_at=? WHERE id=?""",
-                    (target, executor, actual, scrap, actual_minutes, remark, started_at, submitted_at, completed_at,
+                    (target, executor, employee["id"] if employee else None, actual, scrap, actual_minutes, remark, started_at, submitted_at, completed_at,
                      remark if payload.action == "跳过" else str(row["skip_reason"] or ""), now, row["id"]),
                 )
                 if target == "已完成" and float(row["piece_rate"] or 0) > 0:

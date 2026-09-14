@@ -7,6 +7,7 @@ export const MANAGEMENT_MODULES: ModuleName[] = [
   "采购管理",
   "库存管理",
   "基础资料",
+  "工资管理",
 ];
 
 const MANAGEMENT_PATH_PREFIXES = [
@@ -17,6 +18,7 @@ const MANAGEMENT_PATH_PREFIXES = [
   "/purchasing",
   "/inventory",
   "/master-data",
+  "/payroll",
 ];
 
 export function canAccessManagement(user: Pick<UserInfo, "uid"> | null | undefined) {
@@ -26,4 +28,3 @@ export function canAccessManagement(user: Pick<UserInfo, "uid"> | null | undefin
 export function isManagementPath(pathname: string) {
   return MANAGEMENT_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
-

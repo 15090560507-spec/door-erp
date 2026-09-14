@@ -26,6 +26,7 @@ import {
   ShoppingCart,
   Sparkles,
   Warehouse,
+  WalletCards,
   X,
 } from "lucide-react";
 import { useAuth, useModule } from "@/hooks/useAuth";
@@ -50,6 +51,7 @@ const MODULE_ICONS: Record<ModuleName, ComponentType<{ size?: number; strokeWidt
   采购管理: ShoppingCart,
   库存管理: Warehouse,
   基础资料: Database,
+  工资管理: WalletCards,
 };
 
 function moduleRoute(module: ModuleName) {
@@ -62,6 +64,7 @@ function moduleRoute(module: ModuleName) {
   if (module === "采购管理") return "/purchasing";
   if (module === "库存管理") return "/inventory";
   if (module === "基础资料") return "/master-data";
+  if (module === "工资管理") return "/payroll";
   return "/dashboard";
 }
 
@@ -74,6 +77,7 @@ function moduleFromPath(pathname: string): ModuleName | null {
   if (pathname.startsWith("/purchasing")) return "采购管理";
   if (pathname.startsWith("/inventory")) return "库存管理";
   if (pathname.startsWith("/master-data")) return "基础资料";
+  if (pathname.startsWith("/payroll")) return "工资管理";
   return null;
 }
 

@@ -76,6 +76,7 @@ from rendering.legacy_cleanup import cleanup_legacy_layered_outputs
 from erpnext_bridge import sync_order_to_erpnext
 from door_cad.router import router as door_cad_router
 from bom_routes import router as bom_router
+from operations_routes import router as operations_router
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -105,6 +106,7 @@ app.include_router(inventory_router)
 app.include_router(sales_order_router)
 app.include_router(door_cad_router)
 app.include_router(bom_router)
+app.include_router(operations_router)
 cleanup_legacy_layered_outputs()
 
 # ===================== 数据库实例 =====================

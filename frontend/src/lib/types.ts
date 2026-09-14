@@ -255,7 +255,7 @@ export interface TaskOverviewData {
 }
 
 // ===================== 模块 =====================
-export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "下料" | "任务总览" | "订单确认" | "生产管理" | "采购管理" | "库存管理" | "基础资料";
+export type ModuleName = "图纸信息录入" | "图纸绘制" | "图纸初审" | "报价系统" | "效果渲染" | "图纸终审" | "下料" | "任务总览" | "订单确认" | "生产管理" | "采购管理" | "库存管理" | "基础资料" | "工资管理";
 
 // ===================== 状态常量 =====================
 export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
@@ -270,6 +270,7 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "采购管理", module: "采购管理" },
   { title: "库存管理", module: "库存管理" },
   { title: "基础资料", module: "基础资料" },
+  { title: "工资管理", module: "工资管理" },
 ];
 
 export const DOOR_TYPES = ["单门", "对开门", "子母门", "两定两开", "四开门"];
