@@ -50,7 +50,16 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
         <label className="flex h-9 items-center gap-2 border border-[#C7C7CC] px-3 text-sm"><input type="checkbox" checked={lowOnly} onChange={(event) => setLowOnly(event.target.checked)} />只看低库存</label>
         <button onClick={() => setFilters({ q: q.trim(), warehouseId, lowOnly })} className="h-9 bg-[#007AFF] px-5 text-sm text-white">查询</button><button onClick={() => setAdjusting(true)} className="h-9 border border-[#007AFF] px-4 text-sm text-[#007AFF]">盘点调整</button>
       </div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1120px] table-fixed text-sm">
+      <div className="grid gap-2 p-3 lg:hidden">
+        {loading ? <CompactEmpty text="正在加载库存..." /> : balances.length === 0 ? <CompactEmpty text="暂无库存记录，可通过盘点调整建立期初库存" /> : balances.map((item) => {
+          const low = item.available < item.minimum_stock;
+          return <article key={`${item.material_id}-${item.warehouse_id}-${item.location_id}`} className="border border-[#E5E5EA] bg-[#FAFAFB] p-3">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate text-sm">{item.material_name}</strong><span className="mt-1 block truncate text-xs text-[#636366]">{item.material_code} · {item.specification || "无规格"}</span></div><span className={`shrink-0 px-2 py-1 text-xs ${low ? "bg-[#FFECEC] text-[#C62828]" : "bg-[#EAF8ED] text-[#248A3D]"}`}>{low ? "需补充" : "正常"}</span></div>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3"><CompactInfo label="仓库 / 库位" value={`${item.warehouse_name} / ${item.location_name}`} /><CompactInfo label="在库" value={`${formatQty(item.on_hand)} ${item.unit}`} /><CompactInfo label="占用" value={formatQty(item.reserved)} /><CompactInfo label="可用" value={formatQty(item.available)} strong /><CompactInfo label="在途" value={formatQty(item.purchase_in_transit + item.subcontract_in_transit)} /></div>
+          </article>;
+        })}
+      </div>
+      <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[1120px] table-fixed text-sm">
         <colgroup><col className="w-28"/><col className="w-44"/><col className="w-36"/><col className="w-32"/><col className="w-36"/><col className="w-24"/><col className="w-24"/><col className="w-24"/><col className="w-24"/><col className="w-28"/></colgroup>
         <thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料编码","物料名称","规格","仓库","库位","在库","占用","可用","在途","状态"].map((item) => <th key={item} className="px-3 py-2.5 font-medium">{item}</th>)}</tr></thead>
         <tbody>{loading ? <RowEmpty text="正在加载库存..." /> : balances.length === 0 ? <RowEmpty text="暂无库存记录，可通过盘点调整建立期初库存" /> : balances.map((item) => { const low = item.available < item.minimum_stock; return <tr key={`${item.material_id}-${item.warehouse_id}-${item.location_id}`} className="border-t border-[#E5E5EA] hover:bg-[#F8F8FA]"><td className="px-3 py-2 font-medium">{item.material_code}</td><td className="truncate px-3 py-2" title={item.material_name}>{item.material_name}</td><td className="truncate px-3 py-2" title={item.specification}>{item.specification || "-"}</td><td className="px-3 py-2">{item.warehouse_name}</td><td className="px-3 py-2">{item.location_name}</td><td className="px-3 py-2 text-right">{formatQty(item.on_hand)} {item.unit}</td><td className="px-3 py-2 text-right">{formatQty(item.reserved)}</td><td className="px-3 py-2 text-right font-semibold">{formatQty(item.available)}</td><td className="px-3 py-2 text-right">{formatQty(item.purchase_in_transit + item.subcontract_in_transit)}</td><td className="px-3 py-2"><span className={`px-2 py-1 text-xs ${low ? "bg-[#FFECEC] text-[#C62828]" : "bg-[#EAF8ED] text-[#248A3D]"}`}>{low ? "需补充" : "正常"}</span></td></tr>; })}</tbody>
@@ -93,6 +102,8 @@ function AdjustmentDialog({ materials, warehouses, onClose, onDone, notify }: { 
 }
 
 function Metric({ label, value, danger = false }: { label: string; value: number | string; danger?: boolean }) { return <div className="bg-white px-4 py-3"><div className="text-xs text-[#636366]">{label}</div><div className={`mt-1 text-xl font-semibold ${danger ? "text-[#C62828]" : "text-[#1C1C1E]"}`}>{value}</div></div>; }
+function CompactEmpty({ text }: { text: string }) { return <div className="py-16 text-center text-sm text-[#8E8E93]">{text}</div>; }
+function CompactInfo({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <div className="min-w-0"><span className="block text-[#8E8E93]">{label}</span><span className={`mt-0.5 block truncate ${strong ? "font-semibold text-[#1C1C1E]" : "text-[#3A3A3C]"}`}>{value}</span></div>; }
 function RowEmpty({ text }: { text: string }) { return <tr><td colSpan={10} className="h-36 text-center text-sm text-[#8E8E93]">{text}</td></tr>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="text-xs text-[#636366]">{label}<div className="mt-1">{children}</div></label>; }
 function formatQty(value: number) { return Number(value || 0).toLocaleString("zh-CN", { maximumFractionDigits: 3 }); }
