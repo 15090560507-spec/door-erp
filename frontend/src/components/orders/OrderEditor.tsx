@@ -1,15 +1,16 @@
-import { ArrowLeft, FilePlus2, Link2, Save, Send } from "lucide-react";
+import { ArrowLeft, FilePlus2, Link2, Plus, Save, Send, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import EmptyState from "@/components/workspace/EmptyState";
 import StatusChip from "@/components/workspace/StatusChip";
-import type { SalesOrder, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPaymentNode } from "@/lib/salesOrderTypes";
+import type { SalesOrder, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPaymentNode } from "@/lib/salesOrderTypes";
+import OrderChargeEditor from "./OrderChargeEditor";
 import OrderLineEditor from "./OrderLineEditor";
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return <label className="order-field"><span>{label}{required && <b>*</b>}</span>{children}</label>;
 }
 
-export default function OrderEditor({ order, editor, subtotal, total, busy, onBack, onFieldChange, onPaymentChange, onAddSource, onAddManual, onLineChange, onLineRemove, onSave, onConfirm }: {
+export default function OrderEditor({ order, editor, subtotal, total, busy, onBack, onFieldChange, onPaymentChange, onPaymentAdd, onPaymentRemove, onAddSource, onAddManual, onLineChange, onLineRemove, onChargeAdd, onChargeChange, onChargeRemove, onSave, onConfirm }: {
   order: SalesOrder | null;
   editor: SalesOrderEditor;
   subtotal: number;
@@ -18,10 +19,15 @@ export default function OrderEditor({ order, editor, subtotal, total, busy, onBa
   onBack: () => void;
   onFieldChange: (field: keyof SalesOrderEditor, value: string | number) => void;
   onPaymentChange: (index: number, changes: Partial<SalesOrderPaymentNode>) => void;
+  onPaymentAdd: () => void;
+  onPaymentRemove: (index: number) => void;
   onAddSource: () => void;
   onAddManual: () => void;
   onLineChange: (index: number, changes: Partial<SalesOrderEditorLine>) => void;
   onLineRemove: (index: number) => void;
+  onChargeAdd: () => void;
+  onChargeChange: (index: number, changes: Partial<SalesOrderChargeLine>) => void;
+  onChargeRemove: (index: number) => void;
   onSave: () => void;
   onConfirm: () => void;
 }) {
@@ -54,8 +60,10 @@ export default function OrderEditor({ order, editor, subtotal, total, busy, onBa
         <div className="order-editor__lines">{editor.lines.length ? editor.lines.map((line, index) => <OrderLineEditor key={line.task_id} line={line} index={index} disabled={locked || busy} onChange={(changes) => onLineChange(index, changes)} onRemove={() => onLineRemove(index)} />) : <EmptyState title="还没有订单明细" description="关联已终审图纸和报价，或为特殊情况添加手工明细。" action={<div className="flex flex-wrap justify-center gap-2"><button type="button" className="ui-button ui-button--primary" onClick={onAddSource}><Link2 size={16} />关联终审图纸</button><button type="button" className="ui-button ui-button--secondary" onClick={onAddManual}><FilePlus2 size={16} />手工录入</button></div>} />}</div>
       </section>
 
+      <OrderChargeEditor lines={editor.lines} charges={editor.charge_lines} disabled={locked || busy} onAdd={onChargeAdd} onChange={onChargeChange} onRemove={onChargeRemove} />
+
       <section className="order-editor__section order-editor__settlement">
-        <div><div className="order-editor__section-title"><div><h3>收款节点</h3><p>第一版使用当前实际模板，确认前可调整比例和计划日期。</p></div></div><div className="order-editor__payments">{editor.payment_nodes.map((node, index) => <div key={index}><input disabled={locked} value={node.name} onChange={(event) => onPaymentChange(index, { name: event.target.value })} placeholder="节点名称" /><label><input disabled={locked} type="number" min="0" max="100" value={node.due_percent} onChange={(event) => onPaymentChange(index, { due_percent: Number(event.target.value) || 0 })} /><span>%</span></label><input disabled={locked} type="date" value={node.planned_date} onChange={(event) => onPaymentChange(index, { planned_date: event.target.value })} /></div>)}</div></div>
+        <div><div className="order-editor__section-title"><div><h3>收款计划</h3><p>直接填写计划收款金额；合计必须与订单总额一致。</p></div><button type="button" className="ui-button ui-button--secondary" disabled={locked || busy} onClick={onPaymentAdd}><Plus size={15} />添加节点</button></div><div className="order-editor__payments">{editor.payment_nodes.map((node, index) => <div key={index}><input disabled={locked} value={node.name} onChange={(event) => onPaymentChange(index, { name: event.target.value })} placeholder="节点名称" /><label><input disabled={locked} type="number" min="0" step="0.01" value={node.due_amount || ""} onChange={(event) => onPaymentChange(index, { due_amount: Number(event.target.value) || 0, due_percent: 0 })} /><span>元</span></label><input disabled={locked} type="date" value={node.planned_date} onChange={(event) => onPaymentChange(index, { planned_date: event.target.value })} /><button type="button" disabled={locked || busy} onClick={() => onPaymentRemove(index)} title="删除收款节点" aria-label={`删除第${index + 1}个收款节点`}><Trash2 size={15} /></button></div>)}</div></div>
         <aside className="order-editor__totals"><p><span>订单小计</span><strong>¥{subtotal.toLocaleString()}</strong></p><label><span>优惠金额</span><input disabled={locked} type="number" min="0" value={editor.discount_amount} onChange={(event) => onFieldChange("discount_amount", Number(event.target.value) || 0)} /></label><p className="is-total"><span>订单总额</span><strong>¥{total.toLocaleString()}</strong></p></aside>
       </section>
       <footer className="order-editor__footer"><button type="button" className="ui-button ui-button--secondary" onClick={onBack}>返回</button><button type="button" className="ui-button ui-button--secondary" disabled={busy || locked} onClick={onSave}><Save size={16} />保存草稿</button><button type="button" className="ui-button ui-button--primary" disabled={busy || locked || !editor.lines.length} onClick={onConfirm}><Send size={16} />正式确认</button></footer>

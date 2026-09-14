@@ -98,6 +98,117 @@ def _quote_group_total(group: Dict) -> float:
     return round(total, 2)
 
 
+def _charge_amount(charge: Dict) -> float:
+    amount = float(charge.get("quantity") or 0) * float(charge.get("unit_price") or 0)
+    return float(round(amount)) if charge.get("source_type") == "quote" else round(amount, 2)
+
+
+def _charge_item_type(product_name: str) -> str:
+    name = str(product_name or "")
+    if "门套" in name:
+        return "门套"
+    if "门框" in name:
+        return "门框"
+    if any(keyword in name for keyword in ("锁", "拉手", "合页", "闭门器", "插销", "花件")):
+        return "五金"
+    if any(keyword in name for keyword in ("运输", "运费")):
+        return "运输"
+    if "安装" in name:
+        return "安装"
+    return "主门"
+
+
+def _quote_item_specification(item: Dict) -> str:
+    width = float(item.get("width") or 0)
+    height = float(item.get("height") or 0)
+    if width > 0 and height > 0:
+        return f"{width:g} × {height:g} mm"
+    return str(item.get("specification") or item.get("model") or "")
+
+
+def _charges_from_lines(lines: List[Dict]) -> List[Dict]:
+    charges: List[Dict] = []
+    for door_line_no, line in enumerate(lines, start=1):
+        quote_snapshot = line.get("quote_snapshot") or {}
+        group = quote_snapshot.get("group") or {}
+        quote_items = group.get("items") or []
+        if quote_items:
+            for quote_item_index, item in enumerate(quote_items):
+                product_name = str(item.get("productName") or "").strip()
+                base_quantity = _quote_item_quantity(item)
+                if not product_name or base_quantity <= 0:
+                    continue
+                charges.append({
+                    "door_line_no": door_line_no,
+                    "source_type": "quote",
+                    "quote_item_index": quote_item_index,
+                    "item_type": _charge_item_type(product_name),
+                    "product_name": product_name,
+                    "specification": _quote_item_specification(item),
+                    "quantity": round(base_quantity * int(line.get("quantity") or 1), 6),
+                    "unit": str(item.get("unit") or "项"),
+                    "unit_price": float(item.get("unitPrice") or 0),
+                    "amount": float(round(base_quantity * int(line.get("quantity") or 1) * float(item.get("unitPrice") or 0))),
+                    "pricing_mode": str(group.get("pricingMode") or ""),
+                    "remark": str(item.get("remark") or ""),
+                })
+            continue
+        charges.append({
+            "door_line_no": door_line_no,
+            "source_type": "manual",
+            "quote_item_index": None,
+            "item_type": "主门",
+            "product_name": str(line.get("product_name") or ""),
+            "specification": f"{float(line.get('width') or 0):g} × {float(line.get('height') or 0):g} mm",
+            "quantity": float(line.get("quantity") or 1),
+            "unit": str(line.get("unit") or "樘"),
+            "unit_price": float(line.get("unit_price") or 0),
+            "amount": round(float(line.get("quantity") or 1) * float(line.get("unit_price") or 0), 2),
+            "pricing_mode": "manual",
+            "remark": str(line.get("remark") or ""),
+        })
+    return charges
+
+
+def _charges_from_input(items, line_count: int) -> List[Dict]:
+    charges: List[Dict] = []
+    for index, item in enumerate(items, start=1):
+        door_line_no = item.door_line_no
+        if door_line_no is not None and door_line_no > line_count:
+            raise ValueError(f"第{index}条价格明细关联的门樘明细不存在")
+        product_name = item.product_name.strip()
+        if not product_name:
+            raise ValueError(f"第{index}条价格明细的品名不能为空")
+        charge = {
+            "door_line_no": door_line_no,
+            "source_type": item.source_type,
+            "quote_item_index": item.quote_item_index,
+            "item_type": item.item_type.strip() or "其他",
+            "product_name": product_name,
+            "specification": item.specification.strip(),
+            "quantity": float(item.quantity),
+            "unit": item.unit.strip() or "项",
+            "unit_price": float(item.unit_price),
+            "pricing_mode": item.pricing_mode.strip(),
+            "remark": item.remark.strip(),
+        }
+        charge["amount"] = _charge_amount(charge)
+        charges.append(charge)
+    return charges
+
+
+def _apply_charge_totals(lines: List[Dict], charges: List[Dict]) -> None:
+    totals = {index: 0.0 for index in range(1, len(lines) + 1)}
+    for charge in charges:
+        door_line_no = charge.get("door_line_no")
+        if door_line_no in totals:
+            totals[int(door_line_no)] += _charge_amount(charge)
+    for index, line in enumerate(lines, start=1):
+        quantity = max(1, int(line.get("quantity") or 1))
+        line["amount"] = round(totals[index], 2)
+        line["unit_price"] = round(totals[index] / quantity, 2)
+
+
 def _task_snapshot(task: Dict) -> Dict:
     return {
         "id": task.get("id"),
@@ -167,8 +278,6 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
             raise _line_error(line_no, "width", f"第{line_no}行手工明细的宽度必须大于0")
         if height <= 0:
             raise _line_error(line_no, "height", f"第{line_no}行手工明细的高度必须大于0")
-        if unit_price <= 0:
-            raise _line_error(line_no, "unit_price", f"第{line_no}行手工明细的单价必须大于0")
         quantity = int(item.quantity)
         return {
             "source_type": "manual",
@@ -243,7 +352,7 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
     }
 
 
-def _prepare_order(req, exclude_order_id: Optional[int] = None) -> tuple[Dict, List[Dict]]:
+def _prepare_order(req, exclude_order_id: Optional[int] = None) -> tuple[Dict, List[Dict], List[Dict]]:
     occupied = sales_order_db.active_task_ids(exclude_order_id=exclude_order_id)
     drawing_inputs = [line for line in req.lines if line.source_type == "drawing"]
     requested_ids = [line.task_id for line in drawing_inputs]
@@ -264,9 +373,16 @@ def _prepare_order(req, exclude_order_id: Optional[int] = None) -> tuple[Dict, L
         raise ValueError("订单客户必须与所选图纸客户一致")
 
     lines = [_line_from_input(item, customer, index) for index, item in enumerate(req.lines, start=1)]
-    data = req.model_dump(exclude={"lines"})
+    charges = _charges_from_input(req.charge_lines, len(lines)) if req.charge_lines else _charges_from_lines(lines)
+    _apply_charge_totals(lines, charges)
+    data = req.model_dump(exclude={"lines", "charge_lines"})
     data["customer_name"] = customer
-    return data, lines
+    subtotal = round(sum(_charge_amount(item) for item in charges), 2)
+    total = round(subtotal - float(data.get("discount_amount") or 0), 2)
+    for node in data.get("payment_nodes") or []:
+        if float(node.get("due_amount") or 0) <= 0 and float(node.get("due_percent") or 0) > 0:
+            node["due_amount"] = round(total * float(node["due_percent"]) / 100, 2)
+    return data, lines, charges
 
 
 def _candidate(task: Dict) -> Dict:
@@ -289,6 +405,8 @@ def _candidate(task: Dict) -> Dict:
         "group_index": match["group_index"],
         "group_name": match["group"].get("groupName", ""),
         "amount": _quote_group_total(match["group"]),
+        "pricing_mode": str(match["group"].get("pricingMode") or ""),
+        "items": match["group"].get("items") or [],
     } for match in matches]
     return {
         "task_id": task_id,
@@ -419,8 +537,8 @@ def get_order(order_id: int, current_user: Dict = Depends(get_current_user)):
 @router.post("", status_code=201)
 def create_order(req: SalesOrderCreate, current_user: Dict = Depends(get_current_user)):
     try:
-        data, lines = _prepare_order(req)
-        order = sales_order_db.create(data, lines, str(current_user.get("uid") or ""))
+        data, lines, charge_lines = _prepare_order(req)
+        order = sales_order_db.create(data, lines, charge_lines, str(current_user.get("uid") or ""))
         return {"order": _enrich_order(order), "message": "订单草稿已保存"}
     except Exception as exc:
         raise _error(exc) from exc
@@ -429,8 +547,8 @@ def create_order(req: SalesOrderCreate, current_user: Dict = Depends(get_current
 @router.put("/{order_id}")
 def update_order(order_id: int, req: SalesOrderUpdate, current_user: Dict = Depends(get_current_user)):
     try:
-        data, lines = _prepare_order(req, exclude_order_id=order_id)
-        order = sales_order_db.update_draft(order_id, data, lines, str(current_user.get("uid") or ""))
+        data, lines, charge_lines = _prepare_order(req, exclude_order_id=order_id)
+        order = sales_order_db.update_draft(order_id, data, lines, charge_lines, str(current_user.get("uid") or ""))
         return {"order": _enrich_order(order), "message": "订单草稿已更新"}
     except Exception as exc:
         raise _error(exc) from exc
@@ -459,12 +577,21 @@ def confirm_order(order_id: int, current_user: Dict = Depends(get_current_user))
                 errors.append({"code": "invalid", "line_no": index, "field": "dimensions", "message": f"第{index}行宽高必须大于0"})
             if int(line.get("quantity") or 0) <= 0:
                 errors.append({"code": "invalid", "line_no": index, "field": "quantity", "message": f"第{index}行数量必须大于0"})
-            if float(line.get("unit_price") or 0) <= 0:
-                errors.append({"code": "invalid", "line_no": index, "field": "unit_price", "message": f"第{index}行单价必须大于0"})
             if source_type == "drawing" and line.get("source_changed"):
                 errors.append({"code": "source_changed", "line_no": index, "field": "task_id", "message": f"第{index}行图纸已变更，请先保存草稿刷新快照"})
+        for index, charge in enumerate(order.get("charge_lines") or [], start=1):
+            if not str(charge.get("product_name") or "").strip():
+                errors.append({"code": "required", "line_no": None, "field": "charge_lines", "message": f"第{index}条价格明细品名不能为空"})
+            if float(charge.get("quantity") or 0) <= 0 or float(charge.get("unit_price") or 0) < 0:
+                errors.append({"code": "invalid", "line_no": None, "field": "charge_lines", "message": f"第{index}条价格明细数量或单价无效"})
         if float(order.get("total_amount") or 0) <= 0:
             errors.append({"code": "invalid", "line_no": None, "field": "total_amount", "message": "订单总金额必须大于0"})
+        payment_nodes = order.get("payment_nodes") or []
+        planned_amount = round(sum(float(node.get("due_amount") or 0) for node in payment_nodes), 2)
+        if not payment_nodes:
+            errors.append({"code": "required", "line_no": None, "field": "payment_nodes", "message": "请填写定金、发货款等收款计划"})
+        elif abs(planned_amount - float(order.get("total_amount") or 0)) > 0.01:
+            errors.append({"code": "invalid", "line_no": None, "field": "payment_nodes", "message": f"计划收款合计 {planned_amount:.2f} 元，必须等于订单总额 {float(order.get('total_amount') or 0):.2f} 元"})
         if errors:
             raise OrderValidationError(errors)
         confirmed = sales_order_db.confirm(order_id, str(current_user.get("uid") or ""))

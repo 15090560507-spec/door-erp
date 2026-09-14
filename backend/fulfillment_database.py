@@ -615,7 +615,9 @@ class FulfillmentDatabase:
                     })
                     for quantity_index in range(1, quantity + 1):
                         sequence += 1
-                        production_no = f"{order_no}-{sequence:02d}"
+                        door_line_no = int(line.get("line_no") or 0)
+                        sales_order_no = str(sales_order.get("order_no") or order_no)
+                        production_no = f"{sales_order_no}-{door_line_no:02d}-{quantity_index:02d}"
                         specification = f"{params.get('dw') or ''} x {params.get('dh') or ''}".strip(" x")
                         door_cursor = conn.execute(
                             """INSERT INTO fulfillment_door_units(

@@ -5,6 +5,21 @@ export interface SalesOrderQuoteChoice {
   group_index: number;
   group_name: string;
   amount: number;
+  pricing_mode?: string;
+  items?: SalesOrderQuoteItem[];
+}
+
+export interface SalesOrderQuoteItem {
+  productName: string;
+  width?: number | null;
+  height?: number | null;
+  quantity?: number | null;
+  unit?: string;
+  unitPrice?: number;
+  category?: string;
+  specification?: string;
+  model?: string;
+  remark?: string;
 }
 
 export type SalesOrderStatus = "draft" | "confirmed" | "fulfilling" | "completed" | "cancelled";
@@ -29,6 +44,7 @@ export interface SalesOrderCandidate {
 export interface SalesOrderLine {
   id: number;
   line_no: number;
+  line_code: string;
   source_type: "drawing" | "manual";
   task_id: string;
   quote_id: number | null;
@@ -48,6 +64,23 @@ export interface SalesOrderLine {
   drawing_revision: string;
   source_changed?: boolean;
   quote_choices?: SalesOrderQuoteChoice[];
+  drawing_snapshot?: { params?: Record<string, unknown> };
+  remark: string;
+}
+
+export interface SalesOrderChargeLine {
+  id?: number;
+  door_line_no: number | null;
+  source_type: "quote" | "manual";
+  quote_item_index?: number | null;
+  item_type: string;
+  product_name: string;
+  specification: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  amount?: number;
+  pricing_mode: string;
   remark: string;
 }
 
@@ -94,6 +127,7 @@ export interface SalesOrder extends SalesOrderSummary {
   confirmed_at: string | null;
   cancel_reason: string;
   lines: SalesOrderLine[];
+  charge_lines: SalesOrderChargeLine[];
   payment_nodes: SalesOrderPaymentNode[];
   events: Array<{ id: number; event_type: string; detail: string; operator: string; created_at: string }>;
 }
@@ -126,6 +160,7 @@ export interface SalesOrderPayload {
   remark: string;
   discount_amount: number;
   lines: SalesOrderLineInput[];
+  charge_lines: SalesOrderChargeLine[];
   payment_nodes: SalesOrderPaymentNode[];
 }
 

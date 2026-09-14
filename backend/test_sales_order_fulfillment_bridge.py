@@ -164,7 +164,10 @@ class SalesOrderFulfillmentBridgeTest(unittest.TestCase):
                 {"task_id": "drawing-1", "quantity": 2},
                 {"task_id": "drawing-2", "quantity": 1},
             ],
-            "payment_nodes": [{"name": "定金", "due_percent": 50}],
+            "payment_nodes": [
+                {"name": "定金", "due_amount": 4000},
+                {"name": "发货款", "due_amount": 4000},
+            ],
         }
 
     def create_and_confirm(self):
@@ -190,6 +193,14 @@ class SalesOrderFulfillmentBridgeTest(unittest.TestCase):
         doors = detail["door_units"]
         self.assertEqual(len(doors), 3)
         self.assertEqual(len({door["production_no"] for door in doors}), 3)
+        self.assertEqual(
+            [door["production_no"] for door in doors],
+            [
+                f"{order['order_no']}-01-01",
+                f"{order['order_no']}-01-02",
+                f"{order['order_no']}-02-01",
+            ],
+        )
         self.assertEqual(
             [(door["source_task_id"], door["source_quantity_index"]) for door in doors],
             [("drawing-1", 1), ("drawing-1", 2), ("drawing-2", 1)],

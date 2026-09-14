@@ -74,6 +74,7 @@ class SalesOrderDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
                     line_no INTEGER NOT NULL,
+                    line_code TEXT NOT NULL DEFAULT '',
                     task_id TEXT NOT NULL,
                     quote_id INTEGER,
                     quote_group_index INTEGER,
@@ -110,6 +111,26 @@ class SalesOrderDatabase:
                     status TEXT NOT NULL DEFAULT 'pending',
                     remark TEXT NOT NULL DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS sales_order_charge_lines (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+                    sales_order_line_id INTEGER REFERENCES sales_order_door_lines(id) ON DELETE SET NULL,
+                    line_no INTEGER NOT NULL,
+                    door_line_no INTEGER,
+                    source_type TEXT NOT NULL DEFAULT 'manual',
+                    quote_item_index INTEGER,
+                    item_type TEXT NOT NULL DEFAULT '其他',
+                    product_name TEXT NOT NULL DEFAULT '',
+                    specification TEXT NOT NULL DEFAULT '',
+                    quantity REAL NOT NULL DEFAULT 1,
+                    unit TEXT NOT NULL DEFAULT '项',
+                    unit_price REAL NOT NULL DEFAULT 0,
+                    amount REAL NOT NULL DEFAULT 0,
+                    pricing_mode TEXT NOT NULL DEFAULT '',
+                    remark TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_sales_order_charges_order
+                    ON sales_order_charge_lines(sales_order_id, line_no);
                 CREATE TABLE IF NOT EXISTS sales_order_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
@@ -134,41 +155,78 @@ class SalesOrderDatabase:
             line_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales_order_door_lines)").fetchall()}
             if "source_type" not in line_columns:
                 connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN source_type TEXT NOT NULL DEFAULT 'drawing'")
+            if "line_code" not in line_columns:
+                connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN line_code TEXT NOT NULL DEFAULT ''")
+            connection.execute(
+                """UPDATE sales_order_door_lines
+                   SET line_code=(SELECT sales_orders.order_no FROM sales_orders
+                                  WHERE sales_orders.id=sales_order_door_lines.sales_order_id)
+                                 || '-' || printf('%02d', line_no)
+                   WHERE line_code=''"""
+            )
+            connection.execute(
+                """INSERT INTO sales_order_charge_lines (
+                       sales_order_id, sales_order_line_id, line_no, door_line_no,
+                       source_type, item_type, product_name, quantity, unit,
+                       unit_price, amount, remark
+                   )
+                   SELECT line.sales_order_id, line.id, line.line_no, line.line_no,
+                          'manual', '主门', line.product_name, line.quantity, line.unit,
+                          line.unit_price, line.amount, line.remark
+                   FROM sales_order_door_lines line
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM sales_order_charge_lines charge
+                       WHERE charge.sales_order_id=line.sales_order_id
+                   )"""
+            )
+            connection.execute(
+                """UPDATE sales_order_payment_nodes
+                   SET due_amount=ROUND((SELECT total_amount FROM sales_orders
+                                        WHERE sales_orders.id=sales_order_payment_nodes.sales_order_id)
+                                        * due_percent / 100.0, 2)
+                   WHERE due_amount=0 AND due_percent>0"""
+            )
 
     def _next_order_no(self, connection: sqlite3.Connection, order_date: str) -> str:
-        day = "".join(character for character in order_date if character.isdigit())[:8]
-        if len(day) != 8:
-            day = datetime.now().strftime("%Y%m%d")
-        prefix = f"SO{day}"
+        digits = "".join(character for character in order_date if character.isdigit())
+        year = digits[:4] if len(digits) >= 4 else datetime.now().strftime("%Y")
+        prefix = f"TM{year[-2:]}"
         row = connection.execute(
             "SELECT order_no FROM sales_orders WHERE order_no LIKE ? ORDER BY order_no DESC LIMIT 1",
             (f"{prefix}%",),
         ).fetchone()
-        sequence = int(str(row["order_no"])[-3:]) + 1 if row else 1
-        return f"{prefix}{sequence:03d}"
+        sequence = int(str(row["order_no"])[-5:]) + 1 if row else 1
+        if sequence > 99999:
+            raise RuntimeError(f"{year}年度订单编号已经用完")
+        return f"{prefix}{sequence:05d}"
 
     @staticmethod
-    def _totals(lines: Iterable[Dict], discount_amount: float) -> tuple[float, float]:
-        subtotal = round(sum(float(line.get("amount") or 0) for line in lines), 2)
+    def _totals(charge_lines: Iterable[Dict], discount_amount: float) -> tuple[float, float]:
+        subtotal = round(sum(
+            float(line.get("amount")) if line.get("amount") is not None
+            else float(line.get("quantity") or 0) * float(line.get("unit_price") or 0)
+            for line in charge_lines
+        ), 2)
         discount = round(float(discount_amount or 0), 2)
         if discount > subtotal:
             raise ValueError("优惠金额不能大于订单小计")
         return subtotal, round(subtotal - discount, 2)
 
-    def _replace_lines(self, connection: sqlite3.Connection, order_id: int, lines: List[Dict]) -> None:
+    def _replace_lines(self, connection: sqlite3.Connection, order_id: int, order_no: str, lines: List[Dict]) -> Dict[int, int]:
         connection.execute("DELETE FROM sales_order_door_lines WHERE sales_order_id = ?", (order_id,))
+        line_ids: Dict[int, int] = {}
         for index, line in enumerate(lines, start=1):
-            connection.execute(
+            cursor = connection.execute(
                 """
                 INSERT INTO sales_order_door_lines (
-                    sales_order_id, line_no, task_id, quote_id, quote_group_index,
+                    sales_order_id, line_no, line_code, task_id, quote_id, quote_group_index,
                     product_name, door_type, width, height, opening_direction, color,
                     quantity, unit, unit_price, amount, drawing_status, drawing_revision,
                     drawing_snapshot, quote_snapshot, source_type, remark
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    order_id, index, line["task_id"], line.get("quote_id"), line.get("quote_group_index"),
+                    order_id, index, f"{order_no}-{index:02d}", line["task_id"], line.get("quote_id"), line.get("quote_group_index"),
                     line.get("product_name", ""), line.get("door_type", ""), line.get("width", 0),
                     line.get("height", 0), line.get("opening_direction", ""), line.get("color", ""),
                     line.get("quantity", 1), line.get("unit", "樘"), line.get("unit_price", 0),
@@ -176,6 +234,38 @@ class SalesOrderDatabase:
                     json.dumps(line.get("drawing_snapshot") or {}, ensure_ascii=False),
                     json.dumps(line.get("quote_snapshot") or {}, ensure_ascii=False),
                     line.get("source_type", "drawing"), line.get("remark", ""),
+                ),
+            )
+            line_ids[index] = int(cursor.lastrowid)
+        return line_ids
+
+    def _replace_charge_lines(
+        self,
+        connection: sqlite3.Connection,
+        order_id: int,
+        line_ids: Dict[int, int],
+        charge_lines: List[Dict],
+    ) -> None:
+        connection.execute("DELETE FROM sales_order_charge_lines WHERE sales_order_id = ?", (order_id,))
+        for index, charge in enumerate(charge_lines, start=1):
+            door_line_no = charge.get("door_line_no")
+            quantity = float(charge.get("quantity") or 0)
+            unit_price = float(charge.get("unit_price") or 0)
+            amount = float(charge["amount"]) if charge.get("amount") is not None else round(quantity * unit_price, 2)
+            connection.execute(
+                """INSERT INTO sales_order_charge_lines (
+                       sales_order_id, sales_order_line_id, line_no, door_line_no,
+                       source_type, quote_item_index, item_type, product_name,
+                       specification, quantity, unit, unit_price, amount,
+                       pricing_mode, remark
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    order_id, line_ids.get(int(door_line_no)) if door_line_no else None,
+                    index, door_line_no, charge.get("source_type", "manual"),
+                    charge.get("quote_item_index"), charge.get("item_type", "其他"),
+                    charge.get("product_name", ""), charge.get("specification", ""),
+                    quantity, charge.get("unit", "项"), unit_price, amount,
+                    charge.get("pricing_mode", ""), charge.get("remark", ""),
                 ),
             )
 
@@ -191,8 +281,8 @@ class SalesOrderDatabase:
                 (order_id, index, node["name"], node.get("due_percent", 0), node.get("due_amount", 0), node.get("planned_date", ""), node.get("remark", "")),
             )
 
-    def create(self, data: Dict, lines: List[Dict], operator: str) -> Dict:
-        subtotal, total = self._totals(lines, data.get("discount_amount", 0))
+    def create(self, data: Dict, lines: List[Dict], charge_lines: List[Dict], operator: str) -> Dict:
+        subtotal, total = self._totals(charge_lines, data.get("discount_amount", 0))
         now = _now()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -213,7 +303,8 @@ class SalesOrderDatabase:
                 ),
             )
             order_id = int(cursor.lastrowid)
-            self._replace_lines(connection, order_id, lines)
+            line_ids = self._replace_lines(connection, order_id, order_no, lines)
+            self._replace_charge_lines(connection, order_id, line_ids, charge_lines)
             self._replace_payment_nodes(connection, order_id, data.get("payment_nodes") or [])
             connection.execute(
                 "INSERT INTO sales_order_events (sales_order_id, event_type, detail, operator, created_at) VALUES (?, 'created', ?, ?, ?)",
@@ -221,12 +312,12 @@ class SalesOrderDatabase:
             )
         return self.get(order_id) or {}
 
-    def update_draft(self, order_id: int, data: Dict, lines: List[Dict], operator: str) -> Dict:
-        subtotal, total = self._totals(lines, data.get("discount_amount", 0))
+    def update_draft(self, order_id: int, data: Dict, lines: List[Dict], charge_lines: List[Dict], operator: str) -> Dict:
+        subtotal, total = self._totals(charge_lines, data.get("discount_amount", 0))
         now = _now()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            current = connection.execute("SELECT status FROM sales_orders WHERE id = ?", (order_id,)).fetchone()
+            current = connection.execute("SELECT status, order_no FROM sales_orders WHERE id = ?", (order_id,)).fetchone()
             if not current:
                 raise LookupError("订单不存在")
             if current["status"] != "draft":
@@ -245,7 +336,8 @@ class SalesOrderDatabase:
                     data.get("discount_amount", 0), total, now, order_id,
                 ),
             )
-            self._replace_lines(connection, order_id, lines)
+            line_ids = self._replace_lines(connection, order_id, str(current["order_no"]), lines)
+            self._replace_charge_lines(connection, order_id, line_ids, charge_lines)
             self._replace_payment_nodes(connection, order_id, data.get("payment_nodes") or [])
             connection.execute(
                 "INSERT INTO sales_order_events (sales_order_id, event_type, detail, operator, created_at) VALUES (?, 'updated', ?, ?, ?)",
@@ -441,6 +533,11 @@ class SalesOrderDatabase:
             result["payment_nodes"] = [
                 dict(item) for item in connection.execute(
                     "SELECT * FROM sales_order_payment_nodes WHERE sales_order_id = ? ORDER BY line_no", (order_id,)
+                ).fetchall()
+            ]
+            result["charge_lines"] = [
+                dict(item) for item in connection.execute(
+                    "SELECT * FROM sales_order_charge_lines WHERE sales_order_id = ? ORDER BY line_no", (order_id,)
                 ).fetchall()
             ]
             result["events"] = [

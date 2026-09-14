@@ -24,8 +24,23 @@ class SalesOrderLineInput(BaseModel):
     remark: str = ""
 
 
+class SalesOrderChargeLineInput(BaseModel):
+    door_line_no: Optional[int] = Field(default=None, ge=1, le=100)
+    source_type: Literal["quote", "manual"] = "manual"
+    quote_item_index: Optional[int] = Field(default=None, ge=0)
+    item_type: str = "其他"
+    product_name: str
+    specification: str = ""
+    quantity: float = Field(default=1, gt=0)
+    unit: str = "项"
+    unit_price: float = Field(default=0, ge=0)
+    pricing_mode: str = ""
+    remark: str = ""
+
+
 class SalesOrderPaymentNodeInput(BaseModel):
     name: str
+    # Kept for backward-compatible imports. New forms only submit due_amount.
     due_percent: float = Field(default=0, ge=0, le=100)
     due_amount: float = Field(default=0, ge=0)
     planned_date: str = ""
@@ -43,6 +58,7 @@ class SalesOrderCreate(BaseModel):
     remark: str = ""
     discount_amount: float = Field(default=0, ge=0)
     lines: List[SalesOrderLineInput] = Field(min_length=1, max_length=100)
+    charge_lines: List[SalesOrderChargeLineInput] = Field(default_factory=list, max_length=500)
     payment_nodes: List[SalesOrderPaymentNodeInput] = Field(default_factory=list, max_length=20)
 
 

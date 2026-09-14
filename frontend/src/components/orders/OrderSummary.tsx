@@ -1,10 +1,19 @@
 import { CalendarDays, MapPin, Pencil, ReceiptText, UserRound, XCircle } from "lucide-react";
 import StatusChip, { type StatusTone } from "@/components/workspace/StatusChip";
+import { salesOrderChargeAmount } from "@/lib/salesOrderPricing";
 import type { SalesOrder } from "@/lib/salesOrderTypes";
 import ProvisioningStatus from "./ProvisioningStatus";
 import { salesOrderStatusLabel } from "./OrderList";
 
 const statusTone: Record<string, StatusTone> = { draft: "blue", confirmed: "green", fulfilling: "blue", completed: "green", cancelled: "neutral" };
+
+function value(params: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const current = params[key];
+    if (current !== undefined && current !== null && String(current).trim()) return String(current);
+  }
+  return "-";
+}
 
 export default function OrderSummary({ order, busy, onEdit, onCancel, onRetry }: { order: SalesOrder; busy: boolean; onEdit: () => void; onCancel: () => void; onRetry: () => void }) {
   return (
@@ -22,9 +31,10 @@ export default function OrderSummary({ order, busy, onEdit, onCancel, onRetry }:
       </section>
       <section className="order-summary__section">
         <div className="order-summary__section-title"><div><h3>门樘明细</h3><p>来源图纸、报价和确认快照可逐行追溯。</p></div><strong>{order.lines.length} 项</strong></div>
-        <div className="order-summary__lines">{order.lines.map((line) => <div className={`order-summary-line${line.source_changed ? " has-warning" : ""}`} key={line.id || line.task_id}><div className="order-summary-line__main"><span className="order-summary-line__title"><strong>{line.line_no}. {line.product_name || line.door_type}</strong><StatusChip tone={line.source_type === "manual" ? "neutral" : "green"}>{line.source_type === "manual" ? "手工录入" : "终审图纸"}</StatusChip>{!line.quote_id && line.source_type === "drawing" && <StatusChip tone="amber">缺报价</StatusChip>}</span><p>{line.door_type || "未填门型"} · {line.width} × {line.height} mm · {line.opening_direction || "未填开向"} · {line.color || "未填颜色"}</p><small>{line.source_type === "drawing" ? `图纸 ${line.task_id} · 技术版本 ${line.drawing_revision || "未记录"}` : line.remark || "临时业务明细"}</small>{line.source_changed && <span className="order-summary-line__warning">来源图纸已变化，请取消原订单并重新确认。</span>}</div><div className="order-summary-line__amount"><span>{line.quantity} {line.unit}</span><strong>¥{line.amount.toLocaleString()}</strong></div></div>)}</div>
+        <div className="order-summary__lines">{order.lines.map((line) => { const params = line.drawing_snapshot?.params || {}; return <div className={`order-summary-line${line.source_changed ? " has-warning" : ""}`} key={line.id || line.task_id}><div className="order-summary-line__main"><span className="order-summary-line__title"><strong>{line.line_code || `${order.order_no}-${String(line.line_no).padStart(2, "0")}`} · {line.product_name || line.door_type}</strong><StatusChip tone={line.source_type === "manual" ? "neutral" : "green"}>{line.source_type === "manual" ? "手工录入" : "终审图纸"}</StatusChip>{!line.quote_id && line.source_type === "drawing" && <StatusChip tone="amber">缺报价</StatusChip>}</span><p>{line.door_type || "未填门型"} · {line.width} × {line.height} mm · {line.opening_direction || "未填开向"} · {line.color || "未填颜色"}</p><div className="order-summary-line__technical"><span>材质<strong>{value(params, "material", "zzcl")}</strong></span><span>正/反门板<strong>{value(params, "zmks")} / {value(params, "fmks")}</strong></span><span>门框工艺<strong>{value(params, "frame_process")}</strong></span><span>门套<strong>{value(params, "trim_style_outer", "sel_bz")}</strong></span><span>锁具/拉手<strong>{value(params, "fingerprint_lock", "st_val")} / {value(params, "zmls")}</strong></span><span>玻璃<strong>{value(params, "glass_spec")}</strong></span></div><small>{line.source_type === "drawing" ? `图纸 ${line.task_id} · 技术版本 ${line.drawing_revision || "未记录"}` : line.remark || "临时业务明细"}</small>{line.source_changed && <span className="order-summary-line__warning">来源图纸已变化，请取消原订单并重新确认。</span>}</div><div className="order-summary-line__amount"><span>{line.quantity} {line.unit}</span><strong>¥{line.amount.toLocaleString()}</strong></div></div>; })}</div>
       </section>
-      <section className="order-summary__bottom"><div><h3>收款节点</h3>{order.payment_nodes.length ? order.payment_nodes.map((node, index) => <div className="order-summary__payment" key={node.id || index}><span>{node.name}</span><span>{node.due_percent}%</span><strong>¥{node.due_amount.toLocaleString()}</strong><StatusChip tone={node.status === "已收款" ? "green" : "neutral"}>{node.status || "待收款"}</StatusChip></div>) : <p className="order-summary__muted">未配置收款节点</p>}</div><div className="order-summary__totals"><p><span>小计</span><strong>¥{order.subtotal.toLocaleString()}</strong></p><p><span>优惠</span><strong>-¥{order.discount_amount.toLocaleString()}</strong></p><p className="is-total"><span>订单总额</span><strong>¥{order.total_amount.toLocaleString()}</strong></p></div></section>
+      <section className="order-summary__section"><div className="order-summary__section-title"><div><h3>价格明细</h3><p>收费项目与门樘技术结构独立，便于门和门套拆分报价。</p></div><strong>{order.charge_lines?.length || 0} 项</strong></div><div className="order-summary__charges">{order.charge_lines?.map((charge) => <div key={charge.id}><span><strong>{charge.product_name}</strong><small>{charge.item_type} · {charge.specification || "无规格"} · {charge.quantity} {charge.unit} × ¥{charge.unit_price.toLocaleString()}</small></span><strong>¥{Number(charge.amount ?? salesOrderChargeAmount(charge)).toLocaleString()}</strong></div>)}</div></section>
+      <section className="order-summary__bottom"><div><h3>收款计划</h3>{order.payment_nodes.length ? order.payment_nodes.map((node, index) => <div className="order-summary__payment" key={node.id || index}><span>{node.name}</span><strong>¥{node.due_amount.toLocaleString()}</strong><span>{node.planned_date || "未定日期"}</span><StatusChip tone={node.status === "已收款" ? "green" : "neutral"}>{node.status || "待收款"}</StatusChip></div>) : <p className="order-summary__muted">未配置收款计划</p>}</div><div className="order-summary__totals"><p><span>小计</span><strong>¥{order.subtotal.toLocaleString()}</strong></p><p><span>优惠</span><strong>-¥{order.discount_amount.toLocaleString()}</strong></p><p className="is-total"><span>订单总额</span><strong>¥{order.total_amount.toLocaleString()}</strong></p></div></section>
     </article>
   );
 }
