@@ -53,6 +53,22 @@ def configure_sales_order_repository(repository: Any) -> None:
     sales_order_repository = repository
 
 
+def _with_sales_finance(door: Dict[str, Any]) -> Dict[str, Any]:
+    if not door or sales_order_repository is None:
+        return door
+    linked = fulfillment_db.fetch_one(
+        "SELECT sales_order_id FROM fulfillment_orders WHERE id=?",
+        (door.get("order_id"),),
+    )
+    if not linked or not linked.get("sales_order_id"):
+        return door
+    finance = sales_order_repository.payment_summary(int(linked["sales_order_id"]))
+    door["sales_finance"] = finance
+    door["paid_amount"] = finance["paid_amount"]
+    door["available_payment"] = finance["paid_amount"]
+    return door
+
+
 def source_revision(task: Dict[str, Any]) -> str:
     payload = {
         "task_id": task.get("id"),
@@ -216,7 +232,7 @@ def get_door_unit(door_id: int, current_user: Dict = Depends(get_current_user)):
     door = fulfillment_db.get_door_unit(door_id)
     if not door:
         raise HTTPException(status_code=404, detail="门樘生产单不存在")
-    return {"door_unit": door}
+    return {"door_unit": _with_sales_finance(door)}
 
 
 @router.get("/door-units/{door_id}/frame-input")
@@ -358,6 +374,13 @@ def finished_inbound(door_id: int, req: FinishedInboundCreate, current_user: Dic
 @router.post("/door-units/{door_id}/payments")
 def record_payment(door_id: int, req: PaymentCreate, current_user: Dict = Depends(get_current_user)):
     try:
+        linked = fulfillment_db.fetch_one(
+            """SELECT orders.sales_order_id FROM fulfillment_door_units door
+               JOIN fulfillment_orders orders ON orders.id=door.order_id WHERE door.id=?""",
+            (door_id,),
+        )
+        if linked and linked.get("sales_order_id"):
+            raise RuntimeError("此门樘来自 TM 销售订单，请在“订单确认”中登记实际收款并分配到订单")
         return {"door_unit": fulfillment_db.record_payment(door_id, req, current_user), "message": "收款已登记"}
     except Exception as exc:
         raise _translate_error(exc) from exc
@@ -366,7 +389,21 @@ def record_payment(door_id: int, req: PaymentCreate, current_user: Dict = Depend
 @router.post("/door-units/{door_id}/shipments")
 def create_shipment(door_id: int, req: ShipmentCreate, current_user: Dict = Depends(get_current_user)):
     try:
-        return {"door_unit": fulfillment_db.create_shipment(door_id, req, current_user), "message": "发货出库已登记"}
+        sales_finance = None
+        if sales_order_repository is not None:
+            linked = fulfillment_db.fetch_one(
+                """SELECT orders.sales_order_id
+                   FROM fulfillment_door_units door
+                   JOIN fulfillment_orders orders ON orders.id=door.order_id
+                   WHERE door.id=?""",
+                (door_id,),
+            )
+            if linked and linked.get("sales_order_id"):
+                sales_finance = sales_order_repository.payment_summary(int(linked["sales_order_id"]))
+        return {
+            "door_unit": _with_sales_finance(fulfillment_db.create_shipment(door_id, req, current_user, sales_finance=sales_finance)),
+            "message": "发货出库已登记" if not sales_finance or float(sales_finance.get("unpaid_amount") or 0) <= 0.005 else "欠款订单已授权放行，未收金额继续保留",
+        }
     except Exception as exc:
         raise _translate_error(exc) from exc
 

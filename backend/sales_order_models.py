@@ -68,3 +68,21 @@ class SalesOrderUpdate(SalesOrderCreate):
 
 class SalesOrderCancel(BaseModel):
     reason: str = ""
+
+
+class SalesOrderReceiptAllocationInput(BaseModel):
+    order_id: int = Field(gt=0)
+    amount: float = Field(gt=0)
+
+
+class SalesOrderReceiptCreate(BaseModel):
+    receipt_date: str = ""
+    amount: float = Field(gt=0)
+    payment_method: str = ""
+    reference: str = ""
+    remark: str = ""
+    allocations: List[SalesOrderReceiptAllocationInput] = Field(min_length=1, max_length=100)
+
+
+class SalesOrderReceiptReverse(BaseModel):
+    reason: str

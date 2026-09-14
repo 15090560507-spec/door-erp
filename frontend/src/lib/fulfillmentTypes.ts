@@ -195,6 +195,15 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   paid_amount: number;
   allocated_payment: number;
   available_payment: number;
+  sales_finance?: {
+    id: number;
+    order_no: string;
+    customer_name: string;
+    status: string;
+    total_amount: number;
+    paid_amount: number;
+    unpaid_amount: number;
+  };
 }
 
 export interface FulfillmentDashboard {

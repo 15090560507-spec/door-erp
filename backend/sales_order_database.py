@@ -139,6 +139,31 @@ class SalesOrderDatabase:
                     operator TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS sales_order_receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_no TEXT NOT NULL UNIQUE,
+                    customer_name TEXT NOT NULL,
+                    receipt_date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    payment_method TEXT NOT NULL DEFAULT '',
+                    reference TEXT NOT NULL DEFAULT '',
+                    remark TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'confirmed',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    reversed_by TEXT NOT NULL DEFAULT '',
+                    reversed_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS sales_order_receipt_allocations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_id INTEGER NOT NULL REFERENCES sales_order_receipts(id) ON DELETE RESTRICT,
+                    sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE RESTRICT,
+                    amount REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(receipt_id, sales_order_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_sales_receipt_allocations_order
+                    ON sales_order_receipt_allocations(sales_order_id, receipt_id);
                 """
             )
             order_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales_orders)").fetchall()}
@@ -505,7 +530,11 @@ class SalesOrderDatabase:
                 f"""
                 SELECT orders.*, COUNT(lines.id) AS line_count,
                     COALESCE(SUM(lines.quantity), 0) AS door_count,
-                    COALESCE(SUM(CASE WHEN lines.drawing_status = '已通过' THEN lines.quantity ELSE 0 END), 0) AS releasable_count
+                    COALESCE(SUM(CASE WHEN lines.drawing_status = '已通过' THEN lines.quantity ELSE 0 END), 0) AS releasable_count,
+                    COALESCE((SELECT SUM(allocation.amount)
+                              FROM sales_order_receipt_allocations allocation
+                              JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
+                              WHERE allocation.sales_order_id=orders.id AND receipt.status='confirmed'), 0) AS paid_amount
                 FROM sales_orders orders
                 LEFT JOIN sales_order_door_lines lines ON lines.sales_order_id = orders.id
                 WHERE {' AND '.join(conditions)}
@@ -513,7 +542,164 @@ class SalesOrderDatabase:
                 """,
                 params,
             ).fetchall()
-            return [dict(row) for row in rows]
+            results = [dict(row) for row in rows]
+            for item in results:
+                item["unpaid_amount"] = max(0.0, round(float(item.get("total_amount") or 0) - float(item.get("paid_amount") or 0), 2))
+            return results
+
+    def payment_summary(self, order_id: int) -> Dict:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT orders.id, orders.order_no, orders.customer_name, orders.status,
+                          orders.total_amount,
+                          COALESCE(SUM(CASE WHEN receipt.status='confirmed' THEN allocation.amount ELSE 0 END), 0) AS paid_amount
+                   FROM sales_orders orders
+                   LEFT JOIN sales_order_receipt_allocations allocation ON allocation.sales_order_id=orders.id
+                   LEFT JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
+                   WHERE orders.id=? GROUP BY orders.id""",
+                (order_id,),
+            ).fetchone()
+            if not row:
+                raise LookupError("订单不存在")
+            result = dict(row)
+            result["paid_amount"] = round(float(result.get("paid_amount") or 0), 2)
+            result["unpaid_amount"] = max(0.0, round(float(result.get("total_amount") or 0) - result["paid_amount"], 2))
+            return result
+
+    def receipt_candidates(self, customer_name: str) -> List[Dict]:
+        conditions = ["orders.status IN ('confirmed', 'fulfilling', 'completed')"]
+        params: List[object] = []
+        if customer_name.strip():
+            conditions.append("orders.customer_name=?")
+            params.append(customer_name.strip())
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""SELECT orders.id, orders.order_no, orders.customer_name, orders.project_name,
+                           orders.order_date, orders.total_amount,
+                           COALESCE(SUM(CASE WHEN receipt.status='confirmed' THEN allocation.amount ELSE 0 END), 0) AS paid_amount
+                    FROM sales_orders orders
+                    LEFT JOIN sales_order_receipt_allocations allocation ON allocation.sales_order_id=orders.id
+                    LEFT JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
+                    WHERE {' AND '.join(conditions)}
+                    GROUP BY orders.id ORDER BY orders.id DESC""",
+                params,
+            ).fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["paid_amount"] = round(float(item.get("paid_amount") or 0), 2)
+            item["unpaid_amount"] = max(0.0, round(float(item.get("total_amount") or 0) - item["paid_amount"], 2))
+            if item["unpaid_amount"] > 0.005:
+                results.append(item)
+        return results
+
+    def get_receipt(self, receipt_id: int) -> Optional[Dict]:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM sales_order_receipts WHERE id=?", (receipt_id,)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["allocations"] = [
+                dict(item) for item in connection.execute(
+                    """SELECT allocation.id, allocation.sales_order_id AS order_id, orders.order_no,
+                              orders.project_name, allocation.amount
+                       FROM sales_order_receipt_allocations allocation
+                       JOIN sales_orders orders ON orders.id=allocation.sales_order_id
+                       WHERE allocation.receipt_id=? ORDER BY allocation.id""",
+                    (receipt_id,),
+                ).fetchall()
+            ]
+            return result
+
+    def create_receipt(self, data: Dict, operator: str) -> Dict:
+        allocations = [item for item in data.get("allocations") or [] if float(item.get("amount") or 0) > 0]
+        if not allocations:
+            raise ValueError("请至少分配一张订单")
+        order_ids = [int(item["order_id"]) for item in allocations]
+        if len(order_ids) != len(set(order_ids)):
+            raise ValueError("同一订单不能重复分配")
+        amount = round(float(data.get("amount") or 0), 2)
+        allocated_total = round(sum(float(item.get("amount") or 0) for item in allocations), 2)
+        if amount <= 0 or abs(amount - allocated_total) > 0.005:
+            raise ValueError("收款金额必须大于0，且必须与订单分配合计一致")
+        now = _now()
+        receipt_date = str(data.get("receipt_date") or now[:10])
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            placeholders = ",".join("?" for _ in order_ids)
+            rows = connection.execute(
+                f"SELECT id, order_no, customer_name, status, total_amount FROM sales_orders WHERE id IN ({placeholders})",
+                order_ids,
+            ).fetchall()
+            if len(rows) != len(order_ids):
+                raise LookupError("分配的订单不存在")
+            orders = {int(row["id"]): dict(row) for row in rows}
+            customers = {str(row["customer_name"]) for row in rows}
+            if len(customers) != 1:
+                raise ValueError("一笔收款只能分配给同一客户的订单")
+            if any(row["status"] not in {"confirmed", "fulfilling", "completed"} for row in rows):
+                raise RuntimeError("收款只能分配给已确认或履约中的订单")
+            for item in allocations:
+                order_id = int(item["order_id"])
+                paid = float(connection.execute(
+                    """SELECT COALESCE(SUM(allocation.amount), 0) AS total
+                       FROM sales_order_receipt_allocations allocation
+                       JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
+                       WHERE allocation.sales_order_id=? AND receipt.status='confirmed'""",
+                    (order_id,),
+                ).fetchone()["total"] or 0)
+                outstanding = max(0.0, float(orders[order_id]["total_amount"] or 0) - paid)
+                if float(item["amount"]) - outstanding > 0.005:
+                    raise ValueError(f"{orders[order_id]['order_no']} 分配金额超过未收金额 {outstanding:.2f} 元")
+            next_id = int(connection.execute("SELECT COALESCE(MAX(id), 0)+1 AS id FROM sales_order_receipts").fetchone()["id"])
+            receipt_no = f"SK{''.join(char for char in receipt_date if char.isdigit())[:8]}{next_id:04d}"
+            cursor = connection.execute(
+                """INSERT INTO sales_order_receipts(
+                       receipt_no, customer_name, receipt_date, amount, payment_method,
+                       reference, remark, created_by, created_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (receipt_no, customers.pop(), receipt_date, amount, str(data.get("payment_method") or ""),
+                 str(data.get("reference") or ""), str(data.get("remark") or ""), operator, now),
+            )
+            receipt_id = int(cursor.lastrowid)
+            for item in allocations:
+                order_id = int(item["order_id"])
+                allocation_amount = round(float(item["amount"]), 2)
+                connection.execute(
+                    "INSERT INTO sales_order_receipt_allocations(receipt_id, sales_order_id, amount, created_at) VALUES (?, ?, ?, ?)",
+                    (receipt_id, order_id, allocation_amount, now),
+                )
+                connection.execute(
+                    "INSERT INTO sales_order_events(sales_order_id, event_type, detail, operator, created_at) VALUES (?, 'receipt', ?, ?, ?)",
+                    (order_id, f"收款单 {receipt_no} 分配 {allocation_amount:.2f} 元", operator, now),
+                )
+        return self.get_receipt(receipt_id) or {}
+
+    def reverse_receipt(self, receipt_id: int, operator: str, reason: str) -> Dict:
+        if not reason.strip():
+            raise ValueError("请填写冲销原因")
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            receipt = connection.execute("SELECT * FROM sales_order_receipts WHERE id=?", (receipt_id,)).fetchone()
+            if not receipt:
+                raise LookupError("收款单不存在")
+            if receipt["status"] == "reversed":
+                pass
+            else:
+                connection.execute(
+                    "UPDATE sales_order_receipts SET status='reversed', reversed_by=?, reversed_at=?, remark=CASE WHEN remark='' THEN ? ELSE remark || '；冲销：' || ? END WHERE id=?",
+                    (operator, now, reason.strip(), reason.strip(), receipt_id),
+                )
+                allocations = connection.execute(
+                    "SELECT sales_order_id, amount FROM sales_order_receipt_allocations WHERE receipt_id=?", (receipt_id,)
+                ).fetchall()
+                for allocation in allocations:
+                    connection.execute(
+                        "INSERT INTO sales_order_events(sales_order_id, event_type, detail, operator, created_at) VALUES (?, 'receipt_reversed', ?, ?, ?)",
+                        (allocation["sales_order_id"], f"收款单 {receipt['receipt_no']} 已冲销 {float(allocation['amount']):.2f} 元：{reason.strip()}", operator, now),
+                    )
+        return self.get_receipt(receipt_id) or {}
 
     def get(self, order_id: int) -> Optional[Dict]:
         with self._connect() as connection:
@@ -535,6 +721,25 @@ class SalesOrderDatabase:
                     "SELECT * FROM sales_order_payment_nodes WHERE sales_order_id = ? ORDER BY line_no", (order_id,)
                 ).fetchall()
             ]
+            receipts = [
+                dict(item) for item in connection.execute(
+                    """SELECT receipt.*, allocation.amount AS allocation_amount
+                       FROM sales_order_receipt_allocations allocation
+                       JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
+                       WHERE allocation.sales_order_id=? ORDER BY receipt.id DESC""",
+                    (order_id,),
+                ).fetchall()
+            ]
+            result["receipts"] = receipts
+            paid_amount = round(sum(float(item["allocation_amount"] or 0) for item in receipts if item["status"] == "confirmed"), 2)
+            result["paid_amount"] = paid_amount
+            result["unpaid_amount"] = max(0.0, round(float(result.get("total_amount") or 0) - paid_amount, 2))
+            remaining_paid = paid_amount
+            for node in result["payment_nodes"]:
+                node_paid = min(float(node.get("due_amount") or 0), remaining_paid)
+                node["paid_amount"] = round(node_paid, 2)
+                remaining_paid = max(0.0, remaining_paid - node_paid)
+                node["status"] = "paid" if node_paid + 0.005 >= float(node.get("due_amount") or 0) else ("partial" if node_paid > 0 else "pending")
             result["charge_lines"] = [
                 dict(item) for item in connection.execute(
                     "SELECT * FROM sales_order_charge_lines WHERE sales_order_id = ? ORDER BY line_no", (order_id,)

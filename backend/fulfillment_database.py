@@ -1718,7 +1718,13 @@ class FulfillmentDatabase:
             self.add_event(conn, order_id=int(door["order_id"]), door_unit_id=door_id, entity_type="payment", entity_id=None, action="登记收款", detail=f"金额 {payload.amount:.2f} 元，凭证 {payload.reference or '未填写'}", user=user)
         return self.get_door_unit(door_id) or {}
 
-    def create_shipment(self, door_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
+    def create_shipment(
+        self,
+        door_id: int,
+        payload: Any,
+        user: Dict[str, Any],
+        sales_finance: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         now = fulfillment_now()
         with self.transaction() as conn:
             door = conn.execute("SELECT * FROM fulfillment_door_units WHERE id=?", (door_id,)).fetchone()
@@ -1726,21 +1732,30 @@ class FulfillmentDatabase:
                 raise LookupError("门樘生产单不存在")
             if door["status"] not in {"已入库待发货", "待财务放行", "待出库"}:
                 raise RuntimeError("门樘尚未完成成品入库，不能发货")
-            paid = float(conn.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM fulfillment_payments WHERE order_id=?", (door["order_id"],)).fetchone()["total"] or 0)
-            allocated = float(conn.execute(
-                """SELECT COALESCE(SUM(s.required_payment), 0) AS total FROM fulfillment_shipments s
-                   JOIN fulfillment_door_units d2 ON d2.id=s.door_unit_id
-                   WHERE d2.order_id=? AND s.authorized=0""",
-                (door["order_id"],),
-            ).fetchone()["total"] or 0)
-            available = max(0.0, paid - allocated)
             authorized = bool(payload.authorization_reason.strip() and payload.authorized_by.strip())
-            if available < payload.required_payment and not authorized:
-                raise RuntimeError(f"当前未占用收款 {available:.2f} 元，未达到本次发货要求 {payload.required_payment:.2f} 元；请登记收款或填写授权放行")
+            if sales_finance is not None:
+                paid = float(sales_finance.get("paid_amount") or 0)
+                unpaid = float(sales_finance.get("unpaid_amount") or 0)
+                required_payment = float(sales_finance.get("total_amount") or 0)
+                available = paid
+                if unpaid > 0.005 and not authorized:
+                    raise RuntimeError(f"订单尚有未收款 {unpaid:.2f} 元；请先在订单确认登记收款，或填写授权原因和授权人放行")
+            else:
+                paid = float(conn.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM fulfillment_payments WHERE order_id=?", (door["order_id"],)).fetchone()["total"] or 0)
+                allocated = float(conn.execute(
+                    """SELECT COALESCE(SUM(s.required_payment), 0) AS total FROM fulfillment_shipments s
+                       JOIN fulfillment_door_units d2 ON d2.id=s.door_unit_id
+                       WHERE d2.order_id=? AND s.authorized=0""",
+                    (door["order_id"],),
+                ).fetchone()["total"] or 0)
+                available = max(0.0, paid - allocated)
+                required_payment = float(payload.required_payment or 0)
+                if available < required_payment and not authorized:
+                    raise RuntimeError(f"当前未占用收款 {available:.2f} 元，未达到本次发货要求 {required_payment:.2f} 元；请登记收款或填写授权放行")
             cursor = conn.execute(
                 """INSERT INTO fulfillment_shipments(door_unit_id, required_payment, paid_amount, authorized, authorization_reason, authorized_by, carrier, vehicle_no, contact, remark, created_by, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (door_id, payload.required_payment, available, int(authorized), payload.authorization_reason, payload.authorized_by, payload.carrier, payload.vehicle_no, payload.contact, payload.remark, str(user.get("uid") or ""), now),
+                (door_id, required_payment, available, int(authorized), payload.authorization_reason, payload.authorized_by, payload.carrier, payload.vehicle_no, payload.contact, payload.remark, str(user.get("uid") or ""), now),
             )
             conn.execute(
                 """INSERT INTO fulfillment_inventory_movements(door_unit_id, movement_type, item_name, warehouse, quantity, unit, remark, operator_uid, created_at)

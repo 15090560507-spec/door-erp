@@ -115,7 +115,7 @@ export default function PurchasingCenter({ notify }: { notify: (message: string,
     </section>
     <section className="border border-[#D1D1D6] bg-white"><header className="border-b border-[#E5E5EA] p-4"><h2 className="font-semibold">采购单与到货进度</h2></header><div className="divide-y divide-[#E5E5EA]">{orders.map((order)=><div key={order.id} className="p-4"><div className="flex flex-wrap items-center gap-3"><strong>{order.order_no}</strong><span className="text-sm">{order.supplier}</span><Status text={order.status}/><span className="text-xs text-[#636366]">预计 {order.expected_date||"-"} · {qty(order.received_quantity||0)}/{qty(order.ordered_quantity||0)} · ¥{Number(order.total_amount||0).toFixed(2)}</span><div className="flex-1"/>{order.status==="草稿"&&<><button disabled={busy} onClick={()=>void run(()=>confirmPurchaseOrder(order.id))} className="ui-button ui-button--primary">确认下单</button><button disabled={busy} onClick={()=>setPendingDelete(order)} className="ui-button ui-button--danger"><Trash2 size={14}/>删除草稿</button></>}{["已下单","部分到货"].includes(order.status)&&<><button disabled={busy} onClick={()=>void receive(order)} className="ui-button ui-button--primary">登记全部剩余到货</button><button disabled={busy} onClick={()=>void run(()=>cancelPurchaseOrder(order.id))} className="ui-button ui-button--danger">取消剩余</button></>}</div></div>)}{!orders.length&&<div className="p-8 text-center text-sm text-[#8E8E93]">暂无采购单</div>}</div></section>
     <datalist id="purchase-suppliers">{suppliers.map((item)=><option key={item.id} value={item.name}/>)}</datalist>
-    <ManualPurchaseDialog open={manualOpen} materials={materials} suppliers={suppliers} busy={busy} onClose={()=>setManualOpen(false)} onSubmit={async(payload)=>{setBusy(true);try{const result=await createPurchaseOrder(payload);setManualOpen(false);notify(result.message);await load(q);}catch(error){notify(message(error,"手工采购单创建失败"),true);}finally{setBusy(false);}}}/>
+    {manualOpen && <ManualPurchaseDialog open materials={materials} suppliers={suppliers} busy={busy} onClose={()=>setManualOpen(false)} onSubmit={async(payload)=>{setBusy(true);try{const result=await createPurchaseOrder(payload);setManualOpen(false);notify(result.message);await load(q);}catch(error){notify(message(error,"手工采购单创建失败"),true);}finally{setBusy(false);}}}/>}
     <ViewportDialog open={Boolean(pendingDelete)} title="删除采购草稿" description="草稿删除后不可恢复，未确认的需求分配不会受影响。" size="small" onClose={()=>setPendingDelete(null)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={()=>setPendingDelete(null)}>取消</button><button type="button" className="ui-button ui-button--danger" disabled={busy} onClick={()=>void removeDraft()}><Trash2 size={15}/>确认删除</button></>}><p className="text-sm text-[#48484A]">确定删除采购单 <strong>{pendingDelete?.order_no}</strong> 吗？</p></ViewportDialog>
   </div>;
 }
@@ -124,16 +124,7 @@ function ManualPurchaseDialog({ open, materials, suppliers, busy, onClose, onSub
   const [supplier, setSupplier] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [remark, setRemark] = useState("");
-  const [lines, setLines] = useState<ManualLine[]>([]);
-
-  useEffect(() => {
-    if (open) {
-      setSupplier("");
-      setExpectedDate("");
-      setRemark("");
-      setLines([blankLine()]);
-    }
-  }, [open]);
+  const [lines, setLines] = useState<ManualLine[]>(() => [blankLine()]);
 
   const update = (key: string, changes: Partial<ManualLine>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...changes } : line));
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0), 0);

@@ -3,6 +3,8 @@ import type {
   SalesOrder,
   SalesOrderCandidate,
   SalesOrderPayload,
+  SalesOrderReceipt,
+  SalesOrderReceiptCandidate,
   SalesOrderSummary,
 } from "./salesOrderTypes";
 
@@ -58,5 +60,27 @@ export async function cancelSalesOrder(orderId: number, reason: string) {
 
 export async function retrySalesOrderProvisioning(orderId: number) {
   const { data } = await api.post<{ order: SalesOrder; message: string }>(`/sales-orders/${orderId}/retry-provisioning`);
+  return data;
+}
+
+export async function getSalesOrderReceiptCandidates(customer: string): Promise<SalesOrderReceiptCandidate[]> {
+  const { data } = await api.get<{ orders: SalesOrderReceiptCandidate[] }>("/sales-orders/receipt-candidates", { params: { customer } });
+  return data.orders;
+}
+
+export async function createSalesOrderReceipt(payload: {
+  receipt_date: string;
+  amount: number;
+  payment_method: string;
+  reference: string;
+  remark: string;
+  allocations: Array<{ order_id: number; amount: number }>;
+}) {
+  const { data } = await api.post<{ receipt: SalesOrderReceipt; message: string }>("/sales-orders/receipts", payload);
+  return data;
+}
+
+export async function reverseSalesOrderReceipt(receiptId: number, reason: string) {
+  const { data } = await api.post<{ receipt: SalesOrderReceipt; message: string }>(`/sales-orders/receipts/${receiptId}/reverse`, { reason });
   return data;
 }

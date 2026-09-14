@@ -13,7 +13,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth import get_current_user
 from quote_routes import quote_db
 from sales_order_database import SalesOrderDatabase
-from sales_order_models import SalesOrderCancel, SalesOrderCreate, SalesOrderUpdate
+from sales_order_models import (
+    SalesOrderCancel,
+    SalesOrderCreate,
+    SalesOrderReceiptCreate,
+    SalesOrderReceiptReverse,
+    SalesOrderUpdate,
+)
 
 
 router = APIRouter(prefix="/api/sales-orders", tags=["sales-orders"])
@@ -524,6 +530,36 @@ def list_orders(
         summary["releasable_count"] = live.get("releasable_count", 0)
         orders.append(summary)
     return {"orders": orders, "total": len(orders)}
+
+
+@router.get("/receipt-candidates")
+def list_receipt_candidates(
+    customer: str = Query(""),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"orders": sales_order_db.receipt_candidates(customer.strip())}
+
+
+@router.post("/receipts", status_code=201)
+def create_receipt(req: SalesOrderReceiptCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        receipt = sales_order_db.create_receipt(req.model_dump(), str(current_user.get("uid") or ""))
+        return {"receipt": receipt, "message": f"收款单 {receipt.get('receipt_no')} 已登记并完成订单分配"}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/receipts/{receipt_id}/reverse")
+def reverse_receipt(
+    receipt_id: int,
+    req: SalesOrderReceiptReverse,
+    current_user: Dict = Depends(get_current_user),
+):
+    try:
+        receipt = sales_order_db.reverse_receipt(receipt_id, str(current_user.get("uid") or ""), req.reason)
+        return {"receipt": receipt, "message": f"收款单 {receipt.get('receipt_no')} 已冲销，相关订单欠款已恢复"}
+    except Exception as exc:
+        raise _error(exc) from exc
 
 
 @router.get("/{order_id}")

@@ -9,13 +9,14 @@ import MetricStrip from "@/components/workspace/MetricStrip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
 import { useAuth } from "@/hooks/useAuth";
-import { cancelSalesOrder, confirmSalesOrder, createSalesOrder, getSalesOrder, getSalesOrderCandidates, getSalesOrders, retrySalesOrderProvisioning, updateSalesOrder } from "@/lib/salesOrderApi";
+import { cancelSalesOrder, confirmSalesOrder, createSalesOrder, getSalesOrder, getSalesOrderCandidates, getSalesOrders, retrySalesOrderProvisioning, reverseSalesOrderReceipt, updateSalesOrder } from "@/lib/salesOrderApi";
 import { salesOrderChargeAmount } from "@/lib/salesOrderPricing";
-import type { SalesOrder, SalesOrderCandidate, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPayload, SalesOrderQuoteChoice, SalesOrderQuoteItem, SalesOrderSummary, SalesOrderValidationWarning } from "@/lib/salesOrderTypes";
+import type { SalesOrder, SalesOrderCandidate, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPayload, SalesOrderQuoteChoice, SalesOrderQuoteItem, SalesOrderReceipt, SalesOrderSummary, SalesOrderValidationWarning } from "@/lib/salesOrderTypes";
 import ApprovedSourcePicker from "./ApprovedSourcePicker";
 import OrderEditor from "./OrderEditor";
 import OrderList, { salesOrderStatusLabel } from "./OrderList";
 import OrderSummary from "./OrderSummary";
+import SalesReceiptDialog from "./SalesReceiptDialog";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -153,6 +154,9 @@ export default function OrdersWorkspace() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [reverseReceipt, setReverseReceipt] = useState<SalesOrderReceipt | null>(null);
+  const [reverseReason, setReverseReason] = useState("");
   const [notice, setNotice] = useState<{ title: string; message: string; error?: boolean } | null>(null);
 
   const loadOrders = useCallback(async () => {
@@ -267,6 +271,24 @@ export default function OrdersWorkspace() {
     finally { setBusy(false); }
   };
 
+  const refreshSelected = async (message?: string) => {
+    if (!selected) return;
+    const refreshed = await getSalesOrder(selected.id);
+    setSelected(refreshed); setEditor(orderToEditor(refreshed)); await loadOrders();
+    if (message) setNotice({ title: "收款已登记", message });
+  };
+
+  const reverseSelectedReceipt = async () => {
+    if (!reverseReceipt || !reverseReason.trim()) return;
+    setBusy(true);
+    try {
+      const result = await reverseSalesOrderReceipt(reverseReceipt.id, reverseReason.trim());
+      setReverseReceipt(null); setReverseReason(""); await refreshSelected();
+      setNotice({ title: "收款已冲销", message: result.message });
+    } catch (error) { setNotice({ title: "冲销失败", message: apiMessage(error, "收款冲销失败"), error: true }); }
+    finally { setBusy(false); }
+  };
+
   const cancel = async () => {
     if (!selected || !cancelReason.trim()) { setNotice({ title: "不能取消", message: "请填写取消原因", error: true }); return; }
     setBusy(true);
@@ -282,11 +304,13 @@ export default function OrdersWorkspace() {
       <WorkspaceHeader title="订单确认" description="关联已终审图纸及对应报价，确认后自动生成独立门樘生产编号与基础 BOM。" context={<><ClipboardCheck size={14} />经营管理 / 销售订单</>} actions={<><button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => void loadOrders()}><RefreshCw size={15} />刷新</button><button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={startNew}><Plus size={16} />新建订单</button></>} />
       <MetricStrip items={[{ key: "draft", label: "草稿", value: metrics.draft, tone: "blue", icon: <ClipboardCheck size={16} />, onClick: () => setStatus("draft") }, { key: "confirmed", label: "已确认", value: metrics.confirmed, tone: "green", icon: <PackageCheck size={16} />, onClick: () => setStatus("confirmed") }, { key: "fulfilling", label: "履约中", value: metrics.fulfilling, icon: <Send size={16} />, onClick: () => setStatus("fulfilling") }, { key: "risk", label: "交期风险", value: metrics.dueRisk, tone: "red", icon: <CircleAlert size={16} /> }]} />
       {!editing && <FilterBar summary={`共 ${orders.length} 张订单`}><label className="relative min-w-64 flex-1"><Search className="absolute left-3 top-2.5 text-[#777780]" size={16} /><input className="h-9 w-full pl-9 pr-3" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="订单号、客户、项目" /></label><select className="h-9 min-w-32 px-3" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">全部状态</option>{Object.entries(salesOrderStatusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FilterBar>}
-      {editing ? <OrderEditor order={selected} editor={editor} subtotal={subtotal} total={total} busy={busy} onBack={backToList} onFieldChange={(field, value) => setEditor((current) => ({ ...current, [field]: value }))} onPaymentChange={(index, changes) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...changes } : node) }))} onPaymentAdd={() => setEditor((current) => ({ ...current, payment_nodes: [...current.payment_nodes, { name: "其他收款", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }] }))} onPaymentRemove={(index) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} onAddSource={openCandidates} onAddManual={addManualLine} onLineChange={changeLine} onLineRemove={removeLine} onChargeAdd={() => setEditor((current) => ({ ...current, charge_lines: [...current.charge_lines, manualCharge(null)] }))} onChargeChange={(index, changes) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.map((charge, chargeIndex) => chargeIndex === index ? { ...charge, ...changes } : charge) }))} onChargeRemove={(index) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.filter((_, chargeIndex) => chargeIndex !== index) }))} onSave={() => void save()} onConfirm={() => setConfirmOpen(true)} /> : <MasterDetail list={<OrderList orders={orders} selectedId={selected?.id} loading={loading} disabled={busy} onSelect={(orderId) => void chooseOrder(orderId)} onCreate={startNew} />} detail={selected ? <OrderSummary order={selected} busy={busy} onEdit={() => setEditing(true)} onCancel={() => setCancelOpen(true)} onRetry={() => void retryProvisioning()} /> : <EmptyState title="选择订单查看详情" description="可查看来源图纸、报价、门樘数量和履约生成状态。" />} listLabel="销售订单列表" detailLabel="销售订单摘要" />}
+      {editing ? <OrderEditor order={selected} editor={editor} subtotal={subtotal} total={total} busy={busy} onBack={backToList} onFieldChange={(field, value) => setEditor((current) => ({ ...current, [field]: value }))} onPaymentChange={(index, changes) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...changes } : node) }))} onPaymentAdd={() => setEditor((current) => ({ ...current, payment_nodes: [...current.payment_nodes, { name: "其他收款", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }] }))} onPaymentRemove={(index) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} onAddSource={openCandidates} onAddManual={addManualLine} onLineChange={changeLine} onLineRemove={removeLine} onChargeAdd={() => setEditor((current) => ({ ...current, charge_lines: [...current.charge_lines, manualCharge(null)] }))} onChargeChange={(index, changes) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.map((charge, chargeIndex) => chargeIndex === index ? { ...charge, ...changes } : charge) }))} onChargeRemove={(index) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.filter((_, chargeIndex) => chargeIndex !== index) }))} onSave={() => void save()} onConfirm={() => setConfirmOpen(true)} /> : <MasterDetail list={<OrderList orders={orders} selectedId={selected?.id} loading={loading} disabled={busy} onSelect={(orderId) => void chooseOrder(orderId)} onCreate={startNew} />} detail={selected ? <OrderSummary order={selected} busy={busy} onEdit={() => setEditing(true)} onCancel={() => setCancelOpen(true)} onRetry={() => void retryProvisioning()} onReceipt={() => setReceiptOpen(true)} onReverseReceipt={(receipt) => { setReverseReceipt(receipt); setReverseReason(""); }} /> : <EmptyState title="选择订单查看详情" description="可查看来源图纸、报价、门樘数量和履约生成状态。" />} listLabel="销售订单列表" detailLabel="销售订单摘要" />}
     </main>
     <ApprovedSourcePicker open={candidateOpen} candidates={candidates} loading={candidateLoading} query={candidateQuery} picked={picked} establishedCustomer={establishedCustomer} onQueryChange={setCandidateQuery} onSearch={() => void fetchCandidates()} onToggle={toggleCandidate} onAdd={addPicked} onManual={() => { setCandidateOpen(false); addManualLine(); }} onClose={() => setCandidateOpen(false)} />
     <ViewportDialog open={confirmOpen} title="请确认宽、高尺寸" description="正式确认后将冻结订单快照，并自动生成独立门樘和基础 BOM。" onClose={() => setConfirmOpen(false)} size="large" footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setConfirmOpen(false)}>返回检查</button><button type="button" className="ui-button ui-button--primary" disabled={Boolean(warnings.length) || busy} onClick={() => void confirm()}><Send size={16} />确认无误并正式确认</button></>}><div className="order-confirm"><div className="order-confirm__lines">{editor.lines.map((line, index) => <div key={line.task_id}><span><strong>{index + 1}. {line.product_name || line.door_type || "未填写产品"}</strong><small>{line.width} × {line.height} mm · 数量 {line.quantity} {line.unit}</small></span><strong>¥{editor.charge_lines.filter((charge) => charge.door_line_no === index + 1).reduce((sum, charge) => sum + salesOrderChargeAmount(charge), 0).toLocaleString()}</strong></div>)}</div><div className="order-confirm__total"><span>订单总额</span><strong>¥{total.toLocaleString()}</strong></div>{warnings.length ? <div className="order-confirm__warnings" role="alert"><strong><CircleAlert size={16} />确认前还需处理 {warnings.length} 项</strong>{warnings.map((warning) => <p key={warning.key}>{warning.message}</p>)}</div> : <div className="order-confirm__ready"><PackageCheck size={17} /><span>尺寸、数量、报价和收款计划校验通过，可以正式确认。</span></div>}</div></ViewportDialog>
     <ViewportDialog open={cancelOpen} title="取消订单" description="取消后图纸可重新加入其他订单；已经进入履约的订单不能在此直接取消。" onClose={() => setCancelOpen(false)} size="small" footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setCancelOpen(false)}>返回</button><button type="button" className="ui-button ui-button--danger" disabled={!cancelReason.trim() || busy} onClick={() => void cancel()}>确认取消</button></>}><label className="order-field"><span>取消原因<b>*</b></span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="请说明取消原因" rows={4} /></label></ViewportDialog>
+    {selected && receiptOpen && <SalesReceiptDialog open order={selected} onClose={() => setReceiptOpen(false)} onSaved={refreshSelected} />}
+    <ViewportDialog open={Boolean(reverseReceipt)} title="冲销实际收款" description={reverseReceipt ? `${reverseReceipt.receipt_no} · 本订单分配 ¥${Number(reverseReceipt.allocation_amount || 0).toLocaleString()}` : ""} size="small" onClose={() => setReverseReceipt(null)} footer={<><button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => setReverseReceipt(null)}>取消</button><button type="button" className="ui-button ui-button--danger" disabled={busy || !reverseReason.trim()} onClick={() => void reverseSelectedReceipt()}>确认冲销</button></>}><label className="order-field"><span>冲销原因<b>*</b></span><textarea rows={4} value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} placeholder="冲销后，该收款单在所有关联订单上的分配同时失效，欠款会恢复。" /></label></ViewportDialog>
     <ViewportDialog open={Boolean(notice)} title={notice?.title || "提示"} onClose={() => setNotice(null)} size="small" footer={<button type="button" className="ui-button ui-button--primary" onClick={() => setNotice(null)}>知道了</button>}><p className={`whitespace-pre-wrap text-sm leading-6 ${notice?.error ? "text-[#B42318]" : "text-[#303036]"}`}>{notice?.message}</p></ViewportDialog>
     {busy && <div className="fixed inset-0 z-[190] cursor-wait bg-black/[0.025]" aria-hidden="true" />}
   </div>;

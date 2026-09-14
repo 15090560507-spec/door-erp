@@ -96,6 +96,35 @@ export interface SalesOrderPaymentNode {
   remark: string;
 }
 
+export interface SalesOrderReceiptCandidate {
+  id: number;
+  order_no: string;
+  customer_name: string;
+  project_name: string;
+  order_date: string;
+  total_amount: number;
+  paid_amount: number;
+  unpaid_amount: number;
+}
+
+export interface SalesOrderReceipt {
+  id: number;
+  receipt_no: string;
+  customer_name: string;
+  receipt_date: string;
+  amount: number;
+  allocation_amount?: number;
+  payment_method: string;
+  reference: string;
+  remark: string;
+  status: "confirmed" | "reversed";
+  created_by: string;
+  created_at: string;
+  reversed_by?: string;
+  reversed_at?: string | null;
+  allocations?: Array<{ id: number; order_id: number; order_no: string; project_name: string; amount: number }>;
+}
+
 export interface SalesOrderSummary {
   id: number;
   order_no: string;
@@ -112,6 +141,8 @@ export interface SalesOrderSummary {
   provisioning_status?: SalesOrderProvisioningStatus;
   provisioning_error?: string;
   fulfillment_order_id?: number | null;
+  paid_amount?: number;
+  unpaid_amount?: number;
 }
 
 export interface SalesOrder extends SalesOrderSummary {
@@ -129,6 +160,9 @@ export interface SalesOrder extends SalesOrderSummary {
   lines: SalesOrderLine[];
   charge_lines: SalesOrderChargeLine[];
   payment_nodes: SalesOrderPaymentNode[];
+  receipts: SalesOrderReceipt[];
+  paid_amount: number;
+  unpaid_amount: number;
   events: Array<{ id: number; event_type: string; detail: string; operator: string; created_at: string }>;
 }
 

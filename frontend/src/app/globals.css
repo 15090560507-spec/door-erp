@@ -1023,6 +1023,51 @@ textarea:focus-visible {
 .order-summary__totals strong { color: #303036; font-variant-numeric: tabular-nums; }
 .order-summary__totals .is-total { margin-top: 6px; padding-top: 12px; border-top: 1px solid #DCDCE2; color: #27272C; font-weight: 700; }
 .order-summary__totals .is-total strong { color: #1769D2; font-size: 17px; }
+.order-summary__totals .is-paid strong { color: #248A3D; }
+.order-summary__totals .is-unpaid { margin-top: 4px; padding-top: 10px; border-top: 1px solid #DCDCE2; font-weight: 700; }
+.order-summary__totals .is-unpaid strong { color: #B42318; }
+.order-summary__receipts { margin-top: 18px; }
+.order-summary__receipts-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 7px; border-bottom: 1px solid #EEEEF1; }
+.order-summary__receipts-title span { color: #85858E; font-size: 10px; }
+.order-summary__receipt { display: grid; grid-template-columns: minmax(0, 1fr) auto 30px; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EEEEF1; }
+.order-summary__receipt > span { min-width: 0; }
+.order-summary__receipt > span strong { display: block; color: #303036; font-size: 11px; }
+.order-summary__receipt small { display: block; margin-top: 2px; overflow: hidden; color: #85858E; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.order-summary__receipt > strong { color: #248A3D; font-size: 12px; font-variant-numeric: tabular-nums; }
+.order-summary__receipt > button { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid #E9BCB8; border-radius: 6px; color: #B42318; background: #FFF8F7; }
+.order-summary__receipt.is-reversed { opacity: .55; }
+.order-summary__receipt.is-reversed > strong { color: #777780; text-decoration: line-through; }
+
+.sales-receipt-form { display: grid; gap: 16px; }
+.sales-receipt-form__fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.sales-receipt-form label > span,
+.sales-receipt-form__remark > span { display: block; margin-bottom: 5px; color: #66666F; font-size: 10px; font-weight: 650; }
+.sales-receipt-form input,
+.sales-receipt-form select,
+.sales-receipt-form textarea { width: 100%; border: 1px solid #D7D7DD; border-radius: 6px; color: #303036; background: #FFFFFF; outline: none; }
+.sales-receipt-form input,
+.sales-receipt-form select { height: 38px; padding: 0 10px; font-size: 12px; }
+.sales-receipt-form textarea { padding: 9px 10px; font-size: 12px; resize: vertical; }
+.sales-receipt-form input:focus,
+.sales-receipt-form select:focus,
+.sales-receipt-form textarea:focus { border-color: #7AA9E6; box-shadow: 0 0 0 3px rgba(23, 105, 210, .09); }
+.sales-receipt-form__allocation-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 4px; }
+.sales-receipt-form__allocation-head strong { color: #2D2D32; font-size: 13px; }
+.sales-receipt-form__allocation-head p { margin-top: 2px; color: #85858E; font-size: 10px; }
+.sales-receipt-form__orders { max-height: 290px; overflow-y: auto; border: 1px solid #E1E1E6; border-radius: 7px; }
+.sales-receipt-form__orders > label { display: grid; grid-template-columns: minmax(0, 1fr) 110px 128px; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #EEEEF1; }
+.sales-receipt-form__orders > label:last-of-type { border-bottom: 0; }
+.sales-receipt-form__orders > label.is-current { background: #F4F8FE; }
+.sales-receipt-form__orders > label > span:first-child { min-width: 0; }
+.sales-receipt-form__orders > label > span:first-child strong { display: block; color: #303036; font-size: 12px; }
+.sales-receipt-form__orders small { display: block; margin-top: 3px; overflow: hidden; color: #85858E; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.sales-receipt-form__unpaid { color: #85858E; font-size: 9px; text-align: right; }
+.sales-receipt-form__unpaid strong { display: block; margin-top: 2px; color: #B42318; font-size: 11px; }
+.sales-receipt-form__empty { padding: 30px; color: #85858E; font-size: 12px; text-align: center; }
+.sales-receipt-form__balance { display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 10px 12px; border-radius: 6px; color: #66666F; background: #F7F8FA; font-size: 11px; font-variant-numeric: tabular-nums; }
+.sales-receipt-form__balance strong { color: #B42318; }
+.sales-receipt-form__balance strong.is-balanced { color: #248A3D; }
+.sales-receipt-form__error { display: flex; align-items: flex-start; gap: 7px; padding: 9px 10px; border: 1px solid #F0CAC6; border-radius: 6px; color: #B42318; background: #FFF8F7; font-size: 11px; }
 
 .provisioning-status { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: start; gap: 10px; margin: 16px 20px 0; padding: 12px 14px; border: 1px solid #D8D8DE; border-radius: 7px; }
 .provisioning-status strong { display: block; font-size: 12px; font-weight: 700; }
@@ -1676,6 +1721,12 @@ button.overview-metric:hover {
   .overview-legend { width: 100%; }
   .overview-chart-wrap { overflow: hidden; padding-inline: 4px; }
   .overview-chart-wrap svg { width: 100%; max-width: 100%; min-height: 190px; }
+}
+
+@media (max-width: 760px) {
+  .sales-receipt-form__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-receipt-form__orders > label { grid-template-columns: minmax(0, 1fr) 112px; }
+  .sales-receipt-form__unpaid { display: none !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
