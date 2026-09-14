@@ -266,7 +266,6 @@ export const MODULE_OPTIONS: { title: string; module: ModuleName }[] = [
   { title: "效果渲染", module: "效果渲染" },
   { title: "报价系统", module: "报价系统" },
   { title: "订单确认", module: "订单确认" },
-  { title: "BOM与下料", module: "下料" },
   { title: "生产管理", module: "生产管理" },
   { title: "采购管理", module: "采购管理" },
   { title: "库存管理", module: "库存管理" },

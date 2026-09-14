@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -11,6 +11,7 @@ class BomDraftItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: Optional[int] = None
+    parent_id: Optional[int] = None
     material_id: Optional[int] = None
     name: Optional[str] = None
     category: Optional[str] = None
@@ -26,6 +27,9 @@ class BomDraftItem(BaseModel):
     supplier_id: Optional[int] = None
     required_date: Optional[str] = None
     remark: Optional[str] = None
+    item_kind: Optional[str] = None
+    procurement_mode: Optional[str] = None
+    drawing_parameters: Optional[dict[str, Any]] = None
 
     @model_validator(mode="after")
     def validate_new_item(self):

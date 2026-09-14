@@ -193,6 +193,7 @@ class BomGenerationService:
                 ).fetchone() or {"value": 0})["value"] or 0)
                 all_warnings: List[BomRuleWarning] = list(rule_warnings)
                 matched_count = 0
+                component_ids: Dict[str, int] = {}
                 for sequence, item in enumerate(items, start=1):
                     material_id, match_status, match_warning = self._match_material(connection, item)
                     if match_warning:
@@ -201,24 +202,29 @@ class BomGenerationService:
                         matched_count += 1
                     planned_quantity = item.planned_quantity
                     verification_status = "已核验" if match_status == "无需物料" else "待核验"
-                    connection.execute(
+                    parent_id = component_ids.get(item.parent_key) if item.parent_key else None
+                    inserted = connection.execute(
                         """INSERT INTO fulfillment_components(
-                               technical_package_id, material_id, name, category, specification,
+                               technical_package_id, parent_id, material_id, name, category, specification,
                                quantity, unit, acquisition_method, sequence_no, line_no, group_code,
                                theoretical_quantity, waste_rate, planned_quantity, source_type,
                                source_rule_version, source_payload_json, match_status,
-                               verification_status, operation_code, required_date, attachments_json
-                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                     'rule_generated', ?, ?, ?, ?, ?, ?, '[]')""",
+                               verification_status, operation_code, required_date, attachments_json,
+                               item_kind, procurement_mode, drawing_parameter_json
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                     'rule_generated', ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?)""",
                         (
-                            package_id, material_id, item.name, item.category, item.specification,
+                            package_id, parent_id, material_id, item.name, item.category, item.specification,
                             planned_quantity, item.unit, item.acquisition_method, base_line + sequence,
                             base_line + sequence, item.group_code, item.theoretical_quantity,
                             item.waste_rate, planned_quantity, rule_version,
                             json_dumps(item.source_payload), match_status, verification_status, item.operation_code,
-                            str(params.get("required_date") or ""),
+                            str(params.get("required_date") or ""), item.item_kind,
+                            item.procurement_mode, json_dumps(item.drawing_parameters),
                         ),
                     )
+                    if item.component_key:
+                        component_ids[item.component_key] = int(inserted.lastrowid)
 
                 for warning in all_warnings:
                     connection.execute(
@@ -344,7 +350,7 @@ class BomGenerationService:
                 connection.execute(
                     """DELETE FROM fulfillment_components
                        WHERE technical_package_id=?
-                         AND (source_type='frame_geometry' OR operation_code='FRAME_ASSEMBLY')""",
+                         AND source_type='frame_geometry'""",
                     (package_id,),
                 )
                 base_line = int((connection.execute(
@@ -373,6 +379,16 @@ class BomGenerationService:
                     for issue in geometry.validation.warnings
                 )
                 matched_count = 0
+                frame_parents = {
+                    str(row["operation_code"]): int(row["id"])
+                    for row in connection.execute(
+                        """SELECT id, operation_code FROM fulfillment_components
+                           WHERE technical_package_id=?
+                             AND operation_code IN ('FRAME_SKIN','FRAME_SKELETON')
+                           ORDER BY id DESC""",
+                        (package_id,),
+                    ).fetchall()
+                }
                 for sequence, part in enumerate(geometry.parts, start=1):
                     material_label = "骨架" if part.materialType == "skeleton" else "外皮"
                     item = BomRuleItem(
@@ -385,12 +401,10 @@ class BomGenerationService:
                         theoretical_quantity=1,
                         unit="件",
                         operation_code="FRAME_PART",
-                        acquisition_method="内部加工",
-                        material_code=str(params.get(
-                            "frame_skeleton_material_code"
-                            if part.materialType == "skeleton"
-                            else "frame_skin_material_code"
-                        ) or params.get("frame_material_code") or ""),
+                        acquisition_method="按图自制",
+                        requires_material=False,
+                        item_kind="manufactured_part",
+                        procurement_mode="make",
                         source_payload={
                             "geometry_ref": f"{frame_rule_version}:{part.partId}",
                             "part_id": part.partId,
@@ -402,27 +416,26 @@ class BomGenerationService:
                             "process": part.process.model_dump(mode="json"),
                         },
                     )
-                    material_id, match_status, match_warning = self._match_material(connection, item)
-                    if match_warning:
-                        warnings.append(match_warning)
-                    if match_status == "已匹配":
-                        matched_count += 1
+                    parent_operation = "FRAME_SKELETON" if part.materialType == "skeleton" else "FRAME_SKIN"
+                    parent_id = frame_parents.get(parent_operation)
                     connection.execute(
                         """INSERT INTO fulfillment_components(
-                               technical_package_id, material_id, name, category, specification,
+                               technical_package_id, parent_id, material_id, name, category, specification,
                                quantity, unit, acquisition_method, sequence_no, line_no, group_code,
                                theoretical_quantity, waste_rate, planned_quantity, source_type,
                                source_rule_version, source_payload_json, match_status,
-                               verification_status, operation_code, required_date, attachments_json
-                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'frame_geometry',
-                                     ?, ?, ?, '待核验', ?, ?, '[]')""",
+                               verification_status, operation_code, required_date, attachments_json,
+                               item_kind, procurement_mode, drawing_parameter_json
+                           ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'frame_geometry',
+                                     ?, ?, '无需物料', '已核验', ?, ?, '[]',
+                                     'manufactured_part', 'make', ?)""",
                         (
-                            package_id, material_id, item.name, item.category, item.specification,
+                            package_id, parent_id, item.name, item.category, item.specification,
                             item.planned_quantity, item.unit, item.acquisition_method,
                             base_line + sequence, base_line + sequence, item.group_code,
                             item.theoretical_quantity, item.waste_rate, item.planned_quantity,
-                            frame_rule_version, json_dumps(item.source_payload), match_status,
-                            item.operation_code, str(params.get("required_date") or ""),
+                            frame_rule_version, json_dumps(item.source_payload), item.operation_code,
+                            str(params.get("required_date") or ""), json_dumps(item.source_payload),
                         ),
                     )
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple
 
 
-CURRENT_BOM_RULE_VERSION = "door-bom-2026.09-v1"
+CURRENT_BOM_RULE_VERSION = "door-bom-2026.09-v2"
 
 GROUP_LABELS = {
     "frame": "门框与门槛",
@@ -47,6 +47,11 @@ class BomRuleItem:
     source_payload: Dict[str, Any] = field(default_factory=dict)
     data_status: str = "ready"
     requires_material: bool = True
+    component_key: str = ""
+    parent_key: str = ""
+    item_kind: str = "material"
+    procurement_mode: str = "stock"
+    drawing_parameters: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def category(self) -> str:
@@ -102,6 +107,8 @@ def _missing(
     operation_code: str,
     field_path: str,
     message: str,
+    item_kind: str = "material",
+    procurement_mode: str = "stock",
 ) -> None:
     items.append(BomRuleItem(
         group_code=group_code,
@@ -112,6 +119,9 @@ def _missing(
         operation_code=operation_code,
         data_status="missing",
         requires_material=False,
+        item_kind=item_kind,
+        procurement_mode=procurement_mode,
+        acquisition_method="按图自制" if procurement_mode == "make" else "待确定",
         source_payload={"missing_field": field_path},
     ))
     warnings.append(BomRuleWarning(field_path=field_path, message=message))
@@ -136,59 +146,110 @@ def build_baseline_bom(params: Dict[str, Any]) -> Tuple[List[BomRuleItem], List[
         "threshold": _text(params, "threshold_type"),
     }
     if width > 0 and height > 0 and frame_values["left"] and frame_values["right"] and frame_values["top"]:
-        items.append(BomRuleItem(
-            group_code="frame", name="门框加工总成",
-            specification=(
-                f"洞口{width:g}×{height:g}; 左{frame_values['left']}; "
-                f"右{frame_values['right']}; 上{frame_values['top']}; {frame_values['threshold'] or '门槛待确认'}"
+        frame_specification = (
+            f"洞口{width:g}×{height:g}; 左{frame_values['left']}; "
+            f"右{frame_values['right']}; 上{frame_values['top']}; {frame_values['threshold'] or '门槛待确认'}"
+        )
+        items.extend([
+            BomRuleItem(
+                group_code="frame", name="门框总成", specification=frame_specification,
+                theoretical_quantity=1, unit="套", operation_code="FRAME_ASSEMBLY",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="frame-assembly", item_kind="assembly", procurement_mode="make",
+                source_payload=frame_values, drawing_parameters=frame_values,
             ),
-            theoretical_quantity=1, unit="套", operation_code="FRAME_ASSEMBLY",
-            acquisition_method="内部加工", material_code=_text(params, "frame_material_code"),
-            source_payload=frame_values,
-        ))
+            BomRuleItem(
+                group_code="frame", name="门框外皮", specification=frame_specification,
+                theoretical_quantity=1, unit="套", operation_code="FRAME_SKIN",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="frame-skin", parent_key="frame-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=frame_values, drawing_parameters=frame_values,
+            ),
+            BomRuleItem(
+                group_code="frame", name="门框骨架", specification=frame_specification,
+                theoretical_quantity=1, unit="套", operation_code="FRAME_SKELETON",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="frame-skeleton", parent_key="frame-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=frame_values, drawing_parameters=frame_values,
+            ),
+        ])
     else:
         _missing(
-            items, warnings, group_code="frame", name="门框加工总成",
+            items, warnings, group_code="frame", name="门框总成",
             operation_code="FRAME_ASSEMBLY", field_path="frame",
             message="门框宽高或左右上框规格不完整，暂不能形成准确门框下料项",
+            item_kind="assembly", procurement_mode="make",
         )
 
     material = _text(params, "material", "zzcl")
     color = _text(params, "ys")
+    panel_values = {
+        "door_type": door_type, "door_width": width, "door_height": height,
+        "front_style": _text(params, "zmks"), "back_style": _text(params, "fmks"),
+        "material": material, "color": color,
+    }
     if material and width > 0 and height > 0:
-        items.append(BomRuleItem(
-            group_code="panel", name="门扇面板",
-            specification=" / ".join(value for value in (material, color) if value),
-            theoretical_quantity=leaf_count, unit="扇", operation_code="PANEL",
-            acquisition_method="内部加工", material_code=_text(params, "panel_material_code"),
-            source_payload={
-                "door_type": door_type, "door_width": width, "door_height": height,
-                "front_style": _text(params, "zmks"), "back_style": _text(params, "fmks"),
-                "material": material, "color": color,
-            },
-        ))
+        panel_specification = " / ".join(value for value in (material, color) if value)
+        items.extend([
+            BomRuleItem(
+                group_code="panel", name="门扇总成", specification=f"{door_type} / {width:g}×{height:g}",
+                theoretical_quantity=leaf_count, unit="扇", operation_code="DOOR_ASSEMBLY",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="door-assembly", item_kind="assembly", procurement_mode="make",
+                source_payload=panel_values, drawing_parameters=panel_values,
+            ),
+            BomRuleItem(
+                group_code="panel", name="门扇外皮", specification=panel_specification,
+                theoretical_quantity=leaf_count, unit="扇", operation_code="PANEL_SKIN",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="panel-skin", parent_key="door-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=panel_values, drawing_parameters=panel_values,
+            ),
+            BomRuleItem(
+                group_code="panel", name="门扇外皮原材料", specification=panel_specification,
+                theoretical_quantity=leaf_count, unit="扇", operation_code="PANEL_SHEET",
+                acquisition_method="库存/采购", material_code=_text(params, "panel_material_code"),
+                component_key="panel-sheet", parent_key="panel-skin",
+                item_kind="material", procurement_mode="stock",
+                source_payload=panel_values, drawing_parameters=panel_values,
+            ),
+            BomRuleItem(
+                group_code="panel", name="门扇骨架", specification=_text(params, "skeleton_spec", "skeleton_material") or "按图",
+                theoretical_quantity=leaf_count, unit="扇", operation_code="PANEL_SKELETON",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="panel-skeleton", parent_key="door-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=panel_values, drawing_parameters=panel_values,
+            ),
+        ])
     else:
         _missing(
-            items, warnings, group_code="panel", name="门扇面板", operation_code="PANEL",
+            items, warnings, group_code="panel", name="门扇外皮", operation_code="PANEL_SKIN",
             field_path="material", message="门板材质或门洞宽高缺失，无法形成门扇面板项",
+            item_kind="manufactured_part", procurement_mode="make",
         )
 
     skeleton_spec = _text(params, "skeleton_spec", "skeleton_material")
     skeleton_quantity = _number(params, "skeleton_quantity")
     if skeleton_spec and skeleton_quantity > 0:
         items.append(BomRuleItem(
-            group_code="skeleton", name="门扇骨架/型材", specification=skeleton_spec,
+            group_code="panel", name="门扇骨架原材料", specification=skeleton_spec,
             theoretical_quantity=skeleton_quantity, unit=_text(params, "skeleton_unit") or "米",
-            operation_code="SKELETON", acquisition_method="内部加工",
+            operation_code="PANEL_PROFILE", acquisition_method="库存/采购",
             material_code=_text(params, "skeleton_material_code"),
+            component_key="panel-profile", parent_key="panel-skeleton",
+            item_kind="material", procurement_mode="stock",
             source_payload={"required_date": required_date},
         ))
     else:
-        _missing(
-            items, warnings, group_code="skeleton", name="门扇骨架/型材",
-            operation_code="SKELETON", field_path="skeleton_spec",
-            message="尚未配置骨架型材规格与用量，需要下料员补充",
-        )
+        warnings.append(BomRuleWarning(
+            field_path="skeleton_spec",
+            message="门扇骨架按图自制；原材料型材规格与用量尚未配置，可在BOM中补充",
+            blocking=False,
+        ))
 
     trim_flags = {
         "outer": bool(params.get("has_outer")),

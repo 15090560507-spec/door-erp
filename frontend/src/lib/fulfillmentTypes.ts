@@ -71,6 +71,10 @@ export interface FulfillmentComponent {
   remark: string;
   match_status?: string;
   verification_status?: string;
+  item_kind?: string;
+  procurement_mode?: string;
+  drawing_parameters?: Record<string, unknown>;
+  operation_code?: string;
 }
 
 export interface FulfillmentWorkPackage {
@@ -96,6 +100,9 @@ export interface FulfillmentWorkPackage {
   completed_at?: string | null;
   readiness_status?: string;
   blocked_reason?: string;
+  material_ready?: number | boolean;
+  operation_code?: string;
+  weight?: number;
 }
 
 export interface TechnicalPackage {

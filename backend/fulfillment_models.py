@@ -37,6 +37,9 @@ class ComponentInput(BaseModel):
     supplier_id: Optional[int] = None
     required_date: str = ""
     attachments: List[dict] = Field(default_factory=list)
+    item_kind: str = "material"
+    procurement_mode: str = "stock"
+    drawing_parameters: dict = Field(default_factory=dict)
 
 
 class WorkPackageInput(BaseModel):

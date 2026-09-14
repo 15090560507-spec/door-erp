@@ -47,18 +47,21 @@ const emptySummary: BomWorkbenchSummary = {
 
 function asDraftItem(row: BomRow): BomDraftItem {
   return {
-    id: row.id > 0 ? row.id : undefined, material_id: row.material_id, name: row.name, category: row.category,
+    id: row.id > 0 ? row.id : undefined, parent_id: row.parent_id, material_id: row.material_id, name: row.name, category: row.category,
     specification: row.specification, theoretical_quantity: Number(row.theoretical_quantity || 0),
     waste_rate: Number(row.waste_rate || 0), planned_quantity: Number(row.planned_quantity || 0),
     quantity: Number(row.quantity || 0), unit: row.unit, acquisition_method: row.acquisition_method,
     group_code: row.group_code, operation_code: row.operation_code, supplier_id: row.supplier_id,
     required_date: row.required_date || "", remark: row.remark || "",
+    item_kind: row.item_kind || "material", procurement_mode: row.procurement_mode || "stock",
+    drawing_parameters: row.drawing_parameters || {},
   };
 }
 
 let nextTemporaryRowId = -1;
 
 function newBomRow(source?: BomRow): BomRow {
+  const selfMade = source?.procurement_mode === "make" || ["assembly", "manufactured_part"].includes(source?.item_kind || "");
   return {
     id: nextTemporaryRowId--,
     parent_id: null,
@@ -82,18 +85,26 @@ function newBomRow(source?: BomRow): BomRow {
     operation_code: source?.operation_code || "MANUAL",
     required_date: source?.required_date || "",
     remark: source?.remark || "",
-    match_status: source?.material_id ? "已匹配" : "待匹配",
-    verification_status: "待核验",
+    match_status: selfMade ? "无需物料" : source?.material_id ? "已匹配" : "待匹配",
+    verification_status: selfMade ? "已核验" : "待核验",
     source_type: "manual",
+    item_kind: source?.item_kind || "material",
+    procurement_mode: source?.procurement_mode || "stock",
+    drawing_parameters: source?.drawing_parameters || {},
   };
 }
 
-export default function BomWorkbench() {
+type BomWorkbenchProps = {
+  embedded?: boolean;
+  initialDoorId?: number;
+};
+
+export default function BomWorkbench({ embedded = false, initialDoorId }: BomWorkbenchProps = {}) {
   const [items, setItems] = useState<BomWorkbenchItem[]>([]);
   const [summary, setSummary] = useState(emptySummary);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const [selectedDoorId, setSelectedDoorId] = useState<number | null>(null);
+  const [selectedDoorId, setSelectedDoorId] = useState<number | null>(initialDoorId || null);
   const [detail, setDetail] = useState<BomDetail | null>(null);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -114,15 +125,22 @@ export default function BomWorkbench() {
       const result = await getBomWorkbench({ q: query, status, page_size: 100 });
       setItems(result.items);
       setSummary(result.summary);
-      setSelectedDoorId((current) => result.items.some((item) => item.door_unit_id === current)
-        ? current : result.items[0]?.door_unit_id || null);
+      setSelectedDoorId((current) => {
+        const preferred = current || initialDoorId || null;
+        return result.items.some((item) => item.door_unit_id === preferred)
+          ? preferred : result.items[0]?.door_unit_id || null;
+      });
       setError("");
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "整单 BOM 列表加载失败"));
     } finally {
       setLoadingList(false);
     }
-  }, [query, status]);
+  }, [initialDoorId, query, status]);
+
+  useEffect(() => {
+    if (initialDoorId) setSelectedDoorId(initialDoorId);
+  }, [initialDoorId]);
 
   const loadDetail = useCallback(async (doorId: number, version?: number) => {
     setLoadingDetail(true);
@@ -168,10 +186,11 @@ export default function BomWorkbench() {
 
   const editable = detail?.status === "草稿";
   const unresolved = detail?.rows.filter((row) => {
-    const materialReady = row.match_status === "无需物料" || (row.match_status === "已匹配" && Boolean(row.material_id));
+    const selfMade = row.procurement_mode === "make" || ["assembly", "manufactured_part"].includes(row.item_kind);
+    const materialReady = selfMade || row.match_status === "无需物料" || (row.match_status === "已匹配" && Boolean(row.material_id));
     return !materialReady || row.planned_quantity <= 0 || row.verification_status !== "已核验";
   }).length || 0;
-  const selectedVerifiable = detail?.rows.filter((row) => row.id > 0 && selectedRows.has(row.id) && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验") || [];
+  const selectedVerifiable = detail?.rows.filter((row) => row.id > 0 && selectedRows.has(row.id) && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验") || [];
   const rowsById = useMemo(() => new Map((detail?.rows || []).map((row) => [row.id, row])), [detail?.rows]);
   const displayGroups = useMemo(() => {
     if (!detail) return [];
@@ -203,7 +222,17 @@ export default function BomWorkbench() {
   const updateRow = (rowId: number, changes: Partial<BomRow>) => {
     setDetail((current) => current ? {
       ...current,
-      rows: current.rows.map((row) => row.id === rowId ? { ...row, ...changes, verification_status: "待核验" } : row),
+      rows: current.rows.map((row) => {
+        if (row.id !== rowId) return row;
+        const next = { ...row, ...changes };
+        const selfMade = next.procurement_mode === "make" || ["assembly", "manufactured_part"].includes(next.item_kind);
+        return {
+          ...next,
+          material_id: selfMade ? null : next.material_id,
+          match_status: selfMade ? "无需物料" : next.match_status,
+          verification_status: selfMade ? "已核验" : "待核验",
+        };
+      }),
     } : current);
   };
 
@@ -250,8 +279,8 @@ export default function BomWorkbench() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-[#1B1B1F]">
-      <main className="workspace-page workspace-page--wide bom-workbench">
+    <div className={embedded ? "bom-workbench-root is-embedded" : "min-h-screen bg-[#F5F5F7] text-[#1B1B1F]"}>
+      <main className={embedded ? "bom-workbench bom-workbench--embedded" : "workspace-page workspace-page--wide bom-workbench"}>
         <WorkspaceHeader
           title="BOM与工艺准备"
           description="从订单确认结果生成整单 BOM、下料清单和工艺路线；发布后由生产工作包承接实际下料与加工。"
@@ -322,22 +351,22 @@ export default function BomWorkbench() {
 
               <div className="bom-table-wrap">
                 <table className="bom-table">
-                  <thead><tr><th className="bom-check"><input type="checkbox" aria-label="全选当前可核验项" checked={Boolean(selectedVerifiable.length) && selectedVerifiable.length === detail.rows.filter((row) => row.id > 0 && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").length} onChange={(event) => setSelectedRows(event.target.checked ? new Set(detail.rows.filter((row) => row.id > 0 && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").map((row) => row.id)) : new Set())} /></th><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>核验</th><th>操作</th></tr></thead>
+                  <thead><tr><th className="bom-check"><input type="checkbox" aria-label="全选当前可核验项" checked={Boolean(selectedVerifiable.length) && selectedVerifiable.length === detail.rows.filter((row) => row.id > 0 && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").length} onChange={(event) => setSelectedRows(event.target.checked ? new Set(detail.rows.filter((row) => row.id > 0 && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").map((row) => row.id)) : new Set())} /></th><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>核验</th><th>操作</th></tr></thead>
                   <tbody>{displayGroups.map((group) => {
                     const groupRows = group.rows.map((row) => rowsById.get(row.id)).filter((row): row is BomRow => Boolean(row));
                     return [<tr className="bom-group-row" key={`${group.code}-title`}><td colSpan={11}>{group.label}<span>{groupRows.length} 项</span></td></tr>, ...groupRows.map((row) => (
                       <tr key={row.id} className={row.verification_status === "已核验" ? "is-verified" : ""}>
-                        <td className="bom-check"><input type="checkbox" aria-label={`选择 ${row.name}`} disabled={!editable || row.id < 0 || row.verification_status === "已核验"} checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.id); else next.delete(row.id); return next; })} /></td>
-                        <td><input disabled={!editable} value={row.name || ""} onChange={(event) => updateRow(row.id, { name: event.target.value })} /><small>{row.source_type === "manual" ? "手工项目" : row.operation_code || row.category}</small></td>
+                        <td className="bom-check"><input type="checkbox" aria-label={`选择 ${row.name}`} disabled={!editable || row.id < 0 || row.procurement_mode === "make" || row.verification_status === "已核验"} checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.id); else next.delete(row.id); return next; })} /></td>
+                        <td className={row.parent_id ? "bom-tree-cell is-child" : "bom-tree-cell"}><input disabled={!editable} value={row.name || ""} onChange={(event) => updateRow(row.id, { name: event.target.value })} /><small>{row.procurement_mode === "make" ? "按图自制" : row.source_type === "manual" ? "手工项目" : row.operation_code || row.category}</small></td>
                         <td><input disabled={!editable} value={row.specification || ""} onChange={(event) => updateRow(row.id, { specification: event.target.value })} /></td>
-                        <td><select disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit, match_status: material ? "已匹配" : "待匹配" }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small></td>
+                        <td>{row.procurement_mode === "make" ? <div className="bom-self-made"><strong>无需建物料</strong><small>尺寸与参数保存在本单 BOM</small></div> : <><select disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit, match_status: material ? "已匹配" : "待匹配" }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small></>}</td>
                         <td className="bom-number">{Number(row.theoretical_quantity || 0).toLocaleString()}</td>
                         <td><input className="bom-number-input" type="number" min="0" max="100" step="0.1" disabled={!editable} value={row.waste_rate} onChange={(event) => updateRow(row.id, { waste_rate: Number(event.target.value) })} /></td>
                         <td><input className="bom-number-input" type="number" min="0" step="0.001" disabled={!editable} value={row.planned_quantity} onChange={(event) => updateRow(row.id, { planned_quantity: Number(event.target.value), quantity: Number(event.target.value) })} /></td>
                         <td><input className="bom-unit-input" disabled={!editable} value={row.unit || ""} onChange={(event) => updateRow(row.id, { unit: event.target.value })} /></td>
-                        <td><select disabled={!editable} value={row.acquisition_method || "待确定"} onChange={(event) => updateRow(row.id, { acquisition_method: event.target.value })}><option>待确定</option><option>库存领料</option><option>采购</option><option>内部加工</option><option>外协加工</option></select></td>
-                        <td><StatusChip tone={row.verification_status === "已核验" ? "green" : row.material_id ? "amber" : "red"}>{row.id < 0 ? "先保存" : row.verification_status}</StatusChip></td>
-                        <td><div className="bom-row-actions">{!row.material_id && <button type="button" disabled={!editable} title="把临时项建立为物料档案" aria-label={`将${row.name || "临时项"}建立为物料档案`} onClick={() => setMaterialRow(row)}><Database size={14} /></button>}<button type="button" disabled={!editable} title="复制项目" aria-label={`复制${row.name || "项目"}`} onClick={() => addRow(row)}><Copy size={14} /></button><button type="button" disabled={!editable} title="删除项目" aria-label={`删除${row.name || "项目"}`} className="is-danger" onClick={() => removeRow(row)}><Trash2 size={14} /></button></div></td>
+                        <td><select disabled={!editable || row.procurement_mode === "make"} value={row.acquisition_method || "待确定"} onChange={(event) => updateRow(row.id, { acquisition_method: event.target.value })}>{row.procurement_mode === "make" && <option>按图自制</option>}<option>待确定</option><option>库存领料</option><option>采购</option><option>内部加工</option><option>外协加工</option></select></td>
+                        <td><StatusChip tone={row.procurement_mode === "make" || row.verification_status === "已核验" ? "green" : row.material_id ? "amber" : "red"}>{row.procurement_mode === "make" ? "自制确认" : row.id < 0 ? "先保存" : row.verification_status}</StatusChip></td>
+                        <td><div className="bom-row-actions">{row.procurement_mode !== "make" && !row.material_id && <button type="button" disabled={!editable} title="把临时项建立为物料档案" aria-label={`将${row.name || "临时项"}建立为物料档案`} onClick={() => setMaterialRow(row)}><Database size={14} /></button>}<button type="button" disabled={!editable} title="复制项目" aria-label={`复制${row.name || "项目"}`} onClick={() => addRow(row)}><Copy size={14} /></button><button type="button" disabled={!editable} title="删除项目" aria-label={`删除${row.name || "项目"}`} className="is-danger" onClick={() => removeRow(row)}><Trash2 size={14} /></button></div></td>
                       </tr>
                     ))];
                   })}</tbody>

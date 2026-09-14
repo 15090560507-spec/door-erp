@@ -62,7 +62,11 @@ class RequirementService:
                WHERE c.technical_package_id=? ORDER BY c.sequence_no, c.id""",
             (package_id,),
         ).fetchall()
-        components = [row for row in all_components if str(row["match_status"] or "") != "无需物料"]
+        components = [
+            row for row in all_components
+            if str(row["match_status"] or "") != "无需物料"
+            and str(row["procurement_mode"] or "stock") != "make"
+        ]
         missing = [str(row["name"]) for row in components if row["material_id"] is None]
         invalid = [str(row["name"]) for row in components if row["material_id"] is not None and row["material_code"] is None]
         inactive = [str(row["name"]) for row in components if row["material_code"] is not None and not bool(row["is_active"])]

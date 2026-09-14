@@ -68,7 +68,7 @@ function moduleRoute(module: ModuleName) {
 function moduleFromPath(pathname: string): ModuleName | null {
   if (pathname.startsWith("/quote")) return "报价系统";
   if (pathname.startsWith("/render")) return "效果渲染";
-  if (pathname.startsWith("/cutting") || pathname.startsWith("/door-cad/frame")) return "下料";
+  if (pathname.startsWith("/cutting") || pathname.startsWith("/door-cad/frame")) return "生产管理";
   if (pathname.startsWith("/orders")) return "订单确认";
   if (pathname.startsWith("/production")) return "生产管理";
   if (pathname.startsWith("/purchasing")) return "采购管理";

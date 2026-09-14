@@ -103,7 +103,7 @@ class BomGenerationTest(unittest.TestCase):
         self.assertIn(result["generation_status"], {"已生成", "待完善"})
         groups = {item["group_code"] for item in result["components"]}
         self.assertTrue({"frame", "panel", "hardware", "glass", "packaging"}.issubset(groups))
-        panel = next(item for item in result["components"] if item["operation_code"] == "PANEL")
+        panel = next(item for item in result["components"] if item["operation_code"] == "PANEL_SHEET")
         self.assertEqual(panel["material_id"], material_id)
         self.assertEqual(panel["match_status"], "已匹配")
         self.assertEqual(panel["source_rule_version"], result["rule_version"])
@@ -116,7 +116,7 @@ class BomGenerationTest(unittest.TestCase):
         result = self.service.generate(door_id, self.user)
 
         operation_codes = {item["operation_code"] for item in result["components"]}
-        self.assertIn("PANEL", operation_codes)
+        self.assertIn("PANEL_SKIN", operation_codes)
         self.assertIn("FRAME_ASSEMBLY", operation_codes)
         self.assertTrue(any(item["field_path"] == "hysl" for item in result["warnings"]))
         self.assertGreater(result["blocking_warning_count"], 0)

@@ -69,6 +69,9 @@ export interface BomRow {
   match_status: string;
   verification_status: string;
   source_type: string;
+  item_kind: "assembly" | "manufactured_part" | "material" | string;
+  procurement_mode: "make" | "stock" | "purchase" | "subcontract" | string;
+  drawing_parameters: Record<string, unknown>;
 }
 
 export interface BomGroup {
@@ -129,6 +132,7 @@ export interface BomDetail {
 
 export interface BomDraftItem {
   id?: number;
+  parent_id: number | null;
   material_id: number | null;
   name: string;
   category: string;
@@ -144,4 +148,7 @@ export interface BomDraftItem {
   supplier_id: number | null;
   required_date: string;
   remark: string;
+  item_kind: string;
+  procurement_mode: string;
+  drawing_parameters: Record<string, unknown>;
 }

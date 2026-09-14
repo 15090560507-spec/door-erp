@@ -318,6 +318,9 @@ class FulfillmentDatabase:
                     supplier_id INTEGER,
                     required_date TEXT NOT NULL DEFAULT '',
                     attachments_json TEXT NOT NULL DEFAULT '[]',
+                    item_kind TEXT NOT NULL DEFAULT 'material',
+                    procurement_mode TEXT NOT NULL DEFAULT 'stock',
+                    drawing_parameter_json TEXT NOT NULL DEFAULT '{}',
                     FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE,
                     FOREIGN KEY(parent_id) REFERENCES fulfillment_components(id)
                 );
@@ -577,6 +580,9 @@ class FulfillmentDatabase:
                 ("supplier_id", "INTEGER"),
                 ("required_date", "TEXT NOT NULL DEFAULT ''"),
                 ("attachments_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("item_kind", "TEXT NOT NULL DEFAULT 'material'"),
+                ("procurement_mode", "TEXT NOT NULL DEFAULT 'stock'"),
+                ("drawing_parameter_json", "TEXT NOT NULL DEFAULT '{}'"),
             )
             for name, definition in component_definitions:
                 if name not in columns:
@@ -905,6 +911,7 @@ class FulfillmentDatabase:
             for component in package["components"]:
                 component["source_payload"] = json_loads(component.pop("source_payload_json", ""), {})
                 component["attachments"] = json_loads(component.pop("attachments_json", ""), [])
+                component["drawing_parameters"] = json_loads(component.pop("drawing_parameter_json", ""), {})
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
             for work in package["work_packages"]:
                 work["predecessor_ids"] = [
@@ -1085,6 +1092,7 @@ class FulfillmentDatabase:
         for row in rows:
             row["source_payload"] = json_loads(row.pop("source_payload_json", ""), {})
             row["attachments"] = json_loads(row.pop("attachments_json", ""), [])
+            row["drawing_parameters"] = json_loads(row.pop("drawing_parameter_json", ""), {})
         group_labels = {
             "frame": "门框与门槛", "panel": "门扇与面板", "skeleton": "骨架与型材",
             "trim": "门套/门头/门柱", "glass": "玻璃与线条", "hardware": "五金与开启机构",
@@ -1167,18 +1175,14 @@ class FulfillmentDatabase:
                 "material_id", "name", "category", "specification", "theoretical_quantity",
                 "waste_rate", "planned_quantity", "quantity", "unit", "acquisition_method",
                 "group_code", "operation_code", "supplier_id", "required_date", "remark",
+                "parent_id", "item_kind", "procurement_mode", "drawing_parameter_json",
             }
             for item in payload.items:
                 values = item.model_dump(exclude_unset=True)
                 item_id = values.pop("id", None)
-                material_explicit = "material_id" in values
-                if material_explicit and values["material_id"] is not None:
-                    material = conn.execute(
-                        "SELECT id FROM inventory_materials WHERE id=? AND is_active=1",
-                        (values["material_id"],),
-                    ).fetchone()
-                    if not material:
-                        raise ValueError(f"物料档案 {values['material_id']} 不存在或已停用")
+                if "drawing_parameters" in values:
+                    values["drawing_parameter_json"] = json_dumps(values.pop("drawing_parameters") or {})
+                current = None
                 if item_id is not None:
                     current = conn.execute(
                         "SELECT * FROM fulfillment_components WHERE id=? AND technical_package_id=?",
@@ -1186,6 +1190,30 @@ class FulfillmentDatabase:
                     ).fetchone()
                     if not current:
                         raise ValueError(f"BOM行 {item_id} 不存在或不属于当前版本")
+                parent_id = values.get("parent_id", current["parent_id"] if current else None)
+                if parent_id is not None:
+                    if item_id is not None and int(parent_id) == int(item_id):
+                        raise ValueError("BOM行不能以自身作为父级")
+                    parent = conn.execute(
+                        "SELECT id FROM fulfillment_components WHERE id=? AND technical_package_id=?",
+                        (parent_id, package_id),
+                    ).fetchone()
+                    if not parent:
+                        raise ValueError(f"父级BOM行 {parent_id} 不存在或不属于当前版本")
+                item_kind = str(values.get("item_kind", current["item_kind"] if current else "material") or "material")
+                procurement_mode = str(values.get("procurement_mode", current["procurement_mode"] if current else "stock") or "stock")
+                is_self_made = procurement_mode == "make" or item_kind in {"assembly", "manufactured_part"}
+                material_explicit = "material_id" in values
+                if is_self_made:
+                    values["material_id"] = None
+                if not is_self_made and material_explicit and values["material_id"] is not None:
+                    material = conn.execute(
+                        "SELECT id FROM inventory_materials WHERE id=? AND is_active=1",
+                        (values["material_id"],),
+                    ).fetchone()
+                    if not material:
+                        raise ValueError(f"物料档案 {values['material_id']} 不存在或已停用")
+                if item_id is not None:
                     updates = {key: value for key, value in values.items() if key in allowed}
                     if "planned_quantity" in updates:
                         updates["quantity"] = updates["planned_quantity"]
@@ -1199,10 +1227,12 @@ class FulfillmentDatabase:
                         planned = float(math.ceil(calculated)) if unit in {"个", "件", "扇", "块", "套"} else round(calculated, 4)
                         updates["planned_quantity"] = planned
                         updates["quantity"] = planned
-                    if material_explicit:
+                    if is_self_made:
+                        updates["match_status"] = "无需物料"
+                    elif material_explicit or "item_kind" in updates or "procurement_mode" in updates:
                         updates["match_status"] = "已匹配" if updates.get("material_id") is not None else "待匹配"
                     if updates:
-                        updates["verification_status"] = "待核验"
+                        updates["verification_status"] = "已核验" if is_self_made else "待核验"
                         assignments = ", ".join(f"{key}=?" for key in updates)
                         conn.execute(
                             f"UPDATE fulfillment_components SET {assignments} WHERE id=?",
@@ -1226,25 +1256,29 @@ class FulfillmentDatabase:
                         unit = str(values.get("unit") or "件")
                         planned = float(math.ceil(calculated)) if unit in {"个", "件", "扇", "块", "套"} else round(calculated, 4)
                     material_id = values.get("material_id")
+                    match_status = "无需物料" if is_self_made else ("已匹配" if material_id is not None else "待匹配")
+                    verification_status = "已核验" if is_self_made else "待核验"
                     conn.execute(
                         """INSERT INTO fulfillment_components(
-                               technical_package_id, material_id, name, category, specification,
+                               technical_package_id, parent_id, material_id, name, category, specification,
                                quantity, unit, acquisition_method, remark, sequence_no, line_no,
                                group_code, theoretical_quantity, waste_rate, planned_quantity,
                                source_type, source_payload_json, match_status, verification_status,
-                               operation_code, supplier_id, required_date, attachments_json
-                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                     'manual', '{}', ?, '待核验', ?, ?, ?, '[]')""",
+                               operation_code, supplier_id, required_date, attachments_json,
+                               item_kind, procurement_mode, drawing_parameter_json
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                     'manual', '{}', ?, ?, ?, ?, ?, '[]', ?, ?, ?)""",
                         (
-                            package_id, material_id, name, str(values.get("category") or "其他"),
+                            package_id, parent_id, material_id, name, str(values.get("category") or "其他"),
                             str(values.get("specification") or ""), planned,
                             str(values.get("unit") or "件"), str(values.get("acquisition_method") or "待确定"),
                             str(values.get("remark") or ""), line_no, line_no,
                             str(values.get("group_code") or "other"), theoretical,
                             float(values.get("waste_rate") or 0), planned,
-                            "已匹配" if material_id is not None else "待匹配",
+                            match_status, verification_status,
                             str(values.get("operation_code") or "MANUAL"), values.get("supplier_id"),
-                            str(values.get("required_date") or ""),
+                            str(values.get("required_date") or ""), item_kind, procurement_mode,
+                            str(values.get("drawing_parameter_json") or "{}"),
                         ),
                     )
             unresolved = int((conn.execute(
@@ -1373,7 +1407,8 @@ class FulfillmentDatabase:
         comparable = (
             "material_id", "name", "category", "specification", "theoretical_quantity",
             "waste_rate", "planned_quantity", "unit", "acquisition_method", "group_code",
-            "operation_code", "supplier_id", "required_date", "remark",
+            "operation_code", "supplier_id", "required_date", "remark", "parent_id",
+            "item_kind", "procurement_mode", "drawing_parameter_json",
         )
         changed = []
         for key in sorted(before.keys() & after.keys()):
@@ -1430,10 +1465,13 @@ class FulfillmentDatabase:
                            sequence_no, line_no, group_code, theoretical_quantity,
                            waste_rate, planned_quantity, source_type, source_rule_version,
                            source_payload_json, match_status, verification_status,
-                           operation_code, supplier_id, required_date, attachments_json
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           operation_code, supplier_id, required_date, attachments_json,
+                           item_kind, procurement_mode, drawing_parameter_json
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        package_id, parent_id, item.material_id, item.name.strip(), item.category,
+                        package_id, parent_id,
+                        None if item.procurement_mode == "make" or item.item_kind in {"assembly", "manufactured_part"} else item.material_id,
+                        item.name.strip(), item.category,
                         item.specification, item.planned_quantity if item.planned_quantity is not None else item.quantity,
                         item.unit, item.acquisition_method, item.remark, sequence,
                         item.line_no or sequence, item.group_code,
@@ -1441,8 +1479,10 @@ class FulfillmentDatabase:
                         item.waste_rate,
                         item.planned_quantity if item.planned_quantity is not None else item.quantity,
                         item.source_type, item.source_rule_version, json_dumps(item.source_payload),
-                        item.match_status, item.verification_status, item.operation_code,
-                        item.supplier_id, item.required_date, json_dumps(item.attachments),
+                        "无需物料" if item.procurement_mode == "make" or item.item_kind in {"assembly", "manufactured_part"} else item.match_status,
+                        "已核验" if item.procurement_mode == "make" or item.item_kind in {"assembly", "manufactured_part"} else item.verification_status,
+                        item.operation_code, item.supplier_id, item.required_date, json_dumps(item.attachments),
+                        item.item_kind, item.procurement_mode, json_dumps(item.drawing_parameters),
                     ),
                 )
                 if item.id is not None:
@@ -1719,7 +1759,11 @@ class FulfillmentDatabase:
                 (now, source["id"]),
             )
             old_to_new: Dict[int, int] = {}
-            for component in conn.execute("SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():
+            source_components = conn.execute(
+                "SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY sequence_no, id",
+                (source["id"],),
+            ).fetchall()
+            for component in source_components:
                 cursor = conn.execute(
                     """INSERT INTO fulfillment_components(
                            technical_package_id, parent_id, material_id, name, category,
@@ -1727,8 +1771,9 @@ class FulfillmentDatabase:
                            sequence_no, line_no, group_code, theoretical_quantity,
                            waste_rate, planned_quantity, source_type, source_rule_version,
                            source_payload_json, match_status, verification_status,
-                           operation_code, supplier_id, required_date, attachments_json
-                       ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           operation_code, supplier_id, required_date, attachments_json,
+                           item_kind, procurement_mode, drawing_parameter_json
+                       ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         new_package_id, component["material_id"], component["name"], component["category"],
                         component["specification"], component["quantity"], component["unit"],
@@ -1738,9 +1783,17 @@ class FulfillmentDatabase:
                         component["source_rule_version"], component["source_payload_json"],
                         component["match_status"], component["verification_status"], component["operation_code"],
                         component["supplier_id"], component["required_date"], component["attachments_json"],
+                        component["item_kind"], component["procurement_mode"], component["drawing_parameter_json"],
                     ),
                 )
                 old_to_new[int(component["id"])] = int(cursor.lastrowid)
+            for component in source_components:
+                parent_id = component["parent_id"]
+                if parent_id is not None and int(parent_id) in old_to_new:
+                    conn.execute(
+                        "UPDATE fulfillment_components SET parent_id=? WHERE id=?",
+                        (old_to_new[int(parent_id)], old_to_new[int(component["id"])]),
+                    )
             for work in conn.execute("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (source["id"],)).fetchall():
                 conn.execute(
                     """INSERT INTO fulfillment_work_packages(technical_package_id, door_unit_id, component_id, name, category, route, acquisition_method, executor_uid, planned_start, planned_end, opening_condition, blocking_node, quantity, unit, piece_rate, inspection_required, remark, sequence_no, updated_at)

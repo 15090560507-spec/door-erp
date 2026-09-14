@@ -96,7 +96,7 @@ class BomApiTest(unittest.TestCase):
 
     def test_draft_update_and_verify_only_allow_unambiguous_matched_rows(self):
         door_id, generated = self.create_generated_door(sales_order_id=2)
-        panel = next(row for row in generated["components"] if row["operation_code"] == "PANEL")
+        panel = next(row for row in generated["components"] if row["operation_code"] == "PANEL_SHEET")
         material_id = self.add_material()
 
         response = self.client.put(
@@ -213,6 +213,13 @@ class BomApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["bom"]["version"], 2)
         self.assertEqual(response.json()["bom"]["status"], "草稿")
+        version_rows = response.json()["bom"]["rows"]
+        version_ids = {row["id"] for row in version_rows}
+        self.assertTrue(any(row["parent_id"] is not None for row in version_rows))
+        self.assertTrue(all(
+            row["parent_id"] is None or row["parent_id"] in version_ids
+            for row in version_rows
+        ))
 
         response = self.client.get(f"/api/bom/door-units/{door_id}/diff/1/2")
         self.assertEqual(response.status_code, 200)

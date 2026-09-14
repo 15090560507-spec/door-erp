@@ -21,12 +21,15 @@ class RouteNode:
     inspection_required: bool = False
 
 
-PANEL_OPERATIONS = ("PANEL", "SKELETON")
+PANEL_OPERATIONS = ("PANEL", "SKELETON", "PANEL_SHEET", "PANEL_PROFILE")
+PANEL_ROUTE_OPERATIONS = {
+    *PANEL_OPERATIONS, "DOOR_ASSEMBLY", "PANEL_SKIN", "PANEL_SKELETON",
+}
 FITTING_OPERATIONS = (
     "TRIM", "GLASS", "HINGE", "LOCK_BODY", "FINGERPRINT_LOCK",
     "FRONT_HANDLE", "BACK_HANDLE", "ORNAMENT", "CONSUMABLE",
 )
-FRAME_OPERATIONS = {"FRAME_ASSEMBLY", "FRAME_PART"}
+FRAME_OPERATIONS = {"FRAME_ASSEMBLY", "FRAME_PART", "FRAME_SKIN", "FRAME_SKELETON"}
 
 
 class WorkPackageService:
@@ -40,7 +43,7 @@ class WorkPackageService:
 
     @staticmethod
     def _route(operation_codes: set[str]) -> List[RouteNode]:
-        has_panel = bool(operation_codes.intersection(PANEL_OPERATIONS))
+        has_panel = bool(operation_codes.intersection(PANEL_ROUTE_OPERATIONS))
         has_fittings = bool(operation_codes.intersection(FITTING_OPERATIONS))
         has_subcontract = "SUBCONTRACT" in operation_codes
 
