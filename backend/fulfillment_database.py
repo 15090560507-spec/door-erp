@@ -23,6 +23,13 @@ DOOR_STATUSES = (
     "待成品质检", "返工中", "待成品入库", "已入库待发货", "待财务放行",
     "待出库", "运输中", "已签收",
 )
+WORKFLOW_STAGE_STATUSES = {
+    "preparation": ("待生产确认", "技术准备中"),
+    "materials": ("备料与加工中", "可局部装配"),
+    "execution": ("总装中", "返工中"),
+    "quality": ("待成品质检", "待成品入库"),
+    "delivery": ("已入库待发货", "待财务放行", "待出库", "运输中", "已签收"),
+}
 WORK_STATUSES = ("草稿", "待排单", "已排单", "进行中", "待质检", "已完成", "暂停", "异常", "返工", "已取消")
 WORK_TRANSITIONS = {
     "待排单": {"已排单", "进行中", "待质检", "暂停", "已取消"},
@@ -50,6 +57,135 @@ def json_loads(value: Optional[str], default: Any) -> Any:
         return json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return default
+
+
+def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
+    """Derive the five-stage workflow from canonical fulfillment facts."""
+    package = door.get("technical_package") or {}
+    components = package.get("components") or []
+    works = package.get("work_packages") or []
+    requirement = door.get("material_requirement") or {}
+    material_items = requirement.get("items") or []
+    inspections = door.get("inspections") or []
+    movements = door.get("inventory_movements") or []
+    shipments = door.get("shipments") or []
+    open_exceptions = [item for item in (door.get("exceptions") or []) if item.get("status") != "已解决"]
+
+    package_published = package.get("status") == "已确认"
+    preparation_blockers: List[str] = []
+    if not package:
+        preparation_blockers.append("尚未生成BOM草稿")
+    else:
+        if package.get("generation_status") in {"未生成", "生成失败"}:
+            preparation_blockers.append("BOM尚未生成或生成失败")
+        unresolved = sum(
+            1 for item in components
+            if item.get("verification_status") != "已核验"
+            or (
+                item.get("match_status") not in {"已匹配", "无需物料"}
+                or (item.get("match_status") == "已匹配" and not item.get("material_id"))
+            )
+        )
+        if unresolved:
+            preparation_blockers.append(f"还有{unresolved}项BOM资料待核验")
+        blocking_warnings = int(package.get("blocking_warning_count") or 0)
+        if blocking_warnings:
+            preparation_blockers.append(f"还有{blocking_warnings}项阻断警告")
+        if not package_published:
+            preparation_blockers.append("BOM尚未发布")
+        if package_published and not works:
+            preparation_blockers.append("执行工作包尚未生成")
+    preparation_complete = package_published and bool(works)
+
+    shortage_items = [item for item in material_items if float(item.get("shortage_quantity") or 0) > 0.005]
+    pending_issue_items = [
+        item for item in material_items
+        if float(item.get("required_quantity") or 0)
+        - max(0.0, float(item.get("issued_quantity") or 0) - float(item.get("returned_quantity") or 0))
+        > 0.005
+    ]
+    materials_complete = bool(requirement) and not shortage_items
+    material_blockers: List[str] = []
+    if preparation_complete and not requirement:
+        material_blockers.append("BOM已发布，但物料需求尚未生成")
+    if shortage_items:
+        material_blockers.append(f"{len(shortage_items)}项物料存在缺口")
+
+    terminal_statuses = {"已完成", "已取消"}
+    completed_works = [item for item in works if item.get("status") in terminal_statuses]
+    unfinished_works = [item for item in works if item.get("status") not in terminal_statuses]
+    ready_works = [item for item in unfinished_works if item.get("readiness_status") in {"可执行", "进行中", "待确认", "返工", "暂停", "异常"}]
+    work_blockers = [str(item.get("blocked_reason") or item.get("readiness_status") or "") for item in unfinished_works if item.get("blocked_reason")]
+    execution_complete = bool(works) and not unfinished_works
+    execution_blockers = [] if ready_works or execution_complete else list(dict.fromkeys(work_blockers))[:3]
+
+    finished_inspections = [item for item in inspections if item.get("inspection_type") == "成品质检"]
+    latest_inspection = finished_inspections[0] if finished_inspections else None
+    inspection_passed = bool(latest_inspection and latest_inspection.get("result") in {"合格", "让步接收"})
+    finished_inbound = any(item.get("movement_type") == "成品入库" for item in movements)
+    quality_complete = finished_inbound
+    quality_blockers: List[str] = []
+    if execution_complete and not inspection_passed:
+        quality_blockers.append("尚未通过成品质检")
+    if inspection_passed and not finished_inbound:
+        quality_blockers.append("质检已通过，尚未办理成品入库")
+
+    signed = any(item.get("status") == "已签收" for item in shipments) or door.get("status") == "已签收"
+    shipped = bool(shipments)
+    finance = door.get("sales_finance") or {}
+    unpaid = float(finance.get("unpaid_amount") or 0)
+    delivery_blockers: List[str] = []
+    if quality_complete and unpaid > 0.005 and not shipped:
+        delivery_blockers.append(f"订单尚有未收款{unpaid:.2f}元")
+    if quality_complete and not shipped:
+        delivery_blockers.append("尚未办理发货出库")
+    if shipped and not signed:
+        delivery_blockers.append("货物运输中，尚未签收")
+
+    stage_data = [
+        {
+            "key": "preparation", "label": "生产准备", "complete": preparation_complete,
+            "summary": f"BOM V{package.get('version') or 0} · {'已发布' if package_published else '草稿'} · {len(works)}个工作包",
+            "blockers": preparation_blockers, "action": "open_bom", "action_label": "进入BOM与工艺准备",
+        },
+        {
+            "key": "materials", "label": "物料齐套", "complete": materials_complete,
+            "summary": f"{len(material_items) - len(shortage_items)}/{len(material_items)}项齐套 · {len(pending_issue_items)}项待发料",
+            "blockers": material_blockers, "action": "open_inventory", "action_label": "查看物料需求",
+        },
+        {
+            "key": "execution", "label": "加工装配", "complete": execution_complete,
+            "summary": f"{len(completed_works)}/{len(works)}个工作包完成 · {len(ready_works)}个可执行",
+            "blockers": execution_blockers, "action": "manage_work", "action_label": "处理当前工作包",
+        },
+        {
+            "key": "quality", "label": "质检入库", "complete": quality_complete,
+            "summary": "成品已入库" if finished_inbound else (f"最近质检：{latest_inspection.get('result')}" if latest_inspection else "等待成品质检"),
+            "blockers": quality_blockers, "action": "quality_inbound", "action_label": "办理质检与入库",
+        },
+        {
+            "key": "delivery", "label": "发货完成", "complete": signed,
+            "summary": "客户已签收" if signed else ("运输中" if shipped else "等待发货"),
+            "blockers": delivery_blockers, "action": "ship", "action_label": "办理发货与签收",
+        },
+    ]
+    current_index = next((index for index, stage in enumerate(stage_data) if not stage["complete"]), len(stage_data) - 1)
+    for index, stage in enumerate(stage_data):
+        if stage["complete"]:
+            stage["state"] = "complete"
+        elif index == current_index:
+            stage["state"] = "blocked" if stage["blockers"] else "current"
+        else:
+            stage["state"] = "pending"
+
+    return {
+        "current_stage": stage_data[current_index]["key"] if not signed else "complete",
+        "current_stage_label": stage_data[current_index]["label"] if not signed else "履约完成",
+        "stages": stage_data,
+        "open_exception_count": len(open_exceptions),
+        "next_action": stage_data[current_index]["action"] if not signed else "view_records",
+        "next_action_label": stage_data[current_index]["action_label"] if not signed else "查看全部记录",
+    }
 
 
 class FulfillmentDatabase:
@@ -696,7 +832,7 @@ class FulfillmentDatabase:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (package_id, door_id, name, category, route, method, sequence, now),
             )
 
-    def list_orders(self, q: str = "", status: str = "") -> List[Dict[str, Any]]:
+    def list_orders(self, q: str = "", status: str = "", stage: str = "") -> List[Dict[str, Any]]:
         where = ["1=1"]
         params: List[Any] = []
         if q:
@@ -706,6 +842,12 @@ class FulfillmentDatabase:
         if status:
             where.append("d.status=?")
             params.append(status)
+        if stage:
+            stage_statuses = WORKFLOW_STAGE_STATUSES.get(stage)
+            if stage_statuses:
+                placeholders = ",".join("?" for _ in stage_statuses)
+                where.append(f"d.status IN ({placeholders})")
+                params.extend(stage_statuses)
         rows = self.fetch_all(
             f"""SELECT o.*, COUNT(d.id) AS door_count,
                 SUM(CASE WHEN d.status='已签收' THEN 1 ELSE 0 END) AS completed_count,
@@ -813,6 +955,7 @@ class FulfillmentDatabase:
         door["allocated_payment"] = float((allocated or {"total": 0})["total"] or 0)
         door["available_payment"] = max(0.0, door["paid_amount"] - door["allocated_payment"])
         door["events"] = self.fetch_all("SELECT * FROM fulfillment_events WHERE door_unit_id=? ORDER BY created_at DESC, id DESC LIMIT 100", (door_id,))
+        door["workflow"] = build_fulfillment_workflow(door)
         return door
 
     def latest_bom_package(self, door_id: int) -> Dict[str, Any]:
@@ -1254,8 +1397,13 @@ class FulfillmentDatabase:
         counts = {status: 0 for status in DOOR_STATUSES}
         for row in self.fetch_all("SELECT status, COUNT(*) AS total FROM fulfillment_door_units GROUP BY status"):
             counts[row["status"]] = row["total"]
+        stage_counts = {
+            key: sum(int(counts.get(status) or 0) for status in statuses)
+            for key, statuses in WORKFLOW_STAGE_STATUSES.items()
+        }
         return {
             "status_counts": counts,
+            "stage_counts": stage_counts,
             "open_exceptions": (self.fetch_one("SELECT COUNT(*) AS total FROM fulfillment_exceptions WHERE status!='已解决'") or {"total": 0})["total"],
             "due_risks": (self.fetch_one("SELECT COUNT(*) AS total FROM fulfillment_door_units WHERE status!='已签收' AND due_date!='' AND due_date < date('now', '+7 day')") or {"total": 0})["total"],
         }

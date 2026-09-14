@@ -1,11 +1,11 @@
 "use client";
 
-import { AlertTriangle, Boxes, ClipboardCheck, Factory, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Boxes, Check, ChevronRight, ClipboardCheck, Factory, History, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import MetricStrip from "@/components/workspace/MetricStrip";
+import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
-import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
 import {
@@ -35,11 +35,19 @@ import type {
   FulfillmentDashboard,
   FulfillmentOrder,
   FulfillmentPerson,
+  FulfillmentStageKey,
   FulfillmentWorkPackage,
   PendingFulfillmentTask,
 } from "@/lib/fulfillmentTypes";
 
 const STATUS_CARDS = ["待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中", "待成品质检", "返工中", "待成品入库", "已入库待发货"];
+const WORKFLOW_STAGES: Array<{ key: FulfillmentStageKey; label: string }> = [
+  { key: "preparation", label: "生产准备" },
+  { key: "materials", label: "物料齐套" },
+  { key: "execution", label: "加工装配" },
+  { key: "quality", label: "质检入库" },
+  { key: "delivery", label: "发货完成" },
+];
 const ACTIVE_PRODUCTION_STATUSES = ["待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中", "返工中"];
 export default function ProductionPage() {
   const [dashboard, setDashboard] = useState<FulfillmentDashboard | null>(null);
@@ -50,6 +58,7 @@ export default function ProductionPage() {
   const [selectedDoor, setSelectedDoor] = useState<DoorUnitDetail | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
+  const [stage, setStage] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; error: boolean } | null>(null);
@@ -57,10 +66,10 @@ export default function ProductionPage() {
   const notify = useCallback((message: string, error = false) => setNotice({ title: error ? "操作失败" : "操作成功", message, error }), []);
   const loadAll = useCallback(async () => {
     const [nextDashboard, nextPending, nextOrders, nextPeople] = await Promise.all([
-      getFulfillmentDashboard(), getPendingFulfillmentTasks(), getFulfillmentOrders({ q, status }), getFulfillmentPeople(),
+      getFulfillmentDashboard(), getPendingFulfillmentTasks(), getFulfillmentOrders({ q, status, stage }), getFulfillmentPeople(),
     ]);
     setDashboard(nextDashboard); setPending(nextPending); setOrders(nextOrders); setPeople(nextPeople);
-  }, [q, status]);
+  }, [q, stage, status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,10 +127,10 @@ export default function ProductionPage() {
         { key: "risk", label: "七日交期风险", value: dashboard?.due_risks || 0, detail: "交期临近且尚未完成", icon: <AlertTriangle size={16} />, tone: (dashboard?.due_risks || 0) ? "amber" : "neutral" },
       ]} ariaLabel="生产履约关键指标" />
 
-      <section className="production-stage-strip" aria-label="门樘生产阶段">
-        <div className="production-stage-strip__title"><span>生产阶段</span><small>点击阶段筛选订单</small></div>
+      <section className="production-stage-strip production-stage-strip--five" aria-label="门樘生产阶段">
+        <div className="production-stage-strip__title"><span>五阶段进程</span><small>按当前阶段筛选</small></div>
         <div className="production-stage-strip__items">
-          {STATUS_CARDS.map((item) => <button key={item} type="button" className={`production-stage-strip__item${status === item ? " is-active" : ""}`} onClick={() => setStatus(status === item ? "" : item)}><span>{item}</span><strong>{dashboard?.status_counts?.[item] || 0}</strong></button>)}
+          {WORKFLOW_STAGES.map((item) => <button key={item.key} type="button" className={`production-stage-strip__item${stage === item.key ? " is-active" : ""}`} onClick={() => { setStage(stage === item.key ? "" : item.key); setStatus(""); }}><span>{item.label}</span><strong>{dashboard?.stage_counts?.[item.key] || 0}</strong></button>)}
         </div>
       </section>
 
@@ -134,7 +143,7 @@ export default function ProductionPage() {
 
       <section className="grid min-h-[640px] gap-4 xl:grid-cols-[430px_minmax(0,1fr)]">
         <aside className="border border-[#D1D1D6] bg-white">
-          <div className="border-b border-[#E5E5EA] p-4"><h2 className="font-semibold">客户订单</h2><div className="mt-3 flex gap-2"><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void loadAll()} placeholder="单号、客户、项目、生产编号" className="h-9 min-w-0 flex-1 border border-[#C7C7CC] px-3 text-sm" /><select value={status} onChange={(event) => setStatus(event.target.value)} className="h-9 w-32 border border-[#C7C7CC] px-2 text-sm"><option value="">全部状态</option>{STATUS_CARDS.map((item) => <option key={item}>{item}</option>)}</select></div></div>
+          <div className="border-b border-[#E5E5EA] p-4"><h2 className="font-semibold">客户订单</h2><div className="mt-3 flex gap-2"><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void loadAll()} placeholder="单号、客户、项目、生产编号" className="h-9 min-w-0 flex-1 border border-[#C7C7CC] px-3 text-sm" /><select value={status} onChange={(event) => { setStatus(event.target.value); setStage(""); }} className="h-9 w-32 border border-[#C7C7CC] px-2 text-sm"><option value="">全部状态</option>{STATUS_CARDS.map((item) => <option key={item}>{item}</option>)}</select></div>{stage && <button type="button" className="mt-2 text-xs text-[#1769D2]" onClick={() => setStage("")}>当前筛选：{WORKFLOW_STAGES.find((item) => item.key === stage)?.label} ×</button>}</div>
           <div className="max-h-[710px] overflow-y-auto">
             {loading ? <Empty text="正在加载..." /> : orders.length === 0 ? <Empty text="暂无新履约订单" /> : orders.map((order) => <button key={order.id} onClick={() => void chooseOrder(order.id)} className={`block w-full border-b border-[#E5E5EA] p-4 text-left hover:bg-[#F8F8FA] ${selectedOrder?.id === order.id ? "bg-[#EDF6FF]" : "bg-white"}`}><div className="flex items-center justify-between gap-3"><strong className="text-sm">{order.order_no}</strong><Status text={order.representative_status || order.status} /></div><div className="mt-2 truncate text-sm">{order.customer}{order.project ? ` · ${order.project}` : ""}</div><div className="mt-2 flex justify-between text-xs text-[#636366]"><span>{order.door_count} 樘 · 已完成 {order.completed_count || 0}</span><span>{order.progress || 0}%</span></div><div className="mt-2 h-1.5 bg-[#E5E5EA]"><div className="h-full bg-[#007AFF]" style={{ width: `${order.progress || 0}%` }} /></div></button>)}
           </div>
@@ -170,10 +179,64 @@ function PendingPanel({ tasks, busy, onRelease }: { tasks: PendingFulfillmentTas
 }
 
 function DoorUnitWorkbench({ door, busy, notify, onBusy, onChanged }: { door: DoorUnitDetail; busy: boolean; notify: (message: string, error?: boolean) => void; onBusy: (value: boolean) => void; onChanged: (door: DoorUnitDetail) => Promise<void> }) {
-  const [tab, setTab] = useState<"technical" | "work" | "supply" | "quality" | "delivery" | "exceptions" | "timeline">("technical");
+  const initialStage = door.workflow.current_stage === "complete" ? "delivery" : door.workflow.current_stage;
+  const [stage, setStage] = useState<FulfillmentStageKey>(initialStage);
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [exceptionsOpen, setExceptionsOpen] = useState(false);
   const packageData = door.technical_package;
-  return <div><div className="flex flex-wrap items-center gap-3 border-b border-[#E5E5EA] px-4 py-3"><div className="mr-auto"><div className="font-semibold">{door.production_no}</div><div className="mt-1 text-xs text-[#636366]">{door.product_name} · {door.specification} · {door.opening || "未填写开向"} · V{packageData?.version || 0}</div></div><Status text={door.status} /><span className="text-sm font-semibold text-[#007AFF]">{door.progress}%</span></div><div className="border-b border-[#E5E5EA] px-4 py-2"><WorkspaceTabs items={[{ key: 'technical', label: '生产技术包' }, { key: 'work', label: '执行工作包' }, { key: 'supply', label: '供应与仓储' }, { key: 'quality', label: '质检与成品' }, { key: 'delivery', label: '财务与发货' }, { key: 'exceptions', label: `异常 ${door.exceptions.filter((item) => item.status !== '已解决').length}` }, { key: 'timeline', label: '时间线' }] as const} value={tab} onChange={setTab} ariaLabel="门樘履约详情" /></div>
-    <div className="p-4">{tab === "technical" && <TechnicalEditor key={`${door.id}-${packageData?.id}-${packageData?.status}`} door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "work" && <WorkBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "supply" && <SupplyBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "quality" && <QualityBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "delivery" && <DeliveryBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "exceptions" && <ExceptionBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}{tab === "timeline" && <Timeline door={door} />}</div>
+  const activeStage = door.workflow.stages.find((item) => item.key === stage) || door.workflow.stages[0];
+  useEffect(() => {
+    setStage(door.workflow.current_stage === "complete" ? "delivery" : door.workflow.current_stage);
+  }, [door.id, door.workflow.current_stage]);
+
+  return <div className="fulfillment-flow">
+    <div className="fulfillment-flow__summary">
+      <div className="min-w-0 flex-1"><div className="font-semibold">{door.production_no}</div><div className="mt-1 truncate text-xs text-[#636366]">{door.product_name} · {door.specification} · {door.opening || "未填写开向"} · BOM V{packageData?.version || 0}</div></div>
+      <Status text={door.workflow.current_stage_label} />
+      <span className="fulfillment-flow__progress">{door.progress}%</span>
+      <button type="button" className="ui-button ui-button--secondary" onClick={() => setRecordsOpen(true)}><History size={15} />全部记录</button>
+    </div>
+
+    {door.workflow.open_exception_count > 0 && <button type="button" className="fulfillment-alert" onClick={() => setExceptionsOpen(true)}><AlertTriangle size={17} /><span><strong>{door.workflow.open_exception_count} 项异常待处理</strong><small>异常已关联到发生阶段，点击查看并处理</small></span><ChevronRight size={17} /></button>}
+
+    <div className="fulfillment-flow__stages" role="tablist" aria-label="门樘五阶段生产进程">
+      {door.workflow.stages.map((item, index) => <button key={item.key} type="button" role="tab" aria-selected={stage === item.key} className={`fulfillment-stage is-${item.state}${stage === item.key ? " is-selected" : ""}`} onClick={() => setStage(item.key)}>
+        <span className="fulfillment-stage__index">{item.state === "complete" ? <Check size={15} /> : index + 1}</span>
+        <span className="fulfillment-stage__copy"><strong>{item.label}</strong><small>{item.summary}</small></span>
+        {item.blockers.length > 0 && item.state !== "pending" && <span className="fulfillment-stage__blocker">{item.blockers.length}项阻塞</span>}
+      </button>)}
+    </div>
+
+    <section className="fulfillment-flow__workspace" aria-labelledby="fulfillment-stage-heading">
+      <header><div><span>{WORKFLOW_STAGES.findIndex((item) => item.key === stage) + 1}/5</span><h3 id="fulfillment-stage-heading">{activeStage.label}</h3><p>{activeStage.summary}</p></div>{activeStage.blockers.length > 0 && <div className="fulfillment-flow__blockers">{activeStage.blockers.map((item) => <span key={item}><AlertTriangle size={13} />{item}</span>)}</div>}</header>
+      <div className="fulfillment-flow__body">
+        {stage === "preparation" && <PreparationBoard door={door} notify={notify} onBusy={onBusy} onChanged={onChanged} />}
+        {stage === "materials" && <SupplyBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}
+        {stage === "execution" && <WorkBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}
+        {stage === "quality" && <QualityBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}
+        {stage === "delivery" && <DeliveryBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />}
+      </div>
+    </section>
+
+    <ViewportDialog open={exceptionsOpen} title="门樘异常" description={`${door.production_no} · 未解决 ${door.workflow.open_exception_count} 项`} size="large" onClose={() => setExceptionsOpen(false)}><ExceptionBoard door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} /></ViewportDialog>
+    <ViewportDialog open={recordsOpen} title="全部履约记录" description={`${door.production_no} · BOM、库存、生产、质检和发货事件`} size="large" onClose={() => setRecordsOpen(false)}><Timeline door={door} /></ViewportDialog>
+  </div>;
+}
+
+function PreparationBoard({ door, notify, onBusy, onChanged }: Omit<WorkbenchProps, "busy">) {
+  const packageData = door.technical_package;
+  const verified = packageData.components.filter((item) => item.verification_status === "已核验").length;
+  const warnings = packageData.generation_warnings || [];
+  return <div className="preparation-board">
+    <div className="preparation-board__facts">
+      <article><span>BOM版本</span><strong>V{packageData.version}</strong><small>{packageData.status === "已确认" ? "当前版本已发布冻结" : "草稿可继续调整"}</small></article>
+      <article><span>BOM明细</span><strong>{packageData.components.length}</strong><small>已核验 {verified} 项</small></article>
+      <article><span>执行工作包</span><strong>{packageData.work_packages.length}</strong><small>{packageData.status === "已确认" ? "已按工艺路线释放" : "发布后自动释放"}</small></article>
+      <article><span>阻断警告</span><strong className={warnings.some((item) => item.blocking) ? "text-[#C93531]" : ""}>{warnings.filter((item) => item.blocking).length}</strong><small>生成与核验结果</small></article>
+    </div>
+    {warnings.length > 0 && <div className="preparation-board__warnings">{warnings.slice(0, 4).map((item) => <p key={item.id}><span>{item.blocking ? "阻断" : "提示"}</span>{item.message}</p>)}</div>}
+    <div className="preparation-board__actions"><a className="ui-button ui-button--primary" href={`/cutting?doorId=${door.id}`}><PackageCheck size={15} />进入BOM与工艺准备</a>{packageData.status === "已确认" && <ChangeButton door={door} notify={notify} onBusy={onBusy} onChanged={onChanged} />}</div>
+    <p className="preparation-board__note">终审图纸、BOM核验、下料清单和工艺路线在同一页面完成。实际板材下料作为车间工作包，在“加工装配”阶段登记。</p>
   </div>;
 }
 
@@ -246,8 +309,8 @@ function WorkCard({ work, busy, selected, onSelect, onSave }: { work: Fulfillmen
 
 function SupplyBoard({ door }: WorkbenchProps) {
   const requirement = door.material_requirement;
-  if (!requirement) return <Empty text="确认技术包后，系统会自动生成物料需求并分配全厂库存" />;
-  return <div className="space-y-4"><section className="flex flex-wrap items-center gap-3 border border-[#B8D8F8] bg-[#F4F9FF] p-4"><div className="mr-auto"><h3 className="text-sm font-semibold">{requirement.requirement_no}</h3><p className="mt-1 text-xs text-[#636366]">技术版本 V{requirement.version} · 交期 {requirement.due_date || "未设置"}</p></div><Status text={requirement.status}/><span className="text-xs text-[#636366]">共 {requirement.items.length} 项物料</span></section><div className="overflow-x-auto border border-[#D1D1D6]"><table className="w-full min-w-[900px] table-fixed text-sm"><thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料","规格","需求","已预留","缺口","采购中","已到货","已领料","状态"].map((name)=><th key={name} className="px-3 py-2 font-medium">{name}</th>)}</tr></thead><tbody>{requirement.items.map((item)=><tr key={item.id} className="border-t border-[#E5E5EA]"><td className="px-3 py-3"><div className="font-medium">{item.material_name}</div><div className="mt-1 text-xs text-[#636366]">{item.material_code}</div></td><td className="px-3 py-3">{item.specification||"-"}</td><td className="px-3 py-3">{item.required_quantity} {item.unit}</td><td className="px-3 py-3 text-[#248A3D]">{item.reserved_quantity}</td><td className={`px-3 py-3 font-semibold ${item.shortage_quantity>0?"text-[#C62828]":""}`}>{item.shortage_quantity}</td><td className="px-3 py-3">{item.purchased_quantity}</td><td className="px-3 py-3">{item.received_quantity}</td><td className="px-3 py-3">{item.issued_quantity}</td><td className="px-3 py-3"><Status text={item.status}/></td></tr>)}</tbody></table></div><p className="text-xs text-[#636366]">本页仅展示当前门樘需求。库存重分配、采购和仓库收发请在顶部对应工作台统一办理。</p></div>;
+  if (!requirement) return <div><Empty text="BOM发布后，系统会自动生成物料需求并分配全厂库存" /><div className="flex justify-center"><a href={`/cutting?doorId=${door.id}`} className="ui-button ui-button--primary"><PackageCheck size={15} />检查BOM发布状态</a></div></div>;
+  return <div className="space-y-4"><section className="flex flex-wrap items-center gap-3 border border-[#B8D8F8] bg-[#F4F9FF] p-4"><div className="mr-auto"><h3 className="text-sm font-semibold">{requirement.requirement_no}</h3><p className="mt-1 text-xs text-[#636366]">技术版本 V{requirement.version} · 交期 {requirement.due_date || "未设置"}</p></div><Status text={requirement.status}/><span className="text-xs text-[#636366]">共 {requirement.items.length} 项物料</span></section><div className="overflow-x-auto border border-[#D1D1D6]"><table className="w-full min-w-[900px] table-fixed text-sm"><thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料","规格","需求","已预留","缺口","采购中","已到货","已领料","状态"].map((name)=><th key={name} className="px-3 py-2 font-medium">{name}</th>)}</tr></thead><tbody>{requirement.items.map((item)=><tr key={item.id} className="border-t border-[#E5E5EA]"><td className="px-3 py-3"><div className="font-medium">{item.material_name}</div><div className="mt-1 text-xs text-[#636366]">{item.material_code}</div></td><td className="px-3 py-3">{item.specification||"-"}</td><td className="px-3 py-3">{item.required_quantity} {item.unit}</td><td className="px-3 py-3 text-[#248A3D]">{item.reserved_quantity}</td><td className={`px-3 py-3 font-semibold ${item.shortage_quantity>0?"text-[#C62828]":""}`}>{item.shortage_quantity}</td><td className="px-3 py-3">{item.purchased_quantity}</td><td className="px-3 py-3">{item.received_quantity}</td><td className="px-3 py-3">{item.issued_quantity}</td><td className="px-3 py-3"><Status text={item.status}/></td></tr>)}</tbody></table></div><div className="flex flex-wrap items-center gap-2"><p className="mr-auto text-xs text-[#636366]">这里只汇总当前门樘需求，采购单、预留和领退料仍在各自业务台账办理。</p><a href="/inventory" className="ui-button ui-button--secondary"><Boxes size={15} />进入库存管理</a></div></div>;
 }
 
 function QualityBoard({door,busy,notify,onBusy,onChanged}:WorkbenchProps){const [form,setForm]=useState({result:"合格",defect_detail:"",remark:""});const [inbound,setInbound]=useState({warehouse:"成品仓",location:"",quantity:1,remark:""});const latest=door.inspections.find(item=>item.inspection_type==="成品质检");const unfinished=door.unfinished_work_packages||[];return <div className="space-y-4">{unfinished.length>0&&<section className="border border-[#F0B8B8] bg-[#FFF5F5] p-3"><h3 className="text-sm font-semibold text-[#C62828]">当前版本还有 {unfinished.length} 个工作包未结束</h3><div className="mt-2 flex flex-wrap gap-2">{unfinished.map(item=><span key={item.id} className="border border-[#F0B8B8] bg-white px-2 py-1 text-xs text-[#8A2424]">{item.name} · {item.status}</span>)}</div><p className="mt-2 text-xs text-[#636366]">请到“执行工作包”批量完成，或填写原因后跳过；旧技术版本的暂停工作包不会阻塞本次质检。</p></section>}<section className="border border-[#D1D1D6] p-4"><div className="flex flex-wrap items-center gap-2"><h3 className="mr-auto text-sm font-semibold">成品质检</h3>{latest&&<><span className="text-xs text-[#636366]">最近：{formatTime(latest.created_at)}</span><Status text={latest.result}/></>}<select value={form.result} onChange={e=>setForm({...form,result:e.target.value})} className="h-9 border border-[#C7C7CC] px-2 text-sm"><option>合格</option><option>不合格</option><option>让步接收</option></select><input value={form.defect_detail} onChange={e=>setForm({...form,defect_detail:e.target.value})} placeholder="缺陷说明（不合格时必填）" className="h-9 min-w-56 border border-[#C7C7CC] px-2 text-sm"/><button disabled={busy||unfinished.length>0} onClick={async()=>{onBusy(true);try{const result=await createFulfillmentInspection(door.id,{inspection_type:"成品质检",result:form.result,target_name:door.production_no,quantity:1,defect_detail:form.defect_detail,remark:form.remark});notify(result.message);await onChanged(result.door_unit);}catch(error){notify(apiMessage(error,"成品质检登记失败"),true);}finally{onBusy(false);}}} className="h-9 bg-[#007AFF] px-4 text-sm text-white disabled:bg-[#C7C7CC]">提交质检</button></div></section><section className="border border-[#D1D1D6] p-4"><h3 className="text-sm font-semibold">成品入库</h3><div className="mt-3 grid gap-2 md:grid-cols-[160px_160px_100px_minmax(180px,1fr)_auto]"><input value={inbound.warehouse} onChange={e=>setInbound({...inbound,warehouse:e.target.value})} placeholder="仓库" className="h-9 border border-[#C7C7CC] px-2 text-sm"/><input value={inbound.location} onChange={e=>setInbound({...inbound,location:e.target.value})} placeholder="库位" className="h-9 border border-[#C7C7CC] px-2 text-sm"/><input type="number" value={inbound.quantity} onChange={e=>setInbound({...inbound,quantity:Number(e.target.value)||1})} className="h-9 border border-[#C7C7CC] px-2 text-sm"/><input value={inbound.remark} onChange={e=>setInbound({...inbound,remark:e.target.value})} placeholder="入库备注" className="h-9 border border-[#C7C7CC] px-2 text-sm"/><button disabled={busy||door.status!=="待成品入库"} onClick={async()=>{onBusy(true);try{const result=await finishedFulfillmentInbound(door.id,inbound);notify(result.message);await onChanged(result.door_unit);}catch(error){notify(apiMessage(error,"成品入库失败"),true);}finally{onBusy(false);}}} className="h-9 bg-[#007AFF] px-4 text-sm text-white disabled:bg-[#C7C7CC]">确认入库</button></div></section><SimpleRecords title="检验记录" rows={door.inspections.map(item=>[item.inspection_type,item.target_name||"-",item.result,item.inspector_uid,formatTime(item.created_at)])}/><SimpleRecords title="库存流水" rows={door.inventory_movements.map(item=>[item.movement_type,item.item_name,`${item.quantity} ${item.unit}`,`${item.warehouse} ${item.location}`,formatTime(item.created_at)])}/></div>;}

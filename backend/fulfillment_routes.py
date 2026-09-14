@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth import get_current_user
 from bom_generation_service import BomGenerationService
 from door_cad.services.fulfillment_adapter import adapt_fulfillment_frame
-from fulfillment_database import FulfillmentDatabase
+from fulfillment_database import FulfillmentDatabase, build_fulfillment_workflow
 from fulfillment_models import (
     ChangeCreate,
     ExceptionCreate,
@@ -66,6 +66,7 @@ def _with_sales_finance(door: Dict[str, Any]) -> Dict[str, Any]:
     door["sales_finance"] = finance
     door["paid_amount"] = finance["paid_amount"]
     door["available_payment"] = finance["paid_amount"]
+    door["workflow"] = build_fulfillment_workflow(door)
     return door
 
 
@@ -215,8 +216,13 @@ def release_order(task_id: str, req: FulfillmentReleaseRequest, current_user: Di
 
 
 @router.get("/orders")
-def list_orders(q: str = Query(""), status: str = Query(""), current_user: Dict = Depends(get_current_user)):
-    return {"orders": fulfillment_db.list_orders(q.strip(), status.strip())}
+def list_orders(
+    q: str = Query(""),
+    status: str = Query(""),
+    stage: str = Query(""),
+    current_user: Dict = Depends(get_current_user),
+):
+    return {"orders": fulfillment_db.list_orders(q.strip(), status.strip(), stage.strip())}
 
 
 @router.get("/orders/{order_id}")

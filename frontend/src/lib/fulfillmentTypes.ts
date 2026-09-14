@@ -69,6 +69,8 @@ export interface FulfillmentComponent {
   unit: string;
   acquisition_method: string;
   remark: string;
+  match_status?: string;
+  verification_status?: string;
 }
 
 export interface FulfillmentWorkPackage {
@@ -92,6 +94,8 @@ export interface FulfillmentWorkPackage {
   remark: string;
   started_at?: string | null;
   completed_at?: string | null;
+  readiness_status?: string;
+  blocked_reason?: string;
 }
 
 export interface TechnicalPackage {
@@ -104,6 +108,9 @@ export interface TechnicalPackage {
   confirmed_at?: string | null;
   components: FulfillmentComponent[];
   work_packages: FulfillmentWorkPackage[];
+  generation_status?: string;
+  blocking_warning_count?: number;
+  generation_warnings?: Array<{ id: number; blocking: number | boolean; message: string }>;
 }
 
 export interface FulfillmentException {
@@ -204,10 +211,35 @@ export interface DoorUnitDetail extends DoorUnitSummary {
     paid_amount: number;
     unpaid_amount: number;
   };
+  workflow: FulfillmentWorkflow;
+}
+
+export type FulfillmentStageKey = "preparation" | "materials" | "execution" | "quality" | "delivery";
+export type FulfillmentStageState = "complete" | "current" | "blocked" | "pending";
+
+export interface FulfillmentWorkflowStage {
+  key: FulfillmentStageKey;
+  label: string;
+  complete: boolean;
+  state: FulfillmentStageState;
+  summary: string;
+  blockers: string[];
+  action: "open_bom" | "open_inventory" | "manage_work" | "quality_inbound" | "ship";
+  action_label: string;
+}
+
+export interface FulfillmentWorkflow {
+  current_stage: FulfillmentStageKey | "complete";
+  current_stage_label: string;
+  stages: FulfillmentWorkflowStage[];
+  open_exception_count: number;
+  next_action: FulfillmentWorkflowStage["action"] | "view_records";
+  next_action_label: string;
 }
 
 export interface FulfillmentDashboard {
   status_counts: Record<string, number>;
+  stage_counts: Record<FulfillmentStageKey, number>;
   pending_release: number;
   open_exceptions: number;
   due_risks: number;

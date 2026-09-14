@@ -253,16 +253,16 @@ export default function BomWorkbench() {
     <div className="min-h-screen bg-[#F5F5F7] text-[#1B1B1F]">
       <main className="workspace-page workspace-page--wide bom-workbench">
         <WorkspaceHeader
-          title="BOM与下料"
-          description="从订单确认结果生成整单 BOM，完成核验发布后进入采购、仓储与车间下料执行。"
+          title="BOM与工艺准备"
+          description="从订单确认结果生成整单 BOM、下料清单和工艺路线；发布后由生产工作包承接实际下料与加工。"
           context={<><Boxes size={14} />经营管理 / 生产准备</>}
           actions={<button type="button" className="ui-button ui-button--secondary" disabled={busy || loadingList} onClick={() => void loadList()}><RefreshCw size={15} />刷新</button>}
         />
 
-        <section className="bom-stage-strip" aria-label="BOM与下料业务阶段">
+        <section className="bom-stage-strip" aria-label="BOM与工艺准备业务阶段">
           <div><span>1</span><strong>BOM准备</strong><small>生成清单并补齐物料、规格与计划数量</small></div>
           <div><span>2</span><strong>核验发布</strong><small>逐项核验，发布后冻结当前版本</small></div>
-          <div><span>3</span><strong>下料执行</strong><small>自动衔接采购、仓储和车间工作包</small></div>
+          <div><span>3</span><strong>释放执行</strong><small>形成物料需求和工作包，交给采购、仓储与车间</small></div>
         </section>
 
         <MetricStrip items={[

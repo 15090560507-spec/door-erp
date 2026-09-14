@@ -30,7 +30,7 @@ export async function releaseFulfillmentOrder(taskId: string, payload: { due_dat
   return data;
 }
 
-export async function getFulfillmentOrders(params?: { q?: string; status?: string }) {
+export async function getFulfillmentOrders(params?: { q?: string; status?: string; stage?: string }) {
   const { data } = await api.get<{ orders: FulfillmentOrder[] }>("/fulfillment/orders", { params });
   return data.orders;
 }
