@@ -1,15 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiErrorMessage } from "@/lib/api";
 import { getMaterialRequirement, getMaterialRequirements, reallocateMaterialRequirement } from "@/lib/inventoryApi";
 import type { MaterialRequirement, MaterialRequirementSummary } from "@/lib/inventoryTypes";
-
-function errorText(error: unknown) {
-  if (typeof error === "object" && error && "response" in error) {
-    return (error as { response?: { data?: { detail?: string } } }).response?.data?.detail || "供应需求加载失败";
-  }
-  return error instanceof Error ? error.message : "供应需求加载失败";
-}
 
 export default function SupplyRequirements({ notify }: { notify: (message: string, error?: boolean) => void }) {
   const [rows, setRows] = useState<MaterialRequirementSummary[]>([]);
@@ -24,7 +18,7 @@ export default function SupplyRequirements({ notify }: { notify: (message: strin
     try {
       setRows(await getMaterialRequirements({ q, status }));
     } catch (error) {
-      notify(errorText(error), true);
+      notify(apiErrorMessage(error, "供应需求加载失败"), true);
     } finally {
       setLoading(false);
     }
@@ -34,7 +28,7 @@ export default function SupplyRequirements({ notify }: { notify: (message: strin
     let active = true;
     getMaterialRequirements({ q, status })
       .then((items) => { if (active) setRows(items); })
-      .catch((error) => { if (active) notify(errorText(error), true); })
+      .catch((error) => { if (active) notify(apiErrorMessage(error, "供应需求加载失败"), true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [notify, q, status]);
@@ -44,7 +38,7 @@ export default function SupplyRequirements({ notify }: { notify: (message: strin
     try {
       setSelected(await getMaterialRequirement(id));
     } catch (error) {
-      notify(errorText(error), true);
+      notify(apiErrorMessage(error, "供应需求加载失败"), true);
     } finally {
       setBusy(false);
     }
@@ -59,7 +53,7 @@ export default function SupplyRequirements({ notify }: { notify: (message: strin
       notify(result.message);
       await load();
     } catch (error) {
-      notify(errorText(error), true);
+      notify(apiErrorMessage(error, "重新分配库存失败"), true);
     } finally {
       setBusy(false);
     }
@@ -88,8 +82,13 @@ export default function SupplyRequirements({ notify }: { notify: (message: strin
     <div className="min-w-0 border border-[#D1D1D6] bg-white">
       {!selected ? <div className="flex min-h-[620px] items-center justify-center text-sm text-[#8E8E93]">选择左侧需求单查看物料明细</div> : <>
         <header className="flex flex-wrap items-center gap-3 border-b border-[#E5E5EA] p-4"><div className="mr-auto"><h2 className="font-semibold">{selected.production_no} · {selected.requirement_no}</h2><p className="mt-1 text-xs text-[#636366]">技术版本 V{selected.version} · 交期 {selected.due_date || "未设置"}</p></div><button disabled={busy || selected.status === "已冻结"} onClick={() => void reallocate()} className="h-9 bg-[#007AFF] px-4 text-sm text-white disabled:bg-[#C7C7CC]">重新分配库存</button></header>
-        <div className="overflow-x-auto p-4"><table className="w-full min-w-[980px] table-fixed text-sm"><thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料", "规格", "需求", "已预留", "缺口", "采购", "到货", "已领", "状态", "预留仓位"].map((name) => <th key={name} className="px-3 py-2 font-medium">{name}</th>)}</tr></thead><tbody>{selected.items.map((item) => <tr key={item.id} className="border-b border-[#E5E5EA]"><td className="px-3 py-3"><div className="font-medium">{item.material_name}</div><div className="mt-1 text-xs text-[#636366]">{item.material_code}</div></td><td className="px-3 py-3">{item.specification || "-"}</td><td className="px-3 py-3">{item.required_quantity} {item.unit}</td><td className="px-3 py-3 text-[#248A3D]">{item.reserved_quantity}</td><td className={`px-3 py-3 font-semibold ${item.shortage_quantity > 0 ? "text-[#C62828]" : ""}`}>{item.shortage_quantity}</td><td className="px-3 py-3">{item.purchased_quantity}</td><td className="px-3 py-3">{item.received_quantity}</td><td className="px-3 py-3">{item.issued_quantity}</td><td className="px-3 py-3">{item.status}</td><td className="px-3 py-3 text-xs text-[#636366]">{item.reservations.filter((entry) => entry.status === "有效").map((entry) => `${entry.warehouse_name}/${entry.location_name} ${entry.quantity}`).join("；") || "-"}</td></tr>)}</tbody></table></div>
+        <div className="grid gap-2 p-3 lg:hidden">{selected.items.map((item) => <article key={item.id} className="border border-[#E5E5EA] bg-[#FAFAFB] p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate text-sm">{item.material_name}</strong><span className="mt-1 block truncate text-xs text-[#636366]">{item.material_code} · {item.specification || "无规格"}</span></div><span className={`shrink-0 px-2 py-1 text-xs font-semibold ${item.shortage_quantity > 0 ? "bg-[#FFECEC] text-[#C62828]" : "bg-[#EAF8ED] text-[#248A3D]"}`}>{item.status}</span></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><RequirementInfo label="需求" value={`${item.required_quantity} ${item.unit}`}/><RequirementInfo label="已预留" value={String(item.reserved_quantity)} good/><RequirementInfo label="缺口" value={String(item.shortage_quantity)} danger={item.shortage_quantity > 0}/><RequirementInfo label="采购" value={String(item.purchased_quantity)}/><RequirementInfo label="到货" value={String(item.received_quantity)}/><RequirementInfo label="已领" value={String(item.issued_quantity)}/></div><div className="mt-3 border-t border-[#E5E5EA] pt-2 text-xs text-[#636366]">预留仓位：{item.reservations.filter((entry) => entry.status === "有效").map((entry) => `${entry.warehouse_name}/${entry.location_name} ${entry.quantity}`).join("；") || "未预留"}</div></article>)}</div>
+        <div className="hidden overflow-x-auto p-4 lg:block"><table className="w-full min-w-[980px] table-fixed text-sm"><thead className="bg-[#F2F2F7] text-left text-xs text-[#636366]"><tr>{["物料", "规格", "需求", "已预留", "缺口", "采购", "到货", "已领", "状态", "预留仓位"].map((name) => <th key={name} className="px-3 py-2 font-medium">{name}</th>)}</tr></thead><tbody>{selected.items.map((item) => <tr key={item.id} className="border-b border-[#E5E5EA]"><td className="px-3 py-3"><div className="font-medium">{item.material_name}</div><div className="mt-1 text-xs text-[#636366]">{item.material_code}</div></td><td className="px-3 py-3">{item.specification || "-"}</td><td className="px-3 py-3">{item.required_quantity} {item.unit}</td><td className="px-3 py-3 text-[#248A3D]">{item.reserved_quantity}</td><td className={`px-3 py-3 font-semibold ${item.shortage_quantity > 0 ? "text-[#C62828]" : ""}`}>{item.shortage_quantity}</td><td className="px-3 py-3">{item.purchased_quantity}</td><td className="px-3 py-3">{item.received_quantity}</td><td className="px-3 py-3">{item.issued_quantity}</td><td className="px-3 py-3">{item.status}</td><td className="px-3 py-3 text-xs text-[#636366]">{item.reservations.filter((entry) => entry.status === "有效").map((entry) => `${entry.warehouse_name}/${entry.location_name} ${entry.quantity}`).join("；") || "-"}</td></tr>)}</tbody></table></div>
       </>}
     </div>
   </section>;
+}
+
+function RequirementInfo({ label, value, good = false, danger = false }: { label: string; value: string; good?: boolean; danger?: boolean }) {
+  return <div><span className="block text-[#8E8E93]">{label}</span><strong className={`mt-0.5 block ${danger ? "text-[#C62828]" : good ? "text-[#248A3D]" : "text-[#3A3A3C]"}`}>{value}</strong></div>;
 }
