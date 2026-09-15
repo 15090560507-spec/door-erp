@@ -667,6 +667,19 @@ textarea:focus-visible {
 .preparation-board__note { padding-top: 11px; border-top: 1px solid #ECECF0; color: #74747D; font-size: 11px; line-height: 1.6; }
 
 .production-process-board { display: grid; gap: 10px; }
+.production-material-summary { display: grid; gap: 10px; padding: 13px 14px; border: 1px solid #D8E3F2; border-radius: 7px; background: #F7FAFE; }
+.production-material-summary.is-empty { color: #727780; }
+.production-material-summary__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.production-material-summary__heading strong, .production-material-summary__heading small { display: block; }
+.production-material-summary__heading small { margin-top: 3px; color: #777D86; font-size: 10px; }
+.production-material-summary__heading > div:last-child { display: flex; align-items: center; gap: 8px; }
+.production-material-summary__heading a { display: inline-flex; height: 30px; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #C9D7E8; border-radius: 5px; background: #FFF; color: #2868AE; font-size: 10px; font-weight: 650; }
+.production-material-summary__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid #E0E5EC; border-radius: 6px; background: #FFF; }
+.production-material-summary__metrics span { padding: 9px 12px; border-right: 1px solid #E7E9EE; color: #737881; font-size: 10px; }
+.production-material-summary__metrics span:last-child { border-right: 0; }
+.production-material-summary__metrics strong { margin-right: 5px; color: #262A30; font-size: 14px; }
+.production-material-summary__shortages { display: flex; flex-wrap: wrap; gap: 6px; }
+.production-material-summary__shortages span { padding: 4px 7px; border-radius: 4px; background: #FFF0F0; color: #A73535; font-size: 10px; }
 .production-process-toolbar { position: sticky; z-index: 3; top: 8px; display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #D8E3F2; border-radius: 7px; background: #F5F9FE; }
 .production-process-toolbar label { display: inline-flex; align-items: center; gap: 6px; color: #333840; font-size: 12px; font-weight: 650; }
 .production-process-toolbar > span { color: #717780; font-size: 11px; }
@@ -942,8 +955,16 @@ textarea:focus-visible {
 .bom-material-form label > span { display: block; margin-bottom: 5px; }
 .bom-material-form :where(input, select) { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #D5D5DC; border-radius: 6px; background: #FFFFFF; color: #303036; font-size: 12px; }
 .bom-material-form p { grid-column: 1 / -1; padding: 9px 10px; border-radius: 6px; background: #FFF1F0; color: #B42318; font-size: 11px; }
-.bom-group-row td { position: sticky; left: 0; height: 34px; padding: 0 11px; border-bottom-color: #DCDCE2; background: #EDEEF1; color: #414148; font-size: 11px; font-weight: 720; }
-.bom-group-row td span { margin-left: 8px; color: #85858E; font-weight: 500; }
+.bom-group-row td { position: sticky; left: 0; height: 36px; padding: 0 11px; border-bottom-color: #DCDCE2; background: #EDEEF1; color: #414148; font-size: 11px; font-weight: 720; }
+.bom-group-row td > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bom-group-row__label { display: inline-flex; align-items: center; gap: 8px; }
+.bom-group-row__label small { color: #85858E; font-weight: 500; }
+.bom-group-row button { display: inline-flex; height: 27px; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid #C9D7E8; border-radius: 5px; background: #F8FBFF; color: #2868AE; font-size: 10px; font-weight: 650; }
+.bom-manufacturing-mode { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 300px) auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #D8E3F2; border-radius: 7px; background: #F5F9FE; }
+.bom-manufacturing-mode strong, .bom-manufacturing-mode small { display: block; }
+.bom-manufacturing-mode small { margin-top: 3px; color: #777D86; font-size: 10px; font-weight: 400; }
+.bom-manufacturing-mode select { height: 36px; padding: 0 10px; border: 1px solid #C9D3DF; border-radius: 5px; background: #FFF; font-size: 12px; }
+@media (max-width: 900px) { .bom-manufacturing-mode { grid-template-columns: 1fr; } }
 .bom-detail__footer { display: flex; min-height: 54px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 15px; border-top: 1px solid #E2E2E7; background: #FAFAFB; color: #777780; font-size: 11px; }
 .bom-version-list { display: flex; align-items: center; gap: 5px; }
 .bom-version-list button { min-width: 31px; height: 28px; border: 1px solid #D8D8DE; background: #FFFFFF; color: #5C5C64; font-size: 11px; }

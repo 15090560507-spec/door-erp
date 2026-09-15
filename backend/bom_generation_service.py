@@ -171,6 +171,7 @@ class BomGenerationService:
             package_id = int(package["id"])
             order_id = int(door["order_id"])
             params = json_loads(package["product_snapshot_json"], {})
+            params["frame_trim_mode"] = str(package["frame_trim_mode"] or "separate")
 
         try:
             items, rule_warnings = build_baseline_bom(params)

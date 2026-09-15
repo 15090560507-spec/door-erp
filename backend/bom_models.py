@@ -45,6 +45,7 @@ class BomDraftUpdate(BaseModel):
     delete_item_ids: list[int] = Field(default_factory=list)
     product_summary: Optional[str] = None
     special_requirements: Optional[str] = None
+    frame_trim_mode: Optional[str] = Field(default=None, pattern="^(separate|integrated_skeleton|fully_integrated)$")
 
 
 class BomVerifyRequest(BaseModel):

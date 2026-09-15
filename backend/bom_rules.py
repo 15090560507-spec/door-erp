@@ -136,6 +136,15 @@ def build_baseline_bom(params: Dict[str, Any]) -> Tuple[List[BomRuleItem], List[
     height = _number(params, "dh")
     leaf_count = _leaf_count(door_type)
     required_date = _text(params, "required_date")
+    trim_flags = {
+        "outer": bool(params.get("has_outer")),
+        "outer_portal": bool(params.get("has_outer_portal")),
+        "outer_portal2": bool(params.get("has_outer_portal2")),
+        "outer_landscape": bool(params.get("has_outer_landscape")),
+        "inner": bool(params.get("has_inner")),
+    }
+    has_trim = any(trim_flags.values())
+    frame_trim_mode = _text(params, "frame_trim_mode") or "separate"
 
     frame_values = {
         "dw": width,
@@ -150,31 +159,73 @@ def build_baseline_bom(params: Dict[str, Any]) -> Tuple[List[BomRuleItem], List[
             f"洞口{width:g}×{height:g}; 左{frame_values['left']}; "
             f"右{frame_values['right']}; 上{frame_values['top']}; {frame_values['threshold'] or '门槛待确认'}"
         )
-        items.extend([
-            BomRuleItem(
-                group_code="frame", name="门框总成", specification=frame_specification,
-                theoretical_quantity=1, unit="套", operation_code="FRAME_ASSEMBLY",
-                acquisition_method="按图自制", requires_material=False,
-                component_key="frame-assembly", item_kind="assembly", procurement_mode="make",
-                source_payload=frame_values, drawing_parameters=frame_values,
-            ),
-            BomRuleItem(
+        combined = has_trim and frame_trim_mode in {"integrated_skeleton", "fully_integrated"}
+        root_key = "frame-trim-assembly" if combined else "frame-assembly"
+        root_name = "门框门套总成" if combined else "门框总成"
+        shared_payload = {**frame_values, "trim": trim_flags, "frame_trim_mode": frame_trim_mode}
+        items.append(BomRuleItem(
+            group_code="frame", name=root_name, specification=frame_specification,
+            theoretical_quantity=1, unit="套", operation_code="FRAME_TRIM_ASSEMBLY" if combined else "FRAME_ASSEMBLY",
+            acquisition_method="按图自制", requires_material=False,
+            component_key=root_key, item_kind="assembly", procurement_mode="make",
+            source_payload=shared_payload, drawing_parameters=shared_payload,
+        ))
+        if combined and frame_trim_mode == "fully_integrated":
+            items.extend([
+                BomRuleItem(
+                    group_code="frame", name="门框门套连体外皮", specification=frame_specification,
+                    theoretical_quantity=1, unit="套", operation_code="FRAME_TRIM_SKIN",
+                    acquisition_method="按图自制", requires_material=False,
+                    component_key="frame-trim-skin", parent_key=root_key,
+                    item_kind="manufactured_part", procurement_mode="make",
+                    source_payload=shared_payload, drawing_parameters=shared_payload,
+                ),
+                BomRuleItem(
+                    group_code="frame", name="门框门套连体骨架", specification=frame_specification,
+                    theoretical_quantity=1, unit="套", operation_code="FRAME_TRIM_SKELETON",
+                    acquisition_method="按图自制", requires_material=False,
+                    component_key="frame-trim-skeleton", parent_key=root_key,
+                    item_kind="manufactured_part", procurement_mode="make",
+                    source_payload=shared_payload, drawing_parameters=shared_payload,
+                ),
+            ])
+        else:
+            items.append(BomRuleItem(
                 group_code="frame", name="门框外皮", specification=frame_specification,
                 theoretical_quantity=1, unit="套", operation_code="FRAME_SKIN",
                 acquisition_method="按图自制", requires_material=False,
-                component_key="frame-skin", parent_key="frame-assembly",
+                component_key="frame-skin", parent_key=root_key,
                 item_kind="manufactured_part", procurement_mode="make",
-                source_payload=frame_values, drawing_parameters=frame_values,
-            ),
-            BomRuleItem(
-                group_code="frame", name="门框骨架", specification=frame_specification,
-                theoretical_quantity=1, unit="套", operation_code="FRAME_SKELETON",
-                acquisition_method="按图自制", requires_material=False,
-                component_key="frame-skeleton", parent_key="frame-assembly",
-                item_kind="manufactured_part", procurement_mode="make",
-                source_payload=frame_values, drawing_parameters=frame_values,
-            ),
-        ])
+                source_payload=shared_payload, drawing_parameters=shared_payload,
+            ))
+            if combined:
+                items.extend([
+                    BomRuleItem(
+                        group_code="trim", name="门套外皮", specification="按门套配置",
+                        theoretical_quantity=1, unit="套", operation_code="TRIM_SKIN",
+                        acquisition_method="按图自制", requires_material=False,
+                        component_key="trim-skin", parent_key=root_key,
+                        item_kind="manufactured_part", procurement_mode="make",
+                        source_payload=shared_payload, drawing_parameters=shared_payload,
+                    ),
+                    BomRuleItem(
+                        group_code="frame", name="门框门套连体骨架", specification=frame_specification,
+                        theoretical_quantity=1, unit="套", operation_code="FRAME_TRIM_SKELETON",
+                        acquisition_method="按图自制", requires_material=False,
+                        component_key="frame-trim-skeleton", parent_key=root_key,
+                        item_kind="manufactured_part", procurement_mode="make",
+                        source_payload=shared_payload, drawing_parameters=shared_payload,
+                    ),
+                ])
+            else:
+                items.append(BomRuleItem(
+                    group_code="frame", name="门框骨架", specification=frame_specification,
+                    theoretical_quantity=1, unit="套", operation_code="FRAME_SKELETON",
+                    acquisition_method="按图自制", requires_material=False,
+                    component_key="frame-skeleton", parent_key=root_key,
+                    item_kind="manufactured_part", procurement_mode="make",
+                    source_payload=shared_payload, drawing_parameters=shared_payload,
+                ))
     else:
         _missing(
             items, warnings, group_code="frame", name="门框总成",
@@ -251,21 +302,33 @@ def build_baseline_bom(params: Dict[str, Any]) -> Tuple[List[BomRuleItem], List[
             blocking=False,
         ))
 
-    trim_flags = {
-        "outer": bool(params.get("has_outer")),
-        "outer_portal": bool(params.get("has_outer_portal")),
-        "outer_portal2": bool(params.get("has_outer_portal2")),
-        "outer_landscape": bool(params.get("has_outer_landscape")),
-        "inner": bool(params.get("has_inner")),
-    }
-    if any(trim_flags.values()):
-        items.append(BomRuleItem(
-            group_code="trim", name="门套/门头门柱配置",
-            specification=", ".join(key for key, enabled in trim_flags.items() if enabled),
-            theoretical_quantity=1, unit="套", operation_code="TRIM",
-            acquisition_method="内部加工", material_code=_text(params, "trim_material_code"),
-            source_payload=trim_flags,
-        ))
+    if has_trim and frame_trim_mode == "separate":
+        trim_specification = ", ".join(key for key, enabled in trim_flags.items() if enabled)
+        items.extend([
+            BomRuleItem(
+                group_code="trim", name="门套总成", specification=trim_specification,
+                theoretical_quantity=1, unit="套", operation_code="TRIM_ASSEMBLY",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="trim-assembly", item_kind="assembly", procurement_mode="make",
+                source_payload=trim_flags, drawing_parameters=trim_flags,
+            ),
+            BomRuleItem(
+                group_code="trim", name="门套外皮", specification=trim_specification,
+                theoretical_quantity=1, unit="套", operation_code="TRIM_SKIN",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="trim-skin", parent_key="trim-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=trim_flags, drawing_parameters=trim_flags,
+            ),
+            BomRuleItem(
+                group_code="trim", name="门套骨架", specification=trim_specification,
+                theoretical_quantity=1, unit="套", operation_code="TRIM_SKELETON",
+                acquisition_method="按图自制", requires_material=False,
+                component_key="trim-skeleton", parent_key="trim-assembly",
+                item_kind="manufactured_part", procurement_mode="make",
+                source_payload=trim_flags, drawing_parameters=trim_flags,
+            ),
+        ])
 
     glass_spec = _text(params, "glass_spec")
     glass_requested = bool(glass_spec or _text(params, "qc_glass_style", "panel_b2_glass_style", "panel_b4_glass_style"))

@@ -60,7 +60,7 @@ def json_loads(value: Optional[str], default: Any) -> Any:
 
 
 def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
-    """Derive the five-stage workflow from canonical fulfillment facts."""
+    """Derive the four-stage workflow while keeping material and process facts separate."""
     package = door.get("technical_package") or {}
     components = package.get("components") or []
     works = package.get("work_packages") or []
@@ -118,6 +118,10 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
     work_blockers = [str(item.get("blocked_reason") or item.get("readiness_status") or "") for item in unfinished_works if item.get("blocked_reason")]
     execution_complete = bool(works) and not unfinished_works
     execution_blockers = [] if ready_works or execution_complete else list(dict.fromkeys(work_blockers))[:3]
+    if preparation_complete and not requirement:
+        execution_blockers.append("BOM已发布，但物料需求尚未生成")
+    elif shortage_items and not ready_works:
+        execution_blockers.append(f"{len(shortage_items)}项物料缺口阻止当前工序")
 
     finished_inspections = [item for item in inspections if item.get("inspection_type") == "成品质检"]
     latest_inspection = finished_inspections[0] if finished_inspections else None
@@ -149,13 +153,8 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
             "blockers": preparation_blockers, "action": "open_bom", "action_label": "进入BOM与工艺准备",
         },
         {
-            "key": "materials", "label": "物料齐套", "complete": materials_complete,
-            "summary": f"{len(material_items) - len(shortage_items)}/{len(material_items)}项齐套 · {len(pending_issue_items)}项待发料",
-            "blockers": material_blockers, "action": "open_inventory", "action_label": "查看物料需求",
-        },
-        {
-            "key": "execution", "label": "加工装配", "complete": execution_complete,
-            "summary": f"{len(completed_works)}/{len(works)}个工作包完成 · {len(ready_works)}个可执行",
+            "key": "execution", "label": "部件生产与装配", "complete": execution_complete,
+            "summary": f"物料{len(material_items) - len(shortage_items)}/{len(material_items)}项可用 · {len(completed_works)}/{len(works)}个工序完成",
             "blockers": execution_blockers, "action": "manage_work", "action_label": "处理当前工作包",
         },
         {
@@ -275,6 +274,7 @@ class FulfillmentDatabase:
                     product_snapshot_json TEXT NOT NULL,
                     product_summary TEXT NOT NULL DEFAULT '',
                     special_requirements TEXT NOT NULL DEFAULT '',
+                    frame_trim_mode TEXT NOT NULL DEFAULT 'separate',
                     generation_status TEXT NOT NULL DEFAULT '未生成',
                     rule_version TEXT NOT NULL DEFAULT '',
                     generated_at TEXT,
@@ -655,6 +655,7 @@ class FulfillmentDatabase:
                 ("generated_at", "TEXT"),
                 ("generation_summary_json", "TEXT NOT NULL DEFAULT '{}'"),
                 ("blocking_warning_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("frame_trim_mode", "TEXT NOT NULL DEFAULT 'separate'"),
             ):
                 if name not in package_columns:
                     conn.execute(f"ALTER TABLE fulfillment_technical_packages ADD COLUMN {name} {definition}")
@@ -1325,13 +1326,14 @@ class FulfillmentDatabase:
             if package["status"] != "草稿":
                 raise RuntimeError("BOM版本已确认冻结，请创建新版本后修改")
             package_id = int(package["id"])
-            if payload.product_summary is not None or payload.special_requirements is not None:
+            if payload.product_summary is not None or payload.special_requirements is not None or payload.frame_trim_mode is not None:
                 conn.execute(
                     """UPDATE fulfillment_technical_packages
                        SET product_summary=COALESCE(?, product_summary),
-                           special_requirements=COALESCE(?, special_requirements), updated_at=?
+                           special_requirements=COALESCE(?, special_requirements),
+                           frame_trim_mode=COALESCE(?, frame_trim_mode), updated_at=?
                        WHERE id=?""",
-                    (payload.product_summary, payload.special_requirements, now, package_id),
+                    (payload.product_summary, payload.special_requirements, payload.frame_trim_mode, now, package_id),
                 )
             for item_id in payload.delete_item_ids:
                 row = conn.execute(
@@ -1920,13 +1922,13 @@ class FulfillmentDatabase:
             package_cursor = conn.execute(
                 """INSERT INTO fulfillment_technical_packages(
                        door_unit_id, version, status, product_snapshot_json,
-                       product_summary, special_requirements, generation_status,
+                       product_summary, special_requirements, frame_trim_mode, generation_status,
                        rule_version, generation_summary_json, blocking_warning_count,
                        source_version_id, created_by, created_at, updated_at
-                   ) VALUES (?, ?, '草稿', ?, ?, ?, '已复制', ?, ?, ?, ?, ?, ?, ?)""",
+                   ) VALUES (?, ?, '草稿', ?, ?, ?, ?, '已复制', ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     door_id, next_version, source["product_snapshot_json"], source["product_summary"],
-                    source["special_requirements"], source["rule_version"],
+                    source["special_requirements"], source["frame_trim_mode"], source["rule_version"],
                     source["generation_summary_json"], source["blocking_warning_count"],
                     source["id"], str(user.get("uid") or ""), now, now,
                 ),

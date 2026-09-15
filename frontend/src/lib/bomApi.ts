@@ -18,7 +18,7 @@ export async function generateDoorBom(doorUnitId: number) {
   return data;
 }
 
-export async function saveDoorBomDraft(doorUnitId: number, payload: { items: BomDraftItem[]; delete_item_ids?: number[]; product_summary?: string; special_requirements?: string }) {
+export async function saveDoorBomDraft(doorUnitId: number, payload: { items: BomDraftItem[]; delete_item_ids?: number[]; product_summary?: string; special_requirements?: string; frame_trim_mode?: "separate" | "integrated_skeleton" | "fully_integrated" }) {
   const { data } = await api.put<BomResult>(`/bom/door-units/${doorUnitId}/draft`, payload);
   return data;
 }

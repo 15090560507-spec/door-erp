@@ -70,6 +70,36 @@ class HierarchicalBomTest(unittest.TestCase):
         self.assertTrue(all(row["match_status"] == "无需物料" for row in self_made))
         self.assertTrue(all(row["verification_status"] == "已核验" for row in self_made))
 
+    def test_frame_trim_manufacturing_modes_generate_only_the_selected_structure(self) -> None:
+        params = bom_test_helpers.BomGenerationTest.base_params()
+        params["has_outer"] = True
+        door_id = bom_test_helpers.create_door(self.db, params, sales_order_id=3)
+
+        with self.db.transaction() as connection:
+            connection.execute(
+                "UPDATE fulfillment_technical_packages SET frame_trim_mode='integrated_skeleton' WHERE door_unit_id=?",
+                (door_id,),
+            )
+        result = self.service.generate(door_id, self.user)
+        operation_codes = {row["operation_code"] for row in result["components"]}
+        self.assertIn("FRAME_TRIM_ASSEMBLY", operation_codes)
+        self.assertIn("FRAME_TRIM_SKELETON", operation_codes)
+        self.assertIn("FRAME_SKIN", operation_codes)
+        self.assertIn("TRIM_SKIN", operation_codes)
+        self.assertNotIn("TRIM_SKELETON", operation_codes)
+
+        with self.db.transaction() as connection:
+            connection.execute(
+                "UPDATE fulfillment_technical_packages SET frame_trim_mode='fully_integrated' WHERE door_unit_id=?",
+                (door_id,),
+            )
+        result = self.service.generate(door_id, self.user)
+        operation_codes = {row["operation_code"] for row in result["components"]}
+        self.assertIn("FRAME_TRIM_SKIN", operation_codes)
+        self.assertIn("FRAME_TRIM_SKELETON", operation_codes)
+        self.assertNotIn("FRAME_SKIN", operation_codes)
+        self.assertNotIn("TRIM_SKIN", operation_codes)
+
 
 if __name__ == "__main__":
     unittest.main()

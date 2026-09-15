@@ -122,6 +122,7 @@ export interface BomDetail {
   blocking_warning_count: number;
   product_summary: string;
   special_requirements: string;
+  frame_trim_mode: "separate" | "integrated_skeleton" | "fully_integrated";
   rows: BomRow[];
   groups: BomGroup[];
   warnings: BomWarning[];

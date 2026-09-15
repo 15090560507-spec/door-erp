@@ -234,7 +234,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   assembly_note?: string;
 }
 
-export type FulfillmentStageKey = "preparation" | "materials" | "execution" | "quality" | "delivery";
+export type FulfillmentStageKey = "preparation" | "execution" | "quality" | "delivery";
 export type FulfillmentStageState = "complete" | "current" | "blocked" | "pending";
 
 export interface FulfillmentWorkflowStage {

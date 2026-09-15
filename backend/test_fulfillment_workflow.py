@@ -1,4 +1,4 @@
-"""Focused checks for the five-stage door fulfillment projection."""
+"""Focused checks for the four-stage door fulfillment projection."""
 
 import unittest
 
@@ -38,7 +38,7 @@ class FulfillmentWorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["stages"][0]["state"], "blocked")
         self.assertIn("BOM尚未发布", workflow["stages"][0]["blockers"])
 
-    def test_workflow_advances_from_materials_to_delivery(self) -> None:
+    def test_material_shortage_blocks_only_the_combined_execution_stage(self) -> None:
         door = make_door()
         door["technical_package"]["status"] = "已确认"
         door["technical_package"]["work_packages"] = [
@@ -56,7 +56,7 @@ class FulfillmentWorkflowTests(unittest.TestCase):
         }
 
         workflow = build_fulfillment_workflow(door)
-        self.assertEqual(workflow["current_stage"], "materials")
+        self.assertEqual(workflow["current_stage"], "execution")
         self.assertEqual(workflow["stages"][0]["state"], "complete")
         self.assertEqual(workflow["stages"][1]["state"], "blocked")
 
@@ -66,19 +66,19 @@ class FulfillmentWorkflowTests(unittest.TestCase):
         )
         workflow = build_fulfillment_workflow(door)
         self.assertEqual(workflow["current_stage"], "execution")
-        self.assertEqual(workflow["stages"][2]["state"], "current")
+        self.assertEqual(workflow["stages"][1]["state"], "current")
 
         door["technical_package"]["work_packages"][0]["status"] = "已完成"
         workflow = build_fulfillment_workflow(door)
         self.assertEqual(workflow["current_stage"], "quality")
-        self.assertIn("尚未通过成品质检", workflow["stages"][3]["blockers"])
+        self.assertIn("尚未通过成品质检", workflow["stages"][2]["blockers"])
 
         door["inspections"] = [{"inspection_type": "成品质检", "result": "合格"}]
         door["inventory_movements"] = [{"movement_type": "成品入库"}]
         door["sales_finance"] = {"unpaid_amount": 500}
         workflow = build_fulfillment_workflow(door)
         self.assertEqual(workflow["current_stage"], "delivery")
-        self.assertIn("订单尚有未收款500.00元", workflow["stages"][4]["blockers"])
+        self.assertIn("订单尚有未收款500.00元", workflow["stages"][3]["blockers"])
 
         door["shipments"] = [{"status": "已签收"}]
         workflow = build_fulfillment_workflow(door)
