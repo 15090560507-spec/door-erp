@@ -295,6 +295,11 @@ def list_warehouses(current_user: Dict = Depends(get_current_user)):
     return {"warehouses": inventory_service.list_warehouses()}
 
 
+@router.get("/warehouse-overview")
+def warehouse_overview(current_user: Dict = Depends(get_current_user)):
+    return inventory_service.warehouse_overview()
+
+
 @router.post("/warehouses", status_code=201)
 def create_warehouse(req: WarehouseCreate, current_user: Dict = Depends(get_current_user)):
     try:

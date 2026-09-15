@@ -100,6 +100,16 @@ export async function finishedFulfillmentInbound(doorId: number, payload: { ware
   return data;
 }
 
+export async function inboundFulfillmentComponent(doorId: number, payload: { component_id: number; quantity: number; warehouse: string; location: string; remark: string }) {
+  const { data } = await api.post<{ door_unit: DoorUnitDetail; message: string }>(`/fulfillment/door-units/${doorId}/component-inbound`, payload);
+  return data;
+}
+
+export async function issueFulfillmentAssemblyComponents(doorId: number, remark = "") {
+  const { data } = await api.post<{ door_unit: DoorUnitDetail; changed: number; message: string }>(`/fulfillment/door-units/${doorId}/assembly-components/issue`, { remark });
+  return data;
+}
+
 export async function recordFulfillmentPayment(doorId: number, payload: { amount: number; payment_date: string; reference: string; remark: string }) {
   const { data } = await api.post<{ door_unit: DoorUnitDetail; message: string }>(`/fulfillment/door-units/${doorId}/payments`, payload);
   return data;

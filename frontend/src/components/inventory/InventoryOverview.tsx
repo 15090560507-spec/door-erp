@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Boxes, Factory, PackageCheck, PackageOpen, Plus, ShieldCheck, Trash2, Truck, Warehouse } from "lucide-react";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
-import { confirmInventoryAdjustment, createInventoryAdjustment, getInventoryBalances, getInventoryMaterials, getInventoryWarehouses } from "@/lib/inventoryApi";
-import type { InventoryBalance, InventoryMaterial, InventoryWarehouse } from "@/lib/inventoryTypes";
+import { confirmInventoryAdjustment, createInventoryAdjustment, getInventoryBalances, getInventoryMaterials, getInventoryWarehouseOverview, getInventoryWarehouses } from "@/lib/inventoryApi";
+import type { InventoryBalance, InventoryMaterial, InventoryWarehouse, InventoryWarehouseSummary, TrackedProductionInventoryItem } from "@/lib/inventoryTypes";
 
 type Notice = (message: string, error?: boolean) => void;
 
@@ -12,6 +12,8 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [warehouses, setWarehouses] = useState<InventoryWarehouse[]>([]);
+  const [warehouseSummaries, setWarehouseSummaries] = useState<InventoryWarehouseSummary[]>([]);
+  const [trackedItems, setTrackedItems] = useState<TrackedProductionInventoryItem[]>([]);
   const [q, setQ] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
@@ -22,27 +24,35 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextBalances, nextMaterials, nextWarehouses] = await Promise.all([
+      const [nextBalances, nextMaterials, nextWarehouses, overview] = await Promise.all([
         getInventoryBalances({ q: filters.q || undefined, warehouse_id: filters.warehouseId ? Number(filters.warehouseId) : undefined, low_stock_only: filters.lowOnly || undefined }),
-        getInventoryMaterials(), getInventoryWarehouses(),
+        getInventoryMaterials(), getInventoryWarehouses(), getInventoryWarehouseOverview(),
       ]);
       setBalances(nextBalances); setMaterials(nextMaterials); setWarehouses(nextWarehouses);
+      setWarehouseSummaries(overview.warehouses); setTrackedItems(overview.tracked_items);
     } catch (error) { notify(apiMessage(error, "库存数据加载失败"), true); }
     finally { setLoading(false); }
   }, [filters, notify]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
-  const totals = useMemo(() => ({
-    materialCount: new Set(balances.map((item) => item.material_id)).size,
-    onHand: balances.reduce((sum, item) => sum + item.on_hand, 0),
-    available: balances.reduce((sum, item) => sum + item.available, 0),
-    low: balances.filter((item) => item.available < item.minimum_stock).length,
-  }), [balances]);
+  const selectedSummary = useMemo(() => warehouseSummaries.find((item) => String(item.id) === filters.warehouseId), [filters.warehouseId, warehouseSummaries]);
+  const visibleTracked = useMemo(() => trackedItems.filter((item) => !selectedSummary || item.warehouse === selectedSummary.name || item.warehouse_type === selectedSummary.warehouse_type), [selectedSummary, trackedItems]);
 
   return <div className="space-y-4">
-    <section className="grid grid-cols-2 gap-px border border-[#D1D1D6] bg-[#D1D1D6] lg:grid-cols-4">
-      <Metric label="有库存物料" value={totals.materialCount} /><Metric label="账面库存合计" value={formatQty(totals.onHand)} /><Metric label="可用库存合计" value={formatQty(totals.available)} /><Metric label="低于安全库存" value={totals.low} danger={totals.low > 0} />
+    <section className="warehouse-cockpit">
+      <div className="warehouse-cockpit__heading"><div><h2>仓库总览</h2><p>先按仓库查看，再进入明细和库存操作。数量按各自单位展示，不做跨单位合计。</p></div><button type="button" className={!filters.warehouseId ? "is-active" : ""} onClick={() => { setWarehouseId(""); setFilters({ ...filters, warehouseId: "" }); }}>全部仓库</button></div>
+      <div className="warehouse-cockpit__grid">{warehouseSummaries.map((item) => {
+        const selected = filters.warehouseId === String(item.id);
+        const Icon = warehouseIcon(item.warehouse_type);
+        return <button type="button" key={item.id} className={selected ? "is-selected" : ""} onClick={() => { const id = String(item.id); setWarehouseId(id); setFilters({ ...filters, warehouseId: id }); }}>
+          <span className="warehouse-cockpit__icon"><Icon size={19}/></span><span className="warehouse-cockpit__name">{item.name}</span><small>{warehouseTypeLabel(item.warehouse_type)} · {item.locations.length} 个库位</small>
+          <strong>{item.tracked_count || item.sku_count}<em>{item.tracked_count ? "项在库" : "种物料"}</em></strong>
+          <span className="warehouse-cockpit__quantities">{item.quantity_breakdown.length ? item.quantity_breakdown.slice(0,3).map((value) => <i key={value.unit}>{formatQty(value.quantity)} {value.unit}</i>) : <i>暂无库存</i>}</span>
+          {item.low_stock_count > 0 && <span className="warehouse-cockpit__warning">{item.low_stock_count} 项低库存</span>}
+        </button>;
+      })}</div>
     </section>
+    {visibleTracked.length > 0 && <TrackedInventorySection title={selectedSummary ? `${selectedSummary.name} · 订单追踪库存` : "订单专属半成品与成品"} items={visibleTracked} />}
     <section className="border border-[#D1D1D6] bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-[#E5E5EA] p-3">
         <input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && setFilters({ q: q.trim(), warehouseId, lowOnly })} placeholder="搜索物料编码、名称、规格" className="h-9 min-w-64 flex-1 border border-[#C7C7CC] px-3 text-sm" />
@@ -68,6 +78,32 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
     {adjusting && <AdjustmentDialog materials={materials} warehouses={warehouses} onClose={() => setAdjusting(false)} onDone={async (message) => { setAdjusting(false); notify(message); await load(); }} notify={notify} />}
   </div>;
 }
+
+function TrackedInventorySection({ title, items }: { title: string; items: TrackedProductionInventoryItem[] }) {
+  return <section className="tracked-inventory">
+    <header><div><h3>{title}</h3><p>按 TM 生产编号追踪，不需要为每个非标尺寸建立物料档案。</p></div><span>{items.length} 项</span></header>
+    <div className="tracked-inventory__list">{items.slice(0, 24).map((item) => <article key={`${item.warehouse_type}-${item.door_unit_id}-${item.component_id || 0}`}>
+      <div className="tracked-inventory__identity"><span>{item.warehouse_type}</span><strong>{item.item_name}</strong><small>{item.production_no} · {item.customer}{item.project ? ` / ${item.project}` : ""}</small></div>
+      <div><small>产品 / 尺寸</small><strong>{item.door_type || "未填写"} · {item.specification || "尺寸未填写"}</strong></div>
+      <div><small>规格</small><strong>{item.specification || "按当前BOM"}</strong></div>
+      <div><small>库位</small><strong>{item.warehouse}{item.location ? ` / ${item.location}` : ""}</strong></div>
+      <div><small>在库</small><strong>{formatQty(item.quantity)} {item.unit}</strong></div>
+      <div><small>状态</small><strong>{item.status}</strong></div>
+    </article>)}</div>
+  </section>;
+}
+
+function warehouseIcon(type: string) {
+  if (type === "半成品") return PackageOpen;
+  if (type === "成品") return PackageCheck;
+  if (type === "外协") return Truck;
+  if (type === "配件") return Boxes;
+  if (type === "待检") return ShieldCheck;
+  if (type === "原料") return Factory;
+  return Warehouse;
+}
+
+function warehouseTypeLabel(type: string) { return type || "综合仓"; }
 
 function AdjustmentDialog({ materials, warehouses, onClose, onDone, notify }: { materials: InventoryMaterial[]; warehouses: InventoryWarehouse[]; onClose: () => void; onDone: (message: string) => Promise<void>; notify: Notice }) {
   type Line = { key: string; materialId: string; warehouseId: string; locationId: string; quantity: string; remark: string };
@@ -101,7 +137,6 @@ function AdjustmentDialog({ materials, warehouses, onClose, onDone, notify }: { 
   </ViewportDialog>;
 }
 
-function Metric({ label, value, danger = false }: { label: string; value: number | string; danger?: boolean }) { return <div className="bg-white px-4 py-3"><div className="text-xs text-[#636366]">{label}</div><div className={`mt-1 text-xl font-semibold ${danger ? "text-[#C62828]" : "text-[#1C1C1E]"}`}>{value}</div></div>; }
 function CompactEmpty({ text }: { text: string }) { return <div className="py-16 text-center text-sm text-[#8E8E93]">{text}</div>; }
 function CompactInfo({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <div className="min-w-0"><span className="block text-[#8E8E93]">{label}</span><span className={`mt-0.5 block truncate ${strong ? "font-semibold text-[#1C1C1E]" : "text-[#3A3A3C]"}`}>{value}</span></div>; }
 function RowEmpty({ text }: { text: string }) { return <tr><td colSpan={10} className="h-36 text-center text-sm text-[#8E8E93]">{text}</td></tr>; }

@@ -729,6 +729,17 @@ class FulfillmentDatabase:
             ):
                 if name not in door_columns:
                     conn.execute(f"ALTER TABLE fulfillment_door_units ADD COLUMN {name} {definition}")
+            movement_columns = {row["name"] for row in conn.execute("PRAGMA table_info(fulfillment_inventory_movements)").fetchall()}
+            for name, definition in (
+                ("technical_package_id", "INTEGER"),
+                ("component_id", "INTEGER"),
+            ):
+                if name not in movement_columns:
+                    conn.execute(f"ALTER TABLE fulfillment_inventory_movements ADD COLUMN {name} {definition}")
+            conn.execute(
+                """CREATE INDEX IF NOT EXISTS ix_fulfillment_component_inventory
+                   ON fulfillment_inventory_movements(door_unit_id, technical_package_id, component_id, movement_type)"""
+            )
             for name, definition in (
                 ("route_template_id", "INTEGER"),
                 ("route_step_id", "INTEGER"),
@@ -1121,6 +1132,9 @@ class FulfillmentDatabase:
         )
         door["inspections"] = self.fetch_all("SELECT * FROM fulfillment_inspections WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
         door["inventory_movements"] = self.fetch_all("SELECT * FROM fulfillment_inventory_movements WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
+        door["component_inventory"] = self._component_inventory_rows(
+            door_id, int(package["id"]) if package else -1,
+        )
         door["shipments"] = self.fetch_all("SELECT * FROM fulfillment_shipments WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
         door["payroll_drafts"] = self.fetch_all("SELECT * FROM fulfillment_payroll_drafts WHERE door_unit_id=? ORDER BY id", (door_id,))
         paid = self.fetch_one("SELECT COALESCE(SUM(p.amount), 0) AS total FROM fulfillment_payments p JOIN fulfillment_orders o ON o.id=p.order_id JOIN fulfillment_door_units d ON d.order_id=o.id WHERE d.id=?", (door_id,))
@@ -2077,14 +2091,147 @@ class FulfillmentDatabase:
                 raise LookupError("门樘生产单不存在")
             if door["status"] != "待成品入库":
                 raise RuntimeError("只有成品质检合格的门樘才能入库")
+            package = conn.execute(
+                "SELECT id FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
             conn.execute(
-                """INSERT INTO fulfillment_inventory_movements(door_unit_id, movement_type, item_name, warehouse, location, quantity, unit, remark, operator_uid, created_at)
-                   VALUES (?, '成品入库', ?, ?, ?, ?, '樘', ?, ?, ?)""",
-                (door_id, door["production_no"], payload.warehouse, payload.location, payload.quantity, payload.remark, str(user.get("uid") or ""), now),
+                """INSERT INTO fulfillment_inventory_movements(
+                       door_unit_id, technical_package_id, movement_type, item_name,
+                       warehouse, location, quantity, unit, remark, operator_uid, created_at
+                   ) VALUES (?, ?, '成品入库', ?, ?, ?, ?, '樘', ?, ?, ?)""",
+                (door_id, package["id"] if package else None, door["production_no"], payload.warehouse,
+                 payload.location, payload.quantity, payload.remark, str(user.get("uid") or ""), now),
             )
             conn.execute("UPDATE fulfillment_door_units SET status='已入库待发货', progress=100, updated_at=? WHERE id=?", (now, door_id))
             self.add_event(conn, order_id=int(door["order_id"]), door_unit_id=door_id, entity_type="inventory", entity_id=None, action="成品入库", detail=f"{payload.warehouse} {payload.location}，{payload.quantity} 樘", user=user)
         return self.get_door_unit(door_id) or {}
+
+    def _component_inventory_rows(self, door_id: int, package_id: int) -> List[Dict[str, Any]]:
+        if package_id <= 0:
+            return []
+        rows = self.fetch_all(
+            """SELECT c.id AS component_id, c.name, c.category, c.specification,
+                      c.planned_quantity, c.unit, c.operation_code,
+                      COALESCE(SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE 0 END), 0) AS inbound_quantity,
+                      COALESCE(SUM(CASE WHEN m.movement_type='拼装领用' THEN m.quantity ELSE 0 END), 0) AS issued_quantity,
+                      MAX(CASE WHEN m.movement_type='半成品入库' THEN m.warehouse ELSE '' END) AS warehouse,
+                      MAX(CASE WHEN m.movement_type='半成品入库' THEN m.location ELSE '' END) AS location
+               FROM fulfillment_components c
+               LEFT JOIN fulfillment_inventory_movements m
+                 ON m.component_id=c.id AND m.technical_package_id=c.technical_package_id
+               WHERE c.technical_package_id=? AND c.item_kind='manufactured_part'
+               GROUP BY c.id ORDER BY c.sequence_no, c.id""",
+            (package_id,),
+        )
+        for row in rows:
+            row["planned_quantity"] = float(row["planned_quantity"] or 0)
+            row["inbound_quantity"] = float(row["inbound_quantity"] or 0)
+            row["issued_quantity"] = float(row["issued_quantity"] or 0)
+            row["available_quantity"] = max(0.0, row["inbound_quantity"] - row["issued_quantity"])
+            row["remaining_inbound_quantity"] = max(0.0, row["planned_quantity"] - row["inbound_quantity"])
+        return rows
+
+    def component_inbound(self, door_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            component = conn.execute(
+                """SELECT c.*, d.production_no, d.order_id
+                   FROM fulfillment_components c
+                   JOIN fulfillment_technical_packages p ON p.id=c.technical_package_id
+                   JOIN fulfillment_door_units d ON d.id=p.door_unit_id
+                   WHERE c.id=? AND d.id=?
+                     AND p.id=(SELECT id FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1)""",
+                (payload.component_id, door_id, door_id),
+            ).fetchone()
+            if not component:
+                raise LookupError("当前生产版本中不存在该部件")
+            if component["item_kind"] != "manufactured_part" or component["procurement_mode"] != "make":
+                raise ValueError("只有按图自制部件可以转入半成品仓")
+            inbound = float((conn.execute(
+                """SELECT COALESCE(SUM(quantity), 0) AS total FROM fulfillment_inventory_movements
+                   WHERE technical_package_id=? AND component_id=? AND movement_type='半成品入库'""",
+                (component["technical_package_id"], component["id"]),
+            ).fetchone() or {"total": 0})["total"] or 0)
+            planned = float(component["planned_quantity"] or component["quantity"] or 0)
+            if inbound + float(payload.quantity) > planned + 1e-6:
+                raise ValueError(f"入库数量超过计划数：计划 {planned:g} {component['unit']}，已入 {inbound:g} {component['unit']}")
+            conn.execute(
+                """INSERT INTO fulfillment_inventory_movements(
+                       door_unit_id, technical_package_id, component_id, movement_type,
+                       item_name, warehouse, location, quantity, unit, remark, operator_uid, created_at
+                   ) VALUES (?, ?, ?, '半成品入库', ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (door_id, component["technical_package_id"], component["id"], component["name"],
+                 payload.warehouse, payload.location, payload.quantity, component["unit"], payload.remark,
+                 str(user.get("uid") or ""), now),
+            )
+            self.add_event(
+                conn, order_id=int(component["order_id"]), door_unit_id=door_id,
+                entity_type="inventory", entity_id=int(component["id"]), action="半成品入库",
+                detail=f"{component['name']} {payload.quantity:g} {component['unit']} → {payload.warehouse} {payload.location}".strip(),
+                user=user,
+            )
+        return self.get_door_unit(door_id) or {}
+
+    def issue_assembly_components(self, door_id: int, remark: str, user: Dict[str, Any]) -> tuple[Dict[str, Any], int]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            door = conn.execute("SELECT * FROM fulfillment_door_units WHERE id=?", (door_id,)).fetchone()
+            if not door:
+                raise LookupError("门樘生产单不存在")
+            package = conn.execute(
+                "SELECT id FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("生产BOM不存在")
+            parts = conn.execute(
+                """SELECT c.*,
+                          COALESCE(SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE 0 END), 0) AS inbound_quantity,
+                          COALESCE(SUM(CASE WHEN m.movement_type='拼装领用' THEN m.quantity ELSE 0 END), 0) AS issued_quantity
+                   FROM fulfillment_components c
+                   LEFT JOIN fulfillment_inventory_movements m
+                     ON m.component_id=c.id AND m.technical_package_id=c.technical_package_id
+                   WHERE c.technical_package_id=? AND c.item_kind='manufactured_part'
+                   GROUP BY c.id ORDER BY c.sequence_no, c.id""",
+                (package["id"],),
+            ).fetchall()
+            if not parts:
+                raise RuntimeError("当前BOM没有需要领用的自制半成品")
+            shortages = []
+            for part in parts:
+                planned = float(part["planned_quantity"] or part["quantity"] or 0)
+                inbound = float(part["inbound_quantity"] or 0)
+                issued = float(part["issued_quantity"] or 0)
+                if inbound - issued + 1e-6 < planned - issued:
+                    shortages.append(f"{part['name']} {max(0.0, inbound-issued):g}/{max(0.0, planned-issued):g}{part['unit']}")
+            if shortages:
+                raise RuntimeError("以下半成品尚未备齐：" + "；".join(shortages[:6]))
+            changed = 0
+            for part in parts:
+                planned = float(part["planned_quantity"] or part["quantity"] or 0)
+                issued = float(part["issued_quantity"] or 0)
+                quantity = max(0.0, planned - issued)
+                if quantity <= 1e-6:
+                    continue
+                conn.execute(
+                    """INSERT INTO fulfillment_inventory_movements(
+                           door_unit_id, technical_package_id, component_id, movement_type,
+                           item_name, warehouse, quantity, unit, remark, operator_uid, created_at
+                       ) VALUES (?, ?, ?, '拼装领用', ?, '半成品仓', ?, ?, ?, ?, ?)""",
+                    (door_id, package["id"], part["id"], part["name"], quantity, part["unit"], remark,
+                     str(user.get("uid") or ""), now),
+                )
+                changed += 1
+            if not changed:
+                raise RuntimeError("当前半成品已经全部领用，无需重复操作")
+            self.add_event(
+                conn, order_id=int(door["order_id"]), door_unit_id=door_id,
+                entity_type="inventory", entity_id=None, action="拼装领用",
+                detail=f"领用 {changed} 项自制半成品进入整门拼装" + (f"；{remark}" if remark else ""),
+                user=user,
+            )
+        return self.get_door_unit(door_id) or {}, changed
 
     def record_payment(self, door_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
         now = fulfillment_now()

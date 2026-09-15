@@ -483,6 +483,88 @@ class InventoryService:
             )
         return warehouses
 
+    def warehouse_overview(self) -> Dict[str, Any]:
+        warehouses = self.list_warehouses()
+        balances = self.list_balances()
+        summaries: Dict[int, Dict[str, Any]] = {}
+        for warehouse in warehouses:
+            summaries[int(warehouse["id"])] = {
+                **warehouse,
+                "sku_count": 0,
+                "low_stock_count": 0,
+                "tracked_count": 0,
+                "quantity_breakdown": {},
+            }
+        for row in balances:
+            summary = summaries.get(int(row["warehouse_id"]))
+            if not summary:
+                continue
+            summary["sku_count"] += 1
+            if float(row["available"] or 0) < float(row["minimum_stock"] or 0):
+                summary["low_stock_count"] += 1
+            unit = str(row["unit"] or "件")
+            summary["quantity_breakdown"][unit] = summary["quantity_breakdown"].get(unit, 0.0) + float(row["on_hand"] or 0)
+
+        tracked_items: List[Dict[str, Any]] = []
+        table_exists = self.db.fetch_one(
+            "SELECT 1 AS value FROM sqlite_master WHERE type='table' AND name='fulfillment_inventory_movements'"
+        )
+        if table_exists:
+            tracked_items.extend(self.db.fetch_all(
+                """SELECT '半成品' AS warehouse_type, m.warehouse, m.location,
+                          m.door_unit_id, m.technical_package_id, m.component_id,
+                          MAX(m.item_name) AS item_name, MAX(c.specification) AS specification,
+                          d.production_no, d.product_name AS door_type, 0 AS width, 0 AS height, d.status,
+                          o.customer, o.project,
+                          SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE -m.quantity END) AS quantity,
+                          MAX(m.unit) AS unit, MAX(m.created_at) AS updated_at
+                   FROM fulfillment_inventory_movements m
+                   JOIN fulfillment_door_units d ON d.id=m.door_unit_id
+                   JOIN fulfillment_orders o ON o.id=d.order_id
+                   LEFT JOIN fulfillment_components c ON c.id=m.component_id
+                   WHERE m.movement_type IN ('半成品入库','拼装领用') AND m.component_id IS NOT NULL
+                   GROUP BY m.door_unit_id, m.technical_package_id, m.component_id, m.warehouse, m.location
+                   HAVING SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE -m.quantity END) > 0.000001
+                   ORDER BY updated_at DESC"""
+            ))
+            tracked_items.extend(self.db.fetch_all(
+                """SELECT '成品' AS warehouse_type, inbound.warehouse, inbound.location,
+                          d.id AS door_unit_id, inbound.technical_package_id, NULL AS component_id,
+                          d.production_no AS item_name, d.specification,
+                          d.production_no, d.product_name AS door_type, 0 AS width, 0 AS height, d.status,
+                          o.customer, o.project, inbound.quantity, inbound.unit, inbound.created_at AS updated_at
+                   FROM fulfillment_door_units d
+                   JOIN fulfillment_orders o ON o.id=d.order_id
+                   JOIN fulfillment_inventory_movements inbound ON inbound.id=(
+                       SELECT MAX(m.id) FROM fulfillment_inventory_movements m
+                       WHERE m.door_unit_id=d.id AND m.movement_type='成品入库'
+                   )
+                   WHERE d.status='已入库待发货'
+                   ORDER BY inbound.created_at DESC"""
+            ))
+
+        for item in tracked_items:
+            item["quantity"] = float(item["quantity"] or 0)
+            candidates = [
+                summary for summary in summaries.values()
+                if summary["name"] == item["warehouse"]
+                or summary["warehouse_type"] == item["warehouse_type"]
+            ]
+            if not candidates:
+                continue
+            summary = candidates[0]
+            summary["tracked_count"] += 1
+            unit = str(item["unit"] or "件")
+            summary["quantity_breakdown"][unit] = summary["quantity_breakdown"].get(unit, 0.0) + item["quantity"]
+
+        for summary in summaries.values():
+            summary["quantity_breakdown"] = [
+                {"unit": unit, "quantity": quantity}
+                for unit, quantity in sorted(summary["quantity_breakdown"].items())
+                if abs(quantity) > EPSILON
+            ]
+        return {"warehouses": list(summaries.values()), "tracked_items": tracked_items}
+
     def create_adjustment(self, items: List[Dict[str, Any]], remark: str, created_by: str) -> Dict[str, Any]:
         if not items:
             raise ValueError("盘点调整至少需要一条明细")

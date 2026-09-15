@@ -7,6 +7,8 @@ import type {
   InventoryMaterial,
   InventoryTransaction,
   InventoryWarehouse,
+  InventoryWarehouseSummary,
+  TrackedProductionInventoryItem,
   InventorySupplier,
   InventorySupplierItem,
   MasterDataImportBatch,
@@ -122,6 +124,11 @@ export async function updateInventoryBomRule(id: number, payload: BomRulePayload
 export async function getInventoryWarehouses() {
   const { data } = await api.get<{ warehouses: InventoryWarehouse[] }>("/inventory/warehouses");
   return data.warehouses;
+}
+
+export async function getInventoryWarehouseOverview() {
+  const { data } = await api.get<{ warehouses: InventoryWarehouseSummary[]; tracked_items: TrackedProductionInventoryItem[] }>("/inventory/warehouse-overview");
+  return data;
 }
 
 export async function createInventoryWarehouse(payload: { code: string; name: string; warehouse_type: string; remark: string }) {

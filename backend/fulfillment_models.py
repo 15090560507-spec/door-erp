@@ -133,6 +133,18 @@ class FinishedInboundCreate(BaseModel):
     remark: str = ""
 
 
+class ComponentInventoryCreate(BaseModel):
+    component_id: int = Field(gt=0)
+    quantity: float = Field(gt=0)
+    warehouse: str = "半成品仓"
+    location: str = ""
+    remark: str = ""
+
+
+class AssemblyComponentIssue(BaseModel):
+    remark: str = ""
+
+
 class PaymentCreate(BaseModel):
     amount: float = Field(gt=0)
     payment_date: str = ""

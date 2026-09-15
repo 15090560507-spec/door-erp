@@ -18,6 +18,8 @@ from fulfillment_models import (
     ExceptionCreate,
     ExceptionResolve,
     FinishedInboundCreate,
+    ComponentInventoryCreate,
+    AssemblyComponentIssue,
     FulfillmentReleaseRequest,
     InspectionCreate,
     PaymentCreate,
@@ -373,6 +375,26 @@ def create_inspection(door_id: int, req: InspectionCreate, current_user: Dict = 
 def finished_inbound(door_id: int, req: FinishedInboundCreate, current_user: Dict = Depends(get_current_user)):
     try:
         return {"door_unit": fulfillment_db.finished_inbound(door_id, req, current_user), "message": "成品已入库"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/component-inbound")
+def component_inbound(door_id: int, req: ComponentInventoryCreate, current_user: Dict = Depends(get_current_user)):
+    try:
+        return {
+            "door_unit": fulfillment_db.component_inbound(door_id, req, current_user),
+            "message": "部件已转入半成品仓",
+        }
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/assembly-components/issue")
+def issue_assembly_components(door_id: int, req: AssemblyComponentIssue, current_user: Dict = Depends(get_current_user)):
+    try:
+        door, changed = fulfillment_db.issue_assembly_components(door_id, req.remark, current_user)
+        return {"door_unit": door, "changed": changed, "message": f"已领用 {changed} 项半成品进入整门拼装"}
     except Exception as exc:
         raise _translate_error(exc) from exc
 

@@ -19,6 +19,8 @@ import {
   createFulfillmentInspection,
   createFulfillmentShipment,
   finishedFulfillmentInbound,
+  inboundFulfillmentComponent,
+  issueFulfillmentAssemblyComponents,
   getDoorUnit,
   getFulfillmentDashboard,
   getFulfillmentOrder,
@@ -282,6 +284,7 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
   };
   return <div className="production-process-board space-y-4">
     <MaterialReadinessPanel door={door} />
+    <ComponentInventoryPanel door={door} busy={busy} notify={notify} onBusy={onBusy} onChanged={onChanged} />
     <section className="border border-[#D1D1D6] bg-[#FAFAFB] p-4">
       <div className="mb-3"><h3 className="text-sm font-semibold">拼装分配</h3><p className="mt-1 text-xs text-[#636366]">负责人会同步到“总装”工序；协作人员保留在本樘门的生产记录中。</p></div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_minmax(220px,1fr)_150px_150px_minmax(220px,1fr)_auto]">
@@ -326,6 +329,47 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
     <datalist id="workforce-employees">{employees.map(row=><option key={row.id} value={row.employee_no}>{row.name} · {row.team||row.role_name||"员工"}</option>)}</datalist>
     <p className="production-process-note">工序状态可逐项调整，也可勾选后批量推进；需要过程检验的项目先提交质检，跳过时必须说明原因。</p>
   </div>;
+}
+
+function ComponentInventoryPanel({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
+  const rows = door.component_inventory || [];
+  const remaining = rows.filter((item) => item.remaining_inbound_quantity > 0.005).length;
+  const available = rows.filter((item) => item.available_quantity > 0.005).length;
+  if (!rows.length) return null;
+  const inbound = async (componentId: number, quantity: number) => {
+    onBusy(true);
+    try {
+      const result = await inboundFulfillmentComponent(door.id, {
+        component_id: componentId,
+        quantity,
+        warehouse: "半成品仓",
+        location: "本单暂存区",
+        remark: "部件完工转半成品",
+      });
+      notify(result.message);
+      await onChanged(result.door_unit);
+    } catch (error) { notify(apiMessage(error, "半成品入库失败"), true); }
+    finally { onBusy(false); }
+  };
+  const issueAll = async () => {
+    onBusy(true);
+    try {
+      const result = await issueFulfillmentAssemblyComponents(door.id, "整门拼装领用");
+      notify(result.message);
+      await onChanged(result.door_unit);
+    } catch (error) { notify(apiMessage(error, "拼装领用失败"), true); }
+    finally { onBusy(false); }
+  };
+  return <section className="component-stock-panel">
+    <header>
+      <div><h3>部件暂存与拼装领用</h3><p>自制部件完工后转入半成品仓；整门拼装时一次领用，物料库存与加工进度仍分别记录。</p></div>
+      <div className="component-stock-panel__summary"><span>{rows.length - remaining}/{rows.length} 已完工入库</span><span>{available} 项可领用</span><button disabled={busy || remaining > 0 || available === 0} onClick={() => void issueAll()}>拼装领用全部</button></div>
+    </header>
+    <div className="component-stock-panel__table"><table><thead><tr><th>自制部件</th><th>计划</th><th>半成品入库</th><th>拼装已领</th><th>当前状态</th><th>操作</th></tr></thead><tbody>{rows.map((item) => {
+      const state = item.issued_quantity >= item.planned_quantity - 0.005 ? "已投入拼装" : item.remaining_inbound_quantity <= 0.005 ? "半成品已备齐" : item.inbound_quantity > 0 ? "部分完工" : "生产中";
+      return <tr key={item.component_id}><td><strong>{item.name}</strong><small>{item.specification || item.operation_code}</small></td><td>{formatQuantity(item.planned_quantity)} {item.unit}</td><td>{formatQuantity(item.inbound_quantity)} {item.unit}</td><td>{formatQuantity(item.issued_quantity)} {item.unit}</td><td><Status text={state}/></td><td><button disabled={busy || item.remaining_inbound_quantity <= 0.005} onClick={() => void inbound(item.component_id, item.remaining_inbound_quantity)}>完工入半成品</button></td></tr>;
+    })}</tbody></table></div>
+  </section>;
 }
 
 function MaterialReadinessPanel({ door }: Pick<WorkbenchProps, "door">) {
@@ -390,5 +434,6 @@ function updateAt<T>(items:T[],setter:(value:T[])=>void,index:number,patch:Parti
 function Status({text}:{text:string}) { const danger=/异常|返工|暂停/.test(text); const good=/完成|签收|确认|已入库/.test(text); return <span className={`inline-flex h-6 items-center px-2 text-xs ${danger?"bg-[#FFECEC] text-[#C62828]":good?"bg-[#EAF8ED] text-[#248A3D]":"bg-[#EDF3FF] text-[#315E9C]"}`}>{text||"未知"}</span>; }
 function Empty({text,tall=false}:{text:string;tall?:boolean}) { return <div className={`flex items-center justify-center text-sm text-[#8E8E93] ${tall?"min-h-[480px]":"min-h-32"}`}>{text}</div>; }
 function formatTime(value:string){return value?value.replace("T"," ").slice(0,16):"";}
+function formatQuantity(value:number){return Number(value||0).toLocaleString("zh-CN",{maximumFractionDigits:3});}
 function apiMessage(error:unknown,fallback:string){return (error as {userMessage?:string;message?:string})?.userMessage||(error as {message?:string})?.message||fallback;}
 type WorkbenchProps={door:DoorUnitDetail;busy:boolean;notify:(message:string,error?:boolean)=>void;onBusy:(value:boolean)=>void;onChanged:(door:DoorUnitDetail)=>Promise<void>};

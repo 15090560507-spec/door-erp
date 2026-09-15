@@ -17,6 +17,34 @@ export interface InventoryWarehouse {
   locations: InventoryLocation[];
 }
 
+export interface InventoryWarehouseSummary extends InventoryWarehouse {
+  sku_count: number;
+  low_stock_count: number;
+  tracked_count: number;
+  quantity_breakdown: Array<{ unit: string; quantity: number }>;
+}
+
+export interface TrackedProductionInventoryItem {
+  warehouse_type: string;
+  warehouse: string;
+  location: string;
+  door_unit_id: number;
+  technical_package_id?: number | null;
+  component_id?: number | null;
+  item_name: string;
+  specification: string;
+  production_no: string;
+  door_type: string;
+  width: number;
+  height: number;
+  status: string;
+  customer: string;
+  project: string;
+  quantity: number;
+  unit: string;
+  updated_at: string;
+}
+
 export interface InventoryMaterial {
   id: number;
   code: string;

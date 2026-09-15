@@ -181,6 +181,23 @@ export interface FulfillmentInspection {
 export interface InventoryMovement {
   id: number; movement_type: string; item_name: string; warehouse: string;
   location: string; quantity: number; unit: string; remark: string; created_at: string;
+  technical_package_id?: number | null; component_id?: number | null;
+}
+
+export interface ComponentInventoryStatus {
+  component_id: number;
+  name: string;
+  category: string;
+  specification: string;
+  planned_quantity: number;
+  inbound_quantity: number;
+  issued_quantity: number;
+  available_quantity: number;
+  remaining_inbound_quantity: number;
+  unit: string;
+  operation_code: string;
+  warehouse: string;
+  location: string;
 }
 
 export interface FulfillmentShipment {
@@ -208,6 +225,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   material_requirement?: MaterialRequirement | null;
   inspections: FulfillmentInspection[];
   inventory_movements: InventoryMovement[];
+  component_inventory: ComponentInventoryStatus[];
   shipments: FulfillmentShipment[];
   payroll_drafts: PayrollDraft[];
   unfinished_work_packages: Array<{ id: number; name: string; status: string }>;
