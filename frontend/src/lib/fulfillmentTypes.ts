@@ -200,6 +200,42 @@ export interface ComponentInventoryStatus {
   location: string;
 }
 
+export interface FulfillmentCalculationItem {
+  id?: number;
+  component_id: number;
+  component_name?: string;
+  component_category?: string;
+  component_group_code?: string;
+  part_name: string;
+  material_specification: string;
+  finished_size: string;
+  cut_length: number;
+  cut_width: number;
+  quantity: number;
+  unit: string;
+  waste_rate: number;
+  actual_material_quantity: number;
+  grain_direction: string;
+  cutting_method: string;
+  source_type: "manual" | "rule";
+  remark: string;
+}
+
+export interface FulfillmentCalculation {
+  id: number;
+  door_unit_id: number;
+  technical_package_id: number;
+  bom_version: number;
+  version: number;
+  status: "未算料" | "算料中" | "待确认" | "已发布" | "已退回";
+  remark: string;
+  confirmed_by: string;
+  published_by: string;
+  confirmed_at?: string | null;
+  published_at?: string | null;
+  items: FulfillmentCalculationItem[];
+}
+
 export interface FulfillmentShipment {
   id: number; required_payment: number; paid_amount: number; authorized: number;
   authorization_reason: string; authorized_by: string; carrier: string;
@@ -226,6 +262,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   inspections: FulfillmentInspection[];
   inventory_movements: InventoryMovement[];
   component_inventory: ComponentInventoryStatus[];
+  calculation?: FulfillmentCalculation | null;
   shipments: FulfillmentShipment[];
   payroll_drafts: PayrollDraft[];
   unfinished_work_packages: Array<{ id: number; name: string; status: string }>;

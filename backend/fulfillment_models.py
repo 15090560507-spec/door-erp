@@ -145,6 +145,30 @@ class AssemblyComponentIssue(BaseModel):
     remark: str = ""
 
 
+class CalculationItemInput(BaseModel):
+    id: Optional[int] = None
+    component_id: int = Field(gt=0)
+    part_name: str = Field(min_length=1)
+    material_specification: str = ""
+    finished_size: str = ""
+    cut_length: float = Field(default=0, ge=0)
+    cut_width: float = Field(default=0, ge=0)
+    quantity: float = Field(default=1, gt=0)
+    unit: str = "件"
+    waste_rate: float = Field(default=0, ge=0, le=100)
+    actual_material_quantity: float = Field(default=0, ge=0)
+    grain_direction: str = ""
+    cutting_method: str = ""
+    source_type: str = Field(default="manual", pattern="^(manual|rule)$")
+    remark: str = ""
+
+
+class CalculationDraftUpdate(BaseModel):
+    items: List[CalculationItemInput] = Field(default_factory=list)
+    delete_item_ids: List[int] = Field(default_factory=list)
+    remark: str = ""
+
+
 class PaymentCreate(BaseModel):
     amount: float = Field(gt=0)
     payment_date: str = ""

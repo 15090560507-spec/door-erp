@@ -104,9 +104,11 @@ function newBomRow(source?: BomRow, group?: { code: string; label: string }): Bo
 type BomWorkbenchProps = {
   embedded?: boolean;
   initialDoorId?: number;
+  onDoorChange?: (doorId: number) => void;
+  onChanged?: (doorId: number) => void;
 };
 
-export default function BomWorkbench({ embedded = false, initialDoorId }: BomWorkbenchProps = {}) {
+export default function BomWorkbench({ embedded = false, initialDoorId, onDoorChange, onChanged }: BomWorkbenchProps = {}) {
   const [items, setItems] = useState<BomWorkbenchItem[]>([]);
   const [summary, setSummary] = useState(emptySummary);
   const [query, setQuery] = useState("");
@@ -147,10 +149,6 @@ export default function BomWorkbench({ embedded = false, initialDoorId }: BomWor
     }
   }, [initialDoorId, query, status]);
 
-  useEffect(() => {
-    if (initialDoorId) setSelectedDoorId(initialDoorId);
-  }, [initialDoorId]);
-
   const loadDetail = useCallback(async (doorId: number, version?: number) => {
     setLoadingDetail(true);
     try {
@@ -178,6 +176,10 @@ export default function BomWorkbench({ embedded = false, initialDoorId }: BomWor
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadDetail, selectedDoorId]);
+
+  useEffect(() => {
+    if (selectedDoorId) onDoorChange?.(selectedDoorId);
+  }, [onDoorChange, selectedDoorId]);
 
   useEffect(() => {
     getInventoryMaterials().then(setMaterials).catch(() => setMaterials([]));
@@ -222,6 +224,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId }: BomWor
       setDeletedRowIds([]);
       setNotice({ title: "操作完成", message: result.message || fallback });
       await loadList();
+      onChanged?.(result.bom.door_unit_id);
     } catch (requestError) {
       setNotice({ title: "操作未完成", message: apiErrorMessage(requestError, fallback), error: true });
     } finally {
@@ -307,10 +310,10 @@ export default function BomWorkbench({ embedded = false, initialDoorId }: BomWor
           actions={<button type="button" className="ui-button ui-button--secondary" disabled={busy || loadingList} onClick={() => void loadList()}><RefreshCw size={15} />刷新</button>}
         />
 
-        <section className="bom-stage-strip" aria-label="BOM与工艺准备业务阶段">
-          <div><span>1</span><strong>BOM准备</strong><small>生成清单并补齐物料、规格与计划数量</small></div>
-          <div><span>2</span><strong>核验发布</strong><small>逐项核验，发布后冻结当前版本</small></div>
-          <div><span>3</span><strong>释放执行</strong><small>形成物料需求和工作包，交给采购、仓储与车间</small></div>
+        <section className="bom-stage-strip" aria-label="生产准备业务阶段">
+          <div><span>1</span><strong>BOM确认</strong><small>生成、补齐并核验整单需求，发布后冻结BOM版本</small></div>
+          <div><span>2</span><strong>算料</strong><small>按BOM部件拆分零件，填写下料尺寸、数量和损耗</small></div>
+          <div><span>3</span><strong>发布下料单</strong><small>冻结算料版本，部件进入下料与后续加工工序</small></div>
         </section>
 
         <MetricStrip items={[

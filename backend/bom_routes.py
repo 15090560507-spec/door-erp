@@ -137,7 +137,8 @@ def verify_bom(door_unit_id: int, request: BomVerifyRequest, current_user: Dict 
                     door_unit_id=door_unit_id, bom_item_id=item_id,
                     suggestion="刷新BOM后重新选择",
                 )
-            if row["match_status"] != "已匹配" or row["material_id"] is None:
+            self_made = row["procurement_mode"] == "make" or row["item_kind"] in {"assembly", "manufactured_part"}
+            if not self_made and (row["match_status"] != "已匹配" or row["material_id"] is None):
                 raise bom_error(
                     422, "BOM_ITEM_NOT_MATCHED", "只有唯一匹配到物料档案的BOM行才能核验",
                     field="material_id", door_unit_id=door_unit_id, bom_item_id=item_id,

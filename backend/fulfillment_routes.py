@@ -20,6 +20,7 @@ from fulfillment_models import (
     FinishedInboundCreate,
     ComponentInventoryCreate,
     AssemblyComponentIssue,
+    CalculationDraftUpdate,
     FulfillmentReleaseRequest,
     InspectionCreate,
     PaymentCreate,
@@ -241,6 +242,51 @@ def get_door_unit(door_id: int, current_user: Dict = Depends(get_current_user)):
     if not door:
         raise HTTPException(status_code=404, detail="门樘生产单不存在")
     return {"door_unit": _with_sales_finance(door)}
+
+
+@router.get("/door-units/{door_id}/calculation")
+def get_calculation(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        package = fulfillment_db.latest_bom_package(door_id)
+        return {"calculation": fulfillment_db.calculation_detail(int(package["id"]))}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/calculation/initialize")
+def initialize_calculation(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        calculation = fulfillment_db.initialize_calculation(door_id, current_user)
+        return {"calculation": calculation, "message": "已按当前BOM建立算料版本"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.put("/door-units/{door_id}/calculation")
+def save_calculation(door_id: int, req: CalculationDraftUpdate, current_user: Dict = Depends(get_current_user)):
+    try:
+        calculation = fulfillment_db.update_calculation(door_id, req, current_user)
+        return {"calculation": calculation, "message": "算料草稿已保存"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/calculation/submit")
+def submit_calculation(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        calculation = fulfillment_db.submit_calculation(door_id, current_user)
+        return {"calculation": calculation, "message": "算料已提交确认"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+
+
+@router.post("/door-units/{door_id}/calculation/publish")
+def publish_calculation(door_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        calculation = fulfillment_db.publish_calculation(door_id, current_user)
+        return {"calculation": calculation, "message": "下料单已发布，当前算料版本已冻结"}
+    except Exception as exc:
+        raise _translate_error(exc) from exc
 
 
 @router.get("/door-units/{door_id}/frame-input")

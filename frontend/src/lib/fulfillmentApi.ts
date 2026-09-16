@@ -8,6 +8,8 @@ import type {
   FulfillmentWorkbenchSupply,
   PendingFulfillmentTask,
   FulfillmentPerson,
+  FulfillmentCalculation,
+  FulfillmentCalculationItem,
 } from "./fulfillmentTypes";
 
 export async function getFulfillmentDashboard() {
@@ -43,6 +45,31 @@ export async function getFulfillmentOrder(id: number) {
 export async function getDoorUnit(id: number) {
   const { data } = await api.get<{ door_unit: DoorUnitDetail }>(`/fulfillment/door-units/${id}`);
   return data.door_unit;
+}
+
+export async function getFulfillmentCalculation(doorId: number) {
+  const { data } = await api.get<{ calculation: FulfillmentCalculation | null }>(`/fulfillment/door-units/${doorId}/calculation`);
+  return data.calculation;
+}
+
+export async function initializeFulfillmentCalculation(doorId: number) {
+  const { data } = await api.post<{ calculation: FulfillmentCalculation; message: string }>(`/fulfillment/door-units/${doorId}/calculation/initialize`);
+  return data;
+}
+
+export async function saveFulfillmentCalculation(doorId: number, payload: { items: FulfillmentCalculationItem[]; delete_item_ids: number[]; remark: string }) {
+  const { data } = await api.put<{ calculation: FulfillmentCalculation; message: string }>(`/fulfillment/door-units/${doorId}/calculation`, payload);
+  return data;
+}
+
+export async function submitFulfillmentCalculation(doorId: number) {
+  const { data } = await api.post<{ calculation: FulfillmentCalculation; message: string }>(`/fulfillment/door-units/${doorId}/calculation/submit`);
+  return data;
+}
+
+export async function publishFulfillmentCalculation(doorId: number) {
+  const { data } = await api.post<{ calculation: FulfillmentCalculation; message: string }>(`/fulfillment/door-units/${doorId}/calculation/publish`);
+  return data;
 }
 
 export async function saveTechnicalPackage(doorId: number, payload: { product_summary: string; special_requirements: string; components: FulfillmentComponent[]; work_packages: FulfillmentWorkPackage[] }) {

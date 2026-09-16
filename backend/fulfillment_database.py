@@ -62,6 +62,7 @@ def json_loads(value: Optional[str], default: Any) -> Any:
 def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
     """Derive the four-stage workflow while keeping material and process facts separate."""
     package = door.get("technical_package") or {}
+    calculation = door.get("calculation")
     components = package.get("components") or []
     works = package.get("work_packages") or []
     requirement = door.get("material_requirement") or {}
@@ -93,9 +94,12 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
             preparation_blockers.append(f"还有{blocking_warnings}项阻断警告")
         if not package_published:
             preparation_blockers.append("BOM尚未发布")
+        if package_published and calculation and calculation.get("status") != "已发布":
+            preparation_blockers.append(f"算料{calculation.get('status') or '未开始'}，尚未发布下料单")
         if package_published and not works:
             preparation_blockers.append("执行工作包尚未生成")
-    preparation_complete = package_published and bool(works)
+    calculation_published = not calculation or calculation.get("status") == "已发布"
+    preparation_complete = package_published and calculation_published and bool(works)
 
     shortage_items = [item for item in material_items if float(item.get("shortage_quantity") or 0) > 0.005]
     pending_issue_items = [
@@ -149,7 +153,10 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
     stage_data = [
         {
             "key": "preparation", "label": "生产准备", "complete": preparation_complete,
-            "summary": f"BOM V{package.get('version') or 0} · {'已发布' if package_published else '草稿'} · {len(works)}个工作包",
+            "summary": (
+                f"BOM V{package.get('version') or 0} · {'已发布' if package_published else '草稿'}"
+                f" · 算料{(calculation or {}).get('status') or '旧流程'} · {len(works)}个工作包"
+            ),
             "blockers": preparation_blockers, "action": "open_bom", "action_label": "进入BOM与工艺准备",
         },
         {
@@ -324,6 +331,54 @@ class FulfillmentDatabase:
                     FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE,
                     FOREIGN KEY(parent_id) REFERENCES fulfillment_components(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS fulfillment_calculations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    door_unit_id INTEGER NOT NULL,
+                    technical_package_id INTEGER NOT NULL,
+                    version INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT '未算料',
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_by TEXT NOT NULL DEFAULT '',
+                    updated_by TEXT NOT NULL DEFAULT '',
+                    confirmed_by TEXT NOT NULL DEFAULT '',
+                    published_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    confirmed_at TEXT,
+                    published_at TEXT,
+                    UNIQUE(technical_package_id, version),
+                    FOREIGN KEY(door_unit_id) REFERENCES fulfillment_door_units(id) ON DELETE CASCADE,
+                    FOREIGN KEY(technical_package_id) REFERENCES fulfillment_technical_packages(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS fulfillment_calculation_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    calculation_id INTEGER NOT NULL,
+                    component_id INTEGER NOT NULL,
+                    line_no INTEGER NOT NULL DEFAULT 0,
+                    part_name TEXT NOT NULL,
+                    material_specification TEXT NOT NULL DEFAULT '',
+                    finished_size TEXT NOT NULL DEFAULT '',
+                    cut_length REAL NOT NULL DEFAULT 0,
+                    cut_width REAL NOT NULL DEFAULT 0,
+                    quantity REAL NOT NULL DEFAULT 1,
+                    unit TEXT NOT NULL DEFAULT '件',
+                    waste_rate REAL NOT NULL DEFAULT 0,
+                    actual_material_quantity REAL NOT NULL DEFAULT 0,
+                    grain_direction TEXT NOT NULL DEFAULT '',
+                    cutting_method TEXT NOT NULL DEFAULT '',
+                    source_type TEXT NOT NULL DEFAULT 'manual',
+                    remark TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(calculation_id) REFERENCES fulfillment_calculations(id) ON DELETE CASCADE,
+                    FOREIGN KEY(component_id) REFERENCES fulfillment_components(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_fulfillment_calculation_door
+                ON fulfillment_calculations(door_unit_id, technical_package_id, version);
+
+                CREATE INDEX IF NOT EXISTS ix_fulfillment_calculation_component
+                ON fulfillment_calculation_items(calculation_id, component_id, line_no);
 
                 CREATE TABLE IF NOT EXISTS fulfillment_bom_generation_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1115,6 +1170,9 @@ class FulfillmentDatabase:
             if item["status"] not in {"已完成", "已取消"}
         ]
         door["technical_package"] = package
+        door["calculation"] = self.calculation_detail(
+            int(package["id"]) if package else -1,
+        )
         door["exceptions"] = self.fetch_all("SELECT * FROM fulfillment_exceptions WHERE door_unit_id=? ORDER BY created_at DESC", (door_id,))
         door["changes"] = self.fetch_all("SELECT * FROM fulfillment_changes WHERE door_unit_id=? ORDER BY created_at DESC", (door_id,))
         door["supplies"] = self.fetch_all(
@@ -1162,6 +1220,248 @@ class FulfillmentDatabase:
         if not package:
             raise LookupError("门樘生产单或BOM不存在")
         return package
+
+    def calculation_detail(self, package_id: int) -> Optional[Dict[str, Any]]:
+        calculation = self.fetch_one(
+            """SELECT c.*, p.version AS bom_version
+               FROM fulfillment_calculations c
+               JOIN fulfillment_technical_packages p ON p.id=c.technical_package_id
+               WHERE c.technical_package_id=? ORDER BY c.version DESC LIMIT 1""",
+            (package_id,),
+        )
+        if not calculation:
+            return None
+        calculation["items"] = self.fetch_all(
+            """SELECT i.*, c.name AS component_name, c.category AS component_category,
+                      c.group_code AS component_group_code, c.item_kind AS component_item_kind
+               FROM fulfillment_calculation_items i
+               JOIN fulfillment_components c ON c.id=i.component_id
+               WHERE i.calculation_id=? ORDER BY i.line_no, i.id""",
+            (calculation["id"],),
+        )
+        return calculation
+
+    def _initialize_calculation(
+        self,
+        conn: sqlite3.Connection,
+        package: sqlite3.Row,
+        user: Dict[str, Any],
+        now: str,
+    ) -> int:
+        existing = conn.execute(
+            """SELECT id FROM fulfillment_calculations
+               WHERE technical_package_id=? ORDER BY version DESC LIMIT 1""",
+            (package["id"],),
+        ).fetchone()
+        if existing:
+            return int(existing["id"])
+        version = int((conn.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 AS value FROM fulfillment_calculations WHERE technical_package_id=?",
+            (package["id"],),
+        ).fetchone() or {"value": 1})["value"] or 1)
+        uid = str(user.get("uid") or "")
+        cursor = conn.execute(
+            """INSERT INTO fulfillment_calculations(
+                   door_unit_id, technical_package_id, version, status,
+                   created_by, updated_by, created_at, updated_at
+               ) VALUES (?, ?, ?, '未算料', ?, ?, ?, ?)""",
+            (package["door_unit_id"], package["id"], version, uid, uid, now, now),
+        )
+        calculation_id = int(cursor.lastrowid)
+        components = conn.execute(
+            """SELECT * FROM fulfillment_components
+               WHERE technical_package_id=?
+                 AND (item_kind='manufactured_part' OR (procurement_mode='make' AND item_kind!='assembly'))
+               ORDER BY sequence_no, id""",
+            (package["id"],),
+        ).fetchall()
+        for line_no, component in enumerate(components, start=1):
+            quantity = float(component["planned_quantity"] or component["quantity"] or 1)
+            conn.execute(
+                """INSERT INTO fulfillment_calculation_items(
+                       calculation_id, component_id, line_no, part_name,
+                       material_specification, finished_size, quantity, unit,
+                       waste_rate, actual_material_quantity, source_type
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')""",
+                (
+                    calculation_id, component["id"], line_no, component["name"],
+                    component["specification"], component["specification"], quantity,
+                    component["unit"], float(component["waste_rate"] or 0), quantity,
+                ),
+            )
+        return calculation_id
+
+    def initialize_calculation(self, door_id: int, user: Dict[str, Any]) -> Dict[str, Any]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            if package["status"] != "已确认":
+                raise RuntimeError("请先确认并发布BOM，再开始算料")
+            existing = conn.execute(
+                "SELECT id FROM fulfillment_calculations WHERE technical_package_id=? ORDER BY version DESC LIMIT 1",
+                (package["id"],),
+            ).fetchone()
+            calculation_id = self._initialize_calculation(conn, package, user, now)
+            if not existing:
+                self.add_event(
+                    conn, order_id=None, door_unit_id=door_id, entity_type="calculation",
+                    entity_id=calculation_id, action="开始算料",
+                    detail=f"基于BOM V{package['version']}建立算料版本", user=user,
+                )
+        return self.calculation_detail(int(package["id"])) or {}
+
+    def update_calculation(self, door_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package or package["status"] != "已确认":
+                raise RuntimeError("请先确认并发布BOM")
+            calculation_id = self._initialize_calculation(conn, package, user, now)
+            calculation = conn.execute(
+                "SELECT * FROM fulfillment_calculations WHERE id=?", (calculation_id,),
+            ).fetchone()
+            if calculation["status"] == "已发布":
+                raise RuntimeError("算料版本已发布冻结，请随新BOM版本重新算料")
+            component_ids = {
+                int(row["id"]) for row in conn.execute(
+                    "SELECT id FROM fulfillment_components WHERE technical_package_id=?",
+                    (package["id"],),
+                ).fetchall()
+            }
+            for item_id in payload.delete_item_ids:
+                conn.execute(
+                    "DELETE FROM fulfillment_calculation_items WHERE id=? AND calculation_id=?",
+                    (item_id, calculation_id),
+                )
+            for line_no, item in enumerate(payload.items, start=1):
+                if int(item.component_id) not in component_ids:
+                    raise ValueError("算料明细关联的BOM部件不存在")
+                values = (
+                    item.component_id, line_no, item.part_name.strip(), item.material_specification,
+                    item.finished_size, item.cut_length, item.cut_width, item.quantity, item.unit,
+                    item.waste_rate, item.actual_material_quantity, item.grain_direction,
+                    item.cutting_method, item.source_type, item.remark,
+                )
+                if item.id:
+                    current = conn.execute(
+                        "SELECT id FROM fulfillment_calculation_items WHERE id=? AND calculation_id=?",
+                        (item.id, calculation_id),
+                    ).fetchone()
+                    if not current:
+                        raise ValueError("算料明细不存在或不属于当前版本")
+                    conn.execute(
+                        """UPDATE fulfillment_calculation_items SET
+                               component_id=?, line_no=?, part_name=?, material_specification=?,
+                               finished_size=?, cut_length=?, cut_width=?, quantity=?, unit=?,
+                               waste_rate=?, actual_material_quantity=?, grain_direction=?,
+                               cutting_method=?, source_type=?, remark=? WHERE id=?""",
+                        (*values, item.id),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO fulfillment_calculation_items(
+                               calculation_id, component_id, line_no, part_name,
+                               material_specification, finished_size, cut_length, cut_width,
+                               quantity, unit, waste_rate, actual_material_quantity,
+                               grain_direction, cutting_method, source_type, remark
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (calculation_id, *values),
+                    )
+            conn.execute(
+                """UPDATE fulfillment_calculations
+                   SET status='算料中', remark=?, updated_by=?, updated_at=? WHERE id=?""",
+                (payload.remark, str(user.get("uid") or ""), now, calculation_id),
+            )
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="calculation",
+                entity_id=calculation_id, action="保存算料",
+                detail=f"保存 {len(payload.items)} 条算料明细", user=user,
+            )
+        return self.calculation_detail(int(package["id"])) or {}
+
+    def submit_calculation(self, door_id: int, user: Dict[str, Any]) -> Dict[str, Any]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            calculation = conn.execute(
+                "SELECT * FROM fulfillment_calculations WHERE technical_package_id=? ORDER BY version DESC LIMIT 1",
+                (package["id"],),
+            ).fetchone()
+            if not calculation:
+                raise RuntimeError("尚未建立算料版本")
+            if calculation["status"] == "已发布":
+                raise RuntimeError("算料版本已经发布")
+            items = conn.execute(
+                "SELECT * FROM fulfillment_calculation_items WHERE calculation_id=? ORDER BY line_no, id",
+                (calculation["id"],),
+            ).fetchall()
+            if not items:
+                raise ValueError("算料明细不能为空")
+            invalid = [row for row in items if not str(row["part_name"] or "").strip() or float(row["quantity"] or 0) <= 0]
+            if invalid:
+                raise ValueError(f"还有{len(invalid)}条算料明细缺少零件名称或有效数量")
+            conn.execute(
+                """UPDATE fulfillment_calculations SET status='待确认', confirmed_by=?,
+                   confirmed_at=?, updated_by=?, updated_at=? WHERE id=?""",
+                (str(user.get("uid") or ""), now, str(user.get("uid") or ""), now, calculation["id"]),
+            )
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="calculation",
+                entity_id=int(calculation["id"]), action="提交算料确认",
+                detail=f"算料V{calculation['version']}共{len(items)}条", user=user,
+            )
+        return self.calculation_detail(int(package["id"])) or {}
+
+    def publish_calculation(self, door_id: int, user: Dict[str, Any]) -> Dict[str, Any]:
+        now = fulfillment_now()
+        with self.transaction() as conn:
+            package = conn.execute(
+                "SELECT * FROM fulfillment_technical_packages WHERE door_unit_id=? ORDER BY version DESC LIMIT 1",
+                (door_id,),
+            ).fetchone()
+            if not package:
+                raise LookupError("门樘生产单或BOM不存在")
+            calculation = conn.execute(
+                "SELECT * FROM fulfillment_calculations WHERE technical_package_id=? ORDER BY version DESC LIMIT 1",
+                (package["id"],),
+            ).fetchone()
+            if not calculation:
+                raise RuntimeError("尚未建立算料版本")
+            if calculation["status"] == "已发布":
+                return self.calculation_detail(int(package["id"])) or {}
+            if calculation["status"] != "待确认":
+                raise RuntimeError("请先保存并提交算料确认")
+            conn.execute(
+                """UPDATE fulfillment_calculations SET status='已发布', published_by=?,
+                   published_at=?, updated_by=?, updated_at=? WHERE id=?""",
+                (str(user.get("uid") or ""), now, str(user.get("uid") or ""), now, calculation["id"]),
+            )
+            conn.execute(
+                """UPDATE fulfillment_door_units SET
+                   status=CASE WHEN status IN ('待生产确认','技术准备中') THEN '备料与加工中' ELSE status END,
+                   updated_at=? WHERE id=?""",
+                (now, door_id),
+            )
+            WorkPackageService().recompute(conn, door_id=door_id, now=now)
+            self.add_event(
+                conn, order_id=None, door_unit_id=door_id, entity_type="calculation",
+                entity_id=int(calculation["id"]), action="发布下料单",
+                detail=f"冻结算料V{calculation['version']}，允许部件下料与加工", user=user,
+            )
+        return self.calculation_detail(int(package["id"])) or {}
 
     def list_bom_workbench(self, q: str = "", status: str = "", page: int = 1, page_size: int = 30) -> Dict[str, Any]:
         where = [
@@ -1537,6 +1837,7 @@ class FulfillmentDatabase:
                 conn, door_id=door_id, package_id=int(package["id"]), now=now,
             )
             if not already_published:
+                self._initialize_calculation(conn, package, user, now)
                 conn.execute(
                     """UPDATE fulfillment_technical_packages
                        SET status='已确认', confirmed_by=?, confirmed_at=?, updated_at=? WHERE id=?""",
@@ -1553,7 +1854,8 @@ class FulfillmentDatabase:
                     conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
                     entity_id=int(package["id"]), action="发布BOM版本",
                     detail=(
-                        f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}，释放工作包 {generated_work_count} 项"
+                        f"冻结 V{package['version']}，生成需求 {requirement['requirement_no']}，"
+                        f"建立算料版本并预生成工作包 {generated_work_count} 项"
                         f"{'；' + remark if remark else ''}"
                     ),
                     user=user,
