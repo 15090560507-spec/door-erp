@@ -262,7 +262,21 @@ class PurchasingService:
         rows = self.db.fetch_all(
             f"""SELECT o.*, COUNT(i.id) AS item_count,
                        COALESCE(SUM(i.ordered_quantity), 0) AS ordered_quantity,
-                       COALESCE(SUM(i.received_quantity), 0) AS received_quantity
+                       COALESCE(SUM(i.received_quantity), 0) AS received_quantity,
+                       COALESCE((SELECT SUM(ri.received_quantity)
+                                 FROM purchase_receipt_items ri
+                                 JOIN purchase_receipts r ON r.id=ri.receipt_id
+                                 WHERE r.purchase_order_id=o.id AND r.status!='已取消'), 0) AS registered_quantity,
+                       COALESCE((SELECT SUM(ri.received_quantity)
+                                 FROM purchase_receipt_items ri
+                                 JOIN purchase_receipts r ON r.id=ri.receipt_id
+                                 WHERE r.purchase_order_id=o.id AND r.status!='已取消'
+                                       AND ri.status='待检'), 0) AS pending_inspection_quantity,
+                       MAX(0, COALESCE(SUM(i.ordered_quantity-i.cancelled_quantity), 0)
+                         - COALESCE((SELECT SUM(ri.received_quantity)
+                                     FROM purchase_receipt_items ri
+                                     JOIN purchase_receipts r ON r.id=ri.receipt_id
+                                     WHERE r.purchase_order_id=o.id AND r.status!='已取消'), 0)) AS remaining_receivable_quantity
                 FROM purchase_orders o LEFT JOIN purchase_order_items i ON i.purchase_order_id=o.id
                 WHERE {' AND '.join(where)} GROUP BY o.id ORDER BY o.created_at DESC, o.id DESC""",
             params,
@@ -275,6 +289,20 @@ class PurchasingService:
             raise LookupError("采购单不存在")
         order["items"] = self.db.fetch_all("SELECT * FROM purchase_order_items WHERE purchase_order_id=? ORDER BY sequence_no, id", (order_id,))
         for item in order["items"]:
+            receipt_totals = self.db.fetch_one(
+                """SELECT COALESCE(SUM(ri.received_quantity), 0) AS registered_quantity,
+                          COALESCE(SUM(CASE WHEN ri.status='待检' THEN ri.received_quantity ELSE 0 END), 0) AS pending_inspection_quantity
+                   FROM purchase_receipt_items ri
+                   JOIN purchase_receipts r ON r.id=ri.receipt_id
+                   WHERE ri.purchase_order_item_id=? AND r.status!='已取消'""",
+                (item["id"],),
+            ) or {}
+            item.update(receipt_totals)
+            item["remaining_receivable_quantity"] = max(
+                0.0,
+                float(item["ordered_quantity"]) - float(item["cancelled_quantity"])
+                - float(item.get("registered_quantity") or 0),
+            )
             item["allocations"] = self.db.fetch_all(
                 """SELECT a.*, i.material_name AS requirement_material_name,
                           i.component_id, i.bom_item_id, i.technical_package_id,
@@ -326,7 +354,10 @@ class PurchasingService:
                 quantity = float(item.get("quantity") or 0)
                 remaining = float(purchase_item["ordered_quantity"]) - float(purchase_item["cancelled_quantity"]) - registered
                 if quantity <= EPSILON or quantity - remaining > EPSILON:
-                    raise ValueError(f"{purchase_item['material_name']} 的到货数量超过未登记数量 {max(0, remaining):g}")
+                    raise ValueError(
+                        f"{purchase_item['material_name']} 的到货数量超过未登记数量 {max(0, remaining):g}"
+                        f"（采购 {float(purchase_item['ordered_quantity']):g}，已登记 {registered:g}）"
+                    )
                 conn.execute(
                     """INSERT INTO purchase_receipt_items(
                            receipt_id, purchase_order_item_id, material_id,

@@ -29,6 +29,7 @@ PRODUCTION_FILES_DIR = os.path.join(DATA_DIR, 'production_files')
 FULFILLMENT_DB_FILE = os.path.join(DATA_DIR, 'fulfillment.db')
 FULFILLMENT_FILES_DIR = os.path.join(DATA_DIR, 'fulfillment_files')
 SALES_ORDER_DB_FILE = os.path.join(DATA_DIR, 'sales_orders.db')
+SALES_ORDER_FILES_DIR = os.path.join(DATA_DIR, 'sales_order_files')
 LEGACY_PRODUCTION_ENABLED = os.environ.get("LEGACY_PRODUCTION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # ERPNext integration. Credentials stay in the server environment only.
@@ -62,7 +63,7 @@ ACCESSORIES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'accessories')
 QUOTES_BACKUP_DIR = os.path.join(BACKUP_DIR, 'quotes')
 DOOR_CAD_BACKUP_DIR = os.path.join(BACKUP_DIR, 'door_cad')
 
-for _d in (BACKUP_DIR, IMAGES_DIR, PRODUCTION_FILES_DIR, FULFILLMENT_FILES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR, DOOR_CAD_BACKUP_DIR):
+for _d in (BACKUP_DIR, IMAGES_DIR, PRODUCTION_FILES_DIR, FULFILLMENT_FILES_DIR, SALES_ORDER_FILES_DIR, USERS_BACKUP_DIR, TASKS_BACKUP_DIR, ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR, DOOR_CAD_BACKUP_DIR):
     os.makedirs(_d, exist_ok=True)
 
 

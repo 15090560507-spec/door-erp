@@ -48,6 +48,8 @@ class SalesOrderDatabase:
                     customer_name TEXT NOT NULL,
                     project_name TEXT NOT NULL DEFAULT '',
                     delivery_address TEXT NOT NULL DEFAULT '',
+                    customer_phone TEXT NOT NULL DEFAULT '',
+                    product_category TEXT NOT NULL DEFAULT '',
                     salesperson TEXT NOT NULL DEFAULT '',
                     delivery_date TEXT NOT NULL DEFAULT '',
                     payment_template TEXT NOT NULL DEFAULT '',
@@ -92,6 +94,7 @@ class SalesOrderDatabase:
                     drawing_revision TEXT NOT NULL DEFAULT '',
                     drawing_snapshot TEXT NOT NULL DEFAULT '{}',
                     quote_snapshot TEXT NOT NULL DEFAULT '{}',
+                    technical_details TEXT NOT NULL DEFAULT '{}',
                     source_type TEXT NOT NULL DEFAULT 'drawing',
                     remark TEXT NOT NULL DEFAULT '',
                     UNIQUE(sales_order_id, task_id)
@@ -164,6 +167,19 @@ class SalesOrderDatabase:
                 );
                 CREATE INDEX IF NOT EXISTS idx_sales_receipt_allocations_order
                     ON sales_order_receipt_allocations(sales_order_id, receipt_id);
+                CREATE TABLE IF NOT EXISTS sales_order_attachments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+                    category TEXT NOT NULL,
+                    original_name TEXT NOT NULL,
+                    stored_name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL DEFAULT '',
+                    file_size INTEGER NOT NULL DEFAULT 0,
+                    uploaded_by TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_sales_order_attachments_order
+                    ON sales_order_attachments(sales_order_id, category, id);
                 """
             )
             order_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales_orders)").fetchall()}
@@ -174,6 +190,8 @@ class SalesOrderDatabase:
                 ("provisioning_key", "TEXT NOT NULL DEFAULT ''"),
                 ("provisioned_at", "TEXT"),
                 ("fulfillment_order_id", "INTEGER"),
+                ("customer_phone", "TEXT NOT NULL DEFAULT ''"),
+                ("product_category", "TEXT NOT NULL DEFAULT ''"),
             ):
                 if name not in order_columns:
                     connection.execute(f"ALTER TABLE sales_orders ADD COLUMN {name} {definition}")
@@ -182,6 +200,8 @@ class SalesOrderDatabase:
                 connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN source_type TEXT NOT NULL DEFAULT 'drawing'")
             if "line_code" not in line_columns:
                 connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN line_code TEXT NOT NULL DEFAULT ''")
+            if "technical_details" not in line_columns:
+                connection.execute("ALTER TABLE sales_order_door_lines ADD COLUMN technical_details TEXT NOT NULL DEFAULT '{}'")
             connection.execute(
                 """UPDATE sales_order_door_lines
                    SET line_code=(SELECT sales_orders.order_no FROM sales_orders
@@ -248,7 +268,8 @@ class SalesOrderDatabase:
                     product_name, door_type, width, height, opening_direction, color,
                     quantity, unit, unit_price, amount, drawing_status, drawing_revision,
                     drawing_snapshot, quote_snapshot, source_type, remark
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    , technical_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id, index, f"{order_no}-{index:02d}", line["task_id"], line.get("quote_id"), line.get("quote_group_index"),
@@ -259,6 +280,7 @@ class SalesOrderDatabase:
                     json.dumps(line.get("drawing_snapshot") or {}, ensure_ascii=False),
                     json.dumps(line.get("quote_snapshot") or {}, ensure_ascii=False),
                     line.get("source_type", "drawing"), line.get("remark", ""),
+                    json.dumps(line.get("technical_details") or {}, ensure_ascii=False),
                 ),
             )
             line_ids[index] = int(cursor.lastrowid)
@@ -316,13 +338,14 @@ class SalesOrderDatabase:
                 """
                 INSERT INTO sales_orders (
                     order_no, order_date, customer_name, project_name, delivery_address,
-                    salesperson, delivery_date, payment_template, remark, status,
+                    customer_phone, product_category, salesperson, delivery_date, payment_template, remark, status,
                     subtotal, discount_amount, total_amount, created_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_no, data["order_date"], data["customer_name"], data.get("project_name", ""),
-                    data.get("delivery_address", ""), data.get("salesperson", ""), data.get("delivery_date", ""),
+                    data.get("delivery_address", ""), data.get("customer_phone", ""), data.get("product_category", ""),
+                    data.get("salesperson", ""), data.get("delivery_date", ""),
                     data.get("payment_template", ""), data.get("remark", ""), subtotal,
                     data.get("discount_amount", 0), total, operator, now, now,
                 ),
@@ -350,13 +373,14 @@ class SalesOrderDatabase:
             connection.execute(
                 """
                 UPDATE sales_orders SET order_date = ?, customer_name = ?, project_name = ?,
-                    delivery_address = ?, salesperson = ?, delivery_date = ?, payment_template = ?,
+                    delivery_address = ?, customer_phone = ?, product_category = ?, salesperson = ?, delivery_date = ?, payment_template = ?,
                     remark = ?, subtotal = ?, discount_amount = ?, total_amount = ?,
                     version = version + 1, updated_at = ? WHERE id = ?
                 """,
                 (
                     data["order_date"], data["customer_name"], data.get("project_name", ""),
-                    data.get("delivery_address", ""), data.get("salesperson", ""), data.get("delivery_date", ""),
+                    data.get("delivery_address", ""), data.get("customer_phone", ""), data.get("product_category", ""),
+                    data.get("salesperson", ""), data.get("delivery_date", ""),
                     data.get("payment_template", ""), data.get("remark", ""), subtotal,
                     data.get("discount_amount", 0), total, now, order_id,
                 ),
@@ -534,7 +558,11 @@ class SalesOrderDatabase:
                     COALESCE((SELECT SUM(allocation.amount)
                               FROM sales_order_receipt_allocations allocation
                               JOIN sales_order_receipts receipt ON receipt.id=allocation.receipt_id
-                              WHERE allocation.sales_order_id=orders.id AND receipt.status='confirmed'), 0) AS paid_amount
+                              WHERE allocation.sales_order_id=orders.id AND receipt.status='confirmed'), 0) AS paid_amount,
+                    (SELECT preview.door_type FROM sales_order_door_lines preview WHERE preview.sales_order_id=orders.id ORDER BY preview.line_no LIMIT 1) AS first_door_type,
+                    (SELECT preview.product_name FROM sales_order_door_lines preview WHERE preview.sales_order_id=orders.id ORDER BY preview.line_no LIMIT 1) AS first_product_name,
+                    (SELECT preview.width FROM sales_order_door_lines preview WHERE preview.sales_order_id=orders.id ORDER BY preview.line_no LIMIT 1) AS first_width,
+                    (SELECT preview.height FROM sales_order_door_lines preview WHERE preview.sales_order_id=orders.id ORDER BY preview.line_no LIMIT 1) AS first_height
                 FROM sales_orders orders
                 LEFT JOIN sales_order_door_lines lines ON lines.sales_order_id = orders.id
                 WHERE {' AND '.join(conditions)}
@@ -715,6 +743,7 @@ class SalesOrderDatabase:
                 line = dict(item)
                 line["drawing_snapshot"] = json.loads(line.get("drawing_snapshot") or "{}")
                 line["quote_snapshot"] = json.loads(line.get("quote_snapshot") or "{}")
+                line["technical_details"] = json.loads(line.get("technical_details") or "{}")
                 result["lines"].append(line)
             result["payment_nodes"] = [
                 dict(item) for item in connection.execute(
@@ -750,4 +779,58 @@ class SalesOrderDatabase:
                     "SELECT * FROM sales_order_events WHERE sales_order_id = ? ORDER BY id DESC", (order_id,)
                 ).fetchall()
             ]
+            result["attachments"] = [
+                dict(item) for item in connection.execute(
+                    "SELECT * FROM sales_order_attachments WHERE sales_order_id=? ORDER BY category, id",
+                    (order_id,),
+                ).fetchall()
+            ]
             return result
+
+    def suggestions(self) -> Dict[str, List[str]]:
+        fields = ("customer_name", "project_name", "delivery_address", "customer_phone", "product_category")
+        with self._connect() as connection:
+            return {
+                field: [str(row[0]) for row in connection.execute(
+                    f"SELECT DISTINCT {field} FROM sales_orders WHERE TRIM({field})!='' ORDER BY updated_at DESC LIMIT 100"
+                ).fetchall()]
+                for field in fields
+            }
+
+    def add_attachment(self, order_id: int, data: Dict) -> Dict:
+        with self._connect() as connection:
+            if not connection.execute("SELECT 1 FROM sales_orders WHERE id=?", (order_id,)).fetchone():
+                raise LookupError("订单不存在")
+            cursor = connection.execute(
+                """INSERT INTO sales_order_attachments
+                   (sales_order_id, category, original_name, stored_name, mime_type, file_size, uploaded_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (order_id, data["category"], data["original_name"], data["stored_name"], data.get("mime_type", ""),
+                 data.get("file_size", 0), data.get("uploaded_by", ""), _now()),
+            )
+            row = connection.execute("SELECT * FROM sales_order_attachments WHERE id=?", (cursor.lastrowid,)).fetchone()
+            return dict(row)
+
+    def delete_attachment(self, order_id: int, attachment_id: int) -> Dict:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT attachment.*, orders.status AS order_status
+                   FROM sales_order_attachments attachment
+                   JOIN sales_orders orders ON orders.id=attachment.sales_order_id
+                   WHERE attachment.id=? AND attachment.sales_order_id=?""",
+                (attachment_id, order_id),
+            ).fetchone()
+            if not row:
+                raise LookupError("附件不存在")
+            if row["order_status"] != "draft":
+                raise RuntimeError("已确认订单的附件需保留追溯记录")
+            connection.execute("DELETE FROM sales_order_attachments WHERE id=?", (attachment_id,))
+            return dict(row)
+
+    def get_attachment(self, order_id: int, attachment_id: int) -> Optional[Dict]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM sales_order_attachments WHERE id=? AND sales_order_id=?",
+                (attachment_id, order_id),
+            ).fetchone()
+            return dict(row) if row else None

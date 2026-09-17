@@ -793,6 +793,16 @@ def test_panel_hatch_presets_and_masks():
             str(back_stripe_matches),
         )
 
+    template_doc = ezdxf.readfile(os.path.join(os.path.dirname(BACKEND_DIR), "template.dxf"))
+    template_drawer = EzdxfDrawer(template_doc, template_doc.modelspace(), "HINGE_TEST")
+    handle_mask = template_drawer.block_local_mask_points("YBPLS")
+    handle_xs = [point[0] for point in (handle_mask or [])]
+    check(
+        "hardware mask excludes handle leader geometry",
+        bool(handle_xs) and max(handle_xs) < 50 and min(handle_xs) > -50,
+        str((min(handle_xs), max(handle_xs)) if handle_xs else handle_mask),
+    )
+
     polygon_doc = ezdxf.new("R2018")
     polygon_block = polygon_doc.blocks.new("POLYGON_MASK_TEST")
     polygon_block.add_lwpolyline(

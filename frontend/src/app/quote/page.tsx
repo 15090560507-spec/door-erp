@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type {
   Accessory,
   QuoteDoorGroup,
@@ -264,6 +264,7 @@ async function resolveAiAccessoryRows(accessories: string[]): Promise<{
 }
 
 export default function QuotePage() {
+  const taskQuoteRequestRef = useRef<Record<number, number>>({});
   // Form state
   const [customerName, setCustomerName] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -576,6 +577,8 @@ export default function QuotePage() {
     mode: QuotePricingMode,
     trimPrice: number,
   ) {
+    const requestId = (taskQuoteRequestRef.current[groupIndex] || 0) + 1;
+    taskQuoteRequestRef.current[groupIndex] = requestId;
     updateDoorGroup(groupIndex, { taskId, pricingMode: mode, trimUnitPrice: trimPrice });
     if (!taskId) return;
     setStatus("正在读取图纸项目...");
@@ -583,6 +586,7 @@ export default function QuotePage() {
       const task = await getTask(taskId);
       const params = task.params;
       const allAccessories = await getAccessories();
+      if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
       if (!customerName.trim()) setCustomerName(params.dhdw || task.customer || "");
       if (!projectName.trim()) setProjectName(params.gdmc || task.project || "");
       if (groupIndex === 0) setQuoteDate((params.dhrq || localDateYmd()).replace(/\./g, "-"));
@@ -595,6 +599,7 @@ export default function QuotePage() {
       setQuoteDirty(true);
       setStatus(`已根据图纸项目生成${groupIndex + 1}号门报价明细`);
     } catch (error: unknown) {
+      if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
       const err = error as { userMessage?: string; message?: string };
       setStatus(err?.userMessage || err?.message || "图纸项目报价生成失败");
     }
@@ -613,14 +618,18 @@ export default function QuotePage() {
     const group = doorGroups[groupIndex];
     updateDoorGroup(groupIndex, { trimUnitPrice: price });
     if (group?.taskId && group.pricingMode === "framePlusTrim") {
+      const requestId = (taskQuoteRequestRef.current[groupIndex] || 0) + 1;
+      taskQuoteRequestRef.current[groupIndex] = requestId;
       try {
         const task = await getTask(group.taskId);
         const allAccessories = await getAccessories();
+        if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
         updateDoorGroup(groupIndex, {
           items: buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", price),
         });
         setQuoteDirty(true);
       } catch (error: unknown) {
+        if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
         const err = error as { userMessage?: string; message?: string };
         setStatus(err?.userMessage || err?.message || "门套单价更新失败");
       }

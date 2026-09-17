@@ -1075,13 +1075,14 @@ def list_tasks(date: Optional[str] = Query(None, description="按日期筛选 YY
     status_set = set(s.strip() for s in status.split(",")) if status else None
     normalized_date = normalize_task_date(date)
     for t in all_tasks:
+        t = dict(t)
+        t.update(_task_summary_from_params(t.get("params") or {}))
         if normalized_date and normalize_task_date(t.get("date")) != normalized_date:
             continue
         if status_set and t.get("status") not in status_set:
             continue
         if q and not _task_matches_query(t, q):
             continue
-        t = dict(t)
         t.pop("ref_img_b64", None)
         t.pop("drawing_img_b64", None)
         filtered.append(t)
@@ -1151,6 +1152,8 @@ def get_task(task_id: str, current_user: Dict = Depends(get_current_user)):
     task = task_db.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
+    task = dict(task)
+    task.update(_task_summary_from_params(task.get("params") or {}))
     return task
 
 

@@ -34,7 +34,8 @@ export default function OrderList({ orders, selectedId, loading, disabled, onSel
         <button key={order.id} type="button" disabled={disabled} onClick={() => onSelect(order.id)} className={`order-list__item${selectedId === order.id ? " is-active" : ""}`}>
           <span className="order-list__heading"><strong>{order.order_no}</strong><StatusChip tone={statusTone[order.status]}>{salesOrderStatusLabel[order.status] || order.status}</StatusChip></span>
           <span className="order-list__customer">{order.customer_name}{order.project_name ? ` · ${order.project_name}` : ""}</span>
-          <span className="order-list__meta"><span>{order.door_count} 樘 · 可下达 {order.releasable_count}</span><strong>¥{order.total_amount.toLocaleString()}</strong></span>
+          <span className="order-list__product"><strong>{order.first_door_type || order.first_product_name || "未填写门型"}</strong><span>{Number(order.first_width || 0) > 0 ? `${order.first_width} × ${order.first_height} mm` : "尺寸待补充"}{order.line_count > 1 ? ` · 另有 ${order.line_count - 1} 项` : ""}</span></span>
+          <span className="order-list__meta"><span>{order.door_count} 樘 · 交期 {order.delivery_date || "未设置"}</span><strong>¥{order.total_amount.toLocaleString()}</strong></span>
           {order.provisioning_status === "failed" && <span className="order-list__warning">门樘与 BOM 生成失败</span>}
         </button>
       ))}

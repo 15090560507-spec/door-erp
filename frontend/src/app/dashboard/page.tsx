@@ -330,7 +330,7 @@ export default function DashboardPage() {
       if (!data.trim_back_in || data.trim_back_in <= 0) missing.push("内包套宽");
       if (!data.trim_style_inner.trim()) missing.push("内包套款式");
     }
-    if (data.threshold_type === "吊脚" && (!data.dj_height || data.dj_height <= 0)) {
+    if (data.threshold_type === "吊脚" && (!Number.isFinite(data.dj_height) || data.dj_height < 0)) {
       missing.push("吊脚高度");
     }
     if (data.is_integrated_door) {

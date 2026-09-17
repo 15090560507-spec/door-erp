@@ -332,24 +332,42 @@ class EzdxfDrawer:
         if not all_points:
             return None
 
-        min_x = min(point[0] for point in all_points)
-        max_x = max(point[0] for point in all_points)
-        min_y = min(point[1] for point in all_points)
-        max_y = max(point[1] for point in all_points)
+        def percentile(values: list[float], fraction: float) -> float:
+            ordered = sorted(values)
+            if len(ordered) == 1:
+                return ordered[0]
+            position = (len(ordered) - 1) * fraction
+            lower = int(position)
+            upper = min(lower + 1, len(ordered) - 1)
+            weight = position - lower
+            return ordered[lower] * (1 - weight) + ordered[upper] * weight
+
+        xs = [point[0] for point in all_points]
+        ys = [point[1] for point in all_points]
+        robust_min_x, robust_max_x = percentile(xs, 0.01), percentile(xs, 0.99)
+        robust_min_y, robust_max_y = percentile(ys, 0.01), percentile(ys, 0.99)
+        robust_width = max(robust_max_x - robust_min_x, 1.0)
+        robust_height = max(robust_max_y - robust_min_y, 1.0)
         for candidate in sorted(closed_candidates, key=_polygon_area, reverse=True):
             candidate_min_x = min(point[0] for point in candidate)
             candidate_max_x = max(point[0] for point in candidate)
             candidate_min_y = min(point[1] for point in candidate)
             candidate_max_y = max(point[1] for point in candidate)
             if (
-                candidate_min_x <= min_x + 1
-                and candidate_max_x >= max_x - 1
-                and candidate_min_y <= min_y + 1
-                and candidate_max_y >= max_y - 1
+                candidate_max_x - candidate_min_x >= robust_width * 0.6
+                and candidate_max_y - candidate_min_y >= robust_height * 0.6
+                and candidate_min_x <= robust_min_x + max(1.0, robust_width * 0.08)
+                and candidate_max_x >= robust_max_x - max(1.0, robust_width * 0.08)
+                and candidate_min_y <= robust_min_y + max(1.0, robust_height * 0.08)
+                and candidate_max_y >= robust_max_y - max(1.0, robust_height * 0.08)
             ):
                 return candidate
 
-        hull = _convex_hull(all_points)
+        body_points = [
+            point for point in all_points
+            if robust_min_x <= point[0] <= robust_max_x and robust_min_y <= point[1] <= robust_max_y
+        ]
+        hull = _convex_hull(body_points or all_points)
         return hull if len(hull) >= 3 else None
 
     def block_local_bbox(self, block_name: str) -> Optional[tuple[float, float, float, float]]:

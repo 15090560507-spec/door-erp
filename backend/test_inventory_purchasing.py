@@ -167,6 +167,16 @@ def main() -> None:
             "warehouse",
         )
         check("到货登记进入待检而非库存", receipt["status"] == "待检" and inventory.get_balance(material["id"], warehouse["id"], location["id"])["on_hand"] == 0, str(receipt))
+        pending_order = purchasing.get_order(order["id"])
+        pending_summary = next(row for row in purchasing.list_orders() if row["id"] == order["id"])
+        check(
+            "已登记待检数量不再作为可重复登记余量",
+            pending_order["items"][0]["registered_quantity"] == 7
+            and pending_order["items"][0]["pending_inspection_quantity"] == 7
+            and pending_order["items"][0]["remaining_receivable_quantity"] == 0
+            and pending_summary["remaining_receivable_quantity"] == 0,
+            f"detail={pending_order}; summary={pending_summary}",
+        )
         receipt = purchasing.inspect_receipt_item(
             receipt["items"][0]["id"],
             {

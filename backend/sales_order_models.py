@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,7 @@ class SalesOrderLineInput(BaseModel):
     unit: str = "樘"
     unit_price: Optional[float] = Field(default=None, ge=0)
     remark: str = ""
+    technical_details: Dict[str, str] = Field(default_factory=dict)
 
 
 class SalesOrderChargeLineInput(BaseModel):
@@ -52,6 +53,8 @@ class SalesOrderCreate(BaseModel):
     customer_name: str = ""
     project_name: str = ""
     delivery_address: str = ""
+    customer_phone: str = ""
+    product_category: str = ""
     salesperson: str = ""
     delivery_date: str = ""
     payment_template: str = ""

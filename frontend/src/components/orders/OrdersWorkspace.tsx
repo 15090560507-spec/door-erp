@@ -5,13 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import EmptyState from "@/components/workspace/EmptyState";
 import FilterBar from "@/components/workspace/FilterBar";
 import MasterDetail from "@/components/workspace/MasterDetail";
-import MetricStrip from "@/components/workspace/MetricStrip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
 import { useAuth } from "@/hooks/useAuth";
-import { cancelSalesOrder, confirmSalesOrder, createSalesOrder, getSalesOrder, getSalesOrderCandidates, getSalesOrders, retrySalesOrderProvisioning, reverseSalesOrderReceipt, updateSalesOrder } from "@/lib/salesOrderApi";
+import { cancelSalesOrder, confirmSalesOrder, createSalesOrder, deleteSalesOrderAttachment, getSalesOrder, getSalesOrderCandidates, getSalesOrderSuggestions, getSalesOrders, retrySalesOrderProvisioning, reverseSalesOrderReceipt, updateSalesOrder, uploadSalesOrderAttachments } from "@/lib/salesOrderApi";
 import { salesOrderChargeAmount } from "@/lib/salesOrderPricing";
-import type { SalesOrder, SalesOrderCandidate, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPayload, SalesOrderQuoteChoice, SalesOrderQuoteItem, SalesOrderReceipt, SalesOrderSummary, SalesOrderValidationWarning } from "@/lib/salesOrderTypes";
+import type { SalesOrder, SalesOrderAttachment, SalesOrderCandidate, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPayload, SalesOrderQuoteChoice, SalesOrderQuoteItem, SalesOrderReceipt, SalesOrderSuggestions, SalesOrderSummary, SalesOrderTechnicalDetails, SalesOrderValidationWarning } from "@/lib/salesOrderTypes";
 import ApprovedSourcePicker from "./ApprovedSourcePicker";
 import OrderEditor from "./OrderEditor";
 import OrderList, { salesOrderStatusLabel } from "./OrderList";
@@ -19,10 +18,12 @@ import OrderSummary from "./OrderSummary";
 import SalesReceiptDialog from "./SalesReceiptDialog";
 
 const today = () => new Date().toISOString().slice(0, 10);
+const emptyTechnical = (): SalesOrderTechnicalDetails => ({ trim_type: "", main_door_style: "", lock_type: "", handle: "", hinge: "", material: "", item_remark: "" });
+const emptySuggestions: SalesOrderSuggestions = { customer_name: [], project_name: [], delivery_address: [], customer_phone: [], product_category: [] };
 
 function emptyEditor(name = ""): SalesOrderEditor {
   return {
-    order_date: today(), customer_name: "", project_name: "", delivery_address: "", salesperson: name,
+    order_date: today(), customer_name: "", project_name: "", delivery_address: "", customer_phone: "", product_category: "", salesperson: name,
     delivery_date: "", payment_template: "定金、发货款", remark: "", discount_amount: 0, lines: [], charge_lines: [],
     payment_nodes: [{ name: "定金", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }, { name: "发货款", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }],
   };
@@ -33,7 +34,7 @@ function manualLine(): SalesOrderEditorLine {
     source_type: "manual", task_id: `manual:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     product_name: "", door_type: "", width: 0, height: 0, opening_direction: "", color: "",
     drawing_status: "手工录入", quote_id: null, quote_group_index: null, quoteChoices: [], quantity: 1,
-    unit: "樘", unit_price: 0, remark: "",
+    unit: "樘", unit_price: 0, remark: "", technical_details: emptyTechnical(),
   };
 }
 
@@ -99,10 +100,11 @@ function legacyCharges(order: SalesOrder): SalesOrderChargeLine[] {
 function orderToEditor(order: SalesOrder): SalesOrderEditor {
   return {
     order_date: order.order_date, customer_name: order.customer_name, project_name: order.project_name,
-    delivery_address: order.delivery_address, salesperson: order.salesperson, delivery_date: order.delivery_date,
+    delivery_address: order.delivery_address, customer_phone: order.customer_phone || "", product_category: order.product_category || "", salesperson: order.salesperson, delivery_date: order.delivery_date,
     payment_template: order.payment_template, remark: order.remark, discount_amount: order.discount_amount,
     lines: order.lines.map((line) => ({
       ...line,
+      technical_details: { ...emptyTechnical(), ...(line.technical_details || {}) },
       drawing_status: line.current_drawing_status || line.drawing_status,
       quoteChoices: line.quote_choices?.length ? line.quote_choices : line.quote_id ? [{ quote_id: line.quote_id, quote_date: "", updated_at: "", group_index: line.quote_group_index || 0, group_name: "当前报价", amount: line.unit_price } satisfies SalesOrderQuoteChoice] : [],
     })),
@@ -158,6 +160,7 @@ export default function OrdersWorkspace() {
   const [reverseReceipt, setReverseReceipt] = useState<SalesOrderReceipt | null>(null);
   const [reverseReason, setReverseReason] = useState("");
   const [notice, setNotice] = useState<{ title: string; message: string; error?: boolean } | null>(null);
+  const [suggestions, setSuggestions] = useState<SalesOrderSuggestions>(emptySuggestions);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -167,16 +170,11 @@ export default function OrdersWorkspace() {
   }, [query, status]);
 
   useEffect(() => { const timer = window.setTimeout(() => { void loadOrders(); }, 180); return () => window.clearTimeout(timer); }, [loadOrders]);
+  useEffect(() => { void getSalesOrderSuggestions().then(setSuggestions).catch(() => undefined); }, []);
 
   const subtotal = useMemo(() => editor.charge_lines.reduce((sum, line) => sum + salesOrderChargeAmount(line), 0), [editor.charge_lines]);
   const total = Math.max(0, subtotal - Number(editor.discount_amount || 0));
   const warnings = useMemo(() => validationWarnings(editor, total), [editor, total]);
-  const metrics = useMemo(() => ({
-    draft: orders.filter((item) => item.status === "draft").length,
-    confirmed: orders.filter((item) => item.status === "confirmed").length,
-    fulfilling: orders.filter((item) => item.status === "fulfilling").length,
-    dueRisk: orders.filter((item) => !["cancelled", "completed"].includes(item.status) && item.delivery_date && item.delivery_date <= today()).length,
-  }), [orders]);
   const pickedCustomer = candidates.find((candidate) => picked.has(candidate.task_id))?.customer_name || "";
   const establishedCustomer = editor.customer_name || pickedCustomer;
 
@@ -212,7 +210,7 @@ export default function OrdersWorkspace() {
       const existingIds = new Set(current.lines.map((line) => line.task_id));
       const additions = selectedCandidates.filter((candidate) => !existingIds.has(candidate.task_id)).map((candidate): SalesOrderEditorLine => {
         const quote = candidate.quotes[0];
-        return { source_type: "drawing", task_id: candidate.task_id, product_name: candidate.product_name, door_type: candidate.door_type, width: candidate.width, height: candidate.height, opening_direction: candidate.opening_direction, color: candidate.color, drawing_status: candidate.drawing_status, source_approved_at: candidate.approved_at, quote_id: quote?.quote_id || null, quote_group_index: quote?.group_index ?? null, quoteChoices: candidate.quotes, quantity: 1, unit: "樘", unit_price: quote?.amount || 0, remark: "" };
+        return { source_type: "drawing", task_id: candidate.task_id, product_name: candidate.product_name, door_type: candidate.door_type, width: candidate.width, height: candidate.height, opening_direction: candidate.opening_direction, color: candidate.color, drawing_status: candidate.drawing_status, source_approved_at: candidate.approved_at, quote_id: quote?.quote_id || null, quote_group_index: quote?.group_index ?? null, quoteChoices: candidate.quotes, quantity: 1, unit: "樘", unit_price: quote?.amount || 0, remark: "", technical_details: { ...emptyTechnical(), ...candidate.technical_details } };
       });
       const charges = additions.flatMap((line, index) => chargesFromQuote(line.quoteChoices[0], current.lines.length + index + 1, line.quantity));
       return { ...current, customer_name: current.customer_name || selectedCandidates[0]?.customer_name || "", project_name: current.project_name || selectedCandidates[0]?.project_name || "", lines: [...current.lines, ...additions], charge_lines: [...current.charge_lines, ...charges] };
@@ -220,7 +218,7 @@ export default function OrdersWorkspace() {
     setCandidateOpen(false); setPicked(new Set());
   };
 
-  const payload = (): SalesOrderPayload => ({ ...editor, charge_lines: editor.charge_lines, lines: editor.lines.map((line) => ({ source_type: line.source_type, task_id: line.task_id, quote_id: line.quote_id, quote_group_index: line.quote_group_index, quantity: line.quantity, product_name: line.product_name, door_type: line.door_type, width: line.width, height: line.height, opening_direction: line.opening_direction, color: line.color, unit: line.unit, unit_price: line.source_type === "manual" || line.quote_id ? line.unit_price : null, remark: line.remark })) });
+  const payload = (): SalesOrderPayload => ({ ...editor, charge_lines: editor.charge_lines, lines: editor.lines.map((line) => ({ source_type: line.source_type, task_id: line.task_id, quote_id: line.quote_id, quote_group_index: line.quote_group_index, quantity: line.quantity, product_name: line.product_name, door_type: line.door_type, width: line.width, height: line.height, opening_direction: line.opening_direction, color: line.color, unit: line.unit, unit_price: line.source_type === "manual" || line.quote_id ? line.unit_price : null, remark: line.remark, technical_details: line.technical_details })) });
 
   const addManualLine = () => setEditor((current) => ({ ...current, lines: [...current.lines, manualLine()], charge_lines: [...current.charge_lines, manualCharge(current.lines.length + 1)] }));
   const changeLine = (index: number, changes: Partial<SalesOrderEditorLine>) => setEditor((current) => {
@@ -278,6 +276,22 @@ export default function OrdersWorkspace() {
     if (message) setNotice({ title: "收款已登记", message });
   };
 
+  const uploadAttachments = async (category: SalesOrderAttachment["category"], files: File[]) => {
+    if (!selected) return;
+    setBusy(true);
+    try { const result = await uploadSalesOrderAttachments(selected.id, category, files); await refreshSelected(); setNotice({ title: "上传成功", message: result.message }); }
+    catch (error) { setNotice({ title: "上传失败", message: apiMessage(error, "图纸附件上传失败"), error: true }); }
+    finally { setBusy(false); }
+  };
+
+  const removeAttachment = async (attachment: SalesOrderAttachment) => {
+    if (!selected) return;
+    setBusy(true);
+    try { const result = await deleteSalesOrderAttachment(selected.id, attachment.id); await refreshSelected(); setNotice({ title: "删除成功", message: result.message }); }
+    catch (error) { setNotice({ title: "删除失败", message: apiMessage(error, "附件删除失败"), error: true }); }
+    finally { setBusy(false); }
+  };
+
   const reverseSelectedReceipt = async () => {
     if (!reverseReceipt || !reverseReason.trim()) return;
     setBusy(true);
@@ -302,9 +316,8 @@ export default function OrdersWorkspace() {
   return <div className="min-h-screen bg-[#F5F5F7] text-[#1B1B1F]">
     <main className="workspace-page workspace-page--wide space-y-4">
       <WorkspaceHeader title="订单确认" description="关联已终审图纸及对应报价，确认后自动生成独立门樘生产编号与基础 BOM。" context={<><ClipboardCheck size={14} />经营管理 / 销售订单</>} actions={<><button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => void loadOrders()}><RefreshCw size={15} />刷新</button><button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={startNew}><Plus size={16} />新建订单</button></>} />
-      <MetricStrip items={[{ key: "draft", label: "草稿", value: metrics.draft, tone: "blue", icon: <ClipboardCheck size={16} />, onClick: () => setStatus("draft") }, { key: "confirmed", label: "已确认", value: metrics.confirmed, tone: "green", icon: <PackageCheck size={16} />, onClick: () => setStatus("confirmed") }, { key: "fulfilling", label: "履约中", value: metrics.fulfilling, icon: <Send size={16} />, onClick: () => setStatus("fulfilling") }, { key: "risk", label: "交期风险", value: metrics.dueRisk, tone: "red", icon: <CircleAlert size={16} /> }]} />
       {!editing && <FilterBar summary={`共 ${orders.length} 张订单`}><label className="relative min-w-64 flex-1"><Search className="absolute left-3 top-2.5 text-[#777780]" size={16} /><input className="h-9 w-full pl-9 pr-3" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="订单号、客户、项目" /></label><select className="h-9 min-w-32 px-3" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">全部状态</option>{Object.entries(salesOrderStatusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FilterBar>}
-      {editing ? <OrderEditor order={selected} editor={editor} subtotal={subtotal} total={total} busy={busy} onBack={backToList} onFieldChange={(field, value) => setEditor((current) => ({ ...current, [field]: value }))} onPaymentChange={(index, changes) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...changes } : node) }))} onPaymentAdd={() => setEditor((current) => ({ ...current, payment_nodes: [...current.payment_nodes, { name: "其他收款", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }] }))} onPaymentRemove={(index) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} onAddSource={openCandidates} onAddManual={addManualLine} onLineChange={changeLine} onLineRemove={removeLine} onChargeAdd={() => setEditor((current) => ({ ...current, charge_lines: [...current.charge_lines, manualCharge(null)] }))} onChargeChange={(index, changes) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.map((charge, chargeIndex) => chargeIndex === index ? { ...charge, ...changes } : charge) }))} onChargeRemove={(index) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.filter((_, chargeIndex) => chargeIndex !== index) }))} onSave={() => void save()} onConfirm={() => setConfirmOpen(true)} /> : <MasterDetail list={<OrderList orders={orders} selectedId={selected?.id} loading={loading} disabled={busy} onSelect={(orderId) => void chooseOrder(orderId)} onCreate={startNew} />} detail={selected ? <OrderSummary order={selected} busy={busy} onEdit={() => setEditing(true)} onCancel={() => setCancelOpen(true)} onRetry={() => void retryProvisioning()} onReceipt={() => setReceiptOpen(true)} onReverseReceipt={(receipt) => { setReverseReceipt(receipt); setReverseReason(""); }} /> : <EmptyState title="选择订单查看详情" description="可查看来源图纸、报价、门樘数量和履约生成状态。" />} listLabel="销售订单列表" detailLabel="销售订单摘要" />}
+      {editing ? <OrderEditor order={selected} editor={editor} suggestions={suggestions} subtotal={subtotal} total={total} busy={busy} onBack={backToList} onFieldChange={(field, value) => setEditor((current) => ({ ...current, [field]: value }))} onPaymentChange={(index, changes) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.map((node, nodeIndex) => nodeIndex === index ? { ...node, ...changes } : node) }))} onPaymentAdd={() => setEditor((current) => ({ ...current, payment_nodes: [...current.payment_nodes, { name: "其他收款", due_percent: 0, due_amount: 0, planned_date: "", remark: "" }] }))} onPaymentRemove={(index) => setEditor((current) => ({ ...current, payment_nodes: current.payment_nodes.filter((_, nodeIndex) => nodeIndex !== index) }))} onAddSource={openCandidates} onAddManual={addManualLine} onLineChange={changeLine} onLineRemove={removeLine} onChargeAdd={() => setEditor((current) => ({ ...current, charge_lines: [...current.charge_lines, manualCharge(null)] }))} onChargeChange={(index, changes) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.map((charge, chargeIndex) => chargeIndex === index ? { ...charge, ...changes } : charge) }))} onChargeRemove={(index) => setEditor((current) => ({ ...current, charge_lines: current.charge_lines.filter((_, chargeIndex) => chargeIndex !== index) }))} onAttachmentUpload={(category, files) => void uploadAttachments(category, files)} onAttachmentDelete={(attachment) => void removeAttachment(attachment)} onSave={() => void save()} onConfirm={() => setConfirmOpen(true)} /> : <MasterDetail list={<OrderList orders={orders} selectedId={selected?.id} loading={loading} disabled={busy} onSelect={(orderId) => void chooseOrder(orderId)} onCreate={startNew} />} detail={selected ? <OrderSummary order={selected} busy={busy} onEdit={() => setEditing(true)} onCancel={() => setCancelOpen(true)} onRetry={() => void retryProvisioning()} onReceipt={() => setReceiptOpen(true)} onReverseReceipt={(receipt) => { setReverseReceipt(receipt); setReverseReason(""); }} /> : <EmptyState title="选择订单查看详情" description="可查看来源图纸、报价、门樘数量和履约生成状态。" />} listLabel="销售订单列表" detailLabel="销售订单摘要" />}
     </main>
     <ApprovedSourcePicker open={candidateOpen} candidates={candidates} loading={candidateLoading} query={candidateQuery} picked={picked} establishedCustomer={establishedCustomer} onQueryChange={setCandidateQuery} onSearch={() => void fetchCandidates()} onToggle={toggleCandidate} onAdd={addPicked} onManual={() => { setCandidateOpen(false); addManualLine(); }} onClose={() => setCandidateOpen(false)} />
     <ViewportDialog open={confirmOpen} title="请确认宽、高尺寸" description="正式确认后将冻结订单快照，并自动生成独立门樘和基础 BOM。" onClose={() => setConfirmOpen(false)} size="large" footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setConfirmOpen(false)}>返回检查</button><button type="button" className="ui-button ui-button--primary" disabled={Boolean(warnings.length) || busy} onClick={() => void confirm()}><Send size={16} />确认无误并正式确认</button></>}><div className="order-confirm"><div className="order-confirm__lines">{editor.lines.map((line, index) => <div key={line.task_id}><span><strong>{index + 1}. {line.product_name || line.door_type || "未填写产品"}</strong><small>{line.width} × {line.height} mm · 数量 {line.quantity} {line.unit}</small></span><strong>¥{editor.charge_lines.filter((charge) => charge.door_line_no === index + 1).reduce((sum, charge) => sum + salesOrderChargeAmount(charge), 0).toLocaleString()}</strong></div>)}</div><div className="order-confirm__total"><span>订单总额</span><strong>¥{total.toLocaleString()}</strong></div>{warnings.length ? <div className="order-confirm__warnings" role="alert"><strong><CircleAlert size={16} />确认前还需处理 {warnings.length} 项</strong>{warnings.map((warning) => <p key={warning.key}>{warning.message}</p>)}</div> : <div className="order-confirm__ready"><PackageCheck size={17} /><span>尺寸、数量、报价和收款计划校验通过，可以正式确认。</span></div>}</div></ViewportDialog>

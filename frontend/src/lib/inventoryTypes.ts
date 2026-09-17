@@ -361,6 +361,9 @@ export interface PurchaseOrderItem {
   specification: string;
   ordered_quantity: number;
   received_quantity: number;
+  registered_quantity?: number;
+  pending_inspection_quantity?: number;
+  remaining_receivable_quantity?: number;
   rejected_quantity: number;
   cancelled_quantity: number;
   unit: string;
@@ -380,6 +383,9 @@ export interface PurchaseOrder {
   item_count?: number;
   ordered_quantity?: number;
   received_quantity?: number;
+  registered_quantity?: number;
+  pending_inspection_quantity?: number;
+  remaining_receivable_quantity?: number;
   items?: PurchaseOrderItem[];
   created_at: string;
 }

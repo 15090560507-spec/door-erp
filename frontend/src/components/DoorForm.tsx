@@ -274,7 +274,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         product_name,
         sel_kx: data.sel_kx, sel_nk: data.sel_nk,
         left_gap: 0, right_gap: 0, top_gap: 0, bottom_gap: 0,
-        fw_top_str: "0", threshold_type: "吊脚", has_dj: true, dj_height: data.dj_height || 30,
+        fw_top_str: "0", threshold_type: "吊脚", has_dj: true, dj_height: Number.isFinite(data.dj_height) ? data.dj_height : 30,
       });
       return;
     }

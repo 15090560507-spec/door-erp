@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from auth import get_current_user
+from config import SALES_ORDER_FILES_DIR
 from quote_routes import quote_db
 from sales_order_database import SalesOrderDatabase
 from sales_order_models import (
@@ -271,6 +274,22 @@ def _line_error(line_no: int, field: str, message: str) -> OrderValidationError:
     }])
 
 
+def _technical_details(params: Dict) -> Dict[str, str]:
+    lock_type = str(params.get("st_val") or "")
+    if params.get("fingerprint_lock"):
+        lock_type = f"指纹锁 / {lock_type}" if lock_type else "指纹锁"
+    handles = [str(params.get(key) or "").strip() for key in ("zmls", "fmls")]
+    return {
+        "trim_type": str(params.get("trim_style_outer") or params.get("trim_style_inner") or params.get("sel_bz") or ""),
+        "main_door_style": str(params.get("zmks") or ""),
+        "lock_type": lock_type,
+        "handle": " / ".join(value for value in handles if value),
+        "hinge": str(params.get("sel_hys") or ""),
+        "material": str(params.get("material") or params.get("zzcl") or ""),
+        "item_remark": str(params.get("sm") or ""),
+    }
+
+
 def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
     if item.source_type == "manual":
         product_name = item.product_name.strip()
@@ -305,6 +324,7 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
             "drawing_snapshot": {"source_type": "manual"},
             "quote_snapshot": {},
             "remark": item.remark.strip(),
+            "technical_details": {key: str(value or "") for key, value in item.technical_details.items()},
         }
 
     if not item.task_id.strip():
@@ -335,6 +355,8 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
     quantity = int(item.quantity)
     snapshot = _task_snapshot(task)
     opening = f"{params.get('sel_kx', '')}{params.get('sel_nk', '')}".strip()
+    details = _technical_details(params)
+    details.update({key: str(value or "") for key, value in item.technical_details.items() if str(value or "").strip()})
     return {
         "source_type": "drawing",
         "task_id": item.task_id,
@@ -355,6 +377,7 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
         "drawing_snapshot": snapshot,
         "quote_snapshot": quote_snapshot,
         "remark": item.remark.strip(),
+        "technical_details": details,
     }
 
 
@@ -424,6 +447,7 @@ def _candidate(task: Dict) -> Dict:
         "height": float(params.get("dh") or 0),
         "opening_direction": f"{params.get('sel_kx', '')}{params.get('sel_nk', '')}".strip(),
         "color": str(params.get("ys") or ""),
+        "technical_details": _technical_details(params),
         "drawing_status": str(task.get("status") or ""),
         "approved_at": str(task.get("approved_at") or task.get("updated_at") or task.get("date") or ""),
         "quote_status": "已报价" if quotes else "未报价",
@@ -532,6 +556,11 @@ def list_orders(
     return {"orders": orders, "total": len(orders)}
 
 
+@router.get("/suggestions")
+def order_suggestions(current_user: Dict = Depends(get_current_user)):
+    return sales_order_db.suggestions()
+
+
 @router.get("/receipt-candidates")
 def list_receipt_candidates(
     customer: str = Query(""),
@@ -568,6 +597,72 @@ def get_order(order_id: int, current_user: Dict = Depends(get_current_user)):
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
     return {"order": _enrich_order(order)}
+
+
+@router.post("/{order_id}/attachments", status_code=201)
+async def upload_attachment(
+    order_id: int,
+    category: str = Form(...),
+    files: List[UploadFile] = File(...),
+    current_user: Dict = Depends(get_current_user),
+):
+    allowed_categories = {"door_drawing", "customer_signed", "quote_signed", "split_drawing"}
+    if category not in allowed_categories:
+        raise HTTPException(status_code=400, detail="附件分类无效")
+    order = sales_order_db.get(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    if order.get("status") != "draft":
+        raise HTTPException(status_code=409, detail="只有草稿订单可以增加附件")
+    uploaded = []
+    order_dir = os.path.join(SALES_ORDER_FILES_DIR, str(order_id))
+    os.makedirs(order_dir, exist_ok=True)
+    for upload in files:
+        content_type = str(upload.content_type or "")
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail=f"{upload.filename or '文件'} 不是图片")
+        content = await upload.read()
+        if len(content) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"{upload.filename or '图片'} 超过 15MB")
+        extension = os.path.splitext(upload.filename or "")[1].lower()
+        if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}:
+            extension = ".img"
+        stored_name = f"{uuid.uuid4().hex}{extension}"
+        path = os.path.join(order_dir, stored_name)
+        with open(path, "wb") as handle:
+            handle.write(content)
+        uploaded.append(sales_order_db.add_attachment(order_id, {
+            "category": category,
+            "original_name": upload.filename or stored_name,
+            "stored_name": stored_name,
+            "mime_type": content_type,
+            "file_size": len(content),
+            "uploaded_by": str(current_user.get("uid") or ""),
+        }))
+    return {"attachments": uploaded, "message": f"已上传 {len(uploaded)} 张图片"}
+
+
+@router.get("/{order_id}/attachments/{attachment_id}/file")
+def attachment_file(order_id: int, attachment_id: int, current_user: Dict = Depends(get_current_user)):
+    attachment = sales_order_db.get_attachment(order_id, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    path = os.path.join(SALES_ORDER_FILES_DIR, str(order_id), attachment["stored_name"])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="附件文件不存在")
+    return FileResponse(path, media_type=attachment.get("mime_type") or None, filename=attachment["original_name"])
+
+
+@router.delete("/{order_id}/attachments/{attachment_id}")
+def delete_attachment(order_id: int, attachment_id: int, current_user: Dict = Depends(get_current_user)):
+    try:
+        attachment = sales_order_db.delete_attachment(order_id, attachment_id)
+        path = os.path.join(SALES_ORDER_FILES_DIR, str(order_id), attachment["stored_name"])
+        if os.path.isfile(path):
+            os.remove(path)
+        return {"message": "附件已删除"}
+    except Exception as exc:
+        raise _error(exc) from exc
 
 
 @router.post("", status_code=201)

@@ -2,7 +2,8 @@ import { ArrowLeft, FilePlus2, Link2, Plus, Save, Send, Trash2 } from "lucide-re
 import type { ReactNode } from "react";
 import EmptyState from "@/components/workspace/EmptyState";
 import StatusChip from "@/components/workspace/StatusChip";
-import type { SalesOrder, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPaymentNode } from "@/lib/salesOrderTypes";
+import type { SalesOrder, SalesOrderAttachment, SalesOrderChargeLine, SalesOrderEditor, SalesOrderEditorLine, SalesOrderPaymentNode, SalesOrderSuggestions } from "@/lib/salesOrderTypes";
+import OrderAttachmentPanel from "./OrderAttachmentPanel";
 import OrderChargeEditor from "./OrderChargeEditor";
 import OrderLineEditor from "./OrderLineEditor";
 
@@ -10,9 +11,10 @@ function Field({ label, required, children }: { label: string; required?: boolea
   return <label className="order-field"><span>{label}{required && <b>*</b>}</span>{children}</label>;
 }
 
-export default function OrderEditor({ order, editor, subtotal, total, busy, onBack, onFieldChange, onPaymentChange, onPaymentAdd, onPaymentRemove, onAddSource, onAddManual, onLineChange, onLineRemove, onChargeAdd, onChargeChange, onChargeRemove, onSave, onConfirm }: {
+export default function OrderEditor({ order, editor, suggestions, subtotal, total, busy, onBack, onFieldChange, onPaymentChange, onPaymentAdd, onPaymentRemove, onAddSource, onAddManual, onLineChange, onLineRemove, onChargeAdd, onChargeChange, onChargeRemove, onAttachmentUpload, onAttachmentDelete, onSave, onConfirm }: {
   order: SalesOrder | null;
   editor: SalesOrderEditor;
+  suggestions: SalesOrderSuggestions;
   subtotal: number;
   total: number;
   busy: boolean;
@@ -28,6 +30,8 @@ export default function OrderEditor({ order, editor, subtotal, total, busy, onBa
   onChargeAdd: () => void;
   onChargeChange: (index: number, changes: Partial<SalesOrderChargeLine>) => void;
   onChargeRemove: (index: number) => void;
+  onAttachmentUpload: (category: SalesOrderAttachment["category"], files: File[]) => void;
+  onAttachmentDelete: (attachment: SalesOrderAttachment) => void;
   onSave: () => void;
   onConfirm: () => void;
 }) {
@@ -45,20 +49,29 @@ export default function OrderEditor({ order, editor, subtotal, total, busy, onBa
         <div className="order-editor__section-title"><div><h3>订单信息</h3><p>带入后可调整项目、交期、交付和收款信息；技术结构仍以终审图纸为准。</p></div></div>
         <div className="order-editor__fields">
           <Field label="订单日期"><input disabled={locked} type="date" value={editor.order_date} onChange={(event) => onFieldChange("order_date", event.target.value)} /></Field>
-          <Field label="客户" required><input disabled={locked || Boolean(drawingCustomer)} value={editor.customer_name} onChange={(event) => onFieldChange("customer_name", event.target.value)} placeholder={drawingCustomer ? "由首张终审图纸确定" : "请输入客户名称"} /></Field>
-          <Field label="项目"><input disabled={locked} value={editor.project_name} onChange={(event) => onFieldChange("project_name", event.target.value)} /></Field>
+          <Field label="客户" required><input list="order-customer-options" disabled={locked || Boolean(drawingCustomer)} value={editor.customer_name} onChange={(event) => onFieldChange("customer_name", event.target.value)} placeholder={drawingCustomer ? "由首张终审图纸确定" : "请输入客户名称"} /></Field>
+          <Field label="项目"><input list="order-project-options" disabled={locked} value={editor.project_name} onChange={(event) => onFieldChange("project_name", event.target.value)} /></Field>
           <Field label="交期" required><input disabled={locked} type="date" value={editor.delivery_date} onChange={(event) => onFieldChange("delivery_date", event.target.value)} /></Field>
           <Field label="销售员"><input disabled={locked} value={editor.salesperson} onChange={(event) => onFieldChange("salesperson", event.target.value)} /></Field>
-          <Field label="收货地址"><input disabled={locked} value={editor.delivery_address} onChange={(event) => onFieldChange("delivery_address", event.target.value)} /></Field>
+          <Field label="联系电话"><input list="order-phone-options" disabled={locked} value={editor.customer_phone} onChange={(event) => onFieldChange("customer_phone", event.target.value)} /></Field>
+          <Field label="商品类别"><input list="order-category-options" disabled={locked} value={editor.product_category} onChange={(event) => onFieldChange("product_category", event.target.value)} /></Field>
+          <Field label="收货地址"><input list="order-address-options" disabled={locked} value={editor.delivery_address} onChange={(event) => onFieldChange("delivery_address", event.target.value)} /></Field>
           <Field label="收款模板"><input disabled={locked} value={editor.payment_template} onChange={(event) => onFieldChange("payment_template", event.target.value)} /></Field>
           <Field label="订单备注"><input disabled={locked} value={editor.remark} onChange={(event) => onFieldChange("remark", event.target.value)} /></Field>
         </div>
+        <datalist id="order-customer-options">{suggestions.customer_name.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id="order-project-options">{suggestions.project_name.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id="order-phone-options">{suggestions.customer_phone.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id="order-category-options">{suggestions.product_category.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id="order-address-options">{suggestions.delivery_address.map((value) => <option key={value} value={value} />)}</datalist>
       </section>
 
       <section className="order-editor__section">
         <div className="order-editor__section-title"><div><h3>门樘明细</h3><p>采购可按相同物料合并，生产、质检、入库和工资仍按每樘门追踪。</p></div><strong>{editor.lines.length} 项 · {editor.lines.reduce((sum, line) => sum + line.quantity, 0)} 樘</strong></div>
         <div className="order-editor__lines">{editor.lines.length ? editor.lines.map((line, index) => <OrderLineEditor key={line.task_id} line={line} index={index} disabled={locked || busy} onChange={(changes) => onLineChange(index, changes)} onRemove={() => onLineRemove(index)} />) : <EmptyState title="还没有订单明细" description="关联已终审图纸和报价，或为特殊情况添加手工明细。" action={<div className="flex flex-wrap justify-center gap-2"><button type="button" className="ui-button ui-button--primary" onClick={onAddSource}><Link2 size={16} />关联终审图纸</button><button type="button" className="ui-button ui-button--secondary" onClick={onAddManual}><FilePlus2 size={16} />手工录入</button></div>} />}</div>
       </section>
+
+      <OrderAttachmentPanel attachments={order?.attachments || []} disabled={locked || busy} saved={Boolean(order)} onUpload={onAttachmentUpload} onDelete={onAttachmentDelete} />
 
       <OrderChargeEditor lines={editor.lines} charges={editor.charge_lines} disabled={locked || busy} onAdd={onChargeAdd} onChange={onChargeChange} onRemove={onChargeRemove} />
 

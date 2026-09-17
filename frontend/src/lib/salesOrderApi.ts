@@ -6,6 +6,8 @@ import type {
   SalesOrderReceipt,
   SalesOrderReceiptCandidate,
   SalesOrderSummary,
+  SalesOrderAttachment,
+  SalesOrderSuggestions,
 } from "./salesOrderTypes";
 
 export type SalesOrderCandidateFilters = {
@@ -31,6 +33,24 @@ export async function getSalesOrderCandidates(params?: SalesOrderCandidateFilter
 export async function getSalesOrders(params?: { q?: string; status?: string }): Promise<SalesOrderSummary[]> {
   const { data } = await api.get<{ orders: SalesOrderSummary[]; total: number }>("/sales-orders", { params });
   return data.orders;
+}
+
+export async function getSalesOrderSuggestions(): Promise<SalesOrderSuggestions> {
+  const { data } = await api.get<SalesOrderSuggestions>("/sales-orders/suggestions");
+  return data;
+}
+
+export async function uploadSalesOrderAttachments(orderId: number, category: SalesOrderAttachment["category"], files: File[]) {
+  const form = new FormData();
+  form.append("category", category);
+  files.forEach((file) => form.append("files", file));
+  const { data } = await api.post<{ attachments: SalesOrderAttachment[]; message: string }>(`/sales-orders/${orderId}/attachments`, form);
+  return data;
+}
+
+export async function deleteSalesOrderAttachment(orderId: number, attachmentId: number) {
+  const { data } = await api.delete<{ message: string }>(`/sales-orders/${orderId}/attachments/${attachmentId}`);
+  return data;
 }
 
 export async function getSalesOrder(orderId: number): Promise<SalesOrder> {

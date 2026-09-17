@@ -39,6 +39,28 @@ export interface SalesOrderCandidate {
   approved_at: string;
   quote_status: string;
   quotes: SalesOrderQuoteChoice[];
+  technical_details: SalesOrderTechnicalDetails;
+}
+
+export interface SalesOrderTechnicalDetails {
+  trim_type: string;
+  main_door_style: string;
+  lock_type: string;
+  handle: string;
+  hinge: string;
+  material: string;
+  item_remark: string;
+}
+
+export interface SalesOrderAttachment {
+  id: number;
+  sales_order_id: number;
+  category: "door_drawing" | "customer_signed" | "quote_signed" | "split_drawing";
+  original_name: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: string;
+  created_at: string;
 }
 
 export interface SalesOrderLine {
@@ -66,6 +88,7 @@ export interface SalesOrderLine {
   quote_choices?: SalesOrderQuoteChoice[];
   drawing_snapshot?: { params?: Record<string, unknown> };
   remark: string;
+  technical_details: SalesOrderTechnicalDetails;
 }
 
 export interface SalesOrderChargeLine {
@@ -143,10 +166,16 @@ export interface SalesOrderSummary {
   fulfillment_order_id?: number | null;
   paid_amount?: number;
   unpaid_amount?: number;
+  first_door_type?: string;
+  first_product_name?: string;
+  first_width?: number;
+  first_height?: number;
 }
 
 export interface SalesOrder extends SalesOrderSummary {
   delivery_address: string;
+  customer_phone: string;
+  product_category: string;
   salesperson: string;
   payment_template: string;
   remark: string;
@@ -164,6 +193,7 @@ export interface SalesOrder extends SalesOrderSummary {
   paid_amount: number;
   unpaid_amount: number;
   events: Array<{ id: number; event_type: string; detail: string; operator: string; created_at: string }>;
+  attachments: SalesOrderAttachment[];
 }
 
 export interface SalesOrderLineInput {
@@ -181,6 +211,7 @@ export interface SalesOrderLineInput {
   unit?: string;
   unit_price?: number | null;
   remark: string;
+  technical_details?: Partial<SalesOrderTechnicalDetails>;
 }
 
 export interface SalesOrderPayload {
@@ -188,6 +219,8 @@ export interface SalesOrderPayload {
   customer_name: string;
   project_name: string;
   delivery_address: string;
+  customer_phone: string;
+  product_category: string;
   salesperson: string;
   delivery_date: string;
   payment_template: string;
@@ -218,6 +251,15 @@ export interface SalesOrderEditorLine {
   unit_price: number;
   remark: string;
   source_changed?: boolean;
+  technical_details: SalesOrderTechnicalDetails;
+}
+
+export interface SalesOrderSuggestions {
+  customer_name: string[];
+  project_name: string[];
+  delivery_address: string[];
+  customer_phone: string[];
+  product_category: string[];
 }
 
 export type SalesOrderEditor = Omit<SalesOrderPayload, "lines"> & { lines: SalesOrderEditorLine[] };
