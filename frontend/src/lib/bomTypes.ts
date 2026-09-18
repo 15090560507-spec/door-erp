@@ -43,6 +43,12 @@ export interface BomWorkbenchResponse {
   pagination: { page: number; page_size: number; total: number; pages: number };
 }
 
+export interface BomBlocker {
+  id?: number;
+  field: string;
+  message: string;
+}
+
 export interface BomRow {
   id: number;
   parent_id: number | null;
@@ -72,6 +78,7 @@ export interface BomRow {
   item_kind: "assembly" | "manufactured_part" | "material" | string;
   procurement_mode: "make" | "stock" | "purchase" | "subcontract" | string;
   drawing_parameters: Record<string, unknown>;
+  blockers?: BomBlocker[];
 }
 
 export interface BomGroup {
@@ -129,6 +136,7 @@ export interface BomDetail {
   version_history: BomVersion[];
   downstream_impact: { requirement_count: number; supply_count: number; work_package_count: number };
   frame_status: { applicable: boolean; can_calculate: boolean; deferred: boolean; errors: unknown[]; warnings: unknown[] };
+  publish_blockers: BomBlocker[];
 }
 
 export interface BomDraftItem {

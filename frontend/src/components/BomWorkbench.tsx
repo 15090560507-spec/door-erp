@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   Boxes,
-  CheckCheck,
   ClipboardList,
   Copy,
   Database,
@@ -34,9 +33,8 @@ import {
   getDoorBom,
   publishDoorBom,
   saveDoorBomDraft,
-  verifyDoorBomRows,
 } from "@/lib/bomApi";
-import type { BomDetail, BomDraftItem, BomRow, BomWorkbenchItem, BomWorkbenchState, BomWorkbenchSummary } from "@/lib/bomTypes";
+import type { BomBlocker, BomDetail, BomDraftItem, BomRow, BomWorkbenchItem, BomWorkbenchState, BomWorkbenchSummary } from "@/lib/bomTypes";
 import { createInventoryMaterial, getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial, MaterialPayload } from "@/lib/inventoryTypes";
 
@@ -98,18 +96,19 @@ function newBomRow(source?: BomRow, group?: { code: string; label: string }): Bo
     item_kind: source?.item_kind || "material",
     procurement_mode: source?.procurement_mode || "stock",
     drawing_parameters: source?.drawing_parameters || {},
+    blockers: [],
   };
 }
 
 function verificationHint(row: BomRow): string {
   const selfMade = row.procurement_mode === "make" || ["assembly", "manufactured_part"].includes(row.item_kind);
-  if (selfMade) return "自制件无需物料档案";
   if (row.id < 0) return "请先保存新增项目";
-  if (!row.material_id) return "请先选择物料档案";
-  if (Number(row.planned_quantity || 0) <= 0) return "计划用量必须大于 0";
-  if (row.verification_status === "已核验") return "物料与计划数量已确认";
-  return "可勾选后点击核验选中";
+  if (!(row.blockers || []).length) return selfMade ? "自制资料完整" : "外购资料完整";
+  return row.blockers?.[0]?.message || "资料待补齐";
 }
+
+const blockersFor = (row: BomRow, ...fields: string[]) =>
+  (row.blockers || []).filter((item) => fields.includes(item.field));
 
 type BomWorkbenchProps = {
   embedded?: boolean;
@@ -126,7 +125,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
   const [selectedDoorId, setSelectedDoorId] = useState<number | null>(initialDoorId || null);
   const [detail, setDetail] = useState<BomDetail | null>(null);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [draftDirty, setDraftDirty] = useState(false);
   const [deletedRowIds, setDeletedRowIds] = useState<number[]>([]);
   const [materialRow, setMaterialRow] = useState<BomRow | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -163,7 +162,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
     setLoadingDetail(true);
     try {
       setDetail(await getDoorBom(doorId, version));
-      setSelectedRows(new Set());
+      setDraftDirty(false);
       setDeletedRowIds([]);
       setError("");
     } catch (requestError) {
@@ -206,12 +205,9 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
   }, [items]);
 
   const editable = detail?.status === "草稿";
-  const unresolved = detail?.rows.filter((row) => {
-    const selfMade = row.procurement_mode === "make" || ["assembly", "manufactured_part"].includes(row.item_kind);
-    const materialReady = selfMade || row.match_status === "无需物料" || (row.match_status === "已匹配" && Boolean(row.material_id));
-    return !materialReady || row.planned_quantity <= 0 || row.verification_status !== "已核验";
-  }).length || 0;
-  const selectedVerifiable = detail?.rows.filter((row) => row.id > 0 && selectedRows.has(row.id) && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验") || [];
+  const blockers = detail?.publish_blockers || [];
+  const unresolved = blockers.length;
+  const canPublish = Boolean(detail?.rows.length) && blockers.length === 0 && !draftDirty;
   const rowsById = useMemo(() => new Map((detail?.rows || []).map((row) => [row.id, row])), [detail?.rows]);
   const displayGroups = useMemo(() => {
     if (!detail) return [];
@@ -230,7 +226,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
     try {
       const result = await action();
       setDetail(result.bom);
-      setSelectedRows(new Set());
+      setDraftDirty(false);
       setDeletedRowIds([]);
       setNotice({ title: "操作完成", message: result.message || fallback });
       await loadList();
@@ -243,6 +239,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
   };
 
   const updateRow = (rowId: number, changes: Partial<BomRow>) => {
+    setDraftDirty(true);
     setDetail((current) => current ? {
       ...current,
       rows: current.rows.map((row) => {
@@ -260,12 +257,13 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
   };
 
   const addRow = (source?: BomRow, group?: { code: string; label: string }) => {
+    setDraftDirty(true);
     setDetail((current) => current ? { ...current, rows: [...current.rows, newBomRow(source, group)] } : current);
   };
 
   const removeRow = (row: BomRow) => {
+    setDraftDirty(true);
     setDetail((current) => current ? { ...current, rows: current.rows.filter((item) => item.id !== row.id) } : current);
-    setSelectedRows((current) => { const next = new Set(current); next.delete(row.id); return next; });
     if (row.id > 0) setDeletedRowIds((current) => current.includes(row.id) ? current : [...current, row.id]);
   };
 
@@ -286,15 +284,12 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
     }, "门框门套制造方式应用失败");
   };
 
-  const verifySelected = () => {
-    if (!detail || !selectedVerifiable.length) return;
-    const doorUnitId = detail.door_unit_id;
-    const itemIds = selectedVerifiable.map((row) => row.id);
-    const draftItems = detail.rows.map(asDraftItem);
-    void runAction(async () => {
-      await saveDoorBomDraft(doorUnitId, { items: draftItems, delete_item_ids: deletedRowIds, product_summary: detail.product_summary, special_requirements: detail.special_requirements, frame_trim_mode: detail.frame_trim_mode });
-      return verifyDoorBomRows(doorUnitId, itemIds);
-    }, "BOM 核验失败");
+  const focusBlocker = (blocker: BomBlocker) => {
+    const field = blocker.id ? document.getElementById(`bom-field-${blocker.id}-${blocker.field}`) : null;
+    const row = blocker.id ? document.getElementById(`bom-row-${blocker.id}`) : null;
+    const target = field || row;
+    target?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    if (field instanceof HTMLElement) window.setTimeout(() => field.focus(), 220);
   };
 
   const publish = () => {
@@ -315,13 +310,13 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
       <main className={embedded ? "bom-workbench bom-workbench--embedded" : "workspace-page workspace-page--wide bom-workbench"}>
         <WorkspaceHeader
           title="BOM与工艺准备"
-          description="从订单确认结果生成整单 BOM、下料清单和工艺路线；发布后由生产工作包承接实际下料与加工。"
+          description="从订单确认结果生成整单 BOM、下料清单和工艺路线；资料补齐后即可发布并进入生产。"
           context={<><Boxes size={14} />经营管理 / 生产准备</>}
           actions={<button type="button" className="ui-button ui-button--secondary" disabled={busy || loadingList} onClick={() => void loadList()}><RefreshCw size={15} />刷新</button>}
         />
 
         <section className="bom-stage-strip" aria-label="生产准备业务阶段">
-          <div><span>1</span><strong>BOM确认</strong><small>生成、补齐并核验整单需求，发布后冻结BOM版本</small></div>
+          <div><span>1</span><strong>BOM确认</strong><small>生成并补齐整单需求，自动检查通过后发布冻结</small></div>
           <div><span>2</span><strong>算料</strong><small>按BOM部件拆分零件，填写下料尺寸、数量和损耗</small></div>
           <div><span>3</span><strong>发布下料单</strong><small>冻结算料版本，部件进入下料与后续加工工序</small></div>
         </section>
@@ -329,7 +324,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
         <MetricStrip items={[
           { key: "all", label: "门樘总数", value: summary.total, icon: <ClipboardList size={16} />, active: status === "", onClick: () => setStatus("") },
           { key: "generate", label: "待生成", value: summary.pending_generation, tone: "blue", icon: <Play size={16} />, active: status === "待生成", onClick: () => setStatus("待生成") },
-          { key: "verify", label: "待核验", value: summary.pending_verification, tone: "amber", icon: <CheckCheck size={16} />, active: status === "待核验", onClick: () => setStatus("待核验") },
+          { key: "verify", label: "待补齐", value: summary.pending_verification, tone: "amber", icon: <AlertTriangle size={16} />, active: status === "待核验", onClick: () => setStatus("待核验") },
           { key: "missing", label: "缺少资料", value: summary.missing_data, tone: "red", icon: <AlertTriangle size={16} />, active: status === "缺少资料", onClick: () => setStatus("缺少资料") },
           { key: "published", label: "已发布", value: summary.published, tone: "green", icon: <PackageCheck size={16} />, active: status === "已发布", onClick: () => setStatus("已发布") },
         ]} />
@@ -338,7 +333,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
           <label className="bom-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="订单号、生产编号、客户、项目" /></label>
           <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="BOM 状态">
             <option value="">全部状态</option>
-            {(["待生成", "待核验", "缺少资料", "缺料", "已发布", "已变更"] as BomWorkbenchState[]).map((value) => <option key={value}>{value}</option>)}
+            {(["待生成", "待核验", "缺少资料", "缺料", "已发布", "已变更"] as BomWorkbenchState[]).map((value) => <option key={value} value={value}>{value === "待核验" ? "待补齐" : value}</option>)}
           </select>
         </FilterBar>
 
@@ -369,20 +364,19 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
               </header>
 
               <div className="bom-actionbar">
-                <div><span>共 {detail.rows.length} 项</span><span>待处理 {unresolved} 项</span><span>规则 {detail.rule_version || "未生成"}</span></div>
+                <div><span>共 {detail.rows.length} 项</span><span>待处理 {unresolved} 项</span>{draftDirty && <span className="is-dirty">有未保存修改</span>}<span>规则 {detail.rule_version || "未生成"}</span></div>
                 <div>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => void runAction(() => generateDoorBom(detail.door_unit_id), "BOM 生成失败")}><Play size={15} />{detail.rows.length ? "重新生成" : "生成 BOM"}</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => setAddOpen(true)}><Plus size={15} />新增项目</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={saveDraft}><Save size={15} />保存草稿</button>
-                  <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable || !selectedVerifiable.length} onClick={verifySelected}><CheckCheck size={15} />核验选中</button>
-                  {detail.status === "已确认" ? <button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={() => setVersionOpen(true)}><FileClock size={15} />新建版本</button> : <button type="button" className="ui-button ui-button--primary" disabled={busy || unresolved > 0 || !detail.rows.length} onClick={() => setPublishOpen(true)}><Send size={15} />发布 BOM</button>}
+                  {detail.status === "已确认" ? <button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={() => setVersionOpen(true)}><FileClock size={15} />新建版本</button> : <button type="button" className="ui-button ui-button--primary" disabled={busy || !canPublish} onClick={() => setPublishOpen(true)}><Send size={15} />发布 BOM</button>}
                 </div>
               </div>
-              <div className="flex items-center gap-2 border-b border-[#E7E7EB] bg-[#F5F9FF] px-4 py-2 text-[11px] text-[#4B607A]"><CheckCheck size={14} className="shrink-0 text-[#007AFF]" /><span><strong className="text-[#24486F]">BOM 核验：</strong>只确认外购物料档案、取得方式和计划数量，不是采购来料或成品质检。</span></div>
+              {blockers.length > 0 && <div className="bom-readiness-summary"><AlertTriangle size={15} /><strong>还有 {blockers.length} 项发布前问题</strong><div>{blockers.slice(0, 6).map((blocker, index) => <button type="button" key={`${blocker.id || "bom"}-${blocker.field}-${index}`} onClick={() => focusBlocker(blocker)}>{blocker.message}</button>)}</div></div>}
 
               <section className="bom-manufacturing-mode">
                 <div><strong>门框/门套制造方式</strong><small>决定门框、门套外皮与骨架在 BOM 和生产进度中的组合方式</small></div>
-                <select disabled={!editable} value={detail.frame_trim_mode || "separate"} onChange={(event) => setDetail({ ...detail, frame_trim_mode: event.target.value as BomDetail["frame_trim_mode"] })}>
+                <select disabled={!editable} value={detail.frame_trim_mode || "separate"} onChange={(event) => { setDraftDirty(true); setDetail({ ...detail, frame_trim_mode: event.target.value as BomDetail["frame_trim_mode"] }); }}>
                   <option value="separate">全部分体</option>
                   <option value="integrated_skeleton">骨架连体、外皮分体</option>
                   <option value="fully_integrated">骨架连体、外皮连体</option>
@@ -394,21 +388,20 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
 
               <div className="bom-table-wrap">
                 <table className="bom-table">
-                  <thead><tr><th className="bom-check"><input type="checkbox" aria-label="全选当前可核验项" checked={Boolean(selectedVerifiable.length) && selectedVerifiable.length === detail.rows.filter((row) => row.id > 0 && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").length} onChange={(event) => setSelectedRows(event.target.checked ? new Set(detail.rows.filter((row) => row.id > 0 && row.procurement_mode !== "make" && row.material_id && row.planned_quantity > 0 && row.verification_status !== "已核验").map((row) => row.id)) : new Set())} /></th><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>核验</th><th>操作</th></tr></thead>
+                  <thead><tr><th>部件/物料</th><th>规格</th><th>物料档案</th><th>理论量</th><th>损耗%</th><th>计划量</th><th>单位</th><th>取得方式</th><th>资料状态</th><th>操作</th></tr></thead>
                   <tbody>{displayGroups.map((group) => {
                     const groupRows = group.rows.map((row) => rowsById.get(row.id)).filter((row): row is BomRow => Boolean(row));
-                    return [<tr className="bom-group-row" key={`${group.code}-title`}><td colSpan={11}><div><span className="bom-group-row__label">{group.label}<small>{groupRows.length} 项</small></span>{editable && <button type="button" onClick={() => addRow(undefined, { code: group.code, label: group.label })}><Plus size={13} />新增本类项目</button>}</div></td></tr>, ...groupRows.map((row) => (
-                      <tr key={row.id} className={row.verification_status === "已核验" ? "is-verified" : ""}>
-                        <td className="bom-check"><input type="checkbox" aria-label={`选择 ${row.name}`} title={verificationHint(row)} disabled={!editable || row.id < 0 || row.procurement_mode === "make" || !row.material_id || Number(row.planned_quantity || 0) <= 0 || row.verification_status === "已核验"} checked={selectedRows.has(row.id)} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.id); else next.delete(row.id); return next; })} /></td>
-                        <td className={row.parent_id ? "bom-tree-cell is-child" : "bom-tree-cell"}><input disabled={!editable} value={row.name || ""} onChange={(event) => updateRow(row.id, { name: event.target.value })} /><small>{row.procurement_mode === "make" ? "按图自制" : row.source_type === "manual" ? "手工项目" : row.operation_code || row.category}</small></td>
+                    return [<tr className="bom-group-row" key={`${group.code}-title`}><td colSpan={10}><div><span className="bom-group-row__label">{group.label}<small>{groupRows.length} 项</small></span>{editable && <button type="button" onClick={() => addRow(undefined, { code: group.code, label: group.label })}><Plus size={13} />新增本类项目</button>}</div></td></tr>, ...groupRows.map((row) => (
+                      <tr id={`bom-row-${row.id}`} key={row.id} className={(row.blockers || []).length === 0 ? "is-verified" : ""}>
+                        <td className={row.parent_id ? "bom-tree-cell is-child" : "bom-tree-cell"}><input id={`bom-field-${row.id}-name`} disabled={!editable} value={row.name || ""} onChange={(event) => updateRow(row.id, { name: event.target.value })} /><small>{row.procurement_mode === "make" ? "按图自制" : row.source_type === "manual" ? "手工项目" : row.operation_code || row.category}</small>{blockersFor(row, "name", "category").map((item) => <small key={`${item.field}-${item.message}`} className="bom-row-error">{item.message}</small>)}</td>
                         <td><input disabled={!editable} value={row.specification || ""} onChange={(event) => updateRow(row.id, { specification: event.target.value })} /></td>
-                        <td>{row.procurement_mode === "make" ? <div className="bom-self-made"><strong>无需建物料</strong><small>尺寸与参数保存在本单 BOM</small></div> : <><select disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit, match_status: material ? "已匹配" : "待匹配" }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small></>}</td>
+                        <td>{row.procurement_mode === "make" ? <div className="bom-self-made"><strong>无需建物料</strong><small>尺寸与参数保存在本单 BOM</small></div> : <><select id={`bom-field-${row.id}-material_id`} disabled={!editable} value={row.material_id || ""} onChange={(event) => { const material = materials.find((item) => item.id === Number(event.target.value)); updateRow(row.id, { material_id: material?.id || null, material_code: material?.code || null, material_name: material?.name || null, unit: material?.unit || row.unit, match_status: material ? "已匹配" : "待匹配" }); }}><option value="">待匹配</option>{materials.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small className={row.material_id ? "is-ok" : "is-alert"}>{row.material_id ? row.material_name : row.match_status}</small>{blockersFor(row, "material_id").map((item) => <small key={item.message} className="bom-row-error">{item.message}</small>)}</>}</td>
                         <td className="bom-number">{Number(row.theoretical_quantity || 0).toLocaleString()}</td>
                         <td><input className="bom-number-input" type="number" min="0" max="100" step="0.1" disabled={!editable} value={row.waste_rate} onChange={(event) => updateRow(row.id, { waste_rate: Number(event.target.value) })} /></td>
-                        <td><input className="bom-number-input" type="number" min="0" step="0.001" disabled={!editable} value={row.planned_quantity} onChange={(event) => updateRow(row.id, { planned_quantity: Number(event.target.value), quantity: Number(event.target.value) })} /></td>
-                        <td><input className="bom-unit-input" disabled={!editable} value={row.unit || ""} onChange={(event) => updateRow(row.id, { unit: event.target.value })} /></td>
-                        <td><select disabled={!editable || row.procurement_mode === "make"} value={row.acquisition_method || "待确定"} onChange={(event) => updateRow(row.id, { acquisition_method: event.target.value })}>{row.procurement_mode === "make" && <option>按图自制</option>}<option>待确定</option><option>库存领料</option><option>采购</option><option>内部加工</option><option>外协加工</option></select></td>
-                        <td><div className="grid min-w-24 gap-1"><StatusChip tone={row.procurement_mode === "make" || row.verification_status === "已核验" ? "green" : row.material_id ? "amber" : "red"}>{row.procurement_mode === "make" ? "自制确认" : row.id < 0 ? "先保存" : row.verification_status}</StatusChip><small className="text-[10px] leading-tight text-[#777780]">{verificationHint(row)}</small></div></td>
+                        <td><input id={`bom-field-${row.id}-planned_quantity`} className="bom-number-input" type="number" min="0" step="0.001" disabled={!editable} value={row.planned_quantity} onChange={(event) => updateRow(row.id, { planned_quantity: Number(event.target.value), quantity: Number(event.target.value) })} />{blockersFor(row, "planned_quantity").map((item) => <small key={item.message} className="bom-row-error">{item.message}</small>)}</td>
+                        <td><input id={`bom-field-${row.id}-unit`} className="bom-unit-input" disabled={!editable} value={row.unit || ""} onChange={(event) => updateRow(row.id, { unit: event.target.value })} />{blockersFor(row, "unit").map((item) => <small key={item.message} className="bom-row-error">{item.message}</small>)}</td>
+                        <td><select id={`bom-field-${row.id}-acquisition_method`} disabled={!editable || row.procurement_mode === "make"} value={row.acquisition_method || "待确定"} onChange={(event) => updateRow(row.id, { acquisition_method: event.target.value })}>{row.procurement_mode === "make" && <option>按图自制</option>}<option>待确定</option><option>库存领料</option><option>采购</option><option>内部加工</option><option>外协加工</option></select>{blockersFor(row, "acquisition_method").map((item) => <small key={item.message} className="bom-row-error">{item.message}</small>)}</td>
+                        <td><div className="grid min-w-24 gap-1"><StatusChip tone={row.id < 0 ? "amber" : (row.blockers || []).length === 0 ? "green" : "red"}>{row.id < 0 ? "待保存" : (row.blockers || []).length === 0 ? (row.procurement_mode === "make" ? "自制资料完整" : "外购资料完整") : "待补齐"}</StatusChip><small className="text-[10px] leading-tight text-[#777780]">{verificationHint(row)}</small></div></td>
                         <td><div className="bom-row-actions">{row.procurement_mode !== "make" && !row.material_id && <button type="button" disabled={!editable} title="把临时项建立为物料档案" aria-label={`将${row.name || "临时项"}建立为物料档案`} onClick={() => setMaterialRow(row)}><Database size={14} /></button>}<button type="button" disabled={!editable} title="复制项目" aria-label={`复制${row.name || "项目"}`} onClick={() => addRow(row)}><Copy size={14} /></button><button type="button" disabled={!editable} title="删除项目" aria-label={`删除${row.name || "项目"}`} className="is-danger" onClick={() => removeRow(row)}><Trash2 size={14} /></button></div></td>
                       </tr>
                     ))];
@@ -418,7 +411,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
 
               <footer className="bom-detail__footer"><span>发布后自动产生物料需求，并进入采购、仓储和车间工作包。</span><div className="bom-version-list"><span>版本：</span>{detail.version_history.map((version) => <button type="button" key={version.version} className={version.version === detail.version ? "is-current" : ""} onClick={() => void loadDetail(detail.door_unit_id, version.version)}>V{version.version}</button>)}</div></footer>
             </div>
-          ) : <EmptyState title="选择门樘查看整单 BOM" description="左侧按订单归集，每樘门保持独立生产编号、BOM 和核验记录。" />}
+          ) : <EmptyState title="选择门樘查看整单 BOM" description="左侧按订单归集，每樘门保持独立生产编号、BOM 和版本记录。" />}
           listLabel="订单与门樘树"
           detailLabel="整单 BOM 明细"
         />
@@ -426,7 +419,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
 
       {materialRow && <BomMaterialDialog row={materialRow} onClose={() => setMaterialRow(null)} onCreated={(material, message) => { setMaterials((current) => [...current.filter((item) => item.id !== material.id), material].sort((left, right) => left.code.localeCompare(right.code, "zh-CN"))); updateRow(materialRow.id, { material_id: material.id, material_code: material.code, material_name: material.name, material_specification: material.specification, material_unit: material.unit, unit: material.unit, match_status: "已匹配" }); setMaterialRow(null); setNotice({ title: "物料已建档", message }); }} />}
       <ViewportDialog open={addOpen} title="新增 BOM 项目" description="先选择归属分类，新项目会直接出现在该分类中。" size="small" onClose={() => setAddOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setAddOpen(false)}>取消</button><button type="button" className="ui-button ui-button--primary" onClick={() => { const group = BOM_GROUP_OPTIONS.find(([code]) => code === addGroupCode) || BOM_GROUP_OPTIONS[BOM_GROUP_OPTIONS.length - 1]; addRow(undefined, { code: group[0], label: group[1] }); setAddOpen(false); }}><Plus size={15}/>新增到该分类</button></>}><label className="bom-dialog-field"><span>归属分类</span><select value={addGroupCode} onChange={(event) => setAddGroupCode(event.target.value)}>{BOM_GROUP_OPTIONS.map(([code,label])=><option key={code} value={code}>{label}</option>)}</select></label></ViewportDialog>
-      <ViewportDialog open={publishOpen} title="发布当前 BOM？" description="发布后当前版本将冻结，并自动产生下游物料需求。" size="small" onClose={() => setPublishOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setPublishOpen(false)}>返回检查</button><button type="button" className="ui-button ui-button--primary" onClick={publish}><Send size={15} />确认发布</button></>}><p className="bom-dialog-copy">当前 V{detail?.version} 共 {detail?.rows.length || 0} 项，全部物料、计划数量和核验状态已经通过。</p></ViewportDialog>
+      <ViewportDialog open={publishOpen} title="发布当前 BOM？" description="发布后当前版本将冻结，并自动产生下游物料需求。" size="small" onClose={() => setPublishOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setPublishOpen(false)}>返回检查</button><button type="button" className="ui-button ui-button--primary" onClick={publish}><Send size={15} />确认发布</button></>}><p className="bom-dialog-copy">当前 V{detail?.version} 共 {detail?.rows.length || 0} 项，发布前资料已经自动检查通过。</p></ViewportDialog>
       <ViewportDialog open={versionOpen} title="新建 BOM 版本" description="已发布版本保持不变，新版本用于记录生产变更。" size="small" onClose={() => setVersionOpen(false)} footer={<><button type="button" className="ui-button ui-button--secondary" onClick={() => setVersionOpen(false)}>取消</button><button type="button" className="ui-button ui-button--primary" disabled={!versionReason.trim()} onClick={createVersion}>创建版本</button></>}><label className="bom-dialog-field"><span>变更原因 *</span><textarea rows={4} value={versionReason} onChange={(event) => setVersionReason(event.target.value)} placeholder="例如：客户调整门板材质" /></label></ViewportDialog>
       <ViewportDialog open={Boolean(notice)} title={notice?.title || "提示"} size="small" onClose={() => setNotice(null)} footer={<button type="button" className="ui-button ui-button--primary" onClick={() => setNotice(null)}>知道了</button>}><p className={notice?.error ? "bom-dialog-copy is-error" : "bom-dialog-copy"}>{notice?.message}</p></ViewportDialog>
       {busy && <div className="fixed inset-0 z-[190] cursor-wait bg-black/[0.025]" aria-hidden="true" />}

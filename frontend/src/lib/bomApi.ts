@@ -23,11 +23,6 @@ export async function saveDoorBomDraft(doorUnitId: number, payload: { items: Bom
   return data;
 }
 
-export async function verifyDoorBomRows(doorUnitId: number, itemIds: number[]) {
-  const { data } = await api.post<BomResult>(`/bom/door-units/${doorUnitId}/verify`, { item_ids: itemIds });
-  return data;
-}
-
 export async function publishDoorBom(doorUnitId: number, remark = "") {
   const { data } = await api.post<BomResult & { idempotent: boolean }>(`/bom/door-units/${doorUnitId}/publish`, { remark });
   return data;
