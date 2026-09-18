@@ -159,6 +159,14 @@ class MultiDoorQuoteTests(unittest.TestCase):
     def test_quote_list_main_item_falls_back_to_dimensions_then_first_nonempty_row(self):
         cases = [
             (
+                "area-unit",
+                [
+                    {"category": "配件", "productName": "带尺寸配件", "width": 120, "height": 240, "unit": "套", "unitPrice": 300},
+                    {"category": "", "productName": "无分类主门", "width": 900, "height": 2100, "unit": "m²", "unitPrice": 1000},
+                ],
+                ("无分类主门", 900, 2100),
+            ),
+            (
                 "dimensions",
                 [
                     {"category": "锁具", "productName": "锁具", "unit": "套", "unitPrice": 300},

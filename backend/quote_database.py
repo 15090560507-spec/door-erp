@@ -197,20 +197,25 @@ class QuoteDatabaseManager:
 
     def get_all(self, limit: int = 50) -> List[Dict]:
         """返回报价单列表（不含明细），最新在前"""
-        def has_positive_dimension(item: Dict) -> bool:
-            for key in ("width", "height"):
-                try:
-                    if float(item.get(key) or 0) > 0:
-                        return True
-                except (TypeError, ValueError):
-                    continue
-            return False
+        def is_positive(value) -> bool:
+            try:
+                return float(value or 0) > 0
+            except (TypeError, ValueError):
+                return False
+
+        def has_complete_dimensions(item: Dict) -> bool:
+            return is_positive(item.get("width")) and is_positive(item.get("height"))
+
+        def has_area_unit(item: Dict) -> bool:
+            unit = str(item.get("unit") or "").strip().lower()
+            return "m2" in unit or "㎡" in unit or "m²" in unit
 
         def select_main_item(items: List[Dict]) -> Optional[Dict]:
             nonempty = [item for item in items if str(item.get("productName", "")).strip()]
             return (
                 next((item for item in nonempty if str(item.get("category") or "").strip() == "门类组合"), None)
-                or next((item for item in nonempty if has_positive_dimension(item)), None)
+                or next((item for item in nonempty if has_complete_dimensions(item) and has_area_unit(item)), None)
+                or next((item for item in nonempty if has_complete_dimensions(item)), None)
                 or (nonempty[0] if nonempty else None)
             )
 

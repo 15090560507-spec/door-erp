@@ -20,10 +20,11 @@ interface Props {
 }
 
 export default function QuoteItemsTable({ items, onChange }: Props) {
-  const [suggestions, setSuggestions] = useState<{ index: number; matches: Accessory[] } | null>(null);
+  const [suggestions, setSuggestions] = useState<{ rowId: string; matches: Accessory[] } | null>(null);
   const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
   const [dropTargetRowId, setDropTargetRowId] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchGeneration = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const unitOptionsId = useId();
   const totalAmount = items.reduce((sum, item) => {
@@ -35,16 +36,32 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        if (searchTimer.current) clearTimeout(searchTimer.current);
+        searchTimer.current = null;
+        searchGeneration.current += 1;
         setSuggestions(null);
       }
     }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      searchTimer.current = null;
+      searchGeneration.current += 1;
+    };
   }, []);
 
-  function updateItem(index: number, field: keyof QuoteItem, value: string | number | null) {
-    const next = items.map((item, i) => {
-      if (i !== index) return item;
+  function invalidateAccessorySearch() {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = null;
+    searchGeneration.current += 1;
+    setSuggestions(null);
+  }
+
+  function updateItem(rowId: string | undefined, field: keyof QuoteItem, value: string | number | null) {
+    if (!rowId) return;
+    const next = items.map((item) => {
+      if (item.rowId !== rowId) return item;
       if (field === "productName" && !String(value || "").trim()) {
         return { ...createEmptyQuoteItem(), rowId: item.rowId };
       }
@@ -56,30 +73,37 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
     onChange(next);
   }
 
-  async function handleProductSearch(index: number, query: string) {
-    updateItem(index, "productName", query);
+  function handleProductSearch(rowId: string | undefined, query: string) {
+    if (!rowId) return;
+    updateItem(rowId, "productName", query);
     if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = null;
+    const generation = ++searchGeneration.current;
+    setSuggestions(null);
     if (!query.trim()) {
-      setSuggestions(null);
       return;
     }
     searchTimer.current = setTimeout(async () => {
+      searchTimer.current = null;
       try {
         const matches = await getAccessories(query);
+        if (searchGeneration.current !== generation) return;
         if (matches.length) {
-          setSuggestions({ index, matches });
+          setSuggestions({ rowId, matches });
         } else {
           setSuggestions(null);
         }
       } catch {
-        setSuggestions(null);
+        if (searchGeneration.current === generation) setSuggestions(null);
       }
     }, 200);
   }
 
-  function selectAccessory(rowIndex: number, acc: Accessory) {
-    const next = items.map((item, i) => {
-      if (i !== rowIndex) return item;
+  function selectAccessory(rowId: string | undefined, acc: Accessory) {
+    if (!rowId) return;
+    invalidateAccessorySearch();
+    const next = items.map((item) => {
+      if (item.rowId !== rowId) return item;
       return {
         ...item,
         accessoryId: acc.id,
@@ -90,17 +114,16 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
       };
     });
     onChange(next);
-    setSuggestions(null);
   }
 
   function addRow() {
     onChange([...items, createEmptyQuoteItem()]);
   }
 
-  function removeRow(index: number) {
-    if (items.length <= 1) return;
-    onChange(items.filter((_, rowIndex) => rowIndex !== index));
-    setSuggestions(null);
+  function removeRow(rowId: string | undefined) {
+    if (!rowId || items.length <= 1) return;
+    invalidateAccessorySearch();
+    onChange(items.filter((item) => item.rowId !== rowId));
   }
 
   function moveRow(from: number, to: number) {
@@ -108,11 +131,11 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
     const next = [...items];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
+    invalidateAccessorySearch();
     onChange(next);
-    setSuggestions(null);
   }
 
-  function handleDragStart(event: DragEvent<HTMLButtonElement>, rowId: string | undefined) {
+  function handleDragStart(event: DragEvent<HTMLSpanElement>, rowId: string | undefined) {
     if (!rowId) {
       event.preventDefault();
       return;
@@ -146,8 +169,8 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="w-full min-w-0 pb-1">
-      <table className="w-full table-fixed text-[12px] xl:text-[13px]">
+    <div ref={containerRef} className="w-full min-w-0 overflow-x-auto pb-1">
+      <table className="w-full min-w-[920px] table-fixed text-[12px] xl:text-[13px]">
         <colgroup>
           <col className="w-[25%]" />
           <col className="w-[7%]" />
@@ -191,17 +214,17 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                 <textarea
                   rows={2}
                   value={item.productName}
-                  onChange={(e) => handleProductSearch(index, e.target.value)}
+                  onChange={(e) => handleProductSearch(item.rowId, e.target.value)}
                   placeholder="输入或搜索配件"
                   className="min-h-12 w-full resize-y rounded-md border border-transparent bg-transparent px-1.5 py-1.5 text-[12px] leading-4 transition-colors placeholder:text-[#C7C7CC] focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
                 />
-                {suggestions?.index === index && (
+                {suggestions && suggestions.rowId === item.rowId && (
                   <div className="absolute left-2 right-2 top-full z-20 bg-white border border-[#E5E5EA]/60 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
                     {suggestions.matches.slice(0, 6).map((acc) => (
                       <button
                         key={acc.id}
                         type="button"
-                        onClick={() => selectAccessory(index, acc)}
+                        onClick={() => selectAccessory(item.rowId, acc)}
                         className="w-full text-left px-3 py-2 text-[13px] hover:bg-[#F2F2F7] transition-colors border-b border-[#E5E5EA]/30 last:border-b-0"
                       >
                         <span className="font-medium text-[#1C1C1E]">{acc.name}</span>
@@ -219,7 +242,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   type="number"
                   step="1"
                   value={item.width ?? ""}
-                  onChange={(e) => updateItem(index, "width", e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => updateItem(item.rowId, "width", e.target.value ? Number(e.target.value) : null)}
                   className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 py-1.5 text-[12px] transition-colors focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
                 />
               </td>
@@ -229,7 +252,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   type="number"
                   step="1"
                   value={item.height ?? ""}
-                  onChange={(e) => updateItem(index, "height", e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => updateItem(item.rowId, "height", e.target.value ? Number(e.target.value) : null)}
                   className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 py-1.5 text-[12px] transition-colors focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
                 />
               </td>
@@ -238,11 +261,11 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                 <input
                   type="text"
                   value={item.openDirection}
-                  onChange={(e) => updateItem(index, "openDirection", e.target.value)}
+                  onChange={(e) => updateItem(item.rowId, "openDirection", e.target.value)}
                   onBlur={(e) => {
                     const normalized = normalizeOpenDirection(e.target.value);
                     if (normalized !== e.target.value) {
-                      updateItem(index, "openDirection", normalized);
+                      updateItem(item.rowId, "openDirection", normalized);
                     }
                   }}
                   placeholder="如: 内右开"
@@ -254,7 +277,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                 <input
                   type="text"
                   value={item.unit}
-                  onChange={(e) => updateItem(index, "unit", e.target.value)}
+                  onChange={(e) => updateItem(item.rowId, "unit", e.target.value)}
                   list={unitOptionsId}
                   className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 py-1.5 text-[12px] transition-colors focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
                 />
@@ -265,7 +288,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   type="number"
                   step="0.0001"
                   value={item.quantity ?? quoteItemQuantityText(item)}
-                  onChange={(e) => updateItem(index, "quantity", e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => updateItem(item.rowId, "quantity", e.target.value ? Number(e.target.value) : null)}
                   placeholder="自动"
                   title={item.quantity === null || item.quantity === undefined ? "自动计算数量" : "手动数量"}
                   className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 py-1.5 text-[12px] transition-colors placeholder:text-[#C7C7CC] focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
@@ -277,7 +300,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   type="number"
                   step="0.01"
                   value={item.unitPrice || ""}
-                  onChange={(e) => updateItem(index, "unitPrice", e.target.value ? Number(e.target.value) : 0)}
+                  onChange={(e) => updateItem(item.rowId, "unitPrice", e.target.value ? Number(e.target.value) : 0)}
                   className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 py-1.5 text-[12px] transition-colors focus:border-[#007AFF] focus:bg-white focus:outline-none xl:text-[13px]"
                 />
               </td>
@@ -286,17 +309,17 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
               </td>
               <td className="px-1 py-2 align-top">
                 <div className="flex h-7 items-center justify-center gap-0.5">
-                  <button
-                    type="button"
+                  <span
                     draggable
                     onDragStart={(event) => handleDragStart(event, item.rowId)}
                     onDragEnd={handleDragEnd}
-                    aria-label={`拖动第 ${index + 1} 行排序`}
+                    aria-hidden="true"
+                    tabIndex={-1}
                     title="拖动排序"
-                    className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded-md text-[#8E8E93] hover:bg-[#E5E5EA]/70 hover:text-[#1C1C1E] active:cursor-grabbing"
+                    className="flex h-7 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded-md text-[#8E8E93] hover:bg-[#E5E5EA]/70 hover:text-[#1C1C1E] active:cursor-grabbing"
                   >
                     <GripVertical size={14} aria-hidden="true" />
-                  </button>
+                  </span>
                   <button
                     type="button"
                     onClick={() => moveRow(index, index - 1)}
@@ -319,7 +342,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeRow(index)}
+                    onClick={() => removeRow(item.rowId)}
                     disabled={items.length <= 1}
                     aria-label={`删除第 ${index + 1} 行`}
                     title="删除"
