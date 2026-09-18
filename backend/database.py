@@ -405,7 +405,7 @@ class UserDatabaseManager:
             sales_a = users.get("A")
             if sales_a:
                 stored = sales_a.get("password", "")
-                if stored and verify_password("123", stored):
+                if stored and any(verify_password(candidate, stored) for candidate in ("123", "123456")):
                     sales_a["password"] = hash_password("123654")
                     changed = True
 

@@ -357,13 +357,35 @@ user_db2 = UserDatabaseManager(
 )
 check("users: 销售小A旧默认密码自动迁移", user_db2.authenticate("A", "123654") is not None)
 users = user_db2.load_all_users()
-users["A"]["password"] = hash_password("custom-a-password")
+users["A"]["password"] = hash_password("123456")
 user_db2.save(users)
 user_db3 = UserDatabaseManager(
     file_path=os.path.join(DATA_DIR, "test_users.json"),
     backup_dir=os.path.join(DATA_DIR, "backups", "users"),
 )
-check("users: 销售小A自定义密码不会被覆盖", user_db3.authenticate("A", "custom-a-password") is not None)
+check("users: 销售小A历史默认密码 123456 自动迁移", user_db3.authenticate("A", "123654") is not None)
+users = user_db3.load_all_users()
+current_default_hash = hash_password("123654")
+users["A"]["password"] = current_default_hash
+user_db3.save(users)
+user_db4 = UserDatabaseManager(
+    file_path=os.path.join(DATA_DIR, "test_users.json"),
+    backup_dir=os.path.join(DATA_DIR, "backups", "users"),
+)
+check("users: 销售小A当前默认密码保持不变",
+      user_db4.load_all_users()["A"]["password"] == current_default_hash
+      and user_db4.authenticate("A", "123654") is not None)
+users = user_db4.load_all_users()
+custom_password_hash = hash_password("custom-a-password")
+users["A"]["password"] = custom_password_hash
+user_db4.save(users)
+user_db5 = UserDatabaseManager(
+    file_path=os.path.join(DATA_DIR, "test_users.json"),
+    backup_dir=os.path.join(DATA_DIR, "backups", "users"),
+)
+check("users: 销售小A自定义密码不会被覆盖",
+      user_db5.load_all_users()["A"]["password"] == custom_password_hash
+      and user_db5.authenticate("A", "custom-a-password") is not None)
 
 # 5g. 删除用户
 user_db.delete_user("testuser")
