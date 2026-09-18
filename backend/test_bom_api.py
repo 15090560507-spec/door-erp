@@ -15,6 +15,7 @@ sys.path.insert(0, BACKEND_DIR)
 
 import bom_routes
 from auth import get_current_user
+from bom_readiness import automatic_verification_status, bom_blockers
 from bom_generation_service import BomGenerationService
 from fulfillment_database import FulfillmentDatabase, fulfillment_now
 from test_bom_generation import create_door
@@ -76,6 +77,38 @@ class BomApiTest(unittest.TestCase):
             )
             return int(cursor.lastrowid)
 
+    def test_bom_readiness_rules(self):
+        self_made = {
+            "id": 1,
+            "name": "门框骨架",
+            "category": "骨架与型材",
+            "planned_quantity": 1,
+            "unit": "套",
+            "acquisition_method": "内部加工",
+            "procurement_mode": "make",
+            "item_kind": "manufactured_part",
+            "material_id": None,
+            "match_status": "无需物料",
+        }
+        self.assertEqual(bom_blockers(self_made), [])
+        self.assertEqual(automatic_verification_status(self_made), "已核验")
+
+        purchased = {
+            "id": 2,
+            "name": "标配拉手",
+            "category": "五金与开启机构",
+            "planned_quantity": 1,
+            "unit": "件",
+            "acquisition_method": "采购",
+            "procurement_mode": "purchase",
+            "item_kind": "material",
+            "material_id": None,
+            "match_status": "待匹配",
+        }
+        blockers = bom_blockers(purchased)
+        self.assertTrue(any(item["field"] == "material_id" for item in blockers))
+        self.assertEqual(automatic_verification_status(purchased), "待核验")
+
     def test_workbench_and_detail_expose_groups_versions_and_frame_state(self):
         door_id, _result = self.create_generated_door()
 
@@ -98,7 +131,7 @@ class BomApiTest(unittest.TestCase):
         self.assertTrue(all(row["match_status"] == "无需物料" for row in self_made))
         self.assertTrue(all(row["verification_status"] == "已核验" for row in self_made))
 
-    def test_draft_update_and_verify_only_allow_unambiguous_matched_rows(self):
+    def test_draft_update_automatically_verifies_complete_rows(self):
         door_id, generated = self.create_generated_door(sales_order_id=2)
         panel = next(row for row in generated["components"] if row["operation_code"] == "PANEL_SHEET")
         material_id = self.add_material()
@@ -116,7 +149,8 @@ class BomApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         updated = next(row for row in response.json()["bom"]["rows"] if row["id"] == panel["id"])
         self.assertEqual(updated["match_status"], "已匹配")
-        self.assertEqual(updated["verification_status"], "待核验")
+        self.assertEqual(updated["verification_status"], "已核验")
+        self.assertEqual(updated["blockers"], [])
 
         response = self.client.post(
             f"/api/bom/door-units/{door_id}/verify",
@@ -136,9 +170,10 @@ class BomApiTest(unittest.TestCase):
             f"/api/bom/door-units/{door_id}/verify",
             json={"item_ids": [unmatched["id"]]},
         )
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.json()["detail"]["code"], "BOM_ITEM_NOT_MATCHED")
-        self.assertEqual(response.json()["detail"]["bom_item_id"], unmatched["id"])
+        self.assertEqual(response.status_code, 200)
+        refreshed = next(row for row in response.json()["bom"]["rows"] if row["id"] == unmatched["id"])
+        self.assertEqual(refreshed["verification_status"], "待核验")
+        self.assertTrue(any(item["field"] == "material_id" for item in refreshed["blockers"]))
 
     def test_draft_supports_manual_add_copy_and_delete(self):
         door_id, generated = self.create_generated_door(sales_order_id=4)

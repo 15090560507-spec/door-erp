@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import get_current_user, require_uids
 from bom_generation_service import BomGenerationService
+from bom_readiness import automatic_verification_status, bom_blockers
 from bom_models import (
     BomDraftUpdate,
     BomNewVersionRequest,
@@ -60,6 +61,14 @@ def translate_error(exc: Exception, door_unit_id: int | None = None) -> HTTPExce
 
 def _detail(door_unit_id: int, version: int | None = None) -> Dict[str, Any]:
     detail = fulfillment_db.get_bom_detail(door_unit_id, version)
+    publish_blockers = []
+    for row in detail["rows"]:
+        row["blockers"] = bom_blockers(row)
+        row["verification_status"] = automatic_verification_status(row)
+        publish_blockers.extend(row["blockers"])
+    if not detail["rows"]:
+        publish_blockers.append({"field": "items", "message": "BOM没有明细行"})
+    detail["publish_blockers"] = publish_blockers
     try:
         frame = adapt_fulfillment_frame(fulfillment_db, door_unit_id)
         detail["frame_status"] = {
@@ -119,41 +128,8 @@ def update_draft(door_unit_id: int, request: BomDraftUpdate, current_user: Dict 
 @router.post("/door-units/{door_unit_id}/verify")
 def verify_bom(door_unit_id: int, request: BomVerifyRequest, current_user: Dict = Depends(get_current_user)):
     try:
-        package = fulfillment_db.latest_bom_package(door_unit_id)
-        if package["status"] != "草稿":
-            raise RuntimeError("BOM版本已确认冻结，不能继续核验")
-        placeholders = ",".join("?" for _ in request.item_ids)
-        rows = fulfillment_db.fetch_all(
-            f"""SELECT * FROM fulfillment_components
-                WHERE technical_package_id=? AND id IN ({placeholders})""",
-            (package["id"], *request.item_ids),
-        )
-        found = {int(row["id"]): row for row in rows}
-        for item_id in request.item_ids:
-            row = found.get(item_id)
-            if row is None:
-                raise bom_error(
-                    422, "BOM_ITEM_NOT_FOUND", "BOM行不存在或不属于当前版本",
-                    door_unit_id=door_unit_id, bom_item_id=item_id,
-                    suggestion="刷新BOM后重新选择",
-                )
-            self_made = row["procurement_mode"] == "make" or row["item_kind"] in {"assembly", "manufactured_part"}
-            if not self_made and (row["match_status"] != "已匹配" or row["material_id"] is None):
-                raise bom_error(
-                    422, "BOM_ITEM_NOT_MATCHED", "只有唯一匹配到物料档案的BOM行才能核验",
-                    field="material_id", door_unit_id=door_unit_id, bom_item_id=item_id,
-                    suggestion="先选择有效物料档案，再执行核验",
-                )
-            if float(row["planned_quantity"] or 0) <= 0:
-                raise bom_error(
-                    422, "BOM_QUANTITY_INVALID", "计划用量必须大于0",
-                    field="planned_quantity", door_unit_id=door_unit_id, bom_item_id=item_id,
-                    suggestion="填写准确计划用量",
-                )
         fulfillment_db.verify_bom_items(door_unit_id, request.item_ids, current_user)
-        return {"bom": _detail(door_unit_id), "message": f"已核验 {len(request.item_ids)} 项"}
-    except HTTPException:
-        raise
+        return {"bom": _detail(door_unit_id), "message": f"已重新检查 {len(request.item_ids)} 项"}
     except Exception as exc:
         raise translate_error(exc, door_unit_id) from exc
 
@@ -175,18 +151,9 @@ def publish_bom(door_unit_id: int, request: BomPublishRequest, current_user: Dic
             "SELECT * FROM fulfillment_components WHERE technical_package_id=? ORDER BY line_no, id",
             (package["id"],),
         )
-        blockers = []
+        blockers = [blocker for row in rows for blocker in bom_blockers(row)]
         if not rows:
             blockers.append({"field": "items", "message": "BOM没有明细行"})
-        for row in rows:
-            if row["match_status"] not in {"已匹配", "无需物料"} or (
-                row["match_status"] == "已匹配" and row["material_id"] is None
-            ):
-                blockers.append({"id": row["id"], "field": "material_id", "message": "物料尚未唯一匹配"})
-            if float(row["planned_quantity"] or 0) <= 0:
-                blockers.append({"id": row["id"], "field": "planned_quantity", "message": "计划用量必须大于0"})
-            if row["verification_status"] != "已核验":
-                blockers.append({"id": row["id"], "field": "verification_status", "message": "BOM行尚未核验"})
         if blockers:
             first = blockers[0]
             raise HTTPException(status_code=409, detail={
@@ -195,7 +162,7 @@ def publish_bom(door_unit_id: int, request: BomPublishRequest, current_user: Dic
                 "door_unit_id": door_unit_id,
                 "bom_item_id": first.get("id"),
                 "message": f"BOM还有 {len(blockers)} 项发布前问题",
-                "suggestion": "按问题清单补齐物料、数量和核验状态后再发布",
+                "suggestion": "按问题清单补齐对应字段后再发布",
                 "blockers": blockers,
             })
         fulfillment_db.publish_bom(door_unit_id, request.remark, current_user)

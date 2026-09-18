@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from bom_readiness import automatic_verification_status
 from bom_rules import CURRENT_BOM_RULE_VERSION, GROUP_LABELS, BomRuleItem, BomRuleWarning, build_baseline_bom
 from fulfillment_database import fulfillment_now, json_dumps, json_loads
 
@@ -202,7 +203,16 @@ class BomGenerationService:
                     if match_status == "已匹配":
                         matched_count += 1
                     planned_quantity = item.planned_quantity
-                    verification_status = "已核验" if match_status == "无需物料" else "待核验"
+                    verification_status = automatic_verification_status({
+                        "name": item.name,
+                        "category": item.category,
+                        "planned_quantity": planned_quantity,
+                        "unit": item.unit,
+                        "acquisition_method": item.acquisition_method,
+                        "procurement_mode": item.procurement_mode,
+                        "item_kind": item.item_kind,
+                        "material_id": material_id,
+                    })
                     parent_id = component_ids.get(item.parent_key) if item.parent_key else None
                     inserted = connection.execute(
                         """INSERT INTO fulfillment_components(

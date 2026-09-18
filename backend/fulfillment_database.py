@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
+from bom_readiness import automatic_verification_status, bom_blockers
 from config import FULFILLMENT_DB_FILE, FULFILLMENT_FILES_DIR
 from inventory_database import InventoryDatabase
 from requirement_service import RequirementService
@@ -79,14 +80,7 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
     else:
         if package.get("generation_status") in {"未生成", "生成失败"}:
             preparation_blockers.append("BOM尚未生成或生成失败")
-        unresolved = sum(
-            1 for item in components
-            if item.get("verification_status") != "已核验"
-            or (
-                item.get("match_status") not in {"已匹配", "无需物料"}
-                or (item.get("match_status") == "已匹配" and not item.get("material_id"))
-            )
-        )
+        unresolved = sum(1 for item in components if bom_blockers(item))
         if unresolved:
             preparation_blockers.append(f"还有{unresolved}项BOM资料待核验")
         blocking_warnings = int(package.get("blocking_warning_count") or 0)
@@ -1719,7 +1713,9 @@ class FulfillmentDatabase:
                     elif material_explicit or "item_kind" in updates or "procurement_mode" in updates:
                         updates["match_status"] = "已匹配" if updates.get("material_id") is not None else "待匹配"
                     if updates:
-                        updates["verification_status"] = "已核验" if is_self_made else "待核验"
+                        merged = dict(current)
+                        merged.update(updates)
+                        updates["verification_status"] = automatic_verification_status(merged)
                         assignments = ", ".join(f"{key}=?" for key in updates)
                         conn.execute(
                             f"UPDATE fulfillment_components SET {assignments} WHERE id=?",
@@ -1744,7 +1740,17 @@ class FulfillmentDatabase:
                         planned = float(math.ceil(calculated)) if unit in {"个", "件", "扇", "块", "套"} else round(calculated, 4)
                     material_id = values.get("material_id")
                     match_status = "无需物料" if is_self_made else ("已匹配" if material_id is not None else "待匹配")
-                    verification_status = "已核验" if is_self_made else "待核验"
+                    verification_status = automatic_verification_status({
+                        **values,
+                        "name": name,
+                        "category": str(values.get("category") or "其他"),
+                        "planned_quantity": planned,
+                        "unit": str(values.get("unit") or "件"),
+                        "acquisition_method": str(values.get("acquisition_method") or "待确定"),
+                        "material_id": material_id,
+                        "item_kind": item_kind,
+                        "procurement_mode": procurement_mode,
+                    })
                     conn.execute(
                         """INSERT INTO fulfillment_components(
                                technical_package_id, parent_id, material_id, name, category, specification,
@@ -1801,15 +1807,24 @@ class FulfillmentDatabase:
             if package["status"] != "草稿":
                 raise RuntimeError("BOM版本已确认冻结，不能继续核验")
             placeholders = ",".join("?" for _ in item_ids)
-            conn.execute(
-                f"""UPDATE fulfillment_components SET verification_status='已核验'
+            rows = conn.execute(
+                f"""SELECT * FROM fulfillment_components
                     WHERE technical_package_id=? AND id IN ({placeholders})""",
                 (package["id"], *item_ids),
-            )
+            ).fetchall()
+            found = {int(row["id"]): row for row in rows}
+            missing = [item_id for item_id in item_ids if item_id not in found]
+            if missing:
+                raise ValueError(f"BOM行 {missing[0]} 不存在或不属于当前版本")
+            for row in rows:
+                conn.execute(
+                    "UPDATE fulfillment_components SET verification_status=? WHERE id=?",
+                    (automatic_verification_status(dict(row)), row["id"]),
+                )
             self.add_event(
                 conn, order_id=None, door_unit_id=door_id, entity_type="technical_package",
-                entity_id=int(package["id"]), action="核验BOM明细",
-                detail=f"核验 {len(item_ids)} 项", user=user,
+                entity_id=int(package["id"]), action="重新检查BOM明细",
+                detail=f"重新检查 {len(item_ids)} 项", user=user,
             )
 
     def publish_bom(self, door_id: int, remark: str, user: Dict[str, Any]) -> bool:
