@@ -152,6 +152,31 @@ class WorkPackageService:
             ))
         return nodes or self._route(operation_codes)
 
+    @staticmethod
+    def _component_route(component: sqlite3.Row) -> List[RouteNode]:
+        """Return the executable route for one self-made BOM component."""
+        item_kind = str(component["item_kind"] or "")
+        operation_code = str(component["operation_code"] or "").upper()
+        if item_kind == "assembly":
+            return [RouteNode("ASSEMBLY", "拼装", "装配", 15)]
+        if "SKIN" in operation_code or "SHEET" in operation_code:
+            return [
+                RouteNode("PREPARE", "备料", "备料", 5),
+                RouteNode("SHEAR", "剪板", "下料", 8, ("PREPARE",)),
+                RouteNode("BEND", "折弯", "折弯", 8, ("SHEAR",)),
+                RouteNode("SURFACE", "表面处理", "表面", 10, ("BEND",)),
+            ]
+        if "SKELETON" in operation_code or "PROFILE" in operation_code:
+            return [
+                RouteNode("PREPARE", "备料", "备料", 5),
+                RouteNode("CUT", "下料", "下料", 8, ("PREPARE",)),
+                RouteNode("WELD", "焊接", "焊接", 12, ("CUT",)),
+            ]
+        return [
+            RouteNode("PREPARE", "备料", "备料", 5),
+            RouteNode("PROCESS", "加工", "加工", 15, ("PREPARE",)),
+        ]
+
     def generate_for_package(
         self,
         conn: sqlite3.Connection,
@@ -180,48 +205,84 @@ class WorkPackageService:
             )
         conn.execute("DELETE FROM fulfillment_work_packages WHERE technical_package_id=?", (package_id,))
 
-        operation_codes = {
-            str(row["operation_code"] or "")
-            for row in conn.execute(
-                "SELECT operation_code FROM fulfillment_components WHERE technical_package_id=?",
-                (package_id,),
-            ).fetchall()
-        }
-        # Frame BOM remains traceable, but frame cutting is deliberately deferred.
-        operation_codes.difference_update(FRAME_OPERATIONS)
-        route = self._route_from_template(conn, operation_codes)
-        ids_by_code: Dict[str, int] = {}
-        for sequence, node in enumerate(route, start=1):
-            cursor = conn.execute(
-                """INSERT INTO fulfillment_work_packages(
-                       technical_package_id, door_unit_id, name, category, route,
-                       acquisition_method, opening_condition, blocking_node,
-                       quantity, unit, inspection_required, status, sequence_no,
-                       operation_code, weight, readiness_status, material_ready,
-                       route_template_id, route_step_id, route_snapshot_json,
-                       standard_minutes, piece_rate, default_role, work_center, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, '内部加工', ?, ?, 1, '樘', ?,
-                             '待排单', ?, ?, ?, '待前序', 0, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    package_id, door_id, node.name, node.category, node.name,
-                    "BOM已发布", "、".join(node.predecessors),
-                    int(node.inspection_required), sequence, node.code, node.weight,
-                    node.template_id, node.template_step_id,
-                    json.dumps(node.snapshot, ensure_ascii=False, separators=(",", ":")),
-                    node.standard_minutes, node.piece_rate, node.default_role, node.work_center, now,
-                ),
-            )
-            ids_by_code[node.code] = int(cursor.lastrowid)
-        for node in route:
-            for predecessor in node.predecessors:
-                conn.execute(
-                    """INSERT OR IGNORE INTO fulfillment_work_package_dependencies(
-                           predecessor_id, successor_id, created_at
-                       ) VALUES (?, ?, ?)""",
-                    (ids_by_code[predecessor], ids_by_code[node.code], now),
+        components = conn.execute(
+            """SELECT * FROM fulfillment_components
+               WHERE technical_package_id=?
+                 AND (procurement_mode='make' OR item_kind IN ('assembly','manufactured_part'))
+               ORDER BY CASE WHEN item_kind='assembly' THEN 1 ELSE 0 END, sequence_no, id""",
+            (package_id,),
+        ).fetchall()
+        work_ids_by_component: Dict[int, List[int]] = {}
+        for component_index, component in enumerate(components, start=1):
+            component_id = int(component["id"])
+            route = self._component_route(component)
+            route_name = " → ".join(node.name for node in route)
+            ids_by_code: Dict[str, int] = {}
+            for operation_index, node in enumerate(route, start=1):
+                sequence = component_index * 100 + operation_index
+                snapshot = {
+                    **node.snapshot,
+                    "component_id": component_id,
+                    "component_name": str(component["name"]),
+                    "component_operation_code": str(component["operation_code"] or ""),
+                    "route": [item.name for item in route],
+                }
+                cursor = conn.execute(
+                    """INSERT INTO fulfillment_work_packages(
+                           technical_package_id, door_unit_id, component_id, name, category, route,
+                           acquisition_method, opening_condition, blocking_node,
+                           quantity, unit, inspection_required, status, sequence_no,
+                           operation_code, weight, readiness_status, material_ready,
+                           route_template_id, route_step_id, route_snapshot_json,
+                           standard_minutes, piece_rate, default_role, work_center, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, '内部加工', ?, ?, ?, ?, ?,
+                                 '待排单', ?, ?, ?, '待前序', 0, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        package_id, door_id, component_id,
+                        f"{component['name']}·{node.name}", node.category, route_name,
+                        "BOM已发布", "、".join(node.predecessors),
+                        float(component["planned_quantity"] or component["quantity"] or 1),
+                        str(component["unit"] or "项"), int(node.inspection_required),
+                        sequence, node.code, node.weight,
+                        node.template_id, node.template_step_id,
+                        json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),
+                        node.standard_minutes, node.piece_rate, node.default_role, node.work_center, now,
+                    ),
                 )
+                ids_by_code[node.code] = int(cursor.lastrowid)
+                work_ids_by_component.setdefault(component_id, []).append(int(cursor.lastrowid))
+            for node in route:
+                for predecessor in node.predecessors:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO fulfillment_work_package_dependencies(
+                               predecessor_id, successor_id, created_at
+                           ) VALUES (?, ?, ?)""",
+                        (ids_by_code[predecessor], ids_by_code[node.code], now),
+                    )
+
+        # Assembly components wait for the final operation of each self-made child component.
+        for component in components:
+            if str(component["item_kind"] or "") != "assembly":
+                continue
+            component_id = int(component["id"])
+            assembly_ids = work_ids_by_component.get(component_id, [])
+            if not assembly_ids:
+                continue
+            child_rows = conn.execute(
+                "SELECT id FROM fulfillment_components WHERE technical_package_id=? AND parent_id=? ORDER BY sequence_no, id",
+                (package_id, component_id),
+            ).fetchall()
+            for child in child_rows:
+                child_ids = work_ids_by_component.get(int(child["id"]), [])
+                if child_ids:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO fulfillment_work_package_dependencies(
+                               predecessor_id, successor_id, created_at
+                           ) VALUES (?, ?, ?)""",
+                        (child_ids[-1], assembly_ids[0], now),
+                    )
         self.recompute(conn, door_id=door_id, now=now)
-        return len(route)
+        return sum(len(ids) for ids in work_ids_by_component.values())
 
     @staticmethod
     def _material_state(
@@ -244,6 +305,39 @@ class WorkPackageService:
         ).fetchall()
         if not rows:
             return True, ""
+        pending = []
+        for row in rows:
+            required = float(row["required_quantity"] or 0)
+            issued = max(0.0, float(row["issued_quantity"] or 0) - float(row["returned_quantity"] or 0))
+            if required - issued <= EPSILON:
+                continue
+            if float(row["shortage_quantity"] or 0) > EPSILON:
+                state = "缺料"
+            elif float(row["reserved_quantity"] or 0) > EPSILON:
+                state = "待仓库发料"
+            else:
+                state = "待物料"
+            pending.append(f"{row['material_name']} {issued:g}/{required:g}{row['unit']}（{state}）")
+        return (not pending), "；".join(pending[:3])
+
+    @staticmethod
+    def _component_material_state(
+        conn: sqlite3.Connection,
+        package_id: int,
+        component_id: int | None,
+    ) -> tuple[bool, str]:
+        if not component_id:
+            return True, ""
+        rows = conn.execute(
+            """SELECT i.material_name, i.required_quantity, i.reserved_quantity,
+                      i.shortage_quantity, i.issued_quantity, i.returned_quantity, i.unit
+               FROM material_requirement_items i
+               JOIN fulfillment_components c ON c.id=i.component_id
+               WHERE i.technical_package_id=?
+                 AND (i.component_id=? OR c.parent_id=?)
+               ORDER BY i.sequence_no, i.id""",
+            (package_id, component_id, component_id),
+        ).fetchall()
         pending = []
         for row in rows:
             required = float(row["required_quantity"] or 0)
@@ -285,11 +379,6 @@ class WorkPackageService:
         ).fetchall():
             dependencies.setdefault(int(dependency["successor_id"]), []).append(int(dependency["predecessor_id"]))
 
-        material_gates = {
-            "PANEL_PREP": PANEL_OPERATIONS,
-            "FITTINGS_PREP": FITTING_OPERATIONS,
-            "PACKAGING": ("PACKAGING",),
-        }
         for row in rows:
             work_id = int(row["id"])
             status = str(row["status"])
@@ -303,8 +392,8 @@ class WorkPackageService:
             else:
                 predecessors = dependencies.get(work_id, [])
                 blocked = [names[item] for item in predecessors if statuses.get(item) not in {"已完成", "已取消"}]
-                material_ready_bool, material_reason = self._material_state(
-                    conn, package_id, material_gates.get(str(row["operation_code"] or ""), ()),
+                material_ready_bool, material_reason = self._component_material_state(
+                    conn, package_id, int(row["component_id"]) if row["component_id"] else None,
                 )
                 material_ready = int(material_ready_bool)
                 if blocked:

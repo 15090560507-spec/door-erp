@@ -289,7 +289,7 @@ export interface DoorUnitDetail extends DoorUnitSummary {
   assembly_note?: string;
 }
 
-export type FulfillmentStageKey = "preparation" | "execution" | "quality" | "delivery";
+export type FulfillmentStageKey = "preparation" | "calculation" | "execution" | "quality" | "delivery";
 export type FulfillmentStageState = "complete" | "current" | "blocked" | "pending";
 
 export interface FulfillmentWorkflowStage {
@@ -299,7 +299,7 @@ export interface FulfillmentWorkflowStage {
   state: FulfillmentStageState;
   summary: string;
   blockers: string[];
-  action: "open_bom" | "open_inventory" | "manage_work" | "quality_inbound" | "ship";
+  action: "open_bom" | "open_calculation" | "open_inventory" | "manage_work" | "quality_inbound" | "ship";
   action_label: string;
 }
 

@@ -26,6 +26,7 @@ DOOR_STATUSES = (
 )
 WORKFLOW_STAGE_STATUSES = {
     "preparation": ("待生产确认", "技术准备中"),
+    "calculation": ("技术准备中",),
     "materials": ("备料与加工中", "可局部装配"),
     "execution": ("总装中", "返工中"),
     "quality": ("待成品质检", "待成品入库"),
@@ -61,7 +62,7 @@ def json_loads(value: Optional[str], default: Any) -> Any:
 
 
 def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
-    """Derive the four-stage workflow while keeping material and process facts separate."""
+    """Derive the five-stage workflow while keeping material and process facts separate."""
     package = door.get("technical_package") or {}
     calculation = door.get("calculation")
     components = package.get("components") or []
@@ -88,12 +89,15 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
             preparation_blockers.append(f"还有{blocking_warnings}项阻断警告")
         if not package_published:
             preparation_blockers.append("BOM尚未发布")
-        if package_published and calculation and calculation.get("status") != "已发布":
-            preparation_blockers.append(f"算料{calculation.get('status') or '未开始'}，尚未发布下料单")
         if package_published and not works:
             preparation_blockers.append("执行工作包尚未生成")
-    calculation_published = not calculation or calculation.get("status") == "已发布"
-    preparation_complete = package_published and calculation_published and bool(works)
+    preparation_complete = package_published and bool(works)
+    calculation_complete = bool(calculation) and calculation.get("status") == "已发布"
+    calculation_blockers: List[str] = []
+    if preparation_complete and not calculation:
+        calculation_blockers.append("尚未建立算料清单")
+    elif preparation_complete and not calculation_complete:
+        calculation_blockers.append(f"算料{calculation.get('status') or '未开始'}，尚未发布下料单")
 
     shortage_items = [item for item in material_items if float(item.get("shortage_quantity") or 0) > 0.005]
     pending_issue_items = [
@@ -148,10 +152,17 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
         {
             "key": "preparation", "label": "生产准备", "complete": preparation_complete,
             "summary": (
-                f"BOM V{package.get('version') or 0} · {'已发布' if package_published else '草稿'}"
-                f" · 算料{(calculation or {}).get('status') or '旧流程'} · {len(works)}个工作包"
+                f"BOM V{package.get('version') or 0} · {'已发布' if package_published else '草稿'} · {len(works)}个部件工序"
             ),
             "blockers": preparation_blockers, "action": "open_bom", "action_label": "进入BOM与工艺准备",
+        },
+        {
+            "key": "calculation", "label": "算料与下料准备", "complete": calculation_complete,
+            "summary": (
+                f"依据 BOM V{package.get('version') or 0} · "
+                f"{(calculation or {}).get('status') or '尚未建立算料清单'}"
+            ),
+            "blockers": calculation_blockers, "action": "open_calculation", "action_label": "进入算料与下料准备",
         },
         {
             "key": "execution", "label": "部件生产与装配", "complete": execution_complete,
