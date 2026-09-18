@@ -114,7 +114,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                       <td className={`${itemCell} text-left break-words`} colSpan={2}>{item.productName}</td>
                       <td className={itemCell}>{numberText(item.width)}</td>
                       <td className={itemCell}>{numberText(item.height)}</td>
-                      <td className={itemCell}>{itemIndex === 0 ? item.openDirection : ""}</td>
+                      <td className={itemCell}>{item.openDirection}</td>
                       <td className={itemCell}>{item.unit}</td>
                       <td className={itemCell}>{quoteItemQuantityText(item)}</td>
                       <td className={itemCell}>{numberText(item.unitPrice)}</td>

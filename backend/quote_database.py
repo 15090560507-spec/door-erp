@@ -197,6 +197,23 @@ class QuoteDatabaseManager:
 
     def get_all(self, limit: int = 50) -> List[Dict]:
         """返回报价单列表（不含明细），最新在前"""
+        def has_positive_dimension(item: Dict) -> bool:
+            for key in ("width", "height"):
+                try:
+                    if float(item.get(key) or 0) > 0:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+            return False
+
+        def select_main_item(items: List[Dict]) -> Optional[Dict]:
+            nonempty = [item for item in items if str(item.get("productName", "")).strip()]
+            return (
+                next((item for item in nonempty if str(item.get("category") or "").strip() == "门类组合"), None)
+                or next((item for item in nonempty if has_positive_dimension(item)), None)
+                or (nonempty[0] if nonempty else None)
+            )
+
         with self._lock:
             quotes = self._load_unlocked()
             quotes_sorted = sorted(quotes, key=lambda q: q.get("id", 0), reverse=True)
@@ -206,7 +223,7 @@ class QuoteDatabaseManager:
                 groups = q.get("doorGroups") or [{"items": q.get("items") or []}]
                 main_items = []
                 for group in groups:
-                    item = next((row for row in group.get("items", []) if str(row.get("productName", "")).strip()), None)
+                    item = select_main_item(group.get("items", []))
                     if item:
                         main_items.append(item)
                 first_item = main_items[0] if main_items else {}
@@ -358,7 +375,7 @@ class QuoteDatabaseManager:
                 "trimUnitPrice": float(group.get("trimUnitPrice") or 0),
                 "items": [],
             }
-            for item_index, item in enumerate(group.get("items") or []):
+            for item in group.get("items") or []:
                 saved_item = {
                     "id": global_row + 1,
                     "accessoryId": item.get("accessoryId"),
@@ -367,7 +384,7 @@ class QuoteDatabaseManager:
                     "width": item.get("width"),
                     "height": item.get("height"),
                     "quantity": item.get("quantity"),
-                    "openDirection": item.get("openDirection", "") if item_index == 0 else "",
+                    "openDirection": item.get("openDirection", ""),
                     "unit": item.get("unit", ""),
                     "unitPrice": item.get("unitPrice", 0),
                     "rowOrder": global_row,

@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -102,7 +103,15 @@ class MultiDoorQuoteTests(unittest.TestCase):
         payload = _multi_door_quote()
         payload["doorGroups"][0]["items"] = [
             {"category": "锁具", "productName": "锁具", "unit": "套", "unitPrice": 300},
-            {"category": "门类组合", "productName": "主门", "unit": "m2", "unitPrice": 1500},
+            {
+                "category": "门类组合",
+                "productName": "主门",
+                "width": 1600,
+                "height": 2600,
+                "openDirection": "右外开",
+                "unit": "m2",
+                "unitPrice": 1500,
+            },
             {"category": "门套", "productName": "门套", "unit": "m", "unitPrice": 200},
         ]
         payload["doorGroups"][1]["items"] = [
@@ -125,7 +134,13 @@ class MultiDoorQuoteTests(unittest.TestCase):
             [item["productName"] for item in loaded["items"]],
             ["锁具", "主门", "门套", "第二樘主门", "第二樘拉手"],
         )
+        self.assertEqual(loaded["doorGroups"][0]["items"][1]["openDirection"], "右外开")
         self.assertEqual([item["rowOrder"] for item in loaded["items"]], [0, 1, 2, 3, 4])
+
+        summary = manager.get_all(limit=50)[0]
+        self.assertEqual(summary["doorSummary"], "主门")
+        self.assertEqual(summary["doorWidth"], 1600)
+        self.assertEqual(summary["doorHeight"], 2600)
 
     def test_quote_list_includes_door_type_size_summary(self):
         manager = self.quote_manager()
@@ -140,6 +155,42 @@ class MultiDoorQuoteTests(unittest.TestCase):
         self.assertEqual(summaries[0]["doorCount"], 2)
         self.assertNotIn("items", summaries[0])
         self.assertNotIn("doorGroups", summaries[0])
+
+    def test_quote_list_main_item_falls_back_to_dimensions_then_first_nonempty_row(self):
+        cases = [
+            (
+                "dimensions",
+                [
+                    {"category": "锁具", "productName": "锁具", "unit": "套", "unitPrice": 300},
+                    {"category": "其他", "productName": "有尺寸门", "width": 900, "height": 2100, "unit": "m2", "unitPrice": 1000},
+                ],
+                ("有尺寸门", 900, 2100),
+            ),
+            (
+                "first-row",
+                [
+                    {"category": "锁具", "productName": "首个非空行", "unit": "套", "unitPrice": 300},
+                    {"category": "拉手", "productName": "第二行", "unit": "套", "unitPrice": 180},
+                ],
+                ("首个非空行", None, None),
+            ),
+        ]
+
+        for name, items, expected in cases:
+            with self.subTest(name=name):
+                manager = QuoteDatabaseManager(
+                    file_path=str(self.root / f"quotes-{name}.json"),
+                    backup_dir=str(self.root / "backups"),
+                )
+                payload = _multi_door_quote()
+                payload["doorGroups"] = [{**payload["doorGroups"][0], "items": items}]
+                manager.create(payload)
+
+                summary = manager.get_all(limit=50)[0]
+                self.assertEqual(
+                    (summary["doorSummary"], summary["doorWidth"], summary["doorHeight"]),
+                    expected,
+                )
 
     def test_quote_update_keeps_id_and_created_at_without_creating_duplicate(self):
         manager = self.quote_manager()
@@ -199,7 +250,20 @@ class MultiDoorQuoteTests(unittest.TestCase):
 
     def test_multi_door_html_hides_group_titles_but_keeps_subtotals(self):
         quote_path = self.root / "quote.json"
-        quote_path.write_text(json.dumps(_multi_door_quote(), ensure_ascii=False), encoding="utf-8")
+        payload = _multi_door_quote()
+        payload["doorGroups"][0]["items"] = [
+            {"category": "锁具", "productName": "锁具", "unit": "套", "unitPrice": 300},
+            {
+                "category": "门类组合",
+                "productName": "主门",
+                "width": 1600,
+                "height": 2600,
+                "openDirection": "右外开",
+                "unit": "m2",
+                "unitPrice": 1500,
+            },
+        ]
+        quote_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         repo_root = Path(BACKEND_DIR).parent
         script = """
 import { buildQuoteHtml } from './quote-template-pdf/src/renderQuote.mjs';
@@ -222,6 +286,11 @@ process.stdout.write(html);
         self.assertIn("公司名称：杭州浙家门业有限公司", result.stdout)
         self.assertIn("开户银行：杭州银行富阳支行", result.stdout)
         self.assertNotIn("账产", result.stdout)
+        self.assertIsNotNone(re.search(
+            r'<tr class="item-row">(?:(?!</tr>).)*主门(?:(?!</tr>).)*右外开(?:(?!</tr>).)*</tr>',
+            result.stdout,
+            re.DOTALL,
+        ))
 
     def test_quote_memory_upserts_name_category_unit_and_price(self):
         manager = AccessoryDatabaseManager(

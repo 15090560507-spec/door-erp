@@ -129,7 +129,7 @@ function renderItemRows(groups, minimumItemRows) {
   let sequence = 0;
   let itemCount = 0;
   groups.forEach((group, groupIndex) => {
-    group.items.forEach((item, itemIndex) => {
+    group.items.forEach((item) => {
       const hasProduct = Boolean((item.productName || "").trim());
       if (hasProduct) sequence += 1;
       itemCount += 1;
@@ -138,7 +138,7 @@ function renderItemRows(groups, minimumItemRows) {
         <td class="item product" colspan="2">${escapeHtml(item.productName || "")}</td>
         <td class="item cell-center">${escapeHtml(numberText(item.width))}</td>
         <td class="item cell-center">${escapeHtml(numberText(item.height))}</td>
-        <td class="item cell-center">${escapeHtml(itemIndex === 0 ? item.openDirection || "" : "")}</td>
+        <td class="item cell-center">${escapeHtml(item.openDirection || "")}</td>
         <td class="item cell-center">${escapeHtml(item.unit || "")}</td>
         <td class="item cell-center">${escapeHtml(quoteQuantity(item))}</td>
         <td class="item cell-center">${escapeHtml(numberText(item.unitPrice))}</td>

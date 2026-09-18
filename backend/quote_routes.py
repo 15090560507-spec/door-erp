@@ -532,7 +532,7 @@ def _build_quote_html(quote: dict, auto_print: bool = False) -> str:
             <td>{i + 1}</td>
             <td>{item.get('productName', '')}</td>
             <td>{width}</td><td>{height}</td>
-            <td>{item.get('openDirection', '') if i == 0 else ''}</td>
+            <td>{item.get('openDirection', '')}</td>
             <td>{item.get('unit', '')}</td>
             <td>{qty}</td><td>{unit_price}</td><td>{amount}</td>
         </tr>"""
