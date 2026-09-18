@@ -201,6 +201,23 @@ def test_layered_render():
     check("白色背景是独立图层", white is not None and not white.is_group())
 
 
+def test_dxf_geometry_manifest_uses_one_canvas_transform():
+    result = render_layered_dxf(_sample_dxf_text(), target_long_edge=1600, include_psd=False)
+    manifest = result["geometry_manifest"]
+    assert manifest["units"] == "mm"
+    assert manifest["canvas"]["width"] == result["canvas_size"][0]
+    assert manifest["canvas"]["height"] == result["canvas_size"][1]
+    assert manifest["transform_id"]
+    for role in ("panel", "frame", "trim", "hardware"):
+        geometry = manifest["roles"][role]
+        assert geometry["transform_id"] == manifest["transform_id"]
+        assert set(geometry["side_bboxes"]) == {"front", "back"}
+        if role != "hardware":
+            assert geometry["cad_bbox"]
+            assert geometry["pixel_bbox"]
+            assert geometry["layers"]
+
+
 if __name__ == "__main__":
     test_psd_writer()
     test_layered_render()

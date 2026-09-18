@@ -33,6 +33,7 @@ from psd_tools.constants import Compression
 
 from cad_preview import Primitive, _arc_sample_points, _bbox, _point
 
+from .dxf_geometry import build_geometry_manifest, make_geometry_transform
 from .providers import RenderProviderRequest, get_provider
 from .psd_writer import PsdNode, write_psd
 from .storage import save_bytes
@@ -300,9 +301,16 @@ class _Canvas:
         self.scale = target_long_edge / max(self.width_mm, self.height_mm)
         self.width = max(1, int(round(self.width_mm * self.scale)))
         self.height = max(1, int(round(self.height_mm * self.scale)))
+        self.transform = make_geometry_transform(
+            min_x=self.min_x,
+            max_y=self.min_y + self.height_mm,
+            scale=self.scale,
+            width=self.width,
+            height=self.height,
+        )
 
     def px(self, x: float, y: float) -> tuple[int, int]:
-        return int(round((x - self.min_x) * self.scale)), int(round((self.max_y() - y) * self.scale))
+        return self.transform.point(x, y)
 
     def max_y(self) -> float:
         return self.min_y + self.height_mm
@@ -509,6 +517,7 @@ def render_layered_dxf(
         f, b = _split_front_back(prims(cat), front_x, back_x)
         front_cat[cat] = f
         back_cat[cat] = b
+    geometry_manifest = build_geometry_manifest(by_cat, front_cat, back_cat, canvas.transform)
 
     def render_filled(cat: str, prim_list: list[Primitive]) -> np.ndarray:
         rgb = PALETTE[cat]
@@ -666,6 +675,7 @@ def render_layered_dxf(
         "scale": canvas.scale,
         "material_mode": material_mode,
         "material_note": material_note,
+        "geometry_manifest": geometry_manifest,
         "layer_pngs": encoded_layers(),
         "front_layer_pngs": encoded_layers(front_bbox) if front_bbox else encoded_layers(),
         "back_layer_pngs": encoded_layers(back_bbox) if back_bbox else encoded_layers(),
