@@ -14,12 +14,17 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
 
 import numpy as np
+import ezdxf
+import pytest
 from PIL import Image
 from psd_tools import PSDImage
 from psd_tools.constants import Resource
 
 from rendering.psd_writer import PsdNode, write_psd
 from rendering.layered_render import render_layered_dxf
+from rendering.layered_render import DxfGeometryValidationError
+from rendering.dxf_geometry import build_geometry_manifest, make_geometry_transform, validate_geometry_manifest
+from cad_preview import Primitive
 import rendering.layered_render as layered_render
 from main import build_cad_params
 from models import CADRequest
@@ -216,6 +221,74 @@ def test_dxf_geometry_manifest_uses_one_canvas_transform():
             assert geometry["cad_bbox"]
             assert geometry["pixel_bbox"]
             assert geometry["layers"]
+
+
+def test_geometry_validation_reports_missing_frame_unknown_layer_and_open_panel():
+    transform = make_geometry_transform(min_x=0, max_y=100, scale=1, width=200, height=100)
+    panel = Primitive("polyline", "A-DOOR-PANEL", [(10, 10), (80, 10), (80, 90)], {"closed": False})
+    unknown = Primitive("line", "A-DOOR-STRUCTURE-UNKNOWN", [(0, 0), (10, 10)], {})
+    categorized = {"panel": [panel], "frame": [], "trim": [], "accessory": [], "outline": [unknown]}
+    manifest = build_geometry_manifest(
+        categorized,
+        {"panel": [panel], "frame": [], "trim": [], "accessory": []},
+        {"panel": [], "frame": [], "trim": [], "accessory": []},
+        transform,
+    )
+
+    validation = validate_geometry_manifest(manifest, categorized)
+
+    codes = {item["code"] for item in validation["errors"]}
+    assert "MISSING_FRAME_GEOMETRY" in codes
+    assert "UNKNOWN_STRUCTURAL_LAYER" in codes
+    assert "PANEL_CONTOUR_NOT_CLOSED" in codes
+
+
+def test_geometry_validation_reports_clear_mask_overlap_and_gap():
+    transform = make_geometry_transform(min_x=0, max_y=100, scale=1, width=200, height=100)
+    panel = Primitive("polyline", "A-DOOR-PANEL", [(10, 10), (100, 10), (100, 90), (10, 90)], {"closed": True})
+    frame = Primitive("polyline", "A-DOOR-FRAME", [(90, 0), (180, 0), (180, 100), (90, 100)], {"closed": True})
+    categorized = {"panel": [panel], "frame": [frame], "trim": [], "accessory": [], "outline": []}
+    manifest = build_geometry_manifest(categorized, categorized, categorized, transform)
+    panel_mask = np.zeros((100, 200, 4), dtype=np.uint8)
+    frame_mask = np.zeros_like(panel_mask)
+    panel_mask[10:90, 10:100, 3] = 255
+    frame_mask[:, 90:180, 3] = 255
+
+    overlap_validation = validate_geometry_manifest(
+        manifest,
+        categorized,
+        {"panel": panel_mask, "frame": frame_mask},
+    )
+    assert "ROLE_MASK_OVERLAP" in {item["code"] for item in overlap_validation["errors"]}
+
+    adjacent_frame = Primitive("polyline", "A-DOOR-FRAME", [(101, 0), (180, 0), (180, 100), (101, 100)], {"closed": True})
+    adjacent = {**categorized, "frame": [adjacent_frame]}
+    adjacent_manifest = build_geometry_manifest(adjacent, adjacent, adjacent, transform)
+    separated_frame_mask = np.zeros_like(panel_mask)
+    separated_frame_mask[:, 110:180, 3] = 255
+    gap_validation = validate_geometry_manifest(
+        adjacent_manifest,
+        adjacent,
+        {"panel": panel_mask, "frame": separated_frame_mask},
+    )
+    assert "ROLE_BOUNDARY_GAP" in {item["code"] for item in gap_validation["errors"]}
+
+
+def test_precise_render_blocks_invalid_open_panel_geometry():
+    doc = ezdxf.new()
+    modelspace = doc.modelspace()
+    modelspace.add_text("正面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((0, 300))
+    modelspace.add_text("背面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((1000, 300))
+    for offset in (0, 1000):
+        modelspace.add_lwpolyline([(offset, 0), (offset + 300, 0), (offset + 300, 220)], dxfattribs={"layer": "A-DOOR-PANEL"})
+        modelspace.add_lwpolyline([(offset - 30, -30), (offset + 330, -30), (offset + 330, 250), (offset - 30, 250)], close=True, dxfattribs={"layer": "A-DOOR-FRAME"})
+    stream = io.StringIO()
+    doc.write(stream)
+
+    with pytest.raises(DxfGeometryValidationError) as captured:
+        render_layered_dxf(stream.getvalue(), target_long_edge=600, include_psd=False)
+
+    assert "PANEL_CONTOUR_NOT_CLOSED" in {item["code"] for item in captured.value.geometry_validation["errors"]}
 
 
 if __name__ == "__main__":

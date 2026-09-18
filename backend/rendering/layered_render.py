@@ -33,7 +33,7 @@ from psd_tools.constants import Compression
 
 from cad_preview import Primitive, _arc_sample_points, _bbox, _point
 
-from .dxf_geometry import build_geometry_manifest, make_geometry_transform
+from .dxf_geometry import build_geometry_manifest, make_geometry_transform, validate_geometry_manifest
 from .providers import RenderProviderRequest, get_provider
 from .psd_writer import PsdNode, write_psd
 from .storage import save_bytes
@@ -43,6 +43,13 @@ AI_MATERIAL_PROMPT = (
     "严格保持门体结构、比例、门板分格、拉手/锁具/合页位置与所有尺寸标注完全不变，"
     "只替换表面颜色、材质与轻微光影。输出平整的产品目录效果，无透视、无背景场景、无额外装饰。"
 )
+
+
+class DxfGeometryValidationError(ValueError):
+    def __init__(self, geometry_validation: dict):
+        self.geometry_validation = geometry_validation
+        messages = "；".join(item["message"] for item in geometry_validation.get("errors", []))
+        super().__init__(messages or "DXF 结构校验未通过")
 
 
 # ------------------------- 类别与图层映射 -------------------------
@@ -531,6 +538,16 @@ def render_layered_dxf(
         """纯填充蒙版（只取 alpha 通道）。"""
         return _render_primitives(canvas, prim_list, fill_rgb=(255, 255, 255), stroke_rgb=None, stroke_width=1)
 
+    geometry_masks = {
+        "panel": part_mask(prims("panel")),
+        "frame": part_mask(prims("frame")),
+        "trim": part_mask(prims("trim")),
+        "hardware": part_mask(prims("accessory")),
+    }
+    geometry_validation = validate_geometry_manifest(geometry_manifest, by_cat, geometry_masks)
+    if not geometry_validation["valid"]:
+        raise DxfGeometryValidationError(geometry_validation)
+
     # 轮廓层（所有线条/圆弧描边）
     outline_all = prims("outline") + prims("panel") + prims("frame") + prims("trim") + prims("accessory")
     outline_arr = _render_primitives(canvas, outline_all, fill_rgb=None, stroke_rgb=PALETTE["outline"], stroke_width=max(1, int(canvas.scale * 0.5)))
@@ -676,6 +693,7 @@ def render_layered_dxf(
         "material_mode": material_mode,
         "material_note": material_note,
         "geometry_manifest": geometry_manifest,
+        "geometry_validation": geometry_validation,
         "layer_pngs": encoded_layers(),
         "front_layer_pngs": encoded_layers(front_bbox) if front_bbox else encoded_layers(),
         "back_layer_pngs": encoded_layers(back_bbox) if back_bbox else encoded_layers(),
