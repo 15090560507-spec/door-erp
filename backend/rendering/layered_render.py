@@ -365,7 +365,43 @@ def _render_primitives(canvas: _Canvas, prims: list[Primitive], fill_rgb: Option
                 cv2.circle(arr, center, radius, (*fill_rgb, 255), -1, cv2.LINE_AA)
             if stroke_rgb:
                 cv2.circle(arr, center, radius, (*stroke_rgb, 255), stroke_width, cv2.LINE_AA)
+        elif prim.kind == "insert" and mapped:
+            # virtual_entities() failed: retain a small, localized fallback instead of a loose hull.
+            radius = max(1, min(4, int(round(canvas.scale * 2.0))))
+            color = fill_rgb or stroke_rgb
+            if color:
+                cv2.circle(arr, mapped[0], radius, (*color, 255), -1, cv2.LINE_AA)
     return arr
+
+
+def _render_exact_role_mask(canvas: _Canvas, category: str, prims: list[Primitive]) -> np.ndarray:
+    """Rasterize one role without expanding it to a control-point hull."""
+    closed_mask = _render_primitives(
+        canvas,
+        prims,
+        fill_rgb=(255, 255, 255),
+        stroke_rgb=None,
+        stroke_width=1,
+    )
+    if category != "accessory":
+        return closed_mask
+
+    open_primitives = [
+        primitive
+        for primitive in prims
+        if primitive.kind in {"line", "arc", "insert"}
+        or (primitive.kind == "polyline" and not bool(primitive.data.get("closed")))
+    ]
+    if not open_primitives:
+        return closed_mask
+    open_mask = _render_primitives(
+        canvas,
+        open_primitives,
+        fill_rgb=(255, 255, 255),
+        stroke_rgb=(255, 255, 255),
+        stroke_width=1,
+    )
+    return _composite([closed_mask, open_mask])
 
 
 def _render_text(canvas: _Canvas, prims: list[Primitive], color: tuple[int, int, int]) -> np.ndarray:
@@ -534,17 +570,21 @@ def render_layered_dxf(
         arr = _composite([arr, stroke])
         return arr
 
-    def part_mask(prim_list: list[Primitive]) -> np.ndarray:
-        """纯填充蒙版（只取 alpha 通道）。"""
-        return _render_primitives(canvas, prim_list, fill_rgb=(255, 255, 255), stroke_rgb=None, stroke_width=1)
-
     geometry_masks = {
-        "panel": part_mask(prims("panel")),
-        "frame": part_mask(prims("frame")),
-        "trim": part_mask(prims("trim")),
-        "hardware": part_mask(prims("accessory")),
+        "panel": _render_exact_role_mask(canvas, "panel", prims("panel")),
+        "frame": _render_exact_role_mask(canvas, "frame", prims("frame")),
+        "trim": _render_exact_role_mask(canvas, "trim", prims("trim")),
+        "hardware": _render_exact_role_mask(canvas, "accessory", prims("accessory")),
     }
     geometry_validation = validate_geometry_manifest(geometry_manifest, by_cat, geometry_masks)
+    for primitive in prims("accessory"):
+        if primitive.kind == "insert":
+            geometry_validation["warnings"].append({
+                "code": "HARDWARE_INSERT_FALLBACK",
+                "role": "hardware",
+                "layer": primitive.layer,
+                "message": f"五金块 {primitive.data.get('text') or ''} 无法展开，已使用插入点后备遮罩",
+            })
     if not geometry_validation["valid"]:
         raise DxfGeometryValidationError(geometry_validation)
 
@@ -611,11 +651,14 @@ def render_layered_dxf(
             material_note = "部分部件 AI 处理失败并使用默认材质：" + "；".join(errors)
 
     def part_layer(cat: str, prim_list: list[Primitive]) -> np.ndarray:
+        role_mask = _render_exact_role_mask(canvas, cat, prim_list)
+        alpha = role_mask[..., 3:4]
         ai_rgb = ai_rgb_by_category.get(cat)
         if ai_rgb is not None:
-            alpha = part_mask(prim_list)[..., 3:4]
             return np.concatenate([ai_rgb, alpha], axis=2)
-        return render_filled(cat, prim_list)
+        rgb = np.empty((canvas.height, canvas.width, 3), dtype=np.uint8)
+        rgb[...] = PALETTE[cat]
+        return np.concatenate([rgb, alpha], axis=2)
 
     def face_group(name: str, cats: dict[str, list[Primitive]]) -> PsdNode:
         children: list[PsdNode] = []

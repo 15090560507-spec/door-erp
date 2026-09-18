@@ -139,6 +139,14 @@ def _has_closed_contour(primitives: Iterable[GeometryPrimitive]) -> bool:
     return False
 
 
+def _has_renderable_hardware(primitives: Iterable[GeometryPrimitive]) -> bool:
+    return any(
+        primitive.kind in {"line", "arc", "circle", "wipeout", "insert"}
+        or (primitive.kind == "polyline" and len(primitive.points) >= 2)
+        for primitive in primitives
+    )
+
+
 def _bbox_contains(outer: list[int], inner: list[int], tolerance: int = 2) -> bool:
     return (
         outer[0] <= inner[0] + tolerance
@@ -235,7 +243,8 @@ def validate_geometry_manifest(
             continue
         if not exists:
             continue
-        if not _has_closed_contour(primitives):
+        has_valid_contour = _has_renderable_hardware(primitives) if role == "hardware" else _has_closed_contour(primitives)
+        if not has_valid_contour:
             role_name = {"panel": "门扇", "frame": "门框", "trim": "门套", "hardware": "五金"}[role]
             errors.append(
                 _error(

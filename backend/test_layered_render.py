@@ -9,6 +9,7 @@
 import io
 import os
 import sys
+from functools import lru_cache
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
@@ -44,12 +45,31 @@ def check(name, condition, detail=""):
         print(f"[FAIL] {name}  {detail}")
 
 
+@lru_cache(maxsize=2)
 def _sample_dxf_text():
     req = CADRequest(door_type="单门", sel_kx="右开", sel_nk="内开", dw=1500, dh=2400,
                      zmls="铝雕圆形拉手", fmls="无", handle_size="150*300", fingerprint_lock="无")
     info, checks, params = build_cad_params(req)
     msg, buffer = run_integrated_system(info, checks, params)
     assert buffer, f"CAD 生成失败: {msg}"
+    return buffer.getvalue()
+
+
+@lru_cache(maxsize=1)
+def _a1022_dxf_text():
+    req = CADRequest(
+        door_type="对开门",
+        sel_kx="右开",
+        sel_nk="内开",
+        dw=1500,
+        dh=2400,
+        zmls="A1022",
+        fmls="无",
+        fingerprint_lock="无",
+    )
+    info, checks, params = build_cad_params(req)
+    msg, buffer = run_integrated_system(info, checks, params)
+    assert buffer, f"A1022 CAD 生成失败: {msg}"
     return buffer.getvalue()
 
 
@@ -289,6 +309,81 @@ def test_precise_render_blocks_invalid_open_panel_geometry():
         render_layered_dxf(stream.getvalue(), target_long_edge=600, include_psd=False)
 
     assert "PANEL_CONTOUR_NOT_CLOSED" in {item["code"] for item in captured.value.geometry_validation["errors"]}
+
+
+def test_exact_role_masks_follow_manifest_bounds_including_open_hardware_lines():
+    doc = ezdxf.new()
+    modelspace = doc.modelspace()
+    modelspace.add_text("正面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((0, 350))
+    modelspace.add_text("背面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((1000, 350))
+
+    handle = doc.blocks.new("A1022_TEST")
+    handle.add_lwpolyline([(0, 0), (20, 0), (20, 100), (0, 100)], close=True)
+    handle.add_line((20, 50), (60, 50))
+
+    for offset in (0, 1000):
+        modelspace.add_lwpolyline(
+            [(offset + 100, 0), (offset + 300, 0), (offset + 300, 200), (offset + 100, 200)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-PANEL"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset + 50, -50), (offset + 350, -50), (offset + 350, 250), (offset + 50, 250)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-FRAME"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset, -100), (offset + 400, -100), (offset + 400, 300), (offset, 300)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-TRIM"},
+        )
+        modelspace.add_blockref("A1022_TEST", (offset + 180, 50), dxfattribs={"layer": "A-DOOR-PANEL"})
+
+    stream = io.StringIO()
+    doc.write(stream)
+    ai_config = {
+        "provider": "openai_compatible",
+        "baseUrl": "https://fake.example.com",
+        "apiKey": "test-key",
+        "model": "test-model",
+        "endpoint": "/images/edits",
+        "apiType": "openai_images_edits",
+    }
+    original_get_provider = layered_render.get_provider
+    layered_render.get_provider = lambda name: _FakeAiProvider()
+    try:
+        result = render_layered_dxf(
+            stream.getvalue(),
+            target_long_edge=800,
+            ai_config=ai_config,
+            references=[],
+            include_psd=False,
+        )
+    finally:
+        layered_render.get_provider = original_get_provider
+    width, height = result["canvas_size"]
+
+    for role in ("panel", "frame", "trim", "hardware"):
+        layer = np.array(Image.open(io.BytesIO(result["layer_pngs"][role])).convert("RGBA"))
+        assert layer.shape[:2] == (height, width)
+        ys, xs = np.where(layer[..., 3] > 0)
+        assert len(xs) > 0, role
+        actual = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+        expected = result["geometry_manifest"]["roles"][role]["pixel_bbox"]
+        assert max(abs(a - b) for a, b in zip(actual, expected)) <= 2, (role, actual, expected)
+
+
+def test_real_a1022_block_uses_its_transformed_dxf_geometry_as_mask():
+    result = render_layered_dxf(_a1022_dxf_text(), target_long_edge=1000, include_psd=False)
+    hardware_geometry = result["geometry_manifest"]["roles"]["hardware"]
+    assert hardware_geometry["cad_bbox"]
+
+    layer = np.array(Image.open(io.BytesIO(result["layer_pngs"]["hardware"])).convert("RGBA"))
+    ys, xs = np.where(layer[..., 3] > 0)
+    assert len(xs) > 0
+    actual = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+    expected = hardware_geometry["pixel_bbox"]
+    assert max(abs(a - b) for a, b in zip(actual, expected)) <= 2, (actual, expected)
 
 
 if __name__ == "__main__":
