@@ -63,7 +63,7 @@ export interface SalesOrderAttachment {
   created_at: string;
 }
 
-export interface SalesOrderLine {
+export interface SalesOrderLine extends Partial<SalesOrderTechnicalDetails> {
   id: number;
   line_no: number;
   line_code: string;

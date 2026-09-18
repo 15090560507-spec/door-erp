@@ -264,6 +264,43 @@ class SalesOrderApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["order"]["status"], "confirmed")
 
+    def test_draft_line_technical_details_round_trip(self):
+        technical_details = {
+            "trim_type": "外包套",
+            "main_door_style": "四方格",
+            "lock_type": "指纹锁",
+            "handle": "黑色长拉手",
+            "hinge": "隐藏铰链",
+            "material": "304不锈钢",
+            "item_remark": "门扇内加防火板",
+        }
+        payload = self.payload()
+        payload["lines"] = [{
+            "source_type": "manual",
+            "product_name": "庭院门",
+            "door_type": "平开门",
+            "width": 3200,
+            "height": 1800,
+            "quantity": 1,
+            "unit": "樘",
+            "unit_price": 6800,
+            "remark": "",
+            "technical_details": technical_details,
+        }]
+        payload["payment_nodes"] = [{"name": "全款", "due_amount": 6800}]
+
+        response = self.client.post("/api/sales-orders", json=payload)
+        self.assertEqual(response.status_code, 201, response.text)
+        order = response.json()["order"]
+        self.assertEqual(order["lines"][0]["technical_details"], technical_details)
+
+        reloaded = self.client.get(f"/api/sales-orders/{order['id']}")
+        self.assertEqual(reloaded.status_code, 200, reloaded.text)
+        self.assertEqual(
+            reloaded.json()["order"]["lines"][0]["technical_details"],
+            technical_details,
+        )
+
     def test_manual_line_validation_returns_line_and_field(self):
         payload = self.payload()
         payload["lines"] = [{
