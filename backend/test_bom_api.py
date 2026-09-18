@@ -93,6 +93,10 @@ class BomApiTest(unittest.TestCase):
         self.assertTrue(any(group["code"] == "frame" for group in detail["groups"]))
         self.assertEqual(detail["version_history"][0]["version"], 1)
         self.assertTrue(detail["frame_status"]["can_calculate"])
+        self_made = [row for row in detail["rows"] if row["procurement_mode"] == "make"]
+        self.assertTrue(self_made)
+        self.assertTrue(all(row["match_status"] == "无需物料" for row in self_made))
+        self.assertTrue(all(row["verification_status"] == "已核验" for row in self_made))
 
     def test_draft_update_and_verify_only_allow_unambiguous_matched_rows(self):
         door_id, generated = self.create_generated_door(sales_order_id=2)
@@ -122,7 +126,12 @@ class BomApiTest(unittest.TestCase):
         verified = next(row for row in response.json()["bom"]["rows"] if row["id"] == panel["id"])
         self.assertEqual(verified["verification_status"], "已核验")
 
-        unmatched = next(row for row in generated["components"] if row["id"] != panel["id"])
+        unmatched = next(
+            row for row in generated["components"]
+            if row["id"] != panel["id"]
+            and row["procurement_mode"] != "make"
+            and row["match_status"] != "已匹配"
+        )
         response = self.client.post(
             f"/api/bom/door-units/{door_id}/verify",
             json={"item_ids": [unmatched["id"]]},
