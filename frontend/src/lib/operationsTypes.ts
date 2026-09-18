@@ -14,6 +14,29 @@ export interface WorkforceEmployee {
   remark: string;
 }
 
+export interface PersonnelCurrentWork {
+  work_package_id: number;
+  door_unit_id: number;
+  order_id: number;
+  production_no: string;
+  operation_name: string;
+  status: string;
+}
+
+export interface PersonnelWorkEmployee {
+  id: number;
+  employee_no: string;
+  name: string;
+  role_name: string;
+  status: "工作中" | "空闲";
+  current_work: PersonnelCurrentWork | null;
+}
+
+export interface PersonnelWorkDepartment {
+  name: string;
+  employees: PersonnelWorkEmployee[];
+}
+
 export interface RouteStep {
   id?: number;
   step_code: string;

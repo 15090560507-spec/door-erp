@@ -1,11 +1,16 @@
 import { api } from "./api";
-import type { AttendanceRow, PayrollEntry, PayrollPeriod, RouteTemplate, WorkforceEmployee } from "./operationsTypes";
+import type { AttendanceRow, PayrollEntry, PayrollPeriod, PersonnelWorkDepartment, RouteTemplate, WorkforceEmployee } from "./operationsTypes";
 
 export type EmployeePayload = Omit<WorkforceEmployee, "id">;
 
 export async function getEmployees() {
   const { data } = await api.get<{ employees: WorkforceEmployee[] }>("/operations/employees");
   return data.employees;
+}
+
+export async function getPersonnelWork() {
+  const { data } = await api.get<{ departments: PersonnelWorkDepartment[] }>("/operations/personnel-work");
+  return data.departments;
 }
 
 export async function createEmployee(payload: EmployeePayload) {

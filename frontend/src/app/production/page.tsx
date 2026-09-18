@@ -6,9 +6,11 @@ import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import BomWorkbench from "@/components/BomWorkbench";
 import CalculationWorkbench from "@/components/CalculationWorkbench";
 import ComponentProcessTable from "@/components/production/ComponentProcessTable";
+import PersonnelWorkBoard from "@/components/production/PersonnelWorkBoard";
 import MetricStrip from "@/components/workspace/MetricStrip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
+import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 import { getInventoryMaterials } from "@/lib/inventoryApi";
 import type { InventoryMaterial } from "@/lib/inventoryTypes";
 import { getEmployees, saveAssemblyAssignment } from "@/lib/operationsApi";
@@ -65,6 +67,7 @@ export default function ProductionPage() {
   const [selectedDoor, setSelectedDoor] = useState<DoorUnitDetail | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
+  const [view, setView] = useState<"orders" | "personnel">("orders");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; error: boolean } | null>(null);
@@ -107,6 +110,15 @@ export default function ProductionPage() {
     finally { setBusy(false); }
   };
 
+  const openPersonnelWork = async (orderId: number, doorId: number) => {
+    setBusy(true);
+    try {
+      const [order, door] = await Promise.all([getFulfillmentOrder(orderId), getDoorUnit(doorId)]);
+      setSelectedOrder(order); setSelectedDoor(door); setView("orders");
+    } catch (error) { notify(apiMessage(error, "对应门樘加载失败"), true); }
+    finally { setBusy(false); }
+  };
+
   const refresh = async (doorId?: number) => {
     await loadAll();
     if (selectedOrder) setSelectedOrder(await getFulfillmentOrder(selectedOrder.id));
@@ -131,6 +143,9 @@ export default function ProductionPage() {
         { key: "exceptions", label: "异常与交期风险", value: dashboard?.open_exceptions || 0, detail: `未解决异常 · 七日风险 ${dashboard?.due_risks || 0}`, icon: <AlertTriangle size={16} />, tone: (dashboard?.open_exceptions || dashboard?.due_risks || 0) ? "red" : "neutral" },
       ]} ariaLabel="生产履约关键指标" />
 
+      <WorkspaceTabs items={[{ key: "orders", label: "订单流程" }, { key: "personnel", label: "人员工作" }] as const} value={view} onChange={setView} ariaLabel="生产管理视图" />
+
+      {view === "orders" ? <>
       {pending.length > 0 && <PendingPanel tasks={pending} busy={busy} onRelease={async (task, form) => {
         setBusy(true);
         try { const result = await releaseFulfillmentOrder(task.task_id, form); notify(result.message); await refresh(); await chooseOrder(result.order.id); }
@@ -153,6 +168,7 @@ export default function ProductionPage() {
           </>}
         </div>
       </section>
+      </> : <PersonnelWorkBoard onOpenWork={openPersonnelWork} notify={notify} />}
     </main>
     <datalist id="fulfillment-people">{people.map((person)=><option key={person.uid} value={person.uid}>{person.name} · {person.role}</option>)}</datalist>
     {busy && <div className="fixed bottom-5 right-5 z-40 border border-[#D1D1D6] bg-white px-4 py-3 text-sm shadow-lg">正在处理...</div>}

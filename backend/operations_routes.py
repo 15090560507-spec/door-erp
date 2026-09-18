@@ -110,6 +110,61 @@ def list_employees(current_user: Dict = Depends(get_current_user)):
     return {"employees": [_employee_payload(row) for row in rows]}
 
 
+@router.get("/personnel-work")
+def list_personnel_work(current_user: Dict = Depends(get_current_user)):
+    employees = fulfillment_db.fetch_all(
+        """SELECT id, employee_no, name, team, role_name
+           FROM workforce_employees
+           WHERE is_active=1
+           ORDER BY CASE WHEN team='' THEN 1 ELSE 0 END, team, employee_no"""
+    )
+    works = fulfillment_db.fetch_all(
+        """SELECT w.id AS work_package_id, w.employee_id, w.executor_uid,
+                  w.name AS operation_name, w.status, w.sequence_no,
+                  d.id AS door_unit_id, d.order_id, d.production_no
+           FROM fulfillment_work_packages w
+           JOIN fulfillment_door_units d ON d.id=w.door_unit_id
+           WHERE w.status NOT IN ('已完成', '已取消')
+             AND (w.employee_id IS NOT NULL OR w.executor_uid!='')
+           ORDER BY CASE w.status
+                      WHEN '进行中' THEN 1
+                      WHEN '待质检' THEN 2
+                      WHEN '已排单' THEN 3
+                      WHEN '待排单' THEN 4
+                      ELSE 5
+                    END,
+                    w.sequence_no, w.id"""
+    )
+    employee_by_no = {str(row["employee_no"]): int(row["id"]) for row in employees}
+    current_by_employee: Dict[int, Dict] = {}
+    for work in works:
+        employee_id = work.get("employee_id") or employee_by_no.get(str(work.get("executor_uid") or ""))
+        if not employee_id or int(employee_id) in current_by_employee:
+            continue
+        current_by_employee[int(employee_id)] = {
+            "work_package_id": work["work_package_id"],
+            "door_unit_id": work["door_unit_id"],
+            "order_id": work["order_id"],
+            "production_no": work["production_no"],
+            "operation_name": work["operation_name"],
+            "status": work["status"],
+        }
+
+    departments: Dict[str, list] = {}
+    for employee in employees:
+        department = str(employee.get("team") or "未分部门")
+        current_work = current_by_employee.get(int(employee["id"]))
+        departments.setdefault(department, []).append({
+            "id": employee["id"],
+            "employee_no": employee["employee_no"],
+            "name": employee["name"],
+            "role_name": employee.get("role_name") or "",
+            "status": "工作中" if current_work else "空闲",
+            "current_work": current_work,
+        })
+    return {"departments": [{"name": name, "employees": rows} for name, rows in departments.items()]}
+
+
 @router.post("/employees")
 def create_employee(req: EmployeeInput, current_user: Dict = Depends(get_current_user)):
     now = fulfillment_now()
