@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/hooks/useAuth";
 import AppShell from "@/components/AppShell";
 import "./globals.css";
+import "./production-workspace.css";
 
 export const metadata: Metadata = {
   title: "西州将军 | 协同平台",
