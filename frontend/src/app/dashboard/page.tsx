@@ -32,7 +32,7 @@ function productSummary(params?: DoorFormData) {
     const dimensionLabel = LENGTH_PRODUCT_NAMES.includes(params.product_name) ? "宽×长" : "宽×高";
     return `产品: ${params.product_name} | ${dimensionLabel}: ${params.dw}×${params.dh}`;
   }
-  return `门型: ${params.door_type} | 洞口: ${params.dw}×${params.dh}`;
+  return `门型: ${params.door_type} | 门框: ${params.dw}×${params.dh}`;
 }
 
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
@@ -306,12 +306,12 @@ export default function DashboardPage() {
       if (!data.light_w || data.light_w <= 0) missing.push("见光宽(W)");
       if (!data.light_h || data.light_h <= 0) missing.push("见光高(H)");
     } else {
-      if (!data.dw || data.dw <= 0) missing.push("洞口总宽(W)");
-      if (!data.dh || data.dh <= 0) missing.push("洞口总高(H)");
+      if (!data.dw || data.dw <= 0) missing.push("门框总宽(W)");
+      if (!data.dh || data.dh <= 0) missing.push("门框总高(H)");
     }
     if (data.is_arch_door) {
       if (!data.arch_spring_height || data.arch_spring_height <= 0) missing.push("起弧高度");
-      if (data.dh && data.arch_spring_height >= data.dh) missing.push("起弧高度需小于洞口总高");
+      if (data.dh && data.arch_spring_height >= data.dh) missing.push("起弧高度需小于门框总高");
     }
     if (data.has_outer) {
       if (!data.trim_front_in || data.trim_front_in <= 0) missing.push("外包套宽");

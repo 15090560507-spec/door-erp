@@ -136,7 +136,7 @@ function Snapshot({ order }: { order: ProductionOrder }) {
   const params = (task.params || {}) as Record<string, unknown>;
   const rows = [
     ['订货单位', order.customer], ['项目名称', order.project || '-'], ['要求交期', order.due_date || '-'],
-    ['门型', params.door_type], ['洞口尺寸', `${params.dw || '-'} × ${params.dh || '-'}`],
+    ['门型', params.door_type], ['门框尺寸', `${params.dw || '-'} × ${params.dh || '-'}`],
     ['开向', `${params.sel_kx || ''}${params.sel_nk || ''}`], ['制作材料', params.zzcl],
     ['正面款式', params.zmks], ['反面款式', params.fmks], ['销售备注', order.sales_note || '-'],
   ];

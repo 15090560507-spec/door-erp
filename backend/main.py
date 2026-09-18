@@ -229,10 +229,6 @@ def _resolve_frame_dimensions(params: Dict) -> tuple[float, float]:
     return max(300, light_width + left + right), max(600, light_height + top + bottom)
 
 
-def _display_number(value: float) -> str:
-    return str(int(value)) if float(value).is_integer() else f"{value:g}"
-
-
 def _task_summary_from_params(params: Dict) -> Dict:
     """从表单参数推导汇总表字段（时间/客户/项目/门型/尺寸）。
 
@@ -245,17 +241,15 @@ def _task_summary_from_params(params: Dict) -> Dict:
     has_transom = str(params.get("sel_qc") or "").strip() in {"玻璃", "封闭"}
     if has_transom:
         frame_height += max(0, _numeric(params.get("qc_height")))
+    size = f"{frame_width:g} x {frame_height:g} (门框)"
+    if is_simple_product:
+        size = f"{params.get('dw', 0)} x {params.get('dh', 0)} ({dimension_name})"
     return {
         "date": normalize_task_date(params.get("dhrq", "")) or shanghai_now().strftime("%Y.%m.%d"),
         "customer": str(params.get("dhdw", "") or ""),
         "project": str(params.get("gdmc", "") or ""),
         "door_type": product_name if is_simple_product else str(params.get("door_type", "") or ""),
-        "size": (
-            f"{params.get('dw', 0)} x {params.get('dh', 0)} ({dimension_name})"
-            if is_simple_product
-            else f"{_display_number(frame_width)} x {_display_number(frame_height)} "
-                 f"({'门框' if params.get('use_light_size') else '洞口'})"
-        ),
+        "size": size,
     }
 
 

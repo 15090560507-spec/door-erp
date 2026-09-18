@@ -80,7 +80,7 @@ check("task has id", bool(task_id))
 check("summary date = dhrq", task.get("date") == "2026.01.15", str(task.get("date")))
 check("summary customer = dhdw", task.get("customer") == "杭州测试客户", str(task.get("customer")))
 check("summary project = gdmc", task.get("project") == "湖畔花园项目", str(task.get("project")))
-check("summary size from dw x dh", task.get("size") == "980 x 2200 (洞口)", str(task.get("size")))
+check("summary size from dw x dh", task.get("size") == "980 x 2200 (门框)", str(task.get("size")))
 check("default quote_status 未报价", task.get("quote_status") == "未报价", str(task.get("quote_status")))
 check("default confirm_status 未确认", task.get("confirm_status") == "未确认", str(task.get("confirm_status")))
 
@@ -114,7 +114,7 @@ updated = resp.json() if resp.status_code == 200 else {}
 check("summary date refreshed to new dhrq", updated.get("date") == "2026.03.20", str(updated.get("date")))
 check("summary customer refreshed", updated.get("customer") == "上海新客户", str(updated.get("customer")))
 check("summary project refreshed", updated.get("project") == "外滩项目", str(updated.get("project")))
-check("summary size refreshed", updated.get("size") == "1080 x 2300 (洞口)", str(updated.get("size")))
+check("summary size refreshed", updated.get("size") == "1080 x 2300 (门框)", str(updated.get("size")))
 check("summary door_type refreshed", updated.get("door_type") == "对开门", str(updated.get("door_type")))
 
 # ==================== 3. 报价/确认状态切换 ====================
