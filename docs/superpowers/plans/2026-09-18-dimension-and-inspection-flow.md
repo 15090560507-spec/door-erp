@@ -20,7 +20,7 @@
 - Modify: `backend/test_task_summary_search.py`
 - Modify: `backend/test_quote_multi_door.py`
 
-- [ ] **Step 1: Write failing backend task-summary tests**
+- [x] **Step 1: Write failing backend task-summary tests**
 
 Add checks proving that normal mode uses `dw/dh`, while clear-opening mode derives the displayed frame size from `light_w/light_h` and section widths.
 
@@ -43,13 +43,13 @@ resp = client.post("/api/tasks", json={"params": light_params}, headers=HEADERS)
 check("clear-opening task uses resolved frame size", resp.json().get("size") == "1300 x 2300 (门框)", resp.text)
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run: `python backend/test_task_summary_search.py`
 
 Expected: the clear-opening case reports the stale `900 x 2100 (洞口)` value.
 
-- [ ] **Step 3: Add canonical resolvers**
+- [x] **Step 3: Add canonical resolvers**
 
 In TypeScript, export a resolver from `doorAreas.ts` and make `calculateDoorAreas` consume it:
 
@@ -76,11 +76,11 @@ export function resolveFrameDimensions(params: DoorFormData) {
 
 Add an equivalent `_resolve_frame_dimensions(params)` in `backend/main.py`; `_task_summary_from_params` must format its returned values as `(门框)` in clear-opening mode and `(洞口)` otherwise.
 
-- [ ] **Step 4: Route every consumer through the resolver**
+- [x] **Step 4: Route every consumer through the resolver**
 
 `DoorForm` must display the resolved dimensions, `calculateDoorAreas` must calculate frame/outer/trim areas from them, and quote rows must continue using `calculateDoorAreas` so their dimensions match the task list and order source data.
 
-- [ ] **Step 5: Run focused tests and frontend build**
+- [x] **Step 5: Run focused tests and frontend build**
 
 Run:
 
@@ -93,7 +93,7 @@ npm run build
 
 Expected: all focused tests pass and Next.js build completes without type errors.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add frontend/src/lib/doorAreas.ts frontend/src/components/DoorForm.tsx frontend/src/app/quote/page.tsx backend/main.py backend/test_task_summary_search.py backend/test_quote_multi_door.py
@@ -108,7 +108,7 @@ git commit -m "fix: unify clear-opening frame dimensions"
 - Modify: `frontend/src/components/inventory/ReceivingWorkbench.tsx`
 - Modify: `backend/test_inventory_purchasing.py`
 
-- [ ] **Step 1: Add backend quantity-conservation coverage**
+- [x] **Step 1: Add backend quantity-conservation coverage**
 
 Add a test that submits quantities whose sum differs from the receipt quantity and expects a validation error; retain the existing successful inspection test for qualified and concession quantities entering inventory.
 
@@ -128,13 +128,13 @@ response = client.post(
 assert response.status_code == 422
 ```
 
-- [ ] **Step 2: Run the focused purchasing test**
+- [x] **Step 2: Run the focused purchasing test**
 
 Run: `python backend/test_inventory_purchasing.py`
 
 Expected: existing inspection behavior remains green; add backend validation only if the new case exposes a gap.
 
-- [ ] **Step 3: Make inspection prerequisites visible**
+- [x] **Step 3: Make inspection prerequisites visible**
 
 Pass an `openWarehouseSettings` callback from `InventoryPage` through `InventoryWorkspace` to `ReceivingWorkbench`. Replace the silent disabled state with explicit copy:
 
@@ -151,7 +151,7 @@ const disabledReason = !form.warehouseId
 
 When `disabledReason` is a missing location, show a `配置仓库与库位` button. Keep the submit button enabled only when all prerequisites pass.
 
-- [ ] **Step 4: Verify build and purchase tests**
+- [x] **Step 4: Verify build and purchase tests**
 
 Run:
 
@@ -164,7 +164,7 @@ npm run build
 
 Expected: tests pass and the frontend builds.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```powershell
 git add frontend/src/app/inventory/page.tsx frontend/src/components/inventory/InventoryWorkspace.tsx frontend/src/components/inventory/ReceivingWorkbench.tsx backend/test_inventory_purchasing.py
@@ -177,7 +177,7 @@ git commit -m "fix: expose purchase inspection prerequisites"
 - Modify: `frontend/src/components/BomWorkbench.tsx`
 - Modify: `backend/test_bom_api.py`
 
-- [ ] **Step 1: Preserve BOM verification rules with focused tests**
+- [x] **Step 1: Preserve BOM verification rules with focused tests**
 
 Confirm self-made rows are automatically `已核验`, unmatched purchased rows cannot be verified, and matched purchased rows with positive quantity can be verified.
 
@@ -187,7 +187,7 @@ assert unmatched_verify.status_code == 422
 assert matched_verify.json()["bom"]["rows"][0]["verification_status"] == "已核验"
 ```
 
-- [ ] **Step 2: Replace ambiguous UI wording**
+- [x] **Step 2: Replace ambiguous UI wording**
 
 Keep `待核验/已核验` as the BOM data state, but add a visible explanation near the action bar: “核验仅确认物料档案、取得方式和计划数量，不是质量检验。” For non-verifiable rows, show the concrete missing prerequisite instead of a generic waiting state.
 
@@ -201,7 +201,7 @@ const verificationHint = row.procurement_mode === "make"
       : "可勾选后核验";
 ```
 
-- [ ] **Step 3: Run BOM tests and frontend build**
+- [x] **Step 3: Run BOM tests and frontend build**
 
 Run:
 
@@ -213,7 +213,7 @@ npm run build
 
 Expected: BOM tests pass and the UI compiles.
 
-- [ ] **Step 4: Commit Task 3**
+- [x] **Step 4: Commit Task 3**
 
 ```powershell
 git add frontend/src/components/BomWorkbench.tsx backend/test_bom_api.py
@@ -225,7 +225,7 @@ git commit -m "fix: clarify BOM verification workflow"
 **Files:**
 - Verify only; no planned source changes.
 
-- [ ] **Step 1: Run the combined backend regression set**
+- [x] **Step 1: Run the combined backend regression set**
 
 Run:
 
@@ -238,7 +238,7 @@ python backend/test_inventory_api.py
 
 Expected: all selected tests pass.
 
-- [ ] **Step 2: Run the production frontend build**
+- [x] **Step 2: Run the production frontend build**
 
 Run: `npm run build` from `frontend`.
 
@@ -250,6 +250,6 @@ Expected: build exits successfully.
 2. Open `库存管理 → 采购待检`; confirm a configured location enables inspection, while a warehouse without locations shows the exact reason and settings action.
 3. Open BOM preparation; confirm self-made rows say `自制确认`, purchased rows explain missing prerequisites, and “核验” is explicitly distinguished from quality inspection.
 
-- [ ] **Step 4: Commit any verification-only fixes separately**
+- [x] **Step 4: Commit any verification-only fixes separately**
 
 If browser verification reveals a defect, add a focused regression test, make the smallest fix, rerun the affected checks, and commit only those files with `fix: complete dimension and inspection verification`.
