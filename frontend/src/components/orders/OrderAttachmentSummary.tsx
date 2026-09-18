@@ -16,21 +16,33 @@ export default function OrderAttachmentSummary({ orderId, attachments }: {
   orderId: number;
   attachments: SalesOrderAttachment[];
 }) {
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
-  const [error, setError] = useState("");
+  const [activeDownloads, setActiveDownloads] = useState<Set<number>>(() => new Set());
+  const [downloadErrors, setDownloadErrors] = useState<Record<number, string>>({});
 
   const download = async (attachment: SalesOrderAttachment) => {
-    setDownloadingId(attachment.id);
-    setError("");
+    setActiveDownloads((current) => new Set(current).add(attachment.id));
+    setDownloadErrors((current) => {
+      if (!(attachment.id in current)) return current;
+      const next = { ...current };
+      delete next[attachment.id];
+      return next;
+    });
     try {
       await downloadFileFromUrl(
         `/sales-orders/${orderId}/attachments/${attachment.id}/file`,
         attachment.original_name,
       );
     } catch (downloadError) {
-      setError(apiErrorMessage(downloadError, "附件下载失败"));
+      setDownloadErrors((current) => ({
+        ...current,
+        [attachment.id]: apiErrorMessage(downloadError, "附件下载失败"),
+      }));
     } finally {
-      setDownloadingId(null);
+      setActiveDownloads((current) => {
+        const next = new Set(current);
+        next.delete(attachment.id);
+        return next;
+      });
     }
   };
 
@@ -40,7 +52,6 @@ export default function OrderAttachmentSummary({ orderId, attachments }: {
         <div><h3>订单图纸附件</h3></div>
         <strong>{attachments.length} 张</strong>
       </div>
-      {error && <p className="order-attachment-summary__error" role="alert">{error}</p>}
       <div className="order-attachments order-attachments--summary">
         {categories.map(({ key, label }) => {
           const items = attachments.filter((item) => item.category === key);
@@ -56,11 +67,12 @@ export default function OrderAttachmentSummary({ orderId, attachments }: {
                         type="button"
                         title="下载附件"
                         aria-label={`下载 ${item.original_name}`}
-                        disabled={downloadingId === item.id}
+                        disabled={activeDownloads.has(item.id)}
                         onClick={() => void download(item)}
                       >
                         <Download size={14} />
                       </button>
+                      {downloadErrors[item.id] && <small className="order-attachment-summary__error" role="alert">{downloadErrors[item.id]}</small>}
                     </div>
                   ))}
                 </div>
