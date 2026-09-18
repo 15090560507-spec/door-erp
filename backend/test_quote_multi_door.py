@@ -97,6 +97,36 @@ class MultiDoorQuoteTests(unittest.TestCase):
         self.assertEqual([item["groupIndex"] for item in loaded["items"]], [0, 0, 1])
         self.assertEqual(loaded["doorGroups"][0]["items"][1]["openDirection"], "")
 
+    def test_multi_door_quote_preserves_item_request_order(self):
+        manager = self.quote_manager()
+        payload = _multi_door_quote()
+        payload["doorGroups"][0]["items"] = [
+            {"category": "锁具", "productName": "锁具", "unit": "套", "unitPrice": 300},
+            {"category": "门类组合", "productName": "主门", "unit": "m2", "unitPrice": 1500},
+            {"category": "门套", "productName": "门套", "unit": "m", "unitPrice": 200},
+        ]
+        payload["doorGroups"][1]["items"] = [
+            {"category": "门类组合", "productName": "第二樘主门", "unit": "m2", "unitPrice": 1200},
+            {"category": "拉手", "productName": "第二樘拉手", "unit": "套", "unitPrice": 180},
+        ]
+
+        created = manager.create(payload)
+        loaded = manager.get_by_id(created["id"])
+
+        self.assertEqual(
+            [item["productName"] for item in loaded["doorGroups"][0]["items"]],
+            ["锁具", "主门", "门套"],
+        )
+        self.assertEqual(
+            [item["productName"] for item in loaded["doorGroups"][1]["items"]],
+            ["第二樘主门", "第二樘拉手"],
+        )
+        self.assertEqual(
+            [item["productName"] for item in loaded["items"]],
+            ["锁具", "主门", "门套", "第二樘主门", "第二樘拉手"],
+        )
+        self.assertEqual([item["rowOrder"] for item in loaded["items"]], [0, 1, 2, 3, 4])
+
     def test_quote_list_includes_door_type_size_summary(self):
         manager = self.quote_manager()
         manager.create(_multi_door_quote())

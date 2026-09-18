@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useId } from "react";
+import type { DragEvent } from "react";
+import { ArrowDown, ArrowUp, GripVertical, Trash2 } from "lucide-react";
 import type { QuoteItem } from "@/lib/quoteTypes";
 import {
   createEmptyQuoteItem,
@@ -19,6 +21,8 @@ interface Props {
 
 export default function QuoteItemsTable({ items, onChange }: Props) {
   const [suggestions, setSuggestions] = useState<{ index: number; matches: Accessory[] } | null>(null);
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [dropTargetRowId, setDropTargetRowId] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const unitOptionsId = useId();
@@ -99,11 +103,53 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
     setSuggestions(null);
   }
 
+  function moveRow(from: number, to: number) {
+    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+    setSuggestions(null);
+  }
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>, rowId: string | undefined) {
+    if (!rowId) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", rowId);
+    setDraggedRowId(rowId);
+    setDropTargetRowId(null);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLTableRowElement>, rowId: string | undefined) {
+    if (!draggedRowId || !rowId || draggedRowId === rowId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTargetRowId(rowId);
+  }
+
+  function handleDrop(event: DragEvent<HTMLTableRowElement>, rowId: string | undefined) {
+    event.preventDefault();
+    if (!draggedRowId || !rowId) return;
+    const from = items.findIndex((item) => item.rowId === draggedRowId);
+    const to = items.findIndex((item) => item.rowId === rowId);
+    moveRow(from, to);
+    setDraggedRowId(null);
+    setDropTargetRowId(null);
+  }
+
+  function handleDragEnd() {
+    setDraggedRowId(null);
+    setDropTargetRowId(null);
+  }
+
   return (
     <div ref={containerRef} className="w-full min-w-0 pb-1">
       <table className="w-full table-fixed text-[12px] xl:text-[13px]">
         <colgroup>
-          <col className="w-[30%]" />
+          <col className="w-[25%]" />
           <col className="w-[7%]" />
           <col className="w-[7%]" />
           <col className="w-[11%]" />
@@ -111,7 +157,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
           <col className="w-[9%]" />
           <col className="w-[9%]" />
           <col className="w-[12%]" />
-          <col className="w-[8%]" />
+          <col className="w-[13%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-[#E5E5EA]/60">
@@ -128,7 +174,18 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
         </thead>
         <tbody>
           {items.map((item, index) => (
-            <tr key={item.rowId || `quote-row-${index}`} className="border-b border-[#E5E5EA]/30 hover:bg-[#F2F2F7]/50 transition-colors">
+            <tr
+              key={item.rowId}
+              onDragOver={(event) => handleDragOver(event, item.rowId)}
+              onDrop={(event) => handleDrop(event, item.rowId)}
+              className={`border-b border-[#E5E5EA]/30 transition-colors ${
+                draggedRowId === item.rowId
+                  ? "bg-[#F2F2F7] opacity-50"
+                  : dropTargetRowId === item.rowId
+                    ? "bg-[#007AFF]/10"
+                    : "hover:bg-[#F2F2F7]/50"
+              }`}
+            >
               {/* 品名型号 with search suggestions */}
               <td className="relative px-2 py-1.5 align-top">
                 <textarea
@@ -227,16 +284,50 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
               <td className="break-all px-1 py-3 text-right align-top font-medium tabular-nums text-[#1C1C1E]">
                 {quoteItemAmountText(item)}
               </td>
-              <td className="px-1 py-2 text-center align-top">
-                <button
-                  type="button"
-                  onClick={() => removeRow(index)}
-                  disabled={items.length <= 1}
-                  aria-label={`删除第 ${index + 1} 行`}
-                  className="rounded-md px-2 py-1 text-[12px] text-[#FF3B30] hover:bg-[#FF3B30]/10 disabled:cursor-not-allowed disabled:opacity-25"
-                >
-                  删除
-                </button>
+              <td className="px-1 py-2 align-top">
+                <div className="flex h-7 items-center justify-center gap-0.5">
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(event) => handleDragStart(event, item.rowId)}
+                    onDragEnd={handleDragEnd}
+                    aria-label={`拖动第 ${index + 1} 行排序`}
+                    title="拖动排序"
+                    className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded-md text-[#8E8E93] hover:bg-[#E5E5EA]/70 hover:text-[#1C1C1E] active:cursor-grabbing"
+                  >
+                    <GripVertical size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveRow(index, index - 1)}
+                    disabled={index === 0}
+                    aria-label={`上移第 ${index + 1} 行`}
+                    title="上移"
+                    className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-[#636366] hover:bg-[#E5E5EA]/70 hover:text-[#1C1C1E] disabled:cursor-not-allowed disabled:opacity-25"
+                  >
+                    <ArrowUp size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveRow(index, index + 1)}
+                    disabled={index === items.length - 1}
+                    aria-label={`下移第 ${index + 1} 行`}
+                    title="下移"
+                    className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-[#636366] hover:bg-[#E5E5EA]/70 hover:text-[#1C1C1E] disabled:cursor-not-allowed disabled:opacity-25"
+                  >
+                    <ArrowDown size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(index)}
+                    disabled={items.length <= 1}
+                    aria-label={`删除第 ${index + 1} 行`}
+                    title="删除"
+                    className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-[#FF3B30] hover:bg-[#FF3B30]/10 disabled:cursor-not-allowed disabled:opacity-25"
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
