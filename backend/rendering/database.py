@@ -220,6 +220,8 @@ class RenderDatabase:
             "referenceBindings": data.get("referenceBindings", {}),
             "segmentation": data.get("segmentation", {}),
             "componentLayers": data.get("componentLayers", {}),
+            "geometryManifest": data.get("geometryManifest"),
+            "geometryValidation": data.get("geometryValidation"),
             "compositeImage": data.get("compositeImage"),
             "psdStatus": data.get("psdStatus", "not_requested"),
             "psdFile": data.get("psdFile"),
@@ -375,6 +377,8 @@ def _task_defaults(item: dict) -> dict:
     task.setdefault("referenceBindings", {})
     task.setdefault("segmentation", {})
     task.setdefault("componentLayers", {})
+    task.setdefault("geometryManifest", None)
+    task.setdefault("geometryValidation", None)
     task.setdefault("compositeImage", task.get("images", [None])[0] if task.get("images") else None)
     task.setdefault("psdStatus", "not_requested")
     task.setdefault("psdFile", None)

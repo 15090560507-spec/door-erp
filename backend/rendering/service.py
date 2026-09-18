@@ -12,6 +12,7 @@ from psd_tools.constants import Compression
 
 from .database import render_db
 from .database import utc_now_iso
+from .layered_render import DxfGeometryValidationError
 from .providers import ProviderError, RenderProviderRequest, get_provider
 from .storage import RENDER_FILES_DIR, public_file_url, save_bytes
 
@@ -395,6 +396,18 @@ def execute_precise_render_task(task_id: str, provider_request: RenderProviderRe
             "segmentation": segmentation,
             "materialMode": result.get("material_mode", "flat"),
             "materialNote": result.get("material_note", ""),
+            "geometryManifest": result.get("geometry_manifest"),
+            "geometryValidation": result.get("geometry_validation"),
+            "finishedAt": utc_now_iso(),
+        })
+    except DxfGeometryValidationError as exc:
+        logger.warning("DXF geometry validation failed for render task %s", task_id)
+        return render_db.update_task(task_id, {
+            "status": "failed",
+            "errorType": "dxf_geometry_validation",
+            "errorMessage": f"DXF 结构检查未通过: {exc}",
+            "geometryManifest": exc.geometry_manifest,
+            "geometryValidation": exc.geometry_validation,
             "finishedAt": utc_now_iso(),
         })
     except Exception as exc:

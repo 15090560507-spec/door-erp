@@ -46,8 +46,9 @@ AI_MATERIAL_PROMPT = (
 
 
 class DxfGeometryValidationError(ValueError):
-    def __init__(self, geometry_validation: dict):
+    def __init__(self, geometry_validation: dict, geometry_manifest: Optional[dict] = None):
         self.geometry_validation = geometry_validation
+        self.geometry_manifest = geometry_manifest
         messages = "；".join(item["message"] for item in geometry_validation.get("errors", []))
         super().__init__(messages or "DXF 结构校验未通过")
 
@@ -586,7 +587,7 @@ def render_layered_dxf(
                 "message": f"五金块 {primitive.data.get('text') or ''} 无法展开，已使用插入点后备遮罩",
             })
     if not geometry_validation["valid"]:
-        raise DxfGeometryValidationError(geometry_validation)
+        raise DxfGeometryValidationError(geometry_validation, geometry_manifest)
 
     # 轮廓层（所有线条/圆弧描边）
     outline_all = prims("outline") + prims("panel") + prims("frame") + prims("trim") + prims("accessory")

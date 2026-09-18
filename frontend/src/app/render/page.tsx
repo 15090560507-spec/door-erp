@@ -1069,7 +1069,35 @@ export default function RenderPage() {
             <h2 className="text-[15px] font-semibold text-[#1C1C1E]">生成结果</h2>
             <button type="button" onClick={() => refreshAll()} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px]">刷新</button>
           </div>
-          {activeTask?.status === "failed" && <p className="mb-3 rounded-lg bg-[#FF3B30]/10 px-3 py-2 text-[13px] text-[#FF3B30]">{activeTask.errorMessage}</p>}
+          {activeTask?.status === "failed" && activeTask.errorType !== "dxf_geometry_validation" && (
+            <p className="mb-3 rounded-lg bg-[#FF3B30]/10 px-3 py-2 text-[13px] text-[#FF3B30]">{activeTask.errorMessage}</p>
+          )}
+          {activeTask?.renderMode === "precise" && activeTask.geometryValidation && (
+            <div className={`mb-3 rounded-lg px-3 py-2 text-[12px] ${activeTask.geometryValidation.valid ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF3B30]/10 text-[#C9342C]"}`}>
+              <p className="font-semibold">
+                {activeTask.geometryValidation.valid ? "DXF 结构检查通过" : "DXF 结构检查未通过"}
+              </p>
+              {activeTask.geometryValidation.valid && (
+                <p className="mt-1 leading-5">门扇、门框、门套与五金位置按 DXF 实际几何生成，毫米尺寸不取自预览图。</p>
+              )}
+              {!activeTask.geometryValidation.valid && (
+                <ul className="mt-1 space-y-1">
+                  {activeTask.geometryValidation.errors.map((issue, index) => (
+                    <li key={`${issue.code}-${issue.role}-${index}`}>
+                      {renderGeometryRoleLabel(issue.role)}：{issue.message}{issue.layer ? `（图层 ${issue.layer}）` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {activeTask.geometryValidation.warnings.length > 0 && (
+                <ul className="mt-1 space-y-1 opacity-80">
+                  {activeTask.geometryValidation.warnings.map((issue, index) => (
+                    <li key={`warning-${issue.code}-${index}`}>提示：{issue.message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {activeTask && (
             <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
               <span className={`rounded-full px-2 py-1 font-medium ${activeTask.renderMode === "precise" ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#636366]"}`}>
@@ -1387,6 +1415,17 @@ function pickDefaultConfig(configs: RenderModelConfig[]): RenderModelConfig | un
 function taskRoleHasReferences(task: RenderTask, role: RenderReferenceRole): boolean {
   const binding = task.referenceBindings?.[role];
   return Boolean(binding?.assetIds?.length || binding?.files?.length);
+}
+
+function renderGeometryRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    panel: "门扇",
+    frame: "门框",
+    trim: "门套",
+    hardware: "五金",
+    outline: "结构图层",
+  };
+  return labels[role] || "DXF 结构";
 }
 
 function formatRenderTime(value: string): string {

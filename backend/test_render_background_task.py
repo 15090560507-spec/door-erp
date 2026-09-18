@@ -10,12 +10,88 @@ sys.path.insert(0, BACKEND_DIR)
 from auth import create_token
 from main import app
 from rendering.database import render_db, utc_now_iso
+from rendering.providers import RenderProviderRequest
+from rendering.service import execute_precise_render_task
+from rendering.layered_render import DxfGeometryValidationError
+import rendering.layered_render as layered_render
 import rendering.routes as render_routes
 
 
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
+
+
+def _provider_request():
+    return RenderProviderRequest(
+        config={},
+        prompt="test",
+        size="original",
+        count=1,
+        line_art={},
+        style_reference=None,
+        assets=[],
+        temp_assets=[],
+    )
+
+
+def _precise_dxf_task(tmp_path):
+    dxf_path = tmp_path / "source.dxf"
+    dxf_path.write_text("0\nEOF\n", encoding="ascii")
+    return render_db.create_task({
+        "renderMode": "precise",
+        "sourceType": "dxf",
+        "sourceSide": "front",
+        "files": [{"role": "source_dxf", "filePath": str(dxf_path)}],
+    })
+
+
+def test_precise_background_task_persists_geometry_metadata(tmp_path, monkeypatch):
+    task = _precise_dxf_task(tmp_path)
+    validation = {"valid": True, "errors": [], "warnings": []}
+    manifest = {"units": "mm", "transform_id": "cad-test", "roles": {}}
+
+    monkeypatch.setattr(layered_render, "render_layered_dxf", lambda *args, **kwargs: {
+        "front_jpg": PNG_1X1,
+        "back_jpg": PNG_1X1,
+        "front_layer_pngs": {"panel": PNG_1X1},
+        "back_layer_pngs": {"panel": PNG_1X1},
+        "material_mode": "flat",
+        "material_note": "",
+        "geometry_manifest": manifest,
+        "geometry_validation": validation,
+    })
+    try:
+        completed = execute_precise_render_task(task["id"], _provider_request())
+        assert completed["status"] == "completed"
+        assert completed["geometryValidation"] == validation
+        assert completed["geometryManifest"]["units"] == "mm"
+    finally:
+        render_db.delete_task(task["id"])
+
+
+def test_precise_background_task_persists_structured_geometry_failure(tmp_path, monkeypatch):
+    task = _precise_dxf_task(tmp_path)
+    validation = {
+        "valid": False,
+        "errors": [{"code": "MISSING_FRAME_GEOMETRY", "role": "frame", "message": "门框无有效几何"}],
+        "warnings": [],
+    }
+    manifest = {"units": "mm", "transform_id": "cad-test", "roles": {}}
+
+    def fail(*args, **kwargs):
+        raise DxfGeometryValidationError(validation, manifest)
+
+    monkeypatch.setattr(layered_render, "render_layered_dxf", fail)
+    try:
+        failed = execute_precise_render_task(task["id"], _provider_request())
+        assert failed["status"] == "failed"
+        assert failed["errorType"] == "dxf_geometry_validation"
+        assert failed["geometryValidation"]["errors"][0]["role"] == "frame"
+        assert failed["geometryManifest"]["units"] == "mm"
+        assert "门框无有效几何" in failed["errorMessage"]
+    finally:
+        render_db.delete_task(task["id"])
 
 
 def main():

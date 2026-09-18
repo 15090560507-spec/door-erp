@@ -60,6 +60,26 @@ export interface RenderResultImage {
   filePath?: string;
 }
 
+export interface RenderGeometryIssue {
+  code: string;
+  role: string;
+  layer?: string;
+  message: string;
+}
+
+export interface RenderGeometryValidation {
+  valid: boolean;
+  errors: RenderGeometryIssue[];
+  warnings: RenderGeometryIssue[];
+}
+
+export interface RenderGeometryManifest {
+  units: "mm" | string;
+  transform_id?: string;
+  canvas?: { width: number; height: number };
+  roles?: Record<string, unknown>;
+}
+
 export interface RenderTask {
   id: string;
   status: "pending" | "running" | "completed" | "failed" | string;
@@ -84,6 +104,8 @@ export interface RenderTask {
   referenceBindings: Partial<RenderReferenceBindings>;
   segmentation?: Record<string, unknown>;
   componentLayers?: Record<string, unknown>;
+  geometryManifest?: RenderGeometryManifest | null;
+  geometryValidation?: RenderGeometryValidation | null;
   compositeImage?: RenderResultImage | null;
   psdStatus?: "not_requested" | "generating" | "completed" | "failed" | string;
   psdFile?: { url?: string; originalName?: string } | null;
