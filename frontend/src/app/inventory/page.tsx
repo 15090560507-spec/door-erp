@@ -65,7 +65,7 @@ export default function InventoryPage() {
     ]} />}
     {summaryError && <InlineError title="库存指标暂不可用" message={summaryError} onRetry={() => void loadSummary()} />}
     {notice && (notice.error ? <InlineError message={notice.message} onDismiss={() => setNotice(null)} /> : <button type="button" onClick={() => setNotice(null)} className="workspace-success">{notice.message}</button>)}
-    {settings ? <WarehouseSettings notify={notify} /> : <InventoryWorkspace notify={notify} />}
+    {settings ? <WarehouseSettings notify={notify} /> : <InventoryWorkspace notify={notify} openWarehouseSettings={() => setSettings(true)} />}
   </main></div>;
 }
 

@@ -177,6 +177,23 @@ def main() -> None:
             and pending_summary["remaining_receivable_quantity"] == 0,
             f"detail={pending_order}; summary={pending_summary}",
         )
+        unbalanced_blocked = False
+        try:
+            purchasing.inspect_receipt_item(
+                receipt["items"][0]["id"],
+                {
+                    "qualified_quantity": 6,
+                    "concession_quantity": 0,
+                    "rejected_quantity": 0,
+                    "warehouse_id": warehouse["id"],
+                    "location_id": location["id"],
+                    "remark": "数量不守恒",
+                },
+                "quality",
+            )
+        except ValueError:
+            unbalanced_blocked = True
+        check("检验数量合计必须等于到货数量", unbalanced_blocked)
         receipt = purchasing.inspect_receipt_item(
             receipt["items"][0]["id"],
             {
