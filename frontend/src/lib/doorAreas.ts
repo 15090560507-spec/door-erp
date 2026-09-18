@@ -31,9 +31,44 @@ function exposedSize(width: unknown, overlap: unknown): number {
   return Math.max(0, numeric(width) - numeric(overlap));
 }
 
+function selectedSection(value: unknown, opening: unknown, fallback = 0): number {
+  const values = String(value ?? "")
+    .split("/")
+    .map((part) => Number(part.trim()))
+    .filter(Number.isFinite);
+  if (!values.length) return fallback;
+  return String(opening || "").includes("内开")
+    ? Math.max(...values)
+    : Math.min(...values);
+}
+
+export function resolveFrameDimensions(params: DoorFormData): { width: number; height: number } {
+  const stored = { width: numeric(params.dw), height: numeric(params.dh) };
+  if (!params.use_light_size) return stored;
+
+  const lightWidth = numeric(params.light_w);
+  const lightHeight = numeric(params.light_h);
+  if (lightWidth <= 0 || lightHeight <= 0) return stored;
+
+  const left = selectedSection(params.fw_left_str, params.sel_nk);
+  const right = selectedSection(params.fw_right_str, params.sel_nk);
+  const top = selectedSection(params.fw_top_str, params.sel_nk);
+  const bottom = params.threshold_type === "吊脚" || params.has_dj
+    ? 0
+    : params.threshold_type === "平底槛"
+      ? numeric(params.pdk)
+      : selectedSection(params.th_str, params.sel_nk);
+
+  return {
+    width: Math.max(300, lightWidth + left + right),
+    height: Math.max(600, lightHeight + top + bottom),
+  };
+}
+
 export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
-  const frameWidth = numeric(params.dw);
-  const baseFrameHeight = numeric(params.dh);
+  const resolvedFrame = resolveFrameDimensions(params);
+  const frameWidth = resolvedFrame.width;
+  const baseFrameHeight = resolvedFrame.height;
   // CAD treats dh as the door portion below the transom; quoting uses the full frame height.
   const hasTransom = ["玻璃", "封闭"].includes(String(params.sel_qc || "").trim());
   const transomHeight = hasTransom ? Math.max(0, numeric(params.qc_height)) : 0;

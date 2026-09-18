@@ -84,6 +84,27 @@ check("summary size from dw x dh", task.get("size") == "980 x 2200 (洞口)", st
 check("default quote_status 未报价", task.get("quote_status") == "未报价", str(task.get("quote_status")))
 check("default confirm_status 未确认", task.get("confirm_status") == "未确认", str(task.get("confirm_status")))
 
+light_params = dict(
+    BASE_PARAMS,
+    use_light_size=True,
+    light_w=980,
+    light_h=2050,
+    fw_left_str="55/160",
+    fw_right_str="55/160",
+    fw_top_str="55/195",
+    th_str="55/55",
+    threshold_type="高低槛",
+    sel_nk="内开",
+    dw=900,
+    dh=2100,
+)
+resp = client.post("/api/tasks", json={"params": light_params}, headers=HEADERS)
+check(
+    "clear-opening task uses resolved frame size",
+    resp.status_code == 200 and resp.json().get("size") == "1300 x 2300 (门框)",
+    resp.text,
+)
+
 # ==================== 2. 修改表单参数 → 汇总表同步刷新 ====================
 section("2. Summary refresh after param update")
 updated_params = dict(BASE_PARAMS, dhrq="2026.03.20", dhdw="上海新客户", gdmc="外滩项目", dw=1080, dh=2300, door_type="对开门")

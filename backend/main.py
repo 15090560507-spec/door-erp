@@ -10,6 +10,7 @@ import uuid
 import datetime
 import hashlib
 import logging
+import math
 import sqlite3
 import threading
 import time
@@ -187,6 +188,51 @@ def _validate_task_params(params: Dict) -> None:
         raise HTTPException(status_code=400, detail="锁体类型为必填项")
 
 
+def _numeric(value: object, fallback: float = 0) -> float:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _selected_section(value: object, opening: object, fallback: float = 0) -> float:
+    values = [_numeric(part, math.nan) for part in str(value or "").split("/")]
+    values = [number for number in values if math.isfinite(number)]
+    if not values:
+        return fallback
+    return max(values) if _opening_selected(opening, "内开") else min(values)
+
+
+def _resolve_frame_dimensions(params: Dict) -> tuple[float, float]:
+    stored_width = _numeric(params.get("dw"))
+    stored_height = _numeric(params.get("dh"))
+    if not params.get("use_light_size"):
+        return stored_width, stored_height
+
+    light_width = _numeric(params.get("light_w"))
+    light_height = _numeric(params.get("light_h"))
+    if light_width <= 0 or light_height <= 0:
+        return stored_width, stored_height
+
+    opening = params.get("sel_nk")
+    left = _selected_section(params.get("fw_left_str"), opening)
+    right = _selected_section(params.get("fw_right_str"), opening)
+    top = _selected_section(params.get("fw_top_str"), opening)
+    threshold_type = str(params.get("threshold_type") or "")
+    if threshold_type == "吊脚" or params.get("has_dj"):
+        bottom = 0
+    elif threshold_type == "平底槛":
+        bottom = _numeric(params.get("pdk"))
+    else:
+        bottom = _selected_section(params.get("th_str"), opening)
+    return max(300, light_width + left + right), max(600, light_height + top + bottom)
+
+
+def _display_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+
 def _task_summary_from_params(params: Dict) -> Dict:
     """从表单参数推导汇总表字段（时间/客户/项目/门型/尺寸）。
 
@@ -195,6 +241,10 @@ def _task_summary_from_params(params: Dict) -> Dict:
     product_name = str(params.get("product_name", "") or "")
     is_simple_product = product_name in SIMPLE_PRODUCT_NAMES
     dimension_name = "宽×长" if product_name in LENGTH_PRODUCT_NAMES else "宽×高"
+    frame_width, frame_height = _resolve_frame_dimensions(params)
+    has_transom = str(params.get("sel_qc") or "").strip() in {"玻璃", "封闭"}
+    if has_transom:
+        frame_height += max(0, _numeric(params.get("qc_height")))
     return {
         "date": normalize_task_date(params.get("dhrq", "")) or shanghai_now().strftime("%Y.%m.%d"),
         "customer": str(params.get("dhdw", "") or ""),
@@ -203,7 +253,8 @@ def _task_summary_from_params(params: Dict) -> Dict:
         "size": (
             f"{params.get('dw', 0)} x {params.get('dh', 0)} ({dimension_name})"
             if is_simple_product
-            else f"{params.get('dw', 0)} x {params.get('dh', 0)} (洞口)"
+            else f"{_display_number(frame_width)} x {_display_number(frame_height)} "
+                 f"({'门框' if params.get('use_light_size') else '洞口'})"
         ),
     }
 
@@ -478,22 +529,7 @@ def build_cad_params(req: CADRequest):
 
     # --- 见光尺寸反算 ---
     if req.use_light_size:
-        lw = req.light_w
-        lh = req.light_h
-        if lw > 0 and lh > 0:
-            from drawing import DimensionCalculator
-            calc_p = {
-                "dw": dw, "dh": dh,
-                "left_width_front": lwf, "right_width_front": rwf,
-                "left_width_back": lwb, "right_width_back": rwb,
-                "fw_top_front": ftf, "fw_top_back": ftb,
-                "th_front": thf, "th_back": thb,
-                "nk": req.sel_nk
-            }
-            calc = DimensionCalculator(calc_p)
-            outer_only = _opening_selected(req.sel_nk, "外开") and not _opening_selected(req.sel_nk, "内开")
-            res_light = calc.calculate_from_light_size(lw, lh, outer_only)
-            dw, dh = res_light[0], res_light[1]
+        dw, dh = _resolve_frame_dimensions(req.model_dump())
 
     is_hanging_threshold = is_sliding_door or is_spring_door or req.threshold_type == "吊脚" or req.has_dj
     effective_dj_height = 10 if (is_sliding_door or is_spring_door) else req.dj_height
