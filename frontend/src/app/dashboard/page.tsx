@@ -20,6 +20,7 @@ import DropdownOptionsManager from "@/components/DropdownOptionsManager";
 import ProductionReleaseButton from "@/components/production/ProductionReleaseButton";
 import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
+import { calculateDoorAreas } from "@/lib/doorAreas";
 import { localDateCompact } from "@/lib/dateTime";
 import { Inbox, RefreshCw } from "lucide-react";
 
@@ -32,7 +33,8 @@ function productSummary(params?: DoorFormData) {
     const dimensionLabel = LENGTH_PRODUCT_NAMES.includes(params.product_name) ? "宽×长" : "宽×高";
     return `产品: ${params.product_name} | ${dimensionLabel}: ${params.dw}×${params.dh}`;
   }
-  return `门型: ${params.door_type} | 门框: ${params.dw}×${params.dh}`;
+  const { frameWidth, frameHeight } = calculateDoorAreas(params);
+  return `门型: ${params.door_type} | 门框: ${frameWidth}×${frameHeight}`;
 }
 
 function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {

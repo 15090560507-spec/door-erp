@@ -105,6 +105,30 @@ check(
     resp.text,
 )
 
+direct_transom_params = dict(BASE_PARAMS, sel_qc="玻璃", qc_height=350)
+resp = client.post("/api/tasks", json={"params": direct_transom_params}, headers=HEADERS)
+check(
+    "direct task frame size includes transom",
+    resp.status_code == 200 and resp.json().get("size") == "980 x 2550 (门框)",
+    resp.text,
+)
+
+clear_transom_params = dict(light_params, sel_qc="封闭", qc_height=350)
+resp = client.post("/api/tasks", json={"params": clear_transom_params}, headers=HEADERS)
+check(
+    "clear-opening task frame size includes transom once",
+    resp.status_code == 200 and resp.json().get("size") == "1300 x 2650 (门框)",
+    resp.text,
+)
+
+simple_product_params = dict(BASE_PARAMS, product_name="牌匾", dw=1200, dh=600)
+resp = client.post("/api/tasks", json={"params": simple_product_params}, headers=HEADERS)
+check(
+    "simple product keeps width-length label",
+    resp.status_code == 200 and resp.json().get("size") == "1200 x 600 (宽×长)",
+    resp.text,
+)
+
 # ==================== 2. 修改表单参数 → 汇总表同步刷新 ====================
 section("2. Summary refresh after param update")
 updated_params = dict(BASE_PARAMS, dhrq="2026.03.20", dhdw="上海新客户", gdmc="外滩项目", dw=1080, dh=2300, door_type="对开门")

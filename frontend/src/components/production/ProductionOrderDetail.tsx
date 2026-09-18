@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ProductionDocumentActions from "./ProductionDocumentActions";
 import ProductionTimeline from "./ProductionTimeline";
+import { calculateDoorAreas } from "@/lib/doorAreas";
 import {
   copyProductionOrder,
   createCuttingSheet,
@@ -41,6 +42,7 @@ import type {
   ProductionTimelineItem,
   QualityInspection,
 } from "@/lib/productionTypes";
+import type { TaskItem } from "@/lib/types";
 
 const emptyBomItem: BomItem = {
   category: "其他", name: "", specification: "", material: "", thickness: "",
@@ -132,13 +134,16 @@ export default function ProductionOrderDetail({ order, permissions, notify, onCh
 }
 
 function Snapshot({ order }: { order: ProductionOrder }) {
-  const task = order.task_snapshot || {};
-  const params = (task.params || {}) as Record<string, unknown>;
+  const task = (order.task_snapshot || {}) as Partial<TaskItem>;
+  const params = task.params;
+  const frozenFrameSize = typeof task.size === 'string' && task.size.endsWith('(门框)') ? task.size : '';
+  const calculatedFrame = params ? calculateDoorAreas(params) : null;
+  const frameSize = frozenFrameSize || (calculatedFrame ? `${calculatedFrame.frameWidth} x ${calculatedFrame.frameHeight} (门框)` : '-');
   const rows = [
     ['订货单位', order.customer], ['项目名称', order.project || '-'], ['要求交期', order.due_date || '-'],
-    ['门型', params.door_type], ['门框尺寸', `${params.dw || '-'} × ${params.dh || '-'}`],
-    ['开向', `${params.sel_kx || ''}${params.sel_nk || ''}`], ['制作材料', params.zzcl],
-    ['正面款式', params.zmks], ['反面款式', params.fmks], ['销售备注', order.sales_note || '-'],
+    ['门型', params?.door_type], ['门框尺寸', frameSize],
+    ['开向', `${params?.sel_kx || ''}${params?.sel_nk || ''}`], ['制作材料', params?.zzcl],
+    ['正面款式', params?.zmks], ['反面款式', params?.fmks], ['销售备注', order.sales_note || '-'],
   ];
   return <div className="grid border-l border-t border-[#E5E5EA] sm:grid-cols-2 lg:grid-cols-3">{rows.map(([label, value]) => <div key={String(label)} className="border-b border-r border-[#E5E5EA] p-3"><div className="text-xs text-[#8E8E93]">{String(label)}</div><div className="mt-1 min-h-5 break-words text-sm">{String(value || '-')}</div></div>)}</div>;
 }
