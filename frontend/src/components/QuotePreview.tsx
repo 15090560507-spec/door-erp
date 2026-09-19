@@ -2,6 +2,13 @@
 
 import type { QuoteDoorGroup } from "@/lib/quoteTypes";
 import { quoteItemAmountText, quoteItemQuantityText } from "@/lib/quoteTypes";
+import {
+  QUOTE_PREVIEW_COLUMN_WIDTHS_MM,
+  QUOTE_PREVIEW_PAGE_WIDTH_MM,
+  QUOTE_PREVIEW_PADDING_MM,
+  QUOTE_PREVIEW_ROW_HEIGHTS_MM,
+  millimeters,
+} from "@/lib/quotePreviewLayout";
 import { toChineseAmount } from "@/lib/toChineseAmount";
 
 interface Props {
@@ -33,14 +40,21 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
   }, 0));
   const total = groupTotals.reduce((sum, amount) => sum + amount, 0);
 
-  const cell = "border border-black px-[4px] align-middle overflow-hidden";
+  const cell = "border border-black px-[1.1mm] align-middle";
   const head = `${cell} text-center font-bold text-[#00005e] whitespace-nowrap`;
-  const itemCell = `${cell} text-center font-bold leading-tight`;
-  const yellow = `${cell} bg-[#ffff00] text-[#ff0000] font-bold leading-snug`;
+  const itemCell = `${cell} text-center font-bold leading-tight whitespace-normal break-words [overflow-wrap:anywhere]`;
+  const yellow = `${cell} bg-[#ffff00] text-[#ff0000] font-bold leading-[1.55] whitespace-pre-wrap break-words [overflow-wrap:anywhere]`;
 
   return (
     <div id="quote-preview-area" className="bg-white rounded-2xl border border-[#E5E5EA]/60 p-3 overflow-auto">
-      <div className="mx-auto w-[760px] min-w-[760px] bg-white">
+      <div
+        className="mx-auto box-border bg-white"
+        style={{
+          width: millimeters(QUOTE_PREVIEW_PAGE_WIDTH_MM),
+          minWidth: millimeters(QUOTE_PREVIEW_PAGE_WIDTH_MM),
+          padding: millimeters(QUOTE_PREVIEW_PADDING_MM),
+        }}
+      >
         <table
           className="w-full table-fixed border-collapse border border-black text-black"
           style={{
@@ -49,44 +63,37 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
           }}
         >
           <colgroup>
-            <col style={{ width: "7.25%" }} />
-            <col style={{ width: "8.9%" }} />
-            <col style={{ width: "25.82%" }} />
-            <col style={{ width: "8.85%" }} />
-            <col style={{ width: "8.9%" }} />
-            <col style={{ width: "8.51%" }} />
-            <col style={{ width: "5.03%" }} />
-            <col style={{ width: "6.96%" }} />
-            <col style={{ width: "6.09%" }} />
-            <col style={{ width: "13.69%" }} />
+            {QUOTE_PREVIEW_COLUMN_WIDTHS_MM.map((width, index) => (
+              <col key={index} style={{ width: millimeters(width) }} />
+            ))}
           </colgroup>
           <tbody>
-            <tr className="h-[42px]">
-              <td className={`${cell} text-center text-[20px] font-bold leading-none`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.title) }}>
+              <td className={`${cell} text-center text-[20pt] font-bold leading-none whitespace-nowrap`} colSpan={10}>
                 浙江西州将军门业有限公司
               </td>
             </tr>
 
-            <tr className="h-[30px]">
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.header) }}>
               <td className={`${cell} text-[15px] font-bold`} colSpan={2}>客户名称:</td>
-              <td className={`${cell} text-[15px] font-bold`} colSpan={4}>{customerName}</td>
+              <td className={`${cell} text-[15px] font-bold whitespace-normal break-words [overflow-wrap:anywhere]`} colSpan={4}>{customerName}</td>
               <td className={`${cell} text-[15px] font-bold`} colSpan={2}>日期:</td>
-              <td className={`${cell} text-center text-[15px] font-bold tracking-[2px]`} colSpan={2}>{quoteDate}</td>
+              <td className={`${cell} text-center text-[15px] font-bold tracking-[2px] whitespace-nowrap`} colSpan={2}>{quoteDate}</td>
             </tr>
-            <tr className="h-[30px]">
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.header) }}>
               <td className={`${cell} text-[15px] font-bold`} colSpan={2}>项目名称:</td>
-              <td className={`${cell} text-[15px] font-bold`} colSpan={4}>{projectName}</td>
+              <td className={`${cell} text-[15px] font-bold whitespace-normal break-words [overflow-wrap:anywhere]`} colSpan={4}>{projectName}</td>
               <td className={`${cell} text-[15px] font-bold`} colSpan={2}>主题:</td>
-              <td className={`${cell} text-center text-[15px] font-bold tracking-[2px]`} colSpan={2}>产品报价单</td>
+              <td className={`${cell} text-center text-[15px] font-bold tracking-[2px] whitespace-nowrap`} colSpan={2}>产品报价单</td>
             </tr>
 
-            <tr className="h-[86px]">
-              <td className={`${cell} text-[15px] font-bold leading-relaxed indent-8`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.intro) }}>
+              <td className={`${cell} text-[15px] font-bold leading-relaxed indent-8 whitespace-normal break-words [overflow-wrap:anywhere]`} colSpan={10}>
                 承蒙关照，感谢贵方对我方产品感兴趣，根据贵方要求，报上我公司价格，可随时来电来函告知，我们将及时为您提供。
               </td>
             </tr>
 
-            <tr className="h-[28px]">
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.tableHeader) }}>
               <td className={head} rowSpan={2}>序号</td>
               <td className={head} colSpan={2} rowSpan={2}>品名型号</td>
               <td className={head} colSpan={2}>规格</td>
@@ -96,7 +103,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               <td className={head} rowSpan={2}>单价</td>
               <td className={head} rowSpan={2}>总金额/元</td>
             </tr>
-            <tr className="h-[28px]">
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.tableHeader) }}>
               <td className={head}>宽</td>
               <td className={head}>高</td>
             </tr>
@@ -109,7 +116,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                   const hasProduct = Boolean(item.productName.trim());
                   if (hasProduct) sequence += 1;
                   rows.push(
-                    <tr className="min-h-[34px]" key={`item-${groupIndex}-${itemIndex}`}>
+                    <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.item) }} key={`item-${groupIndex}-${itemIndex}`}>
                       <td className={itemCell}>{hasProduct ? sequence : ""}</td>
                       <td className={`${itemCell} text-left break-words`} colSpan={2}>{item.productName}</td>
                       <td className={itemCell}>{numberText(item.width)}</td>
@@ -124,7 +131,11 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                 });
                 if (groups.length > 1) {
                   rows.push(
-                    <tr className="h-[26px] bg-[#E8F2FF]" key={`subtotal-${groupIndex}`}>
+                    <tr
+                      className="bg-[#E8F2FF]"
+                      style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.subtotal) }}
+                      key={`subtotal-${groupIndex}`}
+                    >
                       <td className={`${cell} text-right font-bold`} colSpan={9}>{group.groupName || `第${groupIndex + 1}樘门`}小计</td>
                       <td className={`${cell} text-center font-bold`}>{groupTotals[groupIndex]}</td>
                     </tr>
@@ -134,14 +145,17 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               });
             })()}
             {Array.from({ length: emptyRows }, (_, index) => (
-              <tr className="h-[34px]" key={`empty-${index}`}>
+              <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.item) }} key={`empty-${index}`}>
                 {Array.from({ length: 10 }, (__, cellIndex) => (
                   <td className={itemCell} key={cellIndex} colSpan={cellIndex === 1 ? 2 : 1}></td>
                 )).filter((_, cellIndex) => cellIndex !== 2)}
               </tr>
             ))}
 
-            <tr className="h-[28px] bg-[#00b0f0] text-[16px] font-bold">
+            <tr
+              className="bg-[#00b0f0] text-[16px] font-bold"
+              style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.total) }}
+            >
               <td className={cell}>合计</td>
               <td className={cell} colSpan={2}></td>
               <td className={cell}></td>
@@ -153,24 +167,24 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               <td className={`${cell} text-center`}>{total}</td>
             </tr>
 
-            <tr className="h-[32px]">
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.amount) }}>
               <td className={`${cell} text-[16px] font-bold`} colSpan={5}>合计总金额（大写）:</td>
               <td className={`${cell} text-right text-[14px] font-bold`} colSpan={5}>{total ? toChineseAmount(total) : ""}</td>
             </tr>
-            <tr className="h-[46px]">
-              <td className={`${cell} text-center text-[#ff0000] text-[15px] font-bold`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.notice) }}>
+              <td className={`${cell} text-center text-[#ff0000] text-[15px] font-bold whitespace-normal break-words [overflow-wrap:anywhere]`} colSpan={10}>
                 {noticeText}
               </td>
             </tr>
-            <tr className="h-[86px]">
-              <td className={`${yellow} text-[14px] whitespace-pre-wrap`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.terms) }}>
+              <td className={`${yellow} text-[14px]`} colSpan={10}>
                 {`1.付款方式:确定制作，先安排货款50%的定金，款清发货
 2.以上价格不包含运费、安装调试费、测量等费用。
 3.请及时确定签字回传，我司以收到贵方签字回传单以及保证金为准，方可安排生产`}
               </td>
             </tr>
-            <tr className="h-[110px]">
-              <td className={`${yellow} text-left text-[14px] leading-[1.55]`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.invoice) }}>
+              <td className={`${yellow} text-left text-[14px]`} colSpan={10}>
                 <div>开票资料</div>
                 <div>公司名称：杭州浙家门业有限公司</div>
                 <div>账户号码：3301041060000451769</div>
@@ -179,8 +193,8 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                 <div>账户编号：J3310198780901</div>
               </td>
             </tr>
-            <tr className="h-[86px]">
-              <td className={`${yellow} text-[14px] whitespace-pre-wrap`} colSpan={10}>
+            <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.bank) }}>
+              <td className={`${yellow} text-[14px]`} colSpan={10}>
                 {`汇款请汇入以下账户
 户名：张春兰
 账号：622848 0329 2739 08775
