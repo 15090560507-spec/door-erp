@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from config import FULFILLMENT_DB_FILE
+from schema_version import record_schema_version, schema_is_current
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -20,6 +21,8 @@ DEFAULT_WAREHOUSES = (
     ("SUBCONTRACT", "外协在途仓", "外协在途"),
     ("FINISHED", "成品仓", "成品"),
 )
+INVENTORY_SCHEMA_COMPONENT = "inventory"
+INVENTORY_SCHEMA_VERSION = 1
 
 
 def inventory_now() -> str:
@@ -58,6 +61,8 @@ class InventoryDatabase:
     def _initialize(self) -> None:
         now = inventory_now()
         with self.transaction() as conn:
+            if schema_is_current(conn, INVENTORY_SCHEMA_COMPONENT, INVENTORY_SCHEMA_VERSION):
+                return
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS inventory_warehouses (
@@ -684,6 +689,12 @@ class InventoryDatabase:
                    ) VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(code) DO NOTHING""",
                 [(code, name, warehouse_type, now, now) for code, name, warehouse_type in DEFAULT_WAREHOUSES],
+            )
+            record_schema_version(
+                conn,
+                INVENTORY_SCHEMA_COMPONENT,
+                INVENTORY_SCHEMA_VERSION,
+                now,
             )
 
     @staticmethod

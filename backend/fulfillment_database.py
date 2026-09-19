@@ -15,10 +15,13 @@ from bom_readiness import automatic_verification_status, bom_blockers
 from config import FULFILLMENT_DB_FILE, FULFILLMENT_FILES_DIR
 from inventory_database import InventoryDatabase
 from requirement_service import RequirementService
+from schema_version import record_schema_version, schema_is_current
 from work_package_service import WorkPackageService
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+FULFILLMENT_SCHEMA_COMPONENT = "fulfillment"
+FULFILLMENT_SCHEMA_VERSION = 1
 DOOR_STATUSES = (
     "待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中",
     "待成品质检", "返工中", "待成品入库", "已入库待发货", "待财务放行",
@@ -231,6 +234,8 @@ class FulfillmentDatabase:
 
     def _initialize(self) -> None:
         with self.transaction() as conn:
+            if schema_is_current(conn, FULFILLMENT_SCHEMA_COMPONENT, FULFILLMENT_SCHEMA_VERSION):
+                return
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS fulfillment_orders (
@@ -815,6 +820,12 @@ class FulfillmentDatabase:
             conn.execute(
                 """CREATE UNIQUE INDEX IF NOT EXISTS ux_fulfillment_sales_order
                    ON fulfillment_orders(sales_order_id) WHERE sales_order_id IS NOT NULL"""
+            )
+            record_schema_version(
+                conn,
+                FULFILLMENT_SCHEMA_COMPONENT,
+                FULFILLMENT_SCHEMA_VERSION,
+                fulfillment_now(),
             )
 
     @staticmethod

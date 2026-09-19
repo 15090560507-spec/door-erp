@@ -57,7 +57,7 @@ from fulfillment_routes import (
     fulfillment_db,
     router as fulfillment_router,
 )
-from inventory_routes import router as inventory_router
+from inventory_routes import configure_inventory_database, router as inventory_router
 from sales_order_routes import (
     configure_fulfillment_provisioner,
     configure_task_repository as configure_sales_order_tasks,
@@ -119,6 +119,7 @@ configure_fulfillment_users(user_db)
 configure_sales_order_tasks(task_db)
 configure_fulfillment_sales_orders(sales_order_db)
 configure_fulfillment_provisioner(SalesOrderFulfillmentService(sales_order_db, fulfillment_db))
+configure_inventory_database(fulfillment_db.inventory_db)
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
