@@ -13,6 +13,7 @@ export type DoorAreaMetrics = {
   outerWidth: number;
   outerHeight: number;
   outerArea: number;
+  lintelArea: number;
   frontTrimArea: number;
   backTrimArea: number;
   trimArea: number;
@@ -140,12 +141,21 @@ export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
   const frameArea = frameWidth > 0 && frameHeight > 0
     ? frameWidth * frameHeight * 0.000001
     : 0;
-  const frontTrimArea = hasFrontOuter
+  const frontTrimBaseArea = hasFrontOuter
     ? Math.max(0, frontOuterWidth * frontOuterHeight * 0.000001 - frameArea)
     : 0;
-  const backTrimArea = hasInnerTrim
+  const backTrimBaseArea = hasInnerTrim
     ? Math.max(0, backOuterWidth * backOuterHeight * 0.000001 - frameArea)
     : 0;
+  const lintelHeight = params.has_mm ? Math.max(0, numeric(params.mm_height)) : 0;
+  const lintelOverlap = hasFrontOuter ? frontOverlapLr : hasInnerTrim ? backOverlapLr : 0;
+  const lintelWidth = Math.max(0, frameWidth - lintelOverlap * 2);
+  const lintelArea = (hasFrontOuter || hasInnerTrim) && lintelHeight > 0
+    ? lintelWidth * lintelHeight * 0.000001
+    : 0;
+  // 门楣只归入一个包套项目：优先外包套，仅有内包套时归入内包套。
+  const frontTrimArea = frontTrimBaseArea + (hasFrontOuter ? lintelArea : 0);
+  const backTrimArea = backTrimBaseArea + (!hasFrontOuter && hasInnerTrim ? lintelArea : 0);
   const outerArea = outerWidth > 0 && outerHeight > 0
     ? outerWidth * outerHeight * 0.000001
     : 0;
@@ -163,6 +173,7 @@ export function calculateDoorAreas(params: DoorFormData): DoorAreaMetrics {
     outerWidth,
     outerHeight,
     outerArea,
+    lintelArea,
     frontTrimArea,
     backTrimArea,
     trimArea: frontTrimArea + backTrimArea,

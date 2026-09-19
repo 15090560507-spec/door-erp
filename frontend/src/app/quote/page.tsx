@@ -169,8 +169,8 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
 
   if (pricingMode === "framePlusTrim") {
     ([
-      ["外包套面积", frontTrimArea],
-      ["内包套面积", backTrimArea],
+      ["外包套", frontTrimArea],
+      ["内包套", backTrimArea],
     ] as const).filter(([, area]) => area > 0).forEach(([productName, area]) => {
       rows.push({
         ...createEmptyQuoteItem(),
