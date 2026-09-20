@@ -34,15 +34,26 @@ from psd_tools.constants import Compression
 from cad_preview import Primitive, _arc_sample_points, _bbox, _point
 
 from .dxf_geometry import build_geometry_manifest, make_geometry_transform, validate_geometry_manifest
+from .image_geometry import (
+    build_structural_seam,
+    encode_jpeg,
+    normalize_rgb_cover,
+    seam_rgba,
+    validate_layer_canvases,
+)
 from .providers import RenderProviderRequest, get_provider
 from .psd_writer import PsdNode, write_psd
 from .storage import save_bytes
 
 AI_MATERIAL_PROMPT = (
     "基于参考素材为铜门门体添加表面颜色与材质纹理。"
-    "严格保持门体结构、比例、门板分格、拉手/锁具/合页位置与所有尺寸标注完全不变，"
-    "只替换表面颜色、材质与轻微光影。输出平整的产品目录效果，无透视、无背景场景、无额外装饰。"
+    "严格保持门体结构、比例、门板分格、拉手/锁具/合页位置完全不变，"
+    "只替换表面颜色、材质与轻微光影。输出真实、平整的产品目录效果，"
+    "不显示线稿、尺寸线、文字、标注箭头或辅助轮廓，无透视、无背景场景、无额外装饰。"
 )
+
+VISIBLE_LAYER_ORDER = ("seam", "trim", "frame", "panel", "glass", "hardware", "lighting")
+OUTPUT_QUALITY = 95
 
 
 class DxfGeometryValidationError(ValueError):
@@ -59,6 +70,7 @@ CATEGORY_BY_LAYER = {
     "A-DOOR-PANEL": "panel",
     "A-DOOR-FRAME": "frame",
     "A-DOOR-TRIM": "trim",
+    "A-DOOR-GLASS": "glass",
     "A-DOOR-HATCH": "panel",
     "A-DOOR-mark": "text",
     "YQ_DIM": "dim",
@@ -71,6 +83,7 @@ PALETTE = {
     "panel": (196, 138, 61),       # 铜色
     "frame": (140, 90, 43),        # 深铜
     "trim": (108, 66, 31),         # 更深
+    "glass": (185, 215, 225),      # 玻璃浅蓝灰
     "accessory": (72, 72, 76),     # 金属灰
     "outline": (43, 43, 43),       # 轮廓深灰
     "text": (28, 28, 30),
@@ -294,7 +307,7 @@ def _filter_to_door_views(
 class _Canvas:
     def __init__(self, prims: list[tuple[str, Primitive]], target_long_edge: int, dpi: int):
         self.dpi = dpi
-        content = [p for c, p in prims if c in {"panel", "frame", "trim", "accessory", "dim", "text"}]
+        content = [p for c, p in prims if c in {"panel", "frame", "trim", "glass", "accessory", "dim", "text"}]
         bbox = _category_bbox(content)
         if bbox is None:
             raise ValueError("CAD 中没有可渲染的门体几何")
@@ -458,11 +471,8 @@ def _to_png(arr: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-def _to_jpg(arr: np.ndarray, quality: int = 88) -> bytes:
-    pil = Image.fromarray(arr[..., :3], "RGB")
-    buf = io.BytesIO()
-    pil.save(buf, "JPEG", quality=quality)
-    return buf.getvalue()
+def _to_jpg(arr: np.ndarray, quality: int = OUTPUT_QUALITY) -> bytes:
+    return encode_jpeg(arr, quality=quality)
 
 
 def _crop(arr: np.ndarray, bbox: tuple[float, float, float, float], canvas: _Canvas) -> np.ndarray:
@@ -516,8 +526,8 @@ def _apply_ai_material(flat_rgb: np.ndarray, ai_config: dict, references: list[d
             data = resp.read()
     else:
         raise ValueError("无法识别的模型返回类型")
-    result = Image.open(io.BytesIO(data)).convert("RGB")
-    return np.array(result.resize((flat_rgb.shape[1], flat_rgb.shape[0]), Image.LANCZOS), dtype=np.uint8)
+    result = np.array(Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8)
+    return normalize_rgb_cover(result, (flat_rgb.shape[1], flat_rgb.shape[0]))
 
 
 def render_layered_dxf(
@@ -557,7 +567,7 @@ def render_layered_dxf(
     # 结构部件按正反面拆分
     front_cat: dict[str, list[Primitive]] = {}
     back_cat: dict[str, list[Primitive]] = {}
-    for cat in ("panel", "frame", "trim", "accessory"):
+    for cat in ("panel", "frame", "trim", "glass", "accessory"):
         f, b = _split_front_back(prims(cat), front_x, back_x)
         front_cat[cat] = f
         back_cat[cat] = b
@@ -565,16 +575,13 @@ def render_layered_dxf(
 
     def render_filled(cat: str, prim_list: list[Primitive]) -> np.ndarray:
         rgb = PALETTE[cat]
-        arr = _render_primitives(canvas, prim_list, fill_rgb=rgb, stroke_rgb=None, stroke_width=2)
-        # 加细描边，让蒙版边界更清晰
-        stroke = _render_primitives(canvas, prim_list, fill_rgb=None, stroke_rgb=(40, 40, 40), stroke_width=max(1, int(canvas.scale * 0.4)))
-        arr = _composite([arr, stroke])
-        return arr
+        return _render_primitives(canvas, prim_list, fill_rgb=rgb, stroke_rgb=None, stroke_width=2)
 
     geometry_masks = {
         "panel": _render_exact_role_mask(canvas, "panel", prims("panel")),
         "frame": _render_exact_role_mask(canvas, "frame", prims("frame")),
         "trim": _render_exact_role_mask(canvas, "trim", prims("trim")),
+        "glass": _render_exact_role_mask(canvas, "glass", prims("glass")),
         "hardware": _render_exact_role_mask(canvas, "accessory", prims("accessory")),
     }
     geometry_validation = validate_geometry_manifest(geometry_manifest, by_cat, geometry_masks)
@@ -590,7 +597,7 @@ def render_layered_dxf(
         raise DxfGeometryValidationError(geometry_validation, geometry_manifest)
 
     # 轮廓层（所有线条/圆弧描边）
-    outline_all = prims("outline") + prims("panel") + prims("frame") + prims("trim") + prims("accessory")
+    outline_all = prims("outline") + prims("panel") + prims("frame") + prims("trim") + prims("glass") + prims("accessory")
     outline_arr = _render_primitives(canvas, outline_all, fill_rgb=None, stroke_rgb=PALETTE["outline"], stroke_width=max(1, int(canvas.scale * 0.5)))
 
     text_arr = _render_text(canvas, prims("text"), PALETTE["text"])
@@ -599,6 +606,13 @@ def render_layered_dxf(
 
     white_bg = _blank_rgba(canvas.width, canvas.height)
     _fill_color(white_bg, PALETTE["background"])
+    geometry_role_masks = {role: layer[..., 3] for role, layer in geometry_masks.items()}
+    seam_layer = seam_rgba(
+        build_structural_seam(
+            geometry_role_masks,
+            width_px=max(1, round(min(canvas.width, canvas.height) / 900)),
+        )
+    )
 
     # ---------- 材质处理：AI 纹理 或 默认平整色 ----------
     material_mode = "flat"
@@ -607,19 +621,27 @@ def render_layered_dxf(
     if ai_config:
         flat_complete = _composite([
             white_bg,
-            _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
-            render_filled("panel", prims("panel")),
-            render_filled("frame", prims("frame")),
+            seam_layer,
             render_filled("trim", prims("trim")),
+            render_filled("frame", prims("frame")),
+            render_filled("panel", prims("panel")),
+            render_filled("glass", prims("glass")),
             render_filled("accessory", prims("accessory")),
-            outline_arr,
+            _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
         ])
-        role_by_category = {"panel": "panel", "frame": "frame", "trim": "trim", "accessory": "hardware"}
+        role_by_category = {
+            "panel": "panel",
+            "frame": "frame",
+            "trim": "trim",
+            "glass": "glass",
+            "accessory": "hardware",
+        }
         prompts = {
-            "panel": "只为门扇区域生成参考图中的门扇款式、颜色与材质。严格保持线稿比例、门扇分格和边界，不得改变门框、门套或五金。",
-            "frame": "只为门框区域生成表面颜色与材质。门框没有独立造型，严格保持线稿中的宽度、边界和比例，不得改变门扇或门套。",
-            "trim": "只为门套、门头和门柱区域生成参考款式与材质。严格保持线稿外轮廓、尺寸和遮挡关系，不得改变门扇或门框。",
-            "accessory": "只为线稿中已有的拉手、锁具、合页、花件等五金区域生成参考款式与材质。不得移动、增加或删除配件。",
+            "panel": "只为门扇区域生成参考图中的门扇款式、颜色与材质。严格保持原始比例、门扇分格和边界，不得改变门框、门套或五金。不显示线稿、尺寸、文字或辅助轮廓。",
+            "frame": "只为门框区域生成表面颜色与材质。门框没有独立造型，严格保持宽度、边界和比例，不得改变门扇或门套。不显示线稿、尺寸、文字或辅助轮廓。",
+            "trim": "只为门套、门头和门柱区域生成参考款式与材质。严格保持原始外轮廓、尺寸和遮挡关系，不得改变门扇或门框。不显示线稿、尺寸、文字或辅助轮廓。",
+            "glass": "只为玻璃区域生成颜色、透明度、纹理和真实反光。严格保持玻璃边界，不得改变门扇或五金。不显示线稿、尺寸、文字或辅助轮廓。",
+            "accessory": "只为已有的拉手、锁具、合页、花件等五金区域生成参考款式与材质。不得移动、增加或删除配件。不显示线稿、尺寸、文字或辅助轮廓。",
         }
         errors: list[str] = []
         if reference_bindings is None:
@@ -665,10 +687,11 @@ def render_layered_dxf(
         children: list[PsdNode] = []
         shadow = _build_shadow(canvas, cats["panel"] + cats["frame"])
         children.append(PsdNode("阴影与高光", _to_pil(shadow)))
+        children.append(PsdNode("配件", _to_pil(part_layer("accessory", cats["accessory"]))))
+        children.append(PsdNode("玻璃", _to_pil(part_layer("glass", cats["glass"]))))
         children.append(PsdNode("门板", _to_pil(part_layer("panel", cats["panel"]))))
         children.append(PsdNode("门框", _to_pil(part_layer("frame", cats["frame"]))))
         children.append(PsdNode("门套或门头门柱", _to_pil(part_layer("trim", cats["trim"]))))
-        children.append(PsdNode("配件", _to_pil(part_layer("accessory", cats["accessory"]))))
         return PsdNode(name, children=children)
 
     front_group = face_group("02_正面效果", front_cat)
@@ -677,7 +700,7 @@ def render_layered_dxf(
     info_group = PsdNode("01_订货单信息", children=[
         PsdNode("尺寸标注", _to_pil(dim_arr)),
         PsdNode("表格与文字", _to_pil(text_arr)),
-    ])
+    ], visible=False)
 
     # 原始 CAD 底图：白底 + 轮廓 + 文字，默认隐藏
     raw_cad = _composite([white_bg, outline_arr, text_arr, dim_arr])
@@ -686,7 +709,7 @@ def render_layered_dxf(
         info_group,
         front_group,
         back_group,
-        PsdNode("04_CAD轮廓", _to_pil(outline_arr)),
+        PsdNode("04_CAD轮廓", _to_pil(outline_arr), visible=False),
         PsdNode("05_参考素材", children=[], visible=False),
         PsdNode("06_原始CAD底图", _to_pil(raw_cad), visible=False),
         PsdNode("07_白色背景", _to_pil(white_bg)),
@@ -695,34 +718,23 @@ def render_layered_dxf(
     compression = Compression.ZIP if ai_rgb_by_category else Compression.RLE
     psd_bytes = write_psd(nodes, (canvas.width, canvas.height), dpi=dpi, compression=compression) if include_psd else b""
 
-    # 完整合成（白色背景 + 阴影 + 部件 + 轮廓 + 文字标注）
-    complete = _composite([
-        white_bg,
-        _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
-        part_layer("panel", prims("panel")),
-        part_layer("frame", prims("frame")),
-        part_layer("trim", prims("trim")),
-        part_layer("accessory", prims("accessory")),
-        outline_arr,
-        text_arr,
-        dim_arr,
-    ])
+    layer_arrays = {
+        "seam": seam_layer,
+        "trim": part_layer("trim", prims("trim")),
+        "frame": part_layer("frame", prims("frame")),
+        "panel": part_layer("panel", prims("panel")),
+        "glass": part_layer("glass", prims("glass")),
+        "hardware": part_layer("accessory", prims("accessory")),
+        "lighting": _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
+    }
+    validate_layer_canvases(layer_arrays, (canvas.width, canvas.height))
+    complete = _composite([white_bg] + [layer_arrays[name] for name in VISIBLE_LAYER_ORDER])
 
-    front_bbox = _category_bbox(front_cat["panel"] + front_cat["frame"] + front_cat["trim"] + front_cat["accessory"])
-    back_bbox = _category_bbox(back_cat["panel"] + back_cat["frame"] + back_cat["trim"] + back_cat["accessory"])
+    front_bbox = _category_bbox(front_cat["panel"] + front_cat["frame"] + front_cat["trim"] + front_cat["glass"] + front_cat["accessory"])
+    back_bbox = _category_bbox(back_cat["panel"] + back_cat["frame"] + back_cat["trim"] + back_cat["glass"] + back_cat["accessory"])
     front_jpg = _to_jpg(_crop(complete, front_bbox, canvas) if front_bbox else complete)
     back_jpg = _to_jpg(_crop(complete, back_bbox, canvas) if back_bbox else complete)
     complete_jpg = _to_jpg(complete)
-    layer_arrays = {
-        "panel": part_layer("panel", prims("panel")),
-        "frame": part_layer("frame", prims("frame")),
-        "trim": part_layer("trim", prims("trim")),
-        "glass": _blank_rgba(canvas.width, canvas.height),
-        "hardware": part_layer("accessory", prims("accessory")),
-        "lighting": _build_shadow(canvas, prims("panel") + prims("frame") + prims("trim")),
-        "outline": outline_arr,
-    }
-
     def encoded_layers(bbox: Optional[tuple[float, float, float, float]] = None) -> dict[str, bytes]:
         return {name: _to_png(_crop(layer, bbox, canvas) if bbox else layer) for name, layer in layer_arrays.items()}
 
@@ -738,6 +750,8 @@ def render_layered_dxf(
         "material_note": material_note,
         "geometry_manifest": geometry_manifest,
         "geometry_validation": geometry_validation,
+        "visible_layer_order": list(VISIBLE_LAYER_ORDER),
+        "output_quality": OUTPUT_QUALITY,
         "layer_pngs": encoded_layers(),
         "front_layer_pngs": encoded_layers(front_bbox) if front_bbox else encoded_layers(),
         "back_layer_pngs": encoded_layers(back_bbox) if back_bbox else encoded_layers(),

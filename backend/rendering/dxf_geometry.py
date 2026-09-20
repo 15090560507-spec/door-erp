@@ -81,6 +81,7 @@ def build_geometry_manifest(
         "panel": "panel",
         "frame": "frame",
         "trim": "trim",
+        "glass": "glass",
         "hardware": "accessory",
     }
     roles = {}
@@ -109,6 +110,7 @@ _ROLE_CATEGORY = {
     "panel": "panel",
     "frame": "frame",
     "trim": "trim",
+    "glass": "glass",
     "hardware": "accessory",
 }
 
@@ -116,6 +118,7 @@ _KNOWN_STRUCTURAL_LAYERS = {
     "A-DOOR-PANEL",
     "A-DOOR-FRAME",
     "A-DOOR-TRIM",
+    "A-DOOR-GLASS",
     "A-DOOR-HATCH",
     "A-DOOR-mark",
     "A-DOOR-MASK",
@@ -245,7 +248,13 @@ def validate_geometry_manifest(
             continue
         has_valid_contour = _has_renderable_hardware(primitives) if role == "hardware" else _has_closed_contour(primitives)
         if not has_valid_contour:
-            role_name = {"panel": "门扇", "frame": "门框", "trim": "门套", "hardware": "五金"}[role]
+            role_name = {
+                "panel": "门扇",
+                "frame": "门框",
+                "trim": "门套",
+                "glass": "玻璃",
+                "hardware": "五金",
+            }[role]
             errors.append(
                 _error(
                     f"{role.upper()}_CONTOUR_NOT_CLOSED",

@@ -209,6 +209,12 @@ def test_layered_render():
     check("渲染返回正面 JPG", len(result["front_jpg"]) > 500, f"len={len(result['front_jpg'])}")
     check("渲染返回反面 JPG", len(result["back_jpg"]) > 500, f"len={len(result['back_jpg'])}")
     check("无 AI 时 material_mode=flat", result.get("material_mode") == "flat")
+    check("完整图使用 95 质量输出", result.get("output_quality") == 95, str(result.get("output_quality")))
+    check(
+        "普通成图使用固定干净图层顺序",
+        result.get("visible_layer_order") == ["seam", "trim", "frame", "panel", "glass", "hardware", "lighting"],
+        str(result.get("visible_layer_order")),
+    )
 
     psd = PSDImage.open(io.BytesIO(result["psd_bytes"]))
     top_names = [c.name for c in psd]
@@ -218,8 +224,12 @@ def test_layered_render():
     # 原始 CAD 底图与参考素材默认隐藏
     raw = next((c for c in psd if c.name == "06_原始CAD底图"), None)
     ref = next((c for c in psd if c.name == "05_参考素材"), None)
+    outline = next((c for c in psd if c.name == "04_CAD轮廓"), None)
+    info = next((c for c in psd if c.name == "01_订货单信息"), None)
     check("原始CAD底图默认隐藏", raw is not None and not raw.visible)
     check("参考素材默认隐藏", ref is not None and not ref.visible)
+    check("CAD轮廓默认隐藏", outline is not None and not outline.visible)
+    check("订货单标注默认隐藏", info is not None and not info.visible)
 
     # 白色背景可单独关闭
     white = next((c for c in psd if c.name == "07_白色背景"), None)
@@ -233,14 +243,48 @@ def test_dxf_geometry_manifest_uses_one_canvas_transform():
     assert manifest["canvas"]["width"] == result["canvas_size"][0]
     assert manifest["canvas"]["height"] == result["canvas_size"][1]
     assert manifest["transform_id"]
-    for role in ("panel", "frame", "trim", "hardware"):
+    for role in ("panel", "frame", "trim", "glass", "hardware"):
         geometry = manifest["roles"][role]
         assert geometry["transform_id"] == manifest["transform_id"]
         assert set(geometry["side_bboxes"]) == {"front", "back"}
-        if role != "hardware":
+        if role not in {"glass", "hardware"}:
             assert geometry["cad_bbox"]
             assert geometry["pixel_bbox"]
             assert geometry["layers"]
+
+
+def test_optional_dxf_glass_uses_shared_geometry_and_renders_above_panel():
+    doc = ezdxf.new()
+    modelspace = doc.modelspace()
+    modelspace.add_text("正面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((0, 350))
+    modelspace.add_text("背面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((1000, 350))
+    for offset in (0, 1000):
+        modelspace.add_lwpolyline(
+            [(offset + 100, 0), (offset + 300, 0), (offset + 300, 260), (offset + 100, 260)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-PANEL"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset + 50, -40), (offset + 350, -40), (offset + 350, 300), (offset + 50, 300)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-FRAME"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset + 145, 90), (offset + 255, 90), (offset + 255, 220), (offset + 145, 220)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-GLASS"},
+        )
+
+    stream = io.StringIO()
+    doc.write(stream)
+    result = render_layered_dxf(stream.getvalue(), target_long_edge=800, include_psd=False)
+
+    glass_geometry = result["geometry_manifest"]["roles"]["glass"]
+    assert glass_geometry["transform_id"] == result["geometry_manifest"]["transform_id"]
+    assert glass_geometry["layers"] == ["A-DOOR-GLASS"]
+    glass = np.array(Image.open(io.BytesIO(result["layer_pngs"]["glass"])).convert("RGBA"))
+    assert np.count_nonzero(glass[..., 3]) > 0
+    assert result["visible_layer_order"].index("glass") > result["visible_layer_order"].index("panel")
 
 
 def test_geometry_validation_reports_missing_frame_unknown_layer_and_open_panel():
