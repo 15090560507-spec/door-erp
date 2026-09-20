@@ -13,6 +13,7 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
 
 from rendering.precise_render import ROLE_ORDER, render_precise_image
+import rendering.precise_render as precise_render
 from rendering.segmentation import _infer_masks
 import rendering.legacy_cleanup as legacy_cleanup
 import rendering.service as render_service
@@ -69,6 +70,67 @@ def test_precise_bitmap_layers_stay_inside_confirmed_masks():
         assert layer is not None
         assert layer.shape == (height, width, 4)
         assert np.array_equal(layer[..., 3] > 0, expected_masks[role] > 0)
+
+
+def test_precise_bitmap_result_is_clean_and_keeps_foreground_order(monkeypatch, tmp_path):
+    width, height = 120, 160
+    source = np.full((height, width, 3), 255, dtype=np.uint8)
+    source[:, 50:52] = 0
+    source[110:112, :] = 0
+    source_path = tmp_path / "line-art.png"
+    Image.fromarray(source, "RGB").save(source_path)
+
+    rectangles = {
+        "trim": (2, 2, 118, 158),
+        "frame": (10, 10, 110, 150),
+        "panel": (20, 20, 100, 140),
+        "glass": (40, 40, 80, 80),
+        "hardware": (55, 60, 65, 100),
+    }
+    masks = {}
+    for role, (x1, y1, x2, y2) in rectangles.items():
+        mask = np.zeros((height, width), dtype=np.uint8)
+        mask[y1:y2, x1:x2] = 255
+        path = tmp_path / f"{role}.png"
+        Image.fromarray(mask, "L").save(path)
+        masks[role] = {"filePath": str(path)}
+
+    colors = {
+        "门扇": (210, 30, 30),
+        "门套": (130, 80, 30),
+        "门框": (90, 90, 90),
+        "玻璃": (20, 90, 210),
+        "拉手": (20, 190, 50),
+    }
+
+    def fake_material(rgb, _config, _references, prompt):
+        color = next(value for label, value in colors.items() if label in prompt)
+        result = np.empty_like(rgb)
+        result[...] = color
+        return result
+
+    monkeypatch.setattr(precise_render, "_apply_ai_material", fake_material)
+    references = {role: [{"filePath": "reference.png"}] for role in ROLE_ORDER}
+
+    result = render_precise_image(str(source_path), masks, {"provider": "fake"}, references)
+    image = np.array(Image.open(io.BytesIO(result["image_bytes"])).convert("RGB"))
+
+    # Hardware is above glass and panel.
+    assert image[70, 60, 1] > 150
+    assert image[70, 60, 1] > image[70, 60, 0] * 3
+    # The black source line inside the panel is not composited into the final result.
+    assert image[120, 50, 0] > 150
+    assert result["visible_layer_order"] == [
+        "seam",
+        "trim",
+        "frame",
+        "panel",
+        "glass",
+        "hardware",
+        "lighting",
+    ]
+    assert result["output_quality"] == 95
+    assert "outline" not in result["visible_layer_order"]
 
 
 def test_reference_bindings_keep_component_roles_separate():

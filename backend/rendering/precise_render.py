@@ -5,16 +5,26 @@ import io
 import numpy as np
 from PIL import Image, ImageFilter
 
+from .image_geometry import build_structural_seam, encode_jpeg, seam_rgba, validate_layer_canvases
 from .layered_render import _apply_ai_material
 
 
 ROLE_ORDER = ("trim", "frame", "panel", "glass", "hardware")
+VISIBLE_LAYER_ORDER = ("seam", "trim", "frame", "panel", "glass", "hardware", "lighting")
+OUTPUT_QUALITY = 95
+ROLE_FALLBACK_COLORS = {
+    "trim": (108, 66, 31),
+    "frame": (140, 90, 43),
+    "panel": (196, 138, 61),
+    "glass": (185, 215, 225),
+    "hardware": (72, 72, 76),
+}
 ROLE_PROMPTS = {
-    "panel": "只为门扇区域生成参考图中的门扇款式、颜色和材质。严格保持线稿比例、分格和边界，不得改变门框、门套、玻璃或五金。",
-    "trim": "只为门套、门头和门柱区域生成参考图中的造型和材质。严格保持线稿外轮廓、尺寸与遮挡关系，不得改变门扇或门框。",
-    "frame": "只为门框区域生成表面颜色和材质。严格保持门框宽度、边界和比例，不得改变门扇或门套。",
-    "glass": "只为玻璃区域生成颜色、透明度、纹理和真实反光。严格保持玻璃边界，不得改变周围线条。",
-    "hardware": "只为线稿中已有的拉手、锁具、合页、花件等五金生成参考款式。不得移动、增加、删除或改变配件比例。",
+    "panel": "只为门扇区域生成参考图中的门扇款式、颜色和材质。严格保持原始比例、分格和边界，不得改变门框、门套、玻璃或五金。输出真实产品材质，不显示线稿、尺寸、文字或辅助轮廓。",
+    "trim": "只为门套、门头和门柱区域生成参考图中的造型和材质。严格保持原始外轮廓、尺寸与遮挡关系，不得改变门扇或门框。输出真实产品材质，不显示线稿、尺寸、文字或辅助轮廓。",
+    "frame": "只为门框区域生成表面颜色和材质。严格保持门框宽度、边界和比例，不得改变门扇或门套。输出真实产品材质，不显示线稿、尺寸、文字或辅助轮廓。",
+    "glass": "只为玻璃区域生成颜色、透明度、纹理和真实反光。严格保持玻璃边界，不得改变周围结构。输出真实产品材质，不显示线稿、尺寸、文字或辅助轮廓。",
+    "hardware": "只为已有的拉手、锁具、合页、花件等五金区域生成参考款式。不得移动、增加、删除或改变配件比例。输出真实产品材质，不显示线稿、尺寸、文字或辅助轮廓。",
 }
 
 
@@ -41,34 +51,40 @@ def render_precise_image(
             generated[role] = _rgba_with_mask(generated["panel"][..., :3], mask)
             continue
         if not references:
-            generated[role] = _rgba_with_mask(source_rgb, mask)
+            generated[role] = _rgba_with_mask(_solid_rgb(width, height, ROLE_FALLBACK_COLORS[role]), mask)
             continue
         try:
             rgb = _apply_ai_material(source_rgb, ai_config, references, ROLE_PROMPTS[role])
         except Exception as exc:
             notes.append(f"{role}：{exc}")
-            rgb = source_rgb
+            rgb = _solid_rgb(width, height, ROLE_FALLBACK_COLORS[role])
         generated[role] = _rgba_with_mask(rgb, mask)
 
     union_mask = np.maximum.reduce([role_masks[role] for role in ROLE_ORDER])
     lighting = _lighting_layer(union_mask)
-    outline = _outline_layer(source_rgb)
+    seam = seam_rgba(
+        build_structural_seam(
+            role_masks,
+            width_px=max(1, round(min(width, height) / 900)),
+        )
+    )
+    layers = {"seam": seam, **generated, "lighting": lighting}
+    validate_layer_canvases(layers, (width, height))
     canvas = Image.new("RGBA", (width, height), (255, 255, 255, 255))
-    for role in ROLE_ORDER:
-        canvas.alpha_composite(Image.fromarray(generated[role], "RGBA"))
-    canvas.alpha_composite(Image.fromarray(lighting, "RGBA"))
-    canvas.alpha_composite(Image.fromarray(outline, "RGBA"))
+    for role in VISIBLE_LAYER_ORDER:
+        canvas.alpha_composite(Image.fromarray(layers[role], "RGBA"))
 
-    jpg = io.BytesIO()
-    canvas.convert("RGB").save(jpg, "JPEG", quality=90)
+    image_bytes = encode_jpeg(np.array(canvas, dtype=np.uint8), quality=OUTPUT_QUALITY)
     layer_pngs = {role: _png_bytes(generated[role]) for role in ROLE_ORDER}
+    layer_pngs["seam"] = _png_bytes(seam)
     layer_pngs["lighting"] = _png_bytes(lighting)
-    layer_pngs["outline"] = _png_bytes(outline)
     return {
-        "image_bytes": jpg.getvalue(),
+        "image_bytes": image_bytes,
         "layer_pngs": layer_pngs,
         "canvas_size": (width, height),
-        "material_note": "部分部件处理失败并保留线稿底色：" + "；".join(notes) if notes else "",
+        "visible_layer_order": list(VISIBLE_LAYER_ORDER),
+        "output_quality": OUTPUT_QUALITY,
+        "material_note": "部分部件处理失败并使用默认材质：" + "；".join(notes) if notes else "",
     }
 
 
@@ -83,6 +99,12 @@ def _load_mask(path: str, size: tuple[int, int]) -> np.ndarray:
 
 def _rgba_with_mask(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.dstack((rgb[..., :3], mask)).astype(np.uint8)
+
+
+def _solid_rgb(width: int, height: int, color: tuple[int, int, int]) -> np.ndarray:
+    rgb = np.empty((height, width, 3), dtype=np.uint8)
+    rgb[...] = color
+    return rgb
 
 
 def _transparent(width: int, height: int) -> np.ndarray:
