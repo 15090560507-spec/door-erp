@@ -36,7 +36,7 @@ import {
   type RenderSegmentation,
 } from "@/lib/renderApi";
 
-const DEFAULT_PROMPT = "基于线稿图生成门类产品效果图。保持门型结构、比例和主要线条，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节参考，输出真实产品渲染效果。";
+const DEFAULT_PROMPT = "基于图纸生成清晰、真实的门类产品效果图。严格保持门型结构、比例和部件位置，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节。最终成图不显示 CAD 线稿、尺寸线、文字、标注箭头或辅助轮廓，玻璃和五金位于门扇表面上方，接缝表现为真实窄黑缝。";
 const ASSET_PAGE_SIZE = 24;
 const TASK_LIST_LIMIT = 20;
 const REFERENCE_ROLE_OPTIONS: Array<{ role: RenderReferenceRole; label: string; description: string; required?: boolean }> = [
@@ -47,6 +47,11 @@ const REFERENCE_ROLE_OPTIONS: Array<{ role: RenderReferenceRole; label: string; 
   { role: "hardware", label: "五金配件", description: "拉手、锁具、合页、花件及其他配件" },
 ];
 const REFERENCE_ROLE_LABEL = Object.fromEntries(REFERENCE_ROLE_OPTIONS.map((item) => [item.role, item.label])) as Record<RenderReferenceRole, string>;
+
+function resolveRenderSize(renderMode: RenderMode, selectedSize: string) {
+  if (selectedSize === "auto") return renderMode === "precise" ? "4k" : "2k";
+  return selectedSize;
+}
 const LineArtCropEditor = dynamic(() => import("@/components/LineArtCropEditor"), {
   ssr: false,
   loading: () => <div className="flex min-h-72 items-center justify-center text-sm text-[#8E8E93]">正在加载裁剪工具...</div>,
@@ -136,7 +141,7 @@ export default function RenderPage() {
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
   const [activeReferenceRole, setActiveReferenceRole] = useState<RenderReferenceRole>("panel");
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [size, setSize] = useState("original");
+  const [size, setSize] = useState("auto");
   const [count, setCount] = useState(1);
   const [activeTask, setActiveTask] = useState<RenderTask | null>(null);
   const [message, setMessage] = useState("");
@@ -370,6 +375,7 @@ export default function RenderPage() {
     const submittedAt = Date.now();
     setSubmitWatchSince(submittedAt);
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
+    const effectiveSize = resolveRenderSize(renderMode, size);
     const referenceBindings = Object.fromEntries(referenceGroups.map((group) => [group.role, { assetIds: group.assetIds }])) as Record<RenderReferenceRole, { assetIds: string[] }>;
     const referenceFiles = Object.fromEntries(referenceGroups.map((group) => [group.role, group.files])) as Record<RenderReferenceRole, File[]>;
     try {
@@ -385,7 +391,7 @@ export default function RenderPage() {
         createRenderTask({
           modelConfigId: saved.id,
           prompt: buildRenderPrompt(prompt, referencePromptGuidance),
-          size,
+          size: effectiveSize,
           count: 1,
           selectedAssetIds: taskAssetIds,
           lineArt: selectedLineArt,
@@ -1045,7 +1051,7 @@ export default function RenderPage() {
             <span className="text-[12px] font-medium text-[#8E8E93]">提示词</span>
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
           </label>
-          <Select label="尺寸" value={size} onChange={setSize} options={[["original", "原比例"], ["1k", "1K"], ["2k", "2K"], ["4k", "4K"], ["1024x1024", "1024x1024"]]} />
+          <Select label="输出清晰度" value={size} onChange={setSize} options={[["auto", "自动（快速 2K / 精准 4K）"], ["1k", "1K"], ["2k", "2K"], ["4k", "4K"]]} />
           <label>
             <span className="text-[12px] font-medium text-[#8E8E93]">数量</span>
             <input type="number" min={1} max={1} value={count} disabled onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] disabled:bg-[#F2F2F7]" />
@@ -1055,10 +1061,10 @@ export default function RenderPage() {
           <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
           <div className="flex-1" />
           <button type="button" onClick={() => void submitTask("quick")} disabled={loading} className="rounded-lg border border-[#D1D1D6] bg-white px-5 py-2 text-[13px] font-medium text-[#1C1C1E] disabled:opacity-50">
-            {loading ? "提交中..." : "快速 AI 生成"}
+            {loading ? "提交中..." : `快速 AI 生成 · ${resolveRenderSize("quick", size).toUpperCase()}`}
           </button>
           <button type="button" onClick={() => void submitTask("precise")} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">
-            {loading ? "提交中..." : "精准分区生成"}
+            {loading ? "提交中..." : `精准分区生成 · ${resolveRenderSize("precise", size).toUpperCase()}`}
           </button>
         </div>
       </section>
