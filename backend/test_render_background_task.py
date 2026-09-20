@@ -1,8 +1,11 @@
 import base64
+import io
 import os
 import sys
 
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BACKEND_DIR)
@@ -15,6 +18,7 @@ from rendering.service import execute_precise_render_task
 from rendering.layered_render import DxfGeometryValidationError
 import rendering.layered_render as layered_render
 import rendering.routes as render_routes
+import rendering.service as render_service
 
 
 PNG_1X1 = base64.b64decode(
@@ -92,6 +96,81 @@ def test_precise_background_task_persists_structured_geometry_failure(tmp_path, 
         assert "门框无有效几何" in failed["errorMessage"]
     finally:
         render_db.delete_task(task["id"])
+
+
+@pytest.mark.parametrize(
+    ("mode", "requested", "expected"),
+    [
+        ("quick", "", "2k"),
+        ("quick", "original", "2k"),
+        ("precise", "", "4k"),
+        ("precise", "original", "4k"),
+        ("precise", "2k", "2k"),
+    ],
+)
+def test_resolve_render_size(mode, requested, expected):
+    assert render_service._resolve_render_size(mode, requested) == expected
+
+
+def test_clean_product_prompt_removes_visible_drafting_artifacts():
+    prompt = render_service._effective_prompt("铜色门", "quick")
+
+    assert "不显示线稿" in prompt
+    assert "尺寸线" in prompt
+    assert "真实" in prompt
+
+
+def test_component_recomposition_ignores_outline_and_keeps_hardware_on_top(tmp_path, monkeypatch):
+    panel_path = tmp_path / "panel.png"
+    hardware_path = tmp_path / "hardware.png"
+    outline_path = tmp_path / "outline.png"
+    Image.new("RGBA", (40, 50), (210, 30, 30, 255)).save(panel_path)
+    hardware = Image.new("RGBA", (40, 50), (0, 0, 0, 0))
+    for x in range(15, 25):
+        for y in range(20, 30):
+            hardware.putpixel((x, y), (20, 190, 50, 255))
+    hardware.save(hardware_path)
+    Image.new("RGBA", (40, 50), (0, 0, 0, 255)).save(outline_path)
+
+    def version(path):
+        return {"currentVersion": 1, "versions": [{"version": 1, "filePath": str(path)}]}
+
+    captured = {}
+
+    def fake_save_bytes(data, filename, _subdir):
+        captured["data"] = data
+        return {"url": "/result.jpg", "filePath": str(tmp_path / filename), "originalName": filename}
+
+    monkeypatch.setattr(render_service, "save_bytes", fake_save_bytes)
+    render_service._compose_component_layers(
+        "task-1",
+        {
+            "panel": version(panel_path),
+            "hardware": version(hardware_path),
+            "outline": version(outline_path),
+        },
+    )
+
+    image = Image.open(io.BytesIO(captured["data"])).convert("RGB")
+    assert image.getpixel((5, 5))[0] > 150
+    center = image.getpixel((20, 25))
+    assert center[1] > center[0] * 3
+
+
+def test_component_recomposition_rejects_mismatched_canvas(tmp_path, monkeypatch):
+    panel_path = tmp_path / "panel.png"
+    frame_path = tmp_path / "frame.png"
+    Image.new("RGBA", (40, 50), (210, 30, 30, 255)).save(panel_path)
+    Image.new("RGBA", (41, 50), (90, 90, 90, 255)).save(frame_path)
+
+    def version(path):
+        return {"currentVersion": 1, "versions": [{"version": 1, "filePath": str(path)}]}
+
+    with pytest.raises(ValueError, match="frame|panel"):
+        render_service._compose_component_layers(
+            "task-2",
+            {"panel": version(panel_path), "frame": version(frame_path)},
+        )
 
 
 def main():

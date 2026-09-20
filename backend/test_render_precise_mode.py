@@ -133,6 +133,27 @@ def test_precise_bitmap_result_is_clean_and_keeps_foreground_order(monkeypatch, 
     assert "outline" not in result["visible_layer_order"]
 
 
+def test_precise_bitmap_resizes_shared_canvas_to_requested_long_edge(tmp_path):
+    source_path = tmp_path / "line-art.png"
+    Image.new("RGB", (100, 200), "white").save(source_path)
+    panel_mask = np.zeros((200, 100), dtype=np.uint8)
+    panel_mask[20:180, 10:90] = 255
+    panel_path = tmp_path / "panel.png"
+    Image.fromarray(panel_mask, "L").save(panel_path)
+
+    result = render_precise_image(
+        str(source_path),
+        {"panel": {"filePath": str(panel_path)}},
+        {},
+        {},
+        target_long_edge=800,
+    )
+
+    assert result["canvas_size"] == (400, 800)
+    panel = Image.open(io.BytesIO(result["layer_pngs"]["panel"]))
+    assert panel.size == (400, 800)
+
+
 def test_reference_bindings_keep_component_roles_separate():
     bindings = _normalize_reference_bindings(
         {

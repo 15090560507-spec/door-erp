@@ -1,23 +1,42 @@
 import base64
 import copy
-import io
 import logging
 import os
 import urllib.request
 from typing import Iterable
 
+import numpy as np
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 from psd_tools.constants import Compression
 
 from .database import render_db
 from .database import utc_now_iso
+from .image_geometry import encode_jpeg
 from .layered_render import DxfGeometryValidationError
 from .providers import ProviderError, RenderProviderRequest, get_provider
 from .storage import RENDER_FILES_DIR, public_file_url, save_bytes
 
 OUTPUT_IMAGE_COUNT = 1
 logger = logging.getLogger(__name__)
+
+
+def _resolve_render_size(render_mode: str, requested: str | None) -> str:
+    value = str(requested or "").lower()
+    if value in {"", "original", "auto"}:
+        return "4k" if render_mode == "precise" else "2k"
+    return value
+
+
+def _effective_prompt(prompt: str, render_mode: str) -> str:
+    mode_rule = "精准模式中部件位置和外轮廓必须严格服从已确认区域。" if render_mode == "precise" else "严格保持原门体比例、布局和部件位置。"
+    policy = (
+        "输出清晰、真实的门类产品效果图；"
+        f"{mode_rule}"
+        "最终图片不显示线稿、尺寸线、文字、标注箭头或辅助轮廓；"
+        "玻璃和五金位于门扇表面上方，接缝仅表现为真实窄黑缝。"
+    )
+    return f"{prompt.strip()}\n{policy}" if prompt.strip() else policy
 
 
 async def save_upload_info(file: UploadFile, role: str, subdir: str = "temp", category: str = "", asset_id: str = "") -> dict:
@@ -93,11 +112,13 @@ async def run_render_task(
         if upload and upload.filename:
             temp_infos.append(await save_upload_info(upload, "temp_asset", "temp", category=f"临时配件{index + 1}"))
 
+    resolved_size = _resolve_render_size("quick", size)
+    effective_prompt = _effective_prompt(prompt, "quick")
     task = render_db.create_task({
         "modelConfigId": model_config_id,
         "modelConfigSnapshot": _config_snapshot(config),
-        "prompt": prompt,
-        "size": size or config.get("defaultSize", "original"),
+        "prompt": effective_prompt,
+        "size": resolved_size,
         "count": OUTPUT_IMAGE_COUNT,
         "selectedAssetIds": selected_asset_ids,
         "files": [line_info] + ([style_info] if style_info else []) + temp_infos,
@@ -105,8 +126,8 @@ async def run_render_task(
     render_db.update_task(task["id"], {"status": "running", "startedAt": utc_now_iso()})
     provider_request = RenderProviderRequest(
         config=config,
-        prompt=prompt,
-        size=size or config.get("defaultSize", "original"),
+        prompt=effective_prompt,
+        size=resolved_size,
         count=OUTPUT_IMAGE_COUNT,
         line_art=line_info,
         style_reference=style_info,
@@ -223,15 +244,18 @@ async def create_render_task_request(
     if render_mode == "precise" and source_type == "image" and (not segmentation or not segmentation.get("confirmed")):
         raise HTTPException(status_code=409, detail="普通图片精准模式需要先识别并确认部件区域")
 
+    normalized_mode = render_mode if render_mode in {"quick", "precise"} else "quick"
+    resolved_size = _resolve_render_size(normalized_mode, size)
+    effective_prompt = _effective_prompt(prompt, normalized_mode)
     task = render_db.create_task({
         "modelConfigId": model_config_id,
         "modelConfigSnapshot": _config_snapshot(config),
-        "prompt": prompt,
-        "size": size or config.get("defaultSize", "original"),
+        "prompt": effective_prompt,
+        "size": resolved_size,
         "count": OUTPUT_IMAGE_COUNT,
         "selectedAssetIds": selected_asset_ids,
         "files": [line_info] + ([dxf_info] if dxf_info else []) + ([style_info] if style_info else []) + temp_infos + bound_upload_infos,
-        "renderMode": render_mode if render_mode in {"quick", "precise"} else "quick",
+        "renderMode": normalized_mode,
         "sourceType": source_type if source_type in {"task", "dxf", "image"} else "image",
         "sourceSide": source_side if source_side in {"front", "back"} else "front",
         "sourceTaskId": source_task_id,
@@ -240,8 +264,8 @@ async def create_render_task_request(
     })
     provider_request = RenderProviderRequest(
         config=config,
-        prompt=prompt,
-        size=size or config.get("defaultSize", "original"),
+        prompt=effective_prompt,
+        size=resolved_size,
         count=OUTPUT_IMAGE_COUNT,
         line_art=line_info,
         style_reference=style_info,
@@ -366,6 +390,7 @@ def execute_precise_render_task(task_id: str, provider_request: RenderProviderRe
                 segmentation.get("masks", {}),
                 provider_request.config,
                 references,
+                target_long_edge=_target_long_edge(task.get("size", "4k")),
             )
             final_bytes = result["image_bytes"]
             layer_pngs = result["layer_pngs"]
@@ -473,7 +498,13 @@ def execute_component_regeneration(task_id: str, role: str) -> dict | None:
             segmentation = task.get("segmentation") or {}
             if not line_info or not segmentation.get("confirmed"):
                 raise ValueError("精准任务缺少已确认的线稿区域")
-            result = render_precise_image(line_info["filePath"], segmentation.get("masks", {}), config, single_binding)
+            result = render_precise_image(
+                line_info["filePath"],
+                segmentation.get("masks", {}),
+                config,
+                single_binding,
+                target_long_edge=_target_long_edge(task.get("size", "4k")),
+            )
             layer_pngs = result["layer_pngs"]
 
         content = layer_pngs.get(role)
@@ -592,25 +623,24 @@ def _task_references(task: dict) -> dict[str, list[dict]]:
 
 
 def _compose_component_layers(task_id: str, layers: dict) -> dict:
-    ordered = ("trim", "frame", "panel", "glass", "hardware", "lighting", "outline")
-    images: list[Image.Image] = []
+    ordered = ("seam", "trim", "frame", "panel", "glass", "hardware", "lighting")
+    images: list[tuple[str, Image.Image]] = []
     for role in ordered:
         role_data = layers.get(role) or {}
         version = role_data.get("currentVersion")
         current = next((item for item in role_data.get("versions", []) if item.get("version") == version), None)
         if current and current.get("filePath") and os.path.exists(current["filePath"]):
-            images.append(Image.open(current["filePath"]).convert("RGBA"))
+            images.append((role, Image.open(current["filePath"]).convert("RGBA")))
     if not images:
         raise ValueError("没有可合成的部件图层")
-    width, height = images[0].size
+    width, height = images[0][1].size
     canvas = Image.new("RGBA", (width, height), (255, 255, 255, 255))
-    for image in images:
+    for role, image in images:
         if image.size != (width, height):
-            image = image.resize((width, height), Image.Resampling.LANCZOS)
+            raise ValueError(f"{role} 图层尺寸 {image.width}x{image.height} 与共享画布 {width}x{height} 不一致")
         canvas.alpha_composite(image)
-    output = io.BytesIO()
-    canvas.convert("RGB").save(output, "JPEG", quality=90)
-    saved = save_bytes(output.getvalue(), f"{task_id}-composite.jpg", "results")
+    output = encode_jpeg(np.array(canvas, dtype=np.uint8), quality=95)
+    saved = save_bytes(output, f"{task_id}-composite.jpg", "results")
     return {"id": f"{task_id}-1", "type": "file", "src": saved["url"], "filePath": saved["filePath"]}
 
 
@@ -619,7 +649,7 @@ def _target_long_edge(size: str) -> int:
     if value == "4k":
         return 4096
     if value == "2k":
-        return 2600
+        return 2048
     if "x" in value:
         try:
             return max(int(part) for part in value.split("x", 1))

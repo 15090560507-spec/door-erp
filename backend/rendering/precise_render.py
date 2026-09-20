@@ -33,8 +33,15 @@ def render_precise_image(
     masks: dict[str, dict],
     ai_config: dict,
     reference_bindings: dict[str, list[dict]],
+    target_long_edge: int | None = None,
 ) -> dict:
     source = Image.open(line_art_path).convert("RGB")
+    if target_long_edge and target_long_edge > 0 and max(source.size) != target_long_edge:
+        scale = target_long_edge / max(source.size)
+        source = source.resize(
+            (max(1, round(source.width * scale)), max(1, round(source.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
     width, height = source.size
     source_rgb = np.array(source, dtype=np.uint8)
     role_masks = {role: _load_mask((masks.get(role) or {}).get("filePath", ""), (width, height)) for role in ROLE_ORDER}
