@@ -6,8 +6,10 @@ import type {
   QuoteListResponse,
   AiConfig,
   DrawingAnalysisResponse,
+  QuoteTrimMetrics,
 } from "./quoteTypes";
 import type { QuoteItem } from "./quoteTypes";
+import type { DoorFormData } from "./types";
 
 // ===================== 配件 API =====================
 
@@ -100,6 +102,11 @@ export async function getQuote(id: number): Promise<QuoteResponse> {
 
 export async function deleteQuote(id: number): Promise<void> {
   await api.delete(`/quotes/${id}`);
+}
+
+export async function getQuoteTrimMetrics(params: DoorFormData): Promise<QuoteTrimMetrics> {
+  const { data } = await api.post<QuoteTrimMetrics>("/quotes/trim-metrics", params);
+  return data;
 }
 
 // ===================== AI 配置 API =====================

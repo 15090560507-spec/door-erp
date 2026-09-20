@@ -44,6 +44,27 @@ export interface QuoteItem {
 
 export type QuotePricingMode = "outerArea" | "framePlusTrim";
 
+export interface QuoteTrimSideMetrics {
+  side: "outer" | "inner";
+  valid: boolean;
+  error: string;
+  outerBounds: { left: number; bottom: number; right: number; top: number; width: number; height: number } | null;
+  innerBounds: { left: number; bottom: number; right: number; top: number; width: number; height: number } | null;
+  outerArea: number;
+  innerArea: number;
+  baseArea: number;
+  lintelArea: number;
+  includedLintelArea: number;
+  quoteArea: number;
+}
+
+export interface QuoteTrimMetrics {
+  source: "cad-trim-contour-v1";
+  lintelTarget: "outer" | "inner" | "none";
+  outer: QuoteTrimSideMetrics;
+  inner: QuoteTrimSideMetrics;
+}
+
 export interface QuoteDoorGroup {
   groupName: string;
   taskId: string;

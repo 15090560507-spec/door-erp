@@ -8,9 +8,11 @@ import type {
   QuotePricingMode,
   AnalysisResult,
   QuoteResponse,
+  QuoteTrimMetrics,
+  QuoteTrimSideMetrics,
 } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
-import { createQuote, getAccessories, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
+import { createQuote, getAccessories, getQuoteTrimMetrics, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
 import { api, getTask, getTasks, updateTask } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
@@ -53,6 +55,13 @@ function normalizeQuoteRows(rows: QuoteItem[]): QuoteItem[] {
     ...item,
     rowId: item.rowId || createEmptyQuoteItem().rowId,
   }));
+}
+
+function trimMetricSummary(label: string, metrics: QuoteTrimSideMetrics): string {
+  const lintel = metrics.includedLintelArea > 0
+    ? ` + 门楣 ${metrics.includedLintelArea.toFixed(4)}`
+    : "";
+  return `${label} ${metrics.outerArea.toFixed(4)} - ${metrics.innerArea.toFixed(4)}${lintel} = ${metrics.quoteArea.toFixed(4)} ㎡`;
 }
 
 const DEFAULT_QUOTE_ROW_COUNT = 5;
@@ -141,9 +150,15 @@ function buildHingeQuoteRow(accessories: Accessory[], hinge: string, doorType: s
   return hingeItem && num(hingeItem.unitPrice) > 0 ? rowFromAccessory(hingeItem, hingeItem.name, null, null, direction) : null;
 }
 
-function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], pricingMode: QuotePricingMode, trimUnitPrice: number): QuoteItem[] {
+function buildQuoteRowsFromTask(
+  params: DoorFormData,
+  accessories: Accessory[],
+  pricingMode: QuotePricingMode,
+  trimUnitPrice: number,
+  trimMetrics: QuoteTrimMetrics | null = null,
+): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
-  const { frameWidth, frameHeight, outerWidth, outerHeight, frontTrimArea, backTrimArea } = calculateDoorAreas(params);
+  const { frameWidth, frameHeight, outerWidth, outerHeight } = calculateDoorAreas(params);
   const productDisplay = [params.material, params.product_name || params.zzcl].filter(Boolean).join("的");
   const material = findPriceItem(accessories, "制作材料", params.material || params.zzcl || productDisplay);
   const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
@@ -169,8 +184,8 @@ function buildQuoteRowsFromTask(params: DoorFormData, accessories: Accessory[], 
 
   if (pricingMode === "framePlusTrim") {
     ([
-      ["外包套", frontTrimArea],
-      ["内包套", backTrimArea],
+      ["外包套", trimMetrics?.outer.quoteArea || 0],
+      ["内包套", trimMetrics?.inner.quoteArea || 0],
     ] as const).filter(([, area]) => area > 0).forEach(([productName, area]) => {
       rows.push({
         ...createEmptyQuoteItem(),
@@ -271,6 +286,7 @@ export default function QuotePage() {
   const [quoteDate, setQuoteDate] = useState(localDateYmd);
   const [noticeText, setNoticeText] = useState(DEFAULT_QUOTE_NOTICE_TEXT);
   const [doorGroups, setDoorGroups] = useState<QuoteDoorGroup[]>([createQuoteGroup()]);
+  const [trimMetricsByGroup, setTrimMetricsByGroup] = useState<Record<number, QuoteTrimMetrics>>({});
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
   const [rememberQuote, setRememberQuote] = useState(true);
 
@@ -580,12 +596,22 @@ export default function QuotePage() {
     const requestId = (taskQuoteRequestRef.current[groupIndex] || 0) + 1;
     taskQuoteRequestRef.current[groupIndex] = requestId;
     updateDoorGroup(groupIndex, { taskId, pricingMode: mode, trimUnitPrice: trimPrice });
-    if (!taskId) return;
+    if (!taskId) {
+      setTrimMetricsByGroup((current) => {
+        const next = { ...current };
+        delete next[groupIndex];
+        return next;
+      });
+      return;
+    }
     setStatus("正在读取图纸项目...");
     try {
       const task = await getTask(taskId);
       const params = task.params;
-      const allAccessories = await getAccessories();
+      const [allAccessories, trimMetrics] = await Promise.all([
+        getAccessories(),
+        mode === "framePlusTrim" ? getQuoteTrimMetrics(params) : Promise.resolve(null),
+      ]);
       if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
       if (!customerName.trim()) setCustomerName(params.dhdw || task.customer || "");
       if (!projectName.trim()) setProjectName(params.gdmc || task.project || "");
@@ -594,7 +620,13 @@ export default function QuotePage() {
         taskId,
         pricingMode: mode,
         trimUnitPrice: trimPrice,
-        items: buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice),
+        items: buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice, trimMetrics),
+      });
+      setTrimMetricsByGroup((current) => {
+        if (trimMetrics) return { ...current, [groupIndex]: trimMetrics };
+        const next = { ...current };
+        delete next[groupIndex];
+        return next;
       });
       setQuoteDirty(true);
       setStatus(`已根据图纸项目生成${groupIndex + 1}号门报价明细`);
@@ -622,11 +654,15 @@ export default function QuotePage() {
       taskQuoteRequestRef.current[groupIndex] = requestId;
       try {
         const task = await getTask(group.taskId);
-        const allAccessories = await getAccessories();
+        const [allAccessories, trimMetrics] = await Promise.all([
+          getAccessories(),
+          getQuoteTrimMetrics(task.params),
+        ]);
         if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
         updateDoorGroup(groupIndex, {
-          items: buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", price),
+          items: buildQuoteRowsFromTask(task.params, allAccessories, "framePlusTrim", price, trimMetrics),
         });
+        setTrimMetricsByGroup((current) => ({ ...current, [groupIndex]: trimMetrics }));
         setQuoteDirty(true);
       } catch (error: unknown) {
         if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
@@ -646,11 +682,17 @@ export default function QuotePage() {
     setDoorGroups((groups) => groups
       .filter((_, index) => index !== groupIndex)
       .map((group, index) => ({ ...group, groupName: `第${index + 1}樘门` })));
+    setTrimMetricsByGroup((current) => Object.fromEntries(
+      Object.entries(current)
+        .filter(([index]) => Number(index) !== groupIndex)
+        .map(([index, metrics]) => [Number(index) > groupIndex ? Number(index) - 1 : Number(index), metrics]),
+    ));
     setQuoteDirty(true);
   }
 
   // Load quote from history
   function handleLoadQuote(quote: QuoteResponse) {
+    setTrimMetricsByGroup({});
     setCustomerName(quote.customerName);
     setProjectName(quote.projectName);
     setQuoteDate(quote.quoteDate);
@@ -908,6 +950,20 @@ export default function QuotePage() {
                         </label>
                       )}
                     </div>
+                    {group.pricingMode === "framePlusTrim" && trimMetricsByGroup[groupIndex] && (
+                      <div className="mt-2 text-[12px] leading-5 text-[#636366]">
+                        {trimMetricsByGroup[groupIndex].outer.quoteArea > 0 && (
+                          <span className="mr-4">
+                            {trimMetricSummary("外包套", trimMetricsByGroup[groupIndex].outer)}
+                          </span>
+                        )}
+                        {trimMetricsByGroup[groupIndex].inner.quoteArea > 0 && (
+                          <span className="mr-4">
+                            {trimMetricSummary("内包套", trimMetricsByGroup[groupIndex].inner)}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <QuoteItemsTable

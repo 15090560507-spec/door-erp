@@ -74,6 +74,7 @@ from production_routes import (
 )
 from rendering.cad_line_art import export_dxf_line_art
 from rendering.legacy_cleanup import cleanup_legacy_layered_outputs
+from trim_geometry import calculate_quote_trim_metrics
 from erpnext_bridge import sync_order_to_erpnext
 from door_cad.router import router as door_cad_router
 from bom_routes import router as bom_router
@@ -875,6 +876,27 @@ def build_cad_params(req: CADRequest):
     }
 
     return info_map, check_map, draw_params
+
+
+@app.post("/api/quotes/trim-metrics")
+def quote_trim_metrics(
+    req: CADRequest,
+    current_user: Dict = Depends(require_roles(*ENTRY_ROLES)),
+):
+    """Calculate quote areas from the exact trim contours used by CAD."""
+    _info_map, _check_map, draw_params = build_cad_params(req)
+    outer, inner, lintel_target = calculate_quote_trim_metrics(draw_params)
+
+    invalid = [geometry.error for geometry in (outer, inner) if not geometry.valid]
+    if invalid:
+        raise HTTPException(status_code=422, detail="；".join(dict.fromkeys(invalid)))
+
+    return {
+        "source": "cad-trim-contour-v1",
+        "lintelTarget": lintel_target,
+        "outer": outer.to_quote_dict(),
+        "inner": inner.to_quote_dict(),
+    }
 
 
 # ===================== API: CAD 图纸生成 =====================

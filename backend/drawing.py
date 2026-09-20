@@ -17,6 +17,7 @@ from ezdxf.disassemble import recursive_decompose
 from cad_occlusion import CadOcclusionManager, structural_group_for_layer
 
 from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
+from trim_geometry import calculate_trim_geometry
 from utils import parse_dim_str, parse_gap_str
 
 
@@ -893,6 +894,7 @@ def draw_door_in_frame(
             drawer.draw_poly([off((left_width, 0)), off((dw - right_width, 0)), off((dw - right_width, th)), off((left_width, th))], 'A-DOOR-FRAME')
 
     if trim_w > 0:
+        trim_geometry = calculate_trim_geometry(p, is_back=is_back)
         W = trim_w
         WT = trim_top_w or trim_w
         O = overlap_lr
@@ -909,37 +911,12 @@ def draw_door_in_frame(
 
         if has_outer_landscape or has_outer_portal2:
             # 一门一景/外门头门柱：左右构件通高，上部构件只位于左右构件之间。
-            left_w = max(float(p.get('trim_front', W) or 0), 0)
-            right_w = max(float(p.get('trim_front_right', left_w) or 0), 0)
-            top_h = max(float(p.get('trim_front_top', WT) or 0), 0)
-            if has_outer_portal2:
-                left_overlap = right_overlap = max(float(p.get('outer_portal2_lr_overlap', O) or 0), 0)
-                top_overlap = max(float(p.get('outer_portal2_top_overlap', OT) or 0), 0)
-            else:
-                left_overlap = max(float(p.get('outer_landscape_left_overlap', O) or 0), 0)
-                right_overlap = max(float(p.get('outer_landscape_right_overlap', O) or 0), 0)
-                top_overlap = max(float(p.get('outer_landscape_top_overlap', OT) or 0), 0)
-            left_inner = left_overlap
-            right_inner = dw - right_overlap
-            top_inner = total_h - top_overlap + mm_offset
-            top_outer = top_inner + top_h
-            drawer.draw_poly(
-                [off((left_inner - left_w, 0)), off((left_inner, 0)), off((left_inner, top_outer)), off((left_inner - left_w, top_outer))],
-                'A-DOOR-TRIM',
-            )
-            drawer.draw_poly(
-                [off((right_inner, 0)), off((right_inner + right_w, 0)), off((right_inner + right_w, top_outer)), off((right_inner, top_outer))],
-                'A-DOOR-TRIM',
-            )
-            drawer.draw_poly(
-                [off((left_inner, top_inner)), off((left_inner, top_outer)), off((right_inner, top_outer)), off((right_inner, top_inner))],
-                'A-DOOR-TRIM',
-            )
+            for contour in trim_geometry.component_contours:
+                drawer.draw_poly([off(point) for point in contour], 'A-DOOR-TRIM')
         elif has_outer_portal:
             # 外门头门柱不是连续包套：两侧门柱和上部门头分别为独立矩形。
-            drawer.draw_poly([off((ox1, oy1)), off((ix1, iy1)), off((ix2, iy2)), off((ox1, iy2))], 'A-DOOR-TRIM')
-            drawer.draw_poly([off((ix4, iy4)), off((ox4, oy4)), off((ox4, iy3)), off((ix3, iy3))], 'A-DOOR-TRIM')
-            drawer.draw_poly([off((ox1, iy2)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, iy3))], 'A-DOOR-TRIM')
+            for contour in trim_geometry.component_contours:
+                drawer.draw_poly([off(point) for point in contour], 'A-DOOR-TRIM')
         elif is_arch_qc or is_arch_door:
             frame_inner_arch = frame_top_arch()
             _frame_left, _frame_right, trim_base_arch, trim_base_delta = arch_extended_shape(frame_inner_arch, 0, dw, fw_top)
@@ -962,16 +939,12 @@ def draw_door_in_frame(
                 drawer.draw_line(off(trim_left_outer), off(trim_left_inner), 'A-DOOR-TRIM')
                 drawer.draw_line(off(trim_right_inner), off(trim_right_outer), 'A-DOOR-TRIM')
         else:
-            drawer.draw_poly([off((ox1, oy1)), off((ox2, oy2)), off((ox3, oy3)), off((ox4, oy4)), off((ix4, iy4)), off((ix3, iy3)), off((ix2, iy2)), off((ix1, iy1))], 'A-DOOR-TRIM')
+            drawer.draw_poly([off(point) for point in trim_geometry.band_contour], 'A-DOOR-TRIM')
             drawer.draw_line(off((ix2, iy2)), off((ox2, oy2)), 'A-DOOR-TRIM')
             drawer.draw_line(off((ix3, iy3)), off((ox3, oy3)), 'A-DOOR-TRIM')
 
-        if has_mm and mm_height > 0:
-            mm_bottom = total_h - OT
-            mm_top = mm_bottom + mm_height
-            mm_left = ix1
-            mm_right = ix4
-            drawer.draw_poly([off((mm_left, mm_top)), off((mm_right, mm_top)), off((mm_right, mm_bottom)), off((mm_left, mm_bottom))], 'A-DOOR-TRIM')
+        if trim_geometry.lintel_contour:
+            drawer.draw_poly([off(point) for point in trim_geometry.lintel_contour], 'A-DOOR-TRIM')
 
         # ===================== 包边款式偏移线 =====================
         trim_style = p.get('trim_style_outer', '') if not is_back else p.get('trim_style_inner', '')
