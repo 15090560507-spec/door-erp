@@ -1573,28 +1573,38 @@ def draw_door_in_frame(
         if style in ("单圈外围线", "单圈外围线(封闭)"):
             return
 
-        requested_spacing = round(max(1.0, float(
+        requested_spacing = float(
             spacing if spacing is not None else p.get("glass_line_spacing", 20)
-        ) or 1.0))
-        spacing = min(requested_spacing, inner_width / 8, inner_height / 8)
+        )
+        if requested_spacing <= 0:
+            raise ValueError("图案内部线距必须大于0mm")
         band_width = min(15.0, inner_width / 16, inner_height / 16)
+
+        if style == "竖条":
+            center_x = (ix1 + ix2) / 2
+            count_each_side = int((inner_width / 2) // requested_spacing)
+            for offset_index in range(-count_each_side, count_each_side + 1):
+                x = center_x + offset_index * requested_spacing
+                if ix1 < x < ix2:
+                    line(x, iy1, x, iy2)
+            return
 
         if style == "双边框":
             # 模板不是简单的两个矩形，而是四边各一条 15mm 线带。
-            border_center = max(spacing * 2.5, 50.0)
-            border_center = min(border_center, inner_width / 4, inner_height / 4)
-            if border_center > band_width:
-                paired_vertical(ix1 + border_center, iy1, iy2)
-                paired_vertical(ix2 - border_center, iy1, iy2)
-                paired_horizontal(iy1 + border_center, ix1, ix2)
-                paired_horizontal(iy2 - border_center, ix1, ix2)
+            border_center = min(requested_spacing, inner_width / 4, inner_height / 4)
+            if border_center <= band_width:
+                raise ValueError(f"图案内部线距必须大于{band_width:g}mm")
+            paired_vertical(ix1 + border_center, iy1, iy2)
+            paired_vertical(ix2 - border_center, iy1, iy2)
+            paired_horizontal(iy1 + border_center, ix1, ix2)
+            paired_horizontal(iy2 - border_center, ix1, ix2)
             return
 
         if style == "双边框+花件":
             # 结构来自模板：左右各一条窄带，四角放带 X 的方框，
             # 两侧中部各放两个 HJ01。竖线在方框和花件处断开。
             channel_width = min(65.0, inner_width / 4, inner_height / 6)
-            side_gap = min(20.0, channel_width / 3)
+            side_gap = min(requested_spacing, channel_width / 3)
             if channel_width <= side_gap * 2:
                 return
             if not _ensure_glass_template_block(drawer.doc, "HJ01"):
@@ -1673,9 +1683,9 @@ def draw_door_in_frame(
         if style == "四角回纹":
             # 模板由外圈、内圈和四组回折线组成。各段只连接到框边，
             # 不使用贯穿式双线，避免与内外框相互重叠。
-            frame_gap = min(max(spacing * 2.5, 50.0), inner_width / 4, inner_height / 4)
+            frame_gap = min(requested_spacing, inner_width / 4, inner_height / 4)
             if frame_gap <= band_width:
-                return
+                raise ValueError(f"图案内部线距必须大于{band_width:g}mm")
             ring_outer_left = ix1 + frame_gap
             ring_outer_bottom = iy1 + frame_gap
             ring_outer_right = ix2 - frame_gap

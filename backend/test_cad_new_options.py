@@ -303,6 +303,59 @@ def test_diagonal_panel_style_parameters_pass_to_drawing():
     )
 
 
+def test_panel_vertical_pattern_uses_internal_spacing():
+    def render(spacing: int, style: str = "竖条"):
+        req = CADRequest(
+            door_panel_style="H型布局",
+            panel_lock_offset_x=180,
+            panel_hinge_offset_y=100,
+            panel_middle_offset_z=180,
+            panel_b2_glass_style=style,
+            glass_line_inset=20,
+            glass_line_spacing=spacing,
+            fingerprint_lock="无",
+            sel_hys="暗合页",
+        )
+        info, checks, params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, params)
+        check(f"vertical pattern {spacing} generates CAD", buffer is not None, msg)
+        if not buffer:
+            return None
+        return ezdxf.read(io.StringIO(buffer.getvalue()))
+
+    def vertical_panel_lines(doc):
+        return [
+            entity for entity in doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+            and abs(float(entity.dxf.start.x) - float(entity.dxf.end.x)) < 0.01
+            and 500 < abs(float(entity.dxf.start.y) - float(entity.dxf.end.y)) < 2000
+        ]
+
+    spacing_40_doc = render(40)
+    spacing_80_doc = render(80)
+    if spacing_40_doc is None or spacing_80_doc is None:
+        return
+    spacing_40_lines = vertical_panel_lines(spacing_40_doc)
+    spacing_80_lines = vertical_panel_lines(spacing_80_doc)
+    check(
+        "smaller internal spacing creates more vertical pattern lines",
+        len(spacing_40_lines) > len(spacing_80_lines),
+        f"40mm={len(spacing_40_lines)}, 80mm={len(spacing_80_lines)}",
+    )
+
+    border_20_doc = render(20, "双边框")
+    border_40_doc = render(40, "双边框")
+    if border_20_doc is None or border_40_doc is None:
+        return
+    border_20_xs = sorted({round(float(line.dxf.start.x), 3) for line in vertical_panel_lines(border_20_doc)})
+    border_40_xs = sorted({round(float(line.dxf.start.x), 3) for line in vertical_panel_lines(border_40_doc)})
+    check(
+        "double-border geometry responds to internal spacing",
+        border_20_xs != border_40_xs,
+        f"20mm={border_20_xs}, 40mm={border_40_xs}",
+    )
+
+
 def test_rectangular_glass_line_templates():
     def layer_lines(doc):
         return [
@@ -2535,6 +2588,7 @@ if __name__ == "__main__":
     test_back_a1022_handle_direction_blocks()
     test_door_panel_style_lines()
     test_diagonal_panel_style_parameters_pass_to_drawing()
+    test_panel_vertical_pattern_uses_internal_spacing()
     test_rectangular_glass_line_templates()
     test_disc_panel_style_draws_semicircle()
     test_panel_front_back_inheritance_and_child_independence()
