@@ -430,6 +430,66 @@ def test_real_a1022_block_uses_its_transformed_dxf_geometry_as_mask():
     assert max(abs(a - b) for a, b in zip(actual, expected)) <= 2, (actual, expected)
 
 
+def test_selected_face_canvas_ignores_far_accessory_helpers_and_stays_shared(monkeypatch):
+    doc = ezdxf.new()
+    modelspace = doc.modelspace()
+    modelspace.add_text("正面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((200, 420))
+    modelspace.add_text("背面", dxfattribs={"layer": "A-DOOR-mark", "height": 20}).set_placement((1200, 420))
+
+    helper = doc.blocks.new("HANDLE_WITH_HELPER")
+    helper.add_lwpolyline([(0, 0), (20, 0), (20, 80), (0, 80)], close=True)
+    helper.add_line((-900, 40), (0, 40))
+
+    for offset in (0, 1000):
+        modelspace.add_lwpolyline(
+            [(offset + 100, 0), (offset + 300, 0), (offset + 300, 360), (offset + 100, 360)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-PANEL"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset + 70, -30), (offset + 330, -30), (offset + 330, 390), (offset + 70, 390)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-FRAME"},
+        )
+        modelspace.add_lwpolyline(
+            [(offset + 40, -60), (offset + 360, -60), (offset + 360, 420), (offset + 40, 420)],
+            close=True,
+            dxfattribs={"layer": "A-DOOR-TRIM"},
+        )
+        modelspace.add_blockref("HANDLE_WITH_HELPER", (offset + 240, 140), dxfattribs={"layer": "A-DOOR-PANEL"})
+
+    stream = io.StringIO()
+    doc.write(stream)
+    submitted_shapes = []
+
+    def fake_material(rgb, _config, _references, _prompt):
+        submitted_shapes.append(rgb.shape)
+        return rgb.copy()
+
+    monkeypatch.setattr(layered_render, "_apply_ai_material", fake_material)
+    references = {role: [{"filePath": f"{role}.png"}] for role in ("panel", "trim", "frame", "glass", "hardware")}
+    result = render_layered_dxf(
+        stream.getvalue(),
+        target_long_edge=900,
+        ai_config={"provider": "fake"},
+        reference_bindings=references,
+        include_psd=False,
+        selected_side="front",
+    )
+
+    width, height = result["canvas_size"]
+    assert result["selected_side"] == "front"
+    assert result["front_size"] == (width, height)
+    assert submitted_shapes
+    assert all(shape[:2] == (height, width) for shape in submitted_shapes)
+    assert height == 900
+    assert 450 <= width <= 700
+    selected = Image.open(io.BytesIO(result["selected_jpg"]))
+    assert selected.size == (width, height)
+    for content in result["selected_layer_pngs"].values():
+        assert Image.open(io.BytesIO(content)).size == (width, height)
+
+
 if __name__ == "__main__":
     test_psd_writer()
     test_layered_render()

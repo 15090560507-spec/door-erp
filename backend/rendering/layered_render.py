@@ -243,11 +243,54 @@ def collect_primitives(doc) -> list[tuple[str, Primitive]]:
 
 # ------------------------- 几何工具 -------------------------
 
+STRUCTURAL_CATEGORIES = ("panel", "frame", "trim", "glass")
+
 def _category_bbox(prims: list[Primitive]) -> Optional[tuple[float, float, float, float]]:
     points = [p for prim in prims for p in prim.points]
     if not points:
         return None
     return _bbox(points)
+
+
+def _expanded_bbox(
+    bbox: tuple[float, float, float, float],
+    ratio: float = 0.035,
+) -> tuple[float, float, float, float]:
+    min_x, max_x, min_y, max_y = bbox
+    margin = max(max_x - min_x, max_y - min_y, 1.0) * ratio
+    return min_x - margin, max_x + margin, min_y - margin, max_y + margin
+
+
+def _primitive_inside_bbox(primitive: Primitive, bbox: tuple[float, float, float, float]) -> bool:
+    if not primitive.points:
+        return False
+    min_x, max_x, min_y, max_y = _bbox(primitive.points)
+    left, right, bottom, top = bbox
+    return min_x >= left and max_x <= right and min_y >= bottom and max_y <= top
+
+
+def _selected_face_categories(
+    front_cat: dict[str, list[Primitive]],
+    back_cat: dict[str, list[Primitive]],
+    side: str,
+) -> tuple[dict[str, list[Primitive]], tuple[float, float, float, float]]:
+    source = front_cat if side == "front" else back_cat
+    structural = [primitive for name in STRUCTURAL_CATEGORIES for primitive in source.get(name, [])]
+    structural_bbox = _category_bbox(structural)
+    if structural_bbox is None:
+        raise ValueError(f"{side} 视图缺少门扇、门框、门套或玻璃结构")
+    canvas_bbox = _expanded_bbox(structural_bbox)
+    selected = {name: list(source.get(name, [])) for name in STRUCTURAL_CATEGORIES}
+    selected["accessory"] = [
+        primitive
+        for primitive in source.get("accessory", [])
+        if _primitive_inside_bbox(primitive, canvas_bbox)
+    ]
+    return selected, canvas_bbox
+
+
+def _empty_face_categories() -> dict[str, list[Primitive]]:
+    return {name: [] for name in (*STRUCTURAL_CATEGORIES, "accessory")}
 
 
 def _split_front_back(prims: list[Primitive], front_x: float, back_x: float) -> tuple[list[Primitive], list[Primitive]]:
@@ -305,16 +348,22 @@ def _filter_to_door_views(
 # ------------------------- 栅格化 -------------------------
 
 class _Canvas:
-    def __init__(self, prims: list[tuple[str, Primitive]], target_long_edge: int, dpi: int):
+    def __init__(
+        self,
+        prims: list[tuple[str, Primitive]],
+        target_long_edge: int,
+        dpi: int,
+        bbox_override: Optional[tuple[float, float, float, float]] = None,
+    ):
         self.dpi = dpi
         content = [p for c, p in prims if c in {"panel", "frame", "trim", "glass", "accessory", "dim", "text"}]
-        bbox = _category_bbox(content)
+        bbox = bbox_override or _category_bbox(content)
         if bbox is None:
             raise ValueError("CAD 中没有可渲染的门体几何")
         min_x, max_x, min_y, max_y = bbox
         width_mm = max(max_x - min_x, 1.0)
         height_mm = max(max_y - min_y, 1.0)
-        pad_mm = max(width_mm, height_mm) * 0.02
+        pad_mm = 0.0 if bbox_override else max(width_mm, height_mm) * 0.02
         self.min_x = min_x - pad_mm
         self.min_y = min_y - pad_mm
         self.width_mm = width_mm + pad_mm * 2
@@ -538,6 +587,7 @@ def render_layered_dxf(
     references: Optional[list[dict]] = None,
     reference_bindings: Optional[dict[str, list[dict]]] = None,
     include_psd: bool = True,
+    selected_side: Optional[str] = None,
 ) -> dict:
     """生成分层效果图，返回 PSD 与 JPG 字节流。
 
@@ -559,18 +609,34 @@ def render_layered_dxf(
     for cat in list(by_cat.keys()):
         by_cat[cat] = _filter_to_door_views(by_cat[cat], front_pos, back_pos)
 
-    def prims(cat: str) -> list[Primitive]:
-        return by_cat.get(cat, [])
-
-    canvas = _Canvas([(cat, p) for cat in by_cat for p in by_cat[cat]], target_long_edge, dpi)
-
     # 结构部件按正反面拆分
     front_cat: dict[str, list[Primitive]] = {}
     back_cat: dict[str, list[Primitive]] = {}
     for cat in ("panel", "frame", "trim", "glass", "accessory"):
-        f, b = _split_front_back(prims(cat), front_x, back_x)
+        f, b = _split_front_back(by_cat.get(cat, []), front_x, back_x)
         front_cat[cat] = f
         back_cat[cat] = b
+
+    selected_canvas_bbox = None
+    if selected_side in {"front", "back"}:
+        selected_cat, selected_canvas_bbox = _selected_face_categories(front_cat, back_cat, selected_side)
+        by_cat = {name: list(selected_cat.get(name, [])) for name in (*STRUCTURAL_CATEGORIES, "accessory")}
+        if selected_side == "front":
+            front_cat = selected_cat
+            back_cat = _empty_face_categories()
+        else:
+            front_cat = _empty_face_categories()
+            back_cat = selected_cat
+
+    def prims(cat: str) -> list[Primitive]:
+        return by_cat.get(cat, [])
+
+    canvas = _Canvas(
+        [(cat, p) for cat in by_cat for p in by_cat[cat]],
+        target_long_edge,
+        dpi,
+        bbox_override=selected_canvas_bbox,
+    )
     geometry_manifest = build_geometry_manifest(by_cat, front_cat, back_cat, canvas.transform)
 
     def render_filled(cat: str, prim_list: list[Primitive]) -> np.ndarray:
@@ -584,7 +650,13 @@ def render_layered_dxf(
         "glass": _render_exact_role_mask(canvas, "glass", prims("glass")),
         "hardware": _render_exact_role_mask(canvas, "accessory", prims("accessory")),
     }
-    geometry_validation = validate_geometry_manifest(geometry_manifest, by_cat, geometry_masks)
+    required_sides = (selected_side,) if selected_side in {"front", "back"} else ("front", "back")
+    geometry_validation = validate_geometry_manifest(
+        geometry_manifest,
+        by_cat,
+        geometry_masks,
+        required_sides=required_sides,
+    )
     for primitive in prims("accessory"):
         if primitive.kind == "insert":
             geometry_validation["warnings"].append({
@@ -730,13 +802,31 @@ def render_layered_dxf(
     validate_layer_canvases(layer_arrays, (canvas.width, canvas.height))
     complete = _composite([white_bg] + [layer_arrays[name] for name in VISIBLE_LAYER_ORDER])
 
-    front_bbox = _category_bbox(front_cat["panel"] + front_cat["frame"] + front_cat["trim"] + front_cat["glass"] + front_cat["accessory"])
-    back_bbox = _category_bbox(back_cat["panel"] + back_cat["frame"] + back_cat["trim"] + back_cat["glass"] + back_cat["accessory"])
-    front_jpg = _to_jpg(_crop(complete, front_bbox, canvas) if front_bbox else complete)
-    back_jpg = _to_jpg(_crop(complete, back_bbox, canvas) if back_bbox else complete)
     complete_jpg = _to_jpg(complete)
+
     def encoded_layers(bbox: Optional[tuple[float, float, float, float]] = None) -> dict[str, bytes]:
         return {name: _to_png(_crop(layer, bbox, canvas) if bbox else layer) for name, layer in layer_arrays.items()}
+
+    front_bbox = _category_bbox(front_cat["panel"] + front_cat["frame"] + front_cat["trim"] + front_cat["glass"] + front_cat["accessory"])
+    back_bbox = _category_bbox(back_cat["panel"] + back_cat["frame"] + back_cat["trim"] + back_cat["glass"] + back_cat["accessory"])
+    if selected_side in {"front", "back"}:
+        selected_jpg = complete_jpg
+        selected_layer_pngs = encoded_layers()
+        front_jpg = selected_jpg if selected_side == "front" else b""
+        back_jpg = selected_jpg if selected_side == "back" else b""
+        front_layer_pngs = selected_layer_pngs if selected_side == "front" else {}
+        back_layer_pngs = selected_layer_pngs if selected_side == "back" else {}
+        front_size = (canvas.width, canvas.height) if selected_side == "front" else (0, 0)
+        back_size = (canvas.width, canvas.height) if selected_side == "back" else (0, 0)
+    else:
+        front_jpg = _to_jpg(_crop(complete, front_bbox, canvas) if front_bbox else complete)
+        back_jpg = _to_jpg(_crop(complete, back_bbox, canvas) if back_bbox else complete)
+        front_layer_pngs = encoded_layers(front_bbox) if front_bbox else encoded_layers()
+        back_layer_pngs = encoded_layers(back_bbox) if back_bbox else encoded_layers()
+        selected_jpg = b""
+        selected_layer_pngs = {}
+        front_size = Image.open(io.BytesIO(front_jpg)).size
+        back_size = Image.open(io.BytesIO(back_jpg)).size
 
     return {
         "psd_bytes": psd_bytes,
@@ -744,6 +834,11 @@ def render_layered_dxf(
         "front_jpg": front_jpg,
         "back_jpg": back_jpg,
         "canvas_size": (canvas.width, canvas.height),
+        "front_size": front_size,
+        "back_size": back_size,
+        "selected_side": selected_side or "",
+        "selected_jpg": selected_jpg,
+        "selected_layer_pngs": selected_layer_pngs,
         "dpi": dpi,
         "scale": canvas.scale,
         "material_mode": material_mode,
@@ -753,8 +848,8 @@ def render_layered_dxf(
         "visible_layer_order": list(VISIBLE_LAYER_ORDER),
         "output_quality": OUTPUT_QUALITY,
         "layer_pngs": encoded_layers(),
-        "front_layer_pngs": encoded_layers(front_bbox) if front_bbox else encoded_layers(),
-        "back_layer_pngs": encoded_layers(back_bbox) if back_bbox else encoded_layers(),
+        "front_layer_pngs": front_layer_pngs,
+        "back_layer_pngs": back_layer_pngs,
     }
 
 

@@ -225,6 +225,7 @@ def validate_geometry_manifest(
     manifest: dict,
     categorized: Mapping[str, list[GeometryPrimitive]],
     masks: Optional[Mapping[str, np.ndarray]] = None,
+    required_sides: tuple[str, ...] = ("front", "back"),
 ) -> dict:
     """Validate structural roles before precise rendering or AI material work."""
     errors: list[dict] = []
@@ -266,12 +267,13 @@ def validate_geometry_manifest(
 
         if required:
             sides = geometry.get("side_bboxes", {})
-            if not sides.get("front") or not sides.get("back"):
+            missing_sides = [side for side in required_sides if not sides.get(side)]
+            if missing_sides:
                 errors.append(
                     _error(
                         f"{role.upper()}_SIDES_NOT_SEPARATED",
                         role,
-                        "正反面结构边界无法分离",
+                        "正反面结构边界无法分离" if len(required_sides) > 1 else f"{required_sides[0]} 结构边界无效",
                     )
                 )
 
