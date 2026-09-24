@@ -23,6 +23,7 @@ import {
   listRenderModelConfigs,
   listRenderTasks,
   regenerateRenderComponent,
+  renderTaskFileToFile,
   updateRenderModelConfig,
   updateLineArtCrop,
   uploadRenderAsset,
@@ -35,6 +36,7 @@ import {
   type RenderReferenceRole,
   type RenderSegmentation,
 } from "@/lib/renderApi";
+import { restoreRenderHistory } from "@/lib/renderHistory";
 
 const DEFAULT_PROMPT = "基于图纸生成清晰、真实的门类产品效果图。严格保持门型结构、比例和部件位置，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节。最终成图不显示 CAD 线稿、尺寸线、文字、标注箭头或辅助轮廓，玻璃和五金位于门扇表面上方，接缝表现为真实窄黑缝。";
 const ASSET_PAGE_SIZE = 24;
@@ -215,6 +217,86 @@ export default function RenderPage() {
       if (refreshed) return refreshed;
       return nextTasks[0];
     });
+  }
+
+  async function restoreHistoryTask(task: RenderTask) {
+    setActiveTask(task);
+    const restored = restoreRenderHistory(task);
+    setSelectedConfigId(restored.configId);
+    const restoredConfig = configs.find((item) => item.id === restored.configId);
+    if (restoredConfig) {
+      setEditingConfigId(restoredConfig.id);
+      setConfigForm(formFromConfig(restoredConfig));
+    }
+    setPrompt(restored.prompt || DEFAULT_PROMPT);
+    setSize(restored.size);
+    setSelectedLineArtSide(restored.sourceSide);
+    setSelectedDrawingTaskId(restored.sourceTaskId);
+    setSegmentation(restored.segmentation);
+    setOrderSheet(null);
+    setDxfFile(null);
+    setLineArt(null);
+    setLineArtExtraction(null);
+
+    const warnings: string[] = [];
+    const nextGroups = createDefaultReferenceGroups();
+    for (const restoredGroup of restored.referenceGroups) {
+      const index = nextGroups.findIndex((group) => group.role === restoredGroup.role);
+      if (index < 0) continue;
+      const restoredFiles: File[] = [];
+      for (const storedFile of restoredGroup.persistedFiles) {
+        try {
+          restoredFiles.push(await renderTaskFileToFile(storedFile, `${restoredGroup.role}-reference.png`));
+        } catch {
+          warnings.push(`${REFERENCE_ROLE_LABEL[restoredGroup.role]}参考图无法恢复`);
+        }
+      }
+      nextGroups[index] = {
+        ...nextGroups[index],
+        assetIds: restoredGroup.assetIds,
+        files: restoredFiles,
+      };
+    }
+    setReferenceGroups(nextGroups);
+    const firstReference = nextGroups.find((group) => group.assetIds.length || group.files.length);
+    if (firstReference) setActiveReferenceRole(firstReference.role);
+
+    const selectedAssetIds = Array.from(new Set(nextGroups.flatMap((group) => group.assetIds)));
+    if (selectedAssetIds.length) {
+      try {
+        const availableAssets = await listRenderAssets({ limit: 200 });
+        setAssets((current) => {
+          const merged = new Map(current.map((asset) => [asset.id, asset]));
+          availableAssets.forEach((asset) => merged.set(asset.id, asset));
+          return Array.from(merged.values());
+        });
+      } catch {
+        warnings.push("素材库详情暂时无法加载");
+      }
+    }
+
+    try {
+      if (restored.sourceType === "task" && restored.sourceTaskId) {
+        setLineArtSource("task");
+        setLineArtExtraction(await extractTaskLineArt(restored.sourceTaskId));
+      } else if (restored.sourceType === "dxf") {
+        const storedDxf = task.files.find((file) => file.role === "source_dxf");
+        if (!storedDxf) throw new Error("历史任务缺少 DXF 文件");
+        const restoredDxf = await renderTaskFileToFile(storedDxf, "history-source.dxf");
+        setLineArtSource("dxf");
+        setDxfFile(restoredDxf);
+        setLineArtExtraction(await extractDxfLineArt(restoredDxf));
+      } else if (restored.lineArtFile) {
+        setLineArtSource("direct");
+        setLineArt(await renderTaskFileToFile(restored.lineArtFile, "history-line-art.png"));
+      } else {
+        throw new Error("历史任务缺少线稿文件");
+      }
+    } catch (error) {
+      warnings.push((error as Error).message || "线稿无法恢复");
+    }
+
+    setMessage(warnings.length ? `已恢复历史任务；${Array.from(new Set(warnings)).join("；")}` : "已恢复该次线稿、参考素材和生成参数");
   }
 
   async function loadAssets(options: { reset?: boolean; categoryValue?: string; searchValue?: string } = {}) {
@@ -1154,14 +1236,14 @@ export default function RenderPage() {
             {tasks.map((task) => (
               <div key={task.id} className={`rounded-lg px-3 py-2 text-[12px] ${activeTask?.id === task.id ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#3C3C43]"}`}>
                 <div className="flex items-start gap-2">
-                  <button type="button" onClick={() => setActiveTask(task)} className="min-w-0 flex-1 cursor-pointer text-left">
+                  <button type="button" onClick={() => void restoreHistoryTask(task)} className="min-w-0 flex-1 cursor-pointer text-left">
                     <span className="font-medium">{task.status}</span>
                     <span className="ml-2 rounded-full bg-white px-1.5 py-0.5 text-[10px]">{task.renderMode === "precise" ? "精准" : "快速"}</span>
                     <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
                     <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
                     {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
                   </button>
-                  <button type="button" onClick={() => setActiveTask(task)} className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[#007AFF]">查看</button>
+                  <button type="button" onClick={() => void restoreHistoryTask(task)} className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[#007AFF]">查看</button>
                   <button type="button" onClick={() => removeTask(task.id)} className="shrink-0 rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[#FF3B30]">删除</button>
                 </div>
               </div>

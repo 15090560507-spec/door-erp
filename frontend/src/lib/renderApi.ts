@@ -6,7 +6,7 @@ export type RenderReferenceRole = "panel" | "trim" | "frame" | "glass" | "hardwa
 
 export interface RenderReferenceBinding {
   assetIds: string[];
-  files?: Array<{ id?: string; url?: string; originalName?: string; targetRole?: string }>;
+  files?: RenderTaskFile[];
 }
 
 export type RenderReferenceBindings = Record<RenderReferenceRole, RenderReferenceBinding>;
@@ -60,6 +60,18 @@ export interface RenderResultImage {
   filePath?: string;
 }
 
+export interface RenderTaskFile {
+  id?: string;
+  role?: string;
+  url?: string;
+  filePath?: string;
+  originalName?: string;
+  mimeType?: string;
+  targetRole?: RenderReferenceRole | string;
+  category?: string;
+  assetId?: string;
+}
+
 export interface RenderGeometryIssue {
   code: string;
   role: string;
@@ -95,14 +107,14 @@ export interface RenderTask {
   prompt: string;
   size: string;
   count: number;
-  files: unknown[];
+  files: RenderTaskFile[];
   selectedAssetIds: string[];
   renderMode: RenderMode;
   sourceType: "task" | "dxf" | "image";
   sourceSide: "front" | "back";
   sourceTaskId?: string;
   referenceBindings: Partial<RenderReferenceBindings>;
-  segmentation?: Record<string, unknown>;
+  segmentation?: RenderSegmentation | Record<string, unknown>;
   componentLayers?: Record<string, unknown>;
   geometryManifest?: RenderGeometryManifest | null;
   geometryValidation?: RenderGeometryValidation | null;
@@ -354,9 +366,18 @@ export async function extractTaskLineArt(taskId: string): Promise<LineArtExtract
 }
 
 export async function lineArtViewToFile(view: LineArtView, filename: string): Promise<File> {
-  const requestPath = view.url.startsWith("/api/") ? view.url.slice(4) : view.url;
+  return renderUrlToFile(view.url, filename, "image/png");
+}
+
+export async function renderTaskFileToFile(file: RenderTaskFile, fallbackName = "render-reference.png"): Promise<File> {
+  if (!file.url) throw new Error(`历史文件 ${file.originalName || fallbackName} 缺少访问地址`);
+  return renderUrlToFile(file.url, file.originalName || fallbackName, file.mimeType || "image/png");
+}
+
+async function renderUrlToFile(url: string, filename: string, fallbackType: string): Promise<File> {
+  const requestPath = url.startsWith("/api/") ? url.slice(4) : url;
   const { data } = await api.get<Blob>(requestPath, { responseType: "blob", timeout: 120000 });
-  return new File([data], filename, { type: data.type || "image/png" });
+  return new File([data], filename, { type: data.type || fallbackType });
 }
 
 function normalizeRenderError(error: unknown): Error & { userMessage?: string; task?: RenderTask; raw?: string } {
