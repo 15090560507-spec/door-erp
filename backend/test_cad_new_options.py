@@ -356,6 +356,129 @@ def test_panel_vertical_pattern_uses_internal_spacing():
     )
 
 
+def test_diagonal_panel_styles_draw_expected_geometry():
+    def normalize_segment(start, end):
+        return tuple(sorted((
+            (round(float(start[0]), 3), round(float(start[1]), 3)),
+            (round(float(end[0]), 3), round(float(end[1]), 3)),
+        )))
+
+    def panel_segments(doc):
+        return {
+            normalize_segment(entity.dxf.start, entity.dxf.end)
+            for entity in doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        }
+
+    def front_panel_bounds(doc):
+        candidates = []
+        for entity in doc.modelspace().query("LWPOLYLINE"):
+            if entity.dxf.layer != "A-DOOR-PANEL" or not entity.closed:
+                continue
+            points = [(float(point[0]), float(point[1])) for point in entity.get_points("xy")]
+            left = min(point[0] for point in points)
+            right = max(point[0] for point in points)
+            bottom = min(point[1] for point in points)
+            top = max(point[1] for point in points)
+            if right - left > 500 and top - bottom > 1000:
+                candidates.append((left, right, bottom, top))
+        return min(candidates, key=lambda bounds: (bounds[0] + bounds[1]) / 2)
+
+    def render(req):
+        info, checks, params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, params)
+        check(f"{req.door_panel_style} CAD generation returns buffer", buffer is not None, msg)
+        if not buffer:
+            return None
+        return ezdxf.read(io.StringIO(buffer.getvalue()))
+
+    four_doc = render(CADRequest(
+        door_panel_style="四边对角线条",
+        panel_border_inset=30,
+        panel_fill_a="竖条",
+        fingerprint_lock="无",
+        sel_hys="暗合页",
+    ))
+    if four_doc:
+        left, right, bottom, top = front_panel_bounds(four_doc)
+        inset = 30
+        inner_left, inner_right = left + inset, right - inset
+        inner_bottom, inner_top = bottom + inset, top - inset
+        expected = {
+            normalize_segment((inner_left, inner_bottom), (inner_right, inner_bottom)),
+            normalize_segment((inner_right, inner_bottom), (inner_right, inner_top)),
+            normalize_segment((inner_right, inner_top), (inner_left, inner_top)),
+            normalize_segment((inner_left, inner_top), (inner_left, inner_bottom)),
+            normalize_segment((left, bottom), (inner_left, inner_bottom)),
+            normalize_segment((right, bottom), (inner_right, inner_bottom)),
+            normalize_segment((right, top), (inner_right, inner_top)),
+            normalize_segment((left, top), (inner_left, inner_top)),
+        }
+        segments = panel_segments(four_doc)
+        check("four-side style draws inset frame and four miters", expected <= segments, expected - segments)
+        four_hatches = [
+            entity for entity in four_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        check("four-side style keeps internal fill", len(four_hatches) >= 1, len(four_hatches))
+
+    for open_dir, lock_on_right in (("左开", True), ("右开", False)):
+        three_doc = render(CADRequest(
+            door_panel_style="三边对角线条",
+            panel_three_side_lock_offset=150,
+            panel_three_side_inset=60,
+            panel_fill_a="竖条",
+            sel_kx=open_dir,
+            fingerprint_lock="无",
+            sel_hys="暗合页",
+        ))
+        if not three_doc:
+            continue
+        left, right, bottom, top = front_panel_bounds(three_doc)
+        lock_edge = right if lock_on_right else left
+        hinge_edge = left if lock_on_right else right
+        direction = -1 if lock_on_right else 1
+        lock_x = lock_edge + direction * 150
+        hinge_x = hinge_edge - direction * 60
+        inner_bottom, inner_top = bottom + 60, top - 60
+        expected = {
+            normalize_segment((lock_x, bottom), (lock_x, top)),
+            normalize_segment((hinge_x, inner_bottom), (lock_x, inner_bottom)),
+            normalize_segment((hinge_x, inner_bottom), (hinge_x, inner_top)),
+            normalize_segment((hinge_x, inner_top), (lock_x, inner_top)),
+            normalize_segment((hinge_edge, bottom), (hinge_x, inner_bottom)),
+            normalize_segment((hinge_edge, top), (hinge_x, inner_top)),
+        }
+        forbidden_lock_miters = {
+            normalize_segment((lock_edge, bottom), (lock_x, inner_bottom)),
+            normalize_segment((lock_edge, top), (lock_x, inner_top)),
+        }
+        segments = panel_segments(three_doc)
+        check(f"three-side {open_dir} draws approved geometry", expected <= segments, expected - segments)
+        check(
+            f"three-side {open_dir} omits lock-side miters",
+            segments.isdisjoint(forbidden_lock_miters),
+            segments & forbidden_lock_miters,
+        )
+        three_hatches = [
+            entity for entity in three_doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ]
+        check(f"three-side {open_dir} keeps internal fill", len(three_hatches) >= 1, len(three_hatches))
+
+    invalid_info, invalid_checks, invalid_params = build_cad_params(CADRequest(
+        door_panel_style="三边对角线条",
+        panel_three_side_lock_offset=700,
+        panel_three_side_inset=200,
+    ))
+    invalid_msg, invalid_buffer = run_integrated_system(invalid_info, invalid_checks, invalid_params)
+    check(
+        "invalid diagonal offsets return a clear error",
+        invalid_buffer is None and "超出门板可用尺寸" in invalid_msg,
+        invalid_msg,
+    )
+
+
 def test_rectangular_glass_line_templates():
     def layer_lines(doc):
         return [
@@ -2589,6 +2712,7 @@ if __name__ == "__main__":
     test_door_panel_style_lines()
     test_diagonal_panel_style_parameters_pass_to_drawing()
     test_panel_vertical_pattern_uses_internal_spacing()
+    test_diagonal_panel_styles_draw_expected_geometry()
     test_rectangular_glass_line_templates()
     test_disc_panel_style_draws_semicircle()
     test_panel_front_back_inheritance_and_child_independence()

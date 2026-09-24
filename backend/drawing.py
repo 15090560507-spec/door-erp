@@ -1814,6 +1814,18 @@ def draw_door_in_frame(
             "fill_b": str(p.get(f"{prefix}fill_b", p.get("panel_fill_b", "")) or ""),
             "fill_c": str(p.get(f"{prefix}fill_c", p.get("panel_fill_c", "")) or ""),
             "disc_radius": float(p.get(f"{prefix}disc_radius", p.get("panel_disc_radius", 120)) or 0),
+            "border_inset": float(p.get(
+                f"{prefix}border_inset",
+                p.get("panel_border_inset", 30),
+            ) or 0),
+            "three_side_lock_offset": float(p.get(
+                f"{prefix}three_side_lock_offset",
+                p.get("panel_three_side_lock_offset", 150),
+            ) or 0),
+            "three_side_inset": float(p.get(
+                f"{prefix}three_side_inset",
+                p.get("panel_three_side_inset", 60),
+            ) or 0),
             "horizontal_a_height": float(p.get(
                 "panel_horizontal_a_height" if group == "front" else f"{group}_panel_horizontal_a_height",
                 p.get("panel_horizontal_a_height", 1000),
@@ -1936,6 +1948,79 @@ def draw_door_in_frame(
     def draw_fill_rect(x1: float, x2: float, fill_name: str, mirror: bool = False):
         draw_fill_area(x1, panel_y_bot, x2, panel_y_top, fill_name, mirror)
 
+    def validate_panel_inset(
+        value: float,
+        panel_width: float,
+        panel_height: float,
+        label: str,
+    ) -> float:
+        if value <= 0:
+            raise ValueError(f"{label}必须大于0mm")
+        if value * 2 >= min(panel_width, panel_height):
+            raise ValueError(f"{label}{value:g}mm超出门板可用尺寸")
+        return value
+
+    def draw_four_side_diagonal(
+        px1: float,
+        px2: float,
+        y1: float,
+        y2: float,
+        inset: float,
+        fill_name: str,
+    ) -> None:
+        panel_width = abs(px2 - px1)
+        panel_height = abs(y2 - y1)
+        inset = validate_panel_inset(inset, panel_width, panel_height, "四边外边距")
+        left, right = sorted((px1, px2))
+        bottom, top = sorted((y1, y2))
+        inner_left, inner_right = left + inset, right - inset
+        inner_bottom, inner_top = bottom + inset, top - inset
+
+        draw_fill_area(inner_left, inner_bottom, inner_right, inner_top, fill_name)
+        draw_panel_line(inner_left, inner_bottom, inner_right, inner_bottom)
+        draw_panel_line(inner_right, inner_bottom, inner_right, inner_top)
+        draw_panel_line(inner_right, inner_top, inner_left, inner_top)
+        draw_panel_line(inner_left, inner_top, inner_left, inner_bottom)
+        draw_panel_line(left, bottom, inner_left, inner_bottom)
+        draw_panel_line(right, bottom, inner_right, inner_bottom)
+        draw_panel_line(right, top, inner_right, inner_top)
+        draw_panel_line(left, top, inner_left, inner_top)
+
+    def draw_three_side_diagonal(
+        lock_edge: float,
+        hinge_edge: float,
+        direction: int,
+        y1: float,
+        y2: float,
+        lock_offset: float,
+        inset: float,
+        fill_name: str,
+    ) -> None:
+        panel_width = abs(lock_edge - hinge_edge)
+        panel_height = abs(y2 - y1)
+        if lock_offset <= 0:
+            raise ValueError("三边锁边偏移必须大于0mm")
+        if inset <= 0:
+            raise ValueError("三边宽度必须大于0mm")
+        if lock_offset + inset >= panel_width or inset * 2 >= panel_height:
+            raise ValueError(
+                f"三边对角线条参数超出门板可用尺寸："
+                f"锁边{lock_offset:g}mm，三边{inset:g}mm"
+            )
+
+        bottom, top = sorted((y1, y2))
+        inner_bottom, inner_top = bottom + inset, top - inset
+        lock_x = lock_edge + direction * lock_offset
+        hinge_x = hinge_edge - direction * inset
+
+        draw_fill_area(hinge_x, inner_bottom, lock_x, inner_top, fill_name)
+        draw_panel_line(lock_x, bottom, lock_x, top)
+        draw_panel_line(hinge_x, inner_bottom, lock_x, inner_bottom)
+        draw_panel_line(hinge_x, inner_bottom, hinge_x, inner_top)
+        draw_panel_line(hinge_x, inner_top, lock_x, inner_top)
+        draw_panel_line(hinge_edge, bottom, hinge_x, inner_bottom)
+        draw_panel_line(hinge_edge, top, hinge_x, inner_top)
+
     if panel_positions:
         for idx, (px1, px2) in enumerate(panel_positions):
             settings = panel_settings_for(idx)
@@ -1948,6 +2033,30 @@ def draw_door_in_frame(
 
             direction = 1 if abs(lock_edge - px1) < 0.01 else -1
             hinge_edge = px2 if direction == 1 else px1
+
+            if panel_style == "四边对角线条":
+                draw_four_side_diagonal(
+                    px1,
+                    px2,
+                    panel_y_bot,
+                    panel_y_top,
+                    float(settings["border_inset"]),
+                    str(settings.get("fill_a", "")),
+                )
+                continue
+
+            if panel_style == "三边对角线条":
+                draw_three_side_diagonal(
+                    lock_edge,
+                    hinge_edge,
+                    direction,
+                    panel_y_bot,
+                    panel_y_top,
+                    float(settings["three_side_lock_offset"]),
+                    float(settings["three_side_inset"]),
+                    str(settings.get("fill_a", "")),
+                )
+                continue
 
             if panel_style == "大板布局":
                 draw_fill_area(px1, panel_y_bot, px2, panel_y_top, str(settings.get("fill_a", "")))
