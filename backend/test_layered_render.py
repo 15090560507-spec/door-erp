@@ -490,6 +490,42 @@ def test_selected_face_canvas_ignores_far_accessory_helpers_and_stays_shared(mon
         assert Image.open(io.BytesIO(content)).size == (width, height)
 
 
+def test_frame_and_trim_reuse_panel_references_with_role_specific_prompts(monkeypatch):
+    calls = []
+
+    def fake_material(rgb, _config, references, prompt):
+        calls.append((references, prompt))
+        result = np.empty_like(rgb)
+        result[...] = (120, 80, 40)
+        return result
+
+    monkeypatch.setattr(layered_render, "_apply_ai_material", fake_material)
+    panel_references = [{"filePath": "panel-reference.png"}]
+    result = render_layered_dxf(
+        _sample_dxf_text(),
+        target_long_edge=800,
+        ai_config={"provider": "fake"},
+        reference_bindings={
+            "panel": panel_references,
+            "frame": [],
+            "trim": [],
+            "glass": [],
+            "hardware": [],
+        },
+        include_psd=False,
+        selected_side="front",
+    )
+
+    prompts = [prompt for _references, prompt in calls]
+    assert any("门扇" in prompt for prompt in prompts)
+    assert any("门框" in prompt for prompt in prompts)
+    assert any("门套" in prompt for prompt in prompts)
+    assert all(references == panel_references for references, _prompt in calls)
+    assert result["material_mode"] == "ai"
+    assert "门框未提供独立参考" in result["material_note"]
+    assert "门套未提供独立参考" in result["material_note"]
+
+
 if __name__ == "__main__":
     test_psd_writer()
     test_layered_render()

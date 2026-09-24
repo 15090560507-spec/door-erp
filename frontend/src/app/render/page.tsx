@@ -140,6 +140,7 @@ export default function RenderPage() {
   const [segmentation, setSegmentation] = useState<RenderSegmentation | null>(null);
   const [segmentationEditorOpen, setSegmentationEditorOpen] = useState(false);
   const [psdConvertPrompt, setPsdConvertPrompt] = useState(false);
+  const [psdAction, setPsdAction] = useState<"" | "generating" | "downloading">("");
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
   const [activeReferenceRole, setActiveReferenceRole] = useState<RenderReferenceRole>("panel");
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -723,29 +724,32 @@ export default function RenderPage() {
     }
   }
 
-  async function generatePsd() {
+  async function exportPsd() {
     if (!activeTask) return;
     if (activeTask.renderMode !== "precise") {
       setPsdConvertPrompt(true);
       return;
     }
+    let task = activeTask;
     try {
-      setMessage("正在将透明部件层打包为 PSD...");
-      const next = await generateRenderTaskPsd(activeTask.id);
-      setActiveTask(next);
-      setTasks((current) => current.map((item) => item.id === next.id ? next : item));
-      setMessage("分层 PSD 已生成");
+      if (!task.psdFile?.url) {
+        setPsdAction("generating");
+        setMessage("正在生成 4K 分层 PSD，请稍候...");
+        task = await generateRenderTaskPsd(task.id);
+        setActiveTask(task);
+        setTasks((current) => current.map((item) => item.id === task.id ? task : item));
+      }
+      if (!task.psdFile?.url) {
+        throw new Error("PSD 已生成，但后端没有返回可下载文件");
+      }
+      setPsdAction("downloading");
+      setMessage("PSD 已生成，正在开始下载...");
+      await downloadFileFromUrl(task.psdFile.url, task.psdFile.originalName || `${task.id}-分层效果图.psd`);
+      setMessage("分层 PSD 已生成并开始下载");
     } catch (error) {
-      setErrorDialog({ title: "PSD 生成失败", message: (error as Error).message || "请稍后重试" });
-    }
-  }
-
-  async function downloadPsd() {
-    if (!activeTask?.psdFile?.url) return;
-    try {
-      await downloadFileFromUrl(activeTask.psdFile.url, activeTask.psdFile.originalName || `${activeTask.id}-分层效果图.psd`);
-    } catch (error) {
-      setErrorDialog({ title: "PSD 下载失败", message: (error as Error).message || "请稍后重试" });
+      setErrorDialog({ title: "PSD 导出失败", message: (error as Error).message || "请稍后重试" });
+    } finally {
+      setPsdAction("");
     }
   }
 
@@ -1192,7 +1196,15 @@ export default function RenderPage() {
                 {activeTask.renderMode === "precise" ? "精准分区" : "快速 AI"}
               </span>
               <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[#636366]">{activeTask.sourceSide === "back" ? "反面" : "正面"}</span>
+              <span className={`rounded-full px-2 py-1 ${activeTask.materialMode === "ai" ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF9F0A]/10 text-[#A05A00]"}`}>
+                {activeTask.materialMode === "ai" ? "AI 材质" : "平整材质"}
+              </span>
               {activeTask.renderMode === "precise" && <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[#636366]">PSD：{activeTask.psdStatus === "completed" ? "已生成" : "未生成"}</span>}
+            </div>
+          )}
+          {activeTask?.materialNote && (
+            <div className={`mb-3 rounded-xl border px-3 py-2 text-[12px] ${activeTask.materialMode === "flat" ? "border-[#FF9F0A]/30 bg-[#FF9F0A]/5 text-[#8A4B00]" : "border-[#007AFF]/20 bg-[#007AFF]/5 text-[#3C3C43]"}`}>
+              {activeTask.materialNote}
             </div>
           )}
           {activeTask?.status === "completed" && activeTask.images?.length > 0 && (
@@ -1211,11 +1223,14 @@ export default function RenderPage() {
                 </button>
               ))}
               <div className="flex-1" />
-              {activeTask.psdStatus === "completed" && activeTask.psdFile?.url ? (
-                <button type="button" onClick={() => void downloadPsd()} className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white">下载分层 PSD</button>
-              ) : (
-                <button type="button" onClick={() => void generatePsd()} className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white">生成分层 PSD</button>
-              )}
+              <button
+                type="button"
+                onClick={() => void exportPsd()}
+                disabled={Boolean(psdAction)}
+                className="min-w-[132px] rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white disabled:cursor-wait disabled:opacity-60"
+              >
+                {psdAction === "generating" ? "正在生成 PSD..." : psdAction === "downloading" ? "正在下载 PSD..." : activeTask.psdFile?.url ? "下载分层 PSD" : "生成并下载 PSD"}
+              </button>
             </div>
           )}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

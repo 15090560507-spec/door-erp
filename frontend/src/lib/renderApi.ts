@@ -119,6 +119,8 @@ export interface RenderTask {
   geometryManifest?: RenderGeometryManifest | null;
   geometryValidation?: RenderGeometryValidation | null;
   compositeImage?: RenderResultImage | null;
+  materialMode?: "ai" | "flat" | string;
+  materialNote?: string;
   psdStatus?: "not_requested" | "generating" | "completed" | "failed" | string;
   psdFile?: { url?: string; originalName?: string } | null;
   images: RenderResultImage[];
@@ -334,7 +336,7 @@ export async function regenerateRenderComponent(id: string, role: RenderReferenc
 }
 
 export async function generateRenderTaskPsd(id: string): Promise<RenderTask> {
-  const { data } = await api.post<{ task: RenderTask }>(`/render/tasks/${id}/psd`, undefined, { timeout: 120000 });
+  const { data } = await api.post<{ task: RenderTask }>(`/render/tasks/${id}/psd`, undefined, { timeout: 300000 });
   return data.task;
 }
 

@@ -716,6 +716,7 @@ def render_layered_dxf(
             "accessory": "只为已有的拉手、锁具、合页、花件等五金区域生成参考款式与材质。不得移动、增加或删除配件。不显示线稿、尺寸、文字或辅助轮廓。",
         }
         errors: list[str] = []
+        inheritance_notes: list[str] = []
         if reference_bindings is None:
             try:
                 shared_rgb = _apply_ai_material(flat_complete[..., :3], ai_config, references or [])
@@ -727,13 +728,15 @@ def render_layered_dxf(
             except Exception as exc:
                 errors.append(str(exc))
         else:
+            panel_refs = reference_bindings.get("panel", [])
+            inherited_labels = {"frame": "门框", "trim": "门套"}
             for category_name, role in role_by_category.items():
                 if not prims(category_name):
                     continue
                 role_refs = reference_bindings.get(role, [])
-                if not role_refs and category_name == "frame" and "panel" in ai_rgb_by_category:
-                    ai_rgb_by_category[category_name] = ai_rgb_by_category["panel"]
-                    continue
+                if not role_refs and category_name in inherited_labels and panel_refs:
+                    role_refs = panel_refs
+                    inheritance_notes.append(f"{inherited_labels[category_name]}未提供独立参考，已沿用门扇参考单独生成材质")
                 if not role_refs:
                     continue
                 try:
@@ -742,8 +745,12 @@ def render_layered_dxf(
                     errors.append(f"{role}：{exc}")
         if ai_rgb_by_category:
             material_mode = "ai"
+        notes: list[str] = []
+        if inheritance_notes:
+            notes.extend(inheritance_notes)
         if errors:
-            material_note = "部分部件 AI 处理失败并使用默认材质：" + "；".join(errors)
+            notes.append("部分部件 AI 处理失败并使用平整材质：" + "；".join(errors))
+        material_note = "；".join(notes)
 
     def part_layer(cat: str, prim_list: list[Primitive]) -> np.ndarray:
         role_mask = _render_exact_role_mask(canvas, cat, prim_list)

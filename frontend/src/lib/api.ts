@@ -305,7 +305,7 @@ export async function generateCadPreview(formData: DoorFormData): Promise<string
 /** 通过带鉴权头的请求下载后端文件（PSD/JPG 等），避免 cookie/代理导致的下载失败。 */
 export async function downloadFileFromUrl(url: string, filename: string): Promise<void> {
   const requestPath = url.startsWith("/api/") ? url.slice(4) : url;
-  const { data } = await api.get<Blob>(requestPath, { responseType: "blob", timeout: 180000 });
+  const { data } = await api.get<Blob>(requestPath, { responseType: "blob", timeout: 300000 });
   downloadCadBlob(data, filename);
 }
 
