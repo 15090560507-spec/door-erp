@@ -139,6 +139,9 @@ export interface DoorFormData {
   panel_fill_b: string;
   panel_fill_c: string;
   panel_disc_radius: number;
+  panel_border_inset: number;
+  panel_three_side_lock_offset: number;
+  panel_three_side_inset: number;
   panel_horizontal_a_height: number;
   panel_horizontal_b_height: number;
   panel_b2_glass_style: string;
@@ -155,6 +158,9 @@ export interface DoorFormData {
   back_panel_fill_b: string;
   back_panel_fill_c: string;
   back_panel_disc_radius: number;
+  back_panel_border_inset: number;
+  back_panel_three_side_lock_offset: number;
+  back_panel_three_side_inset: number;
   back_panel_horizontal_a_height: number;
   back_panel_horizontal_b_height: number;
   back_panel_b2_glass_style: string;
@@ -171,6 +177,9 @@ export interface DoorFormData {
   child_panel_fill_b: string;
   child_panel_fill_c: string;
   child_panel_disc_radius: number;
+  child_panel_border_inset: number;
+  child_panel_three_side_lock_offset: number;
+  child_panel_three_side_inset: number;
   child_panel_horizontal_a_height: number;
   child_panel_horizontal_b_height: number;
   child_panel_b2_glass_style: string;
@@ -189,6 +198,9 @@ export interface DoorFormData {
   child_back_panel_fill_b: string;
   child_back_panel_fill_c: string;
   child_back_panel_disc_radius: number;
+  child_back_panel_border_inset: number;
+  child_back_panel_three_side_lock_offset: number;
+  child_back_panel_three_side_inset: number;
   child_back_panel_horizontal_a_height: number;
   child_back_panel_horizontal_b_height: number;
   child_back_panel_b2_glass_style: string;
@@ -329,22 +341,26 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   panel_middle_offset_z: 180, panel_plus_offset_a: 350, panel_plus_offset_b: 100,
   panel_three_col_a: 180, panel_three_col_b: 0, panel_three_col_c: 100,
   panel_fill_a: "", panel_fill_b: "", panel_fill_c: "", panel_disc_radius: 120,
+  panel_border_inset: 30, panel_three_side_lock_offset: 150, panel_three_side_inset: 60,
   panel_horizontal_a_height: 1000, panel_horizontal_b_height: 300, panel_b2_glass_style: "无线条", panel_b4_glass_style: "无线条",
   back_panel_lock_offset_x: 180, back_panel_hinge_offset_y: 100,
   back_panel_middle_offset_z: 180, back_panel_plus_offset_a: 350, back_panel_plus_offset_b: 100,
   back_panel_three_col_a: 180, back_panel_three_col_b: 0, back_panel_three_col_c: 100,
   back_panel_fill_a: "", back_panel_fill_b: "", back_panel_fill_c: "", back_panel_disc_radius: 120,
+  back_panel_border_inset: 30, back_panel_three_side_lock_offset: 150, back_panel_three_side_inset: 60,
   back_panel_horizontal_a_height: 1000, back_panel_horizontal_b_height: 300, back_panel_b2_glass_style: "无线条", back_panel_b4_glass_style: "无线条",
   child_panel_lock_offset_x: 180, child_panel_hinge_offset_y: 100,
   child_panel_middle_offset_z: 180, child_panel_plus_offset_a: 350, child_panel_plus_offset_b: 100,
   child_panel_three_col_a: 180, child_panel_three_col_b: 0, child_panel_three_col_c: 100,
   child_panel_fill_a: "", child_panel_fill_b: "", child_panel_fill_c: "", child_panel_disc_radius: 120,
+  child_panel_border_inset: 30, child_panel_three_side_lock_offset: 150, child_panel_three_side_inset: 60,
   child_panel_horizontal_a_height: 1000, child_panel_horizontal_b_height: 300, child_panel_b2_glass_style: "无线条", child_panel_b4_glass_style: "无线条",
   child_glass_line_inset: 20, child_glass_line_spacing: 20,
   child_back_panel_lock_offset_x: 180, child_back_panel_hinge_offset_y: 100,
   child_back_panel_middle_offset_z: 180, child_back_panel_plus_offset_a: 350, child_back_panel_plus_offset_b: 100,
   child_back_panel_three_col_a: 180, child_back_panel_three_col_b: 0, child_back_panel_three_col_c: 100,
   child_back_panel_fill_a: "", child_back_panel_fill_b: "", child_back_panel_fill_c: "", child_back_panel_disc_radius: 120,
+  child_back_panel_border_inset: 30, child_back_panel_three_side_lock_offset: 150, child_back_panel_three_side_inset: 60,
   child_back_panel_horizontal_a_height: 1000, child_back_panel_horizontal_b_height: 300,
   child_back_panel_b2_glass_style: "无线条", child_back_panel_b4_glass_style: "无线条",
   child_back_glass_line_inset: 20, child_back_glass_line_spacing: 20,

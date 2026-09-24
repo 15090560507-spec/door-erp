@@ -267,6 +267,42 @@ def test_door_panel_style_lines():
     check("H+ panel style draws extra panel lines", len(panel_lines) >= 6, f"line count: {len(panel_lines)}")
 
 
+def test_diagonal_panel_style_parameters_pass_to_drawing():
+    req = CADRequest(
+        door_panel_style="四边对角线条",
+        panel_border_inset=36,
+        back_door_panel_style="三边对角线条",
+        back_panel_three_side_lock_offset=145,
+        back_panel_three_side_inset=58,
+        child_door_panel_style="三边对角线条",
+        child_panel_three_side_lock_offset=138,
+        child_panel_three_side_inset=52,
+    )
+
+    _info, _checks, params = build_cad_params(req)
+    check("front border inset passes to drawing", params["panel_border_inset"] == 36, params)
+    check(
+        "back lock offset passes to drawing",
+        params["back_panel_three_side_lock_offset"] == 145,
+        params,
+    )
+    check(
+        "back three-side inset passes to drawing",
+        params["back_panel_three_side_inset"] == 58,
+        params,
+    )
+    check(
+        "child lock offset passes to drawing",
+        params["child_panel_three_side_lock_offset"] == 138,
+        params,
+    )
+    check(
+        "child three-side inset passes to drawing",
+        params["child_panel_three_side_inset"] == 52,
+        params,
+    )
+
+
 def test_rectangular_glass_line_templates():
     def layer_lines(doc):
         return [
@@ -2498,6 +2534,7 @@ if __name__ == "__main__":
     test_split_handle_uses_directional_blocks()
     test_back_a1022_handle_direction_blocks()
     test_door_panel_style_lines()
+    test_diagonal_panel_style_parameters_pass_to_drawing()
     test_rectangular_glass_line_templates()
     test_disc_panel_style_draws_semicircle()
     test_panel_front_back_inheritance_and_child_independence()

@@ -121,6 +121,9 @@ class CADRequest(BaseModel):
     panel_fill_b: str = ""              # B区填充
     panel_fill_c: str = ""              # C区填充
     panel_disc_radius: int = 120        # 圆盘造型半径
+    panel_border_inset: int = 30        # 四边对角线条外边距
+    panel_three_side_lock_offset: int = 150 # 三边对角线条锁边偏移
+    panel_three_side_inset: int = 60    # 三边对角线条上下及合页边宽度
     panel_horizontal_a_height: int = 1000 # 两横/三横 A 区高度
     panel_horizontal_b_height: int = 300  # 三横 B 区高度
     panel_b2_glass_style: str = "无线条" # 正面 H/H+ B2 玻璃线条
@@ -137,6 +140,9 @@ class CADRequest(BaseModel):
     back_panel_fill_b: str = ""
     back_panel_fill_c: str = ""
     back_panel_disc_radius: int = 120
+    back_panel_border_inset: int = 30
+    back_panel_three_side_lock_offset: int = 150
+    back_panel_three_side_inset: int = 60
     back_panel_horizontal_a_height: int = 1000
     back_panel_horizontal_b_height: int = 300
     back_panel_b2_glass_style: str = "无线条"
@@ -153,6 +159,9 @@ class CADRequest(BaseModel):
     child_panel_fill_b: str = ""
     child_panel_fill_c: str = ""
     child_panel_disc_radius: int = 120
+    child_panel_border_inset: int = 30
+    child_panel_three_side_lock_offset: int = 150
+    child_panel_three_side_inset: int = 60
     child_panel_horizontal_a_height: int = 1000
     child_panel_horizontal_b_height: int = 300
     child_panel_b2_glass_style: str = "无线条"
@@ -171,6 +180,9 @@ class CADRequest(BaseModel):
     child_back_panel_fill_b: str = ""
     child_back_panel_fill_c: str = ""
     child_back_panel_disc_radius: int = 120
+    child_back_panel_border_inset: int = 30
+    child_back_panel_three_side_lock_offset: int = 150
+    child_back_panel_three_side_inset: int = 60
     child_back_panel_horizontal_a_height: int = 1000
     child_back_panel_horizontal_b_height: int = 300
     child_back_panel_b2_glass_style: str = "无线条"
