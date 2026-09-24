@@ -304,6 +304,8 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   const usesHPanel = (style: string) => ["H型布局", "H+型布局"].includes(style);
   const usesHPlusPanel = (style: string) => style === "H+型布局";
   const usesDiscPanel = (style: string) => style === "圆盘造型";
+  const usesFourSideDiagonal = (style: string) => style === "四边对角线条";
+  const usesThreeSideDiagonal = (style: string) => style === "三边对角线条";
   const panelPresetSummary: Record<string, string> = {
     "紫荆花款": "正面：A区紫荆花150mm + B区竖条；反面：锁边A区空白180mm + B区竖条100mm。",
     "钱币款": "正面：A区钱币款150mm + B区竖条；反面：锁边A区空白180mm + B区竖条100mm。",
@@ -416,6 +418,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillBKey,
     fillCKey,
     discRadiusKey,
+    borderInsetKey,
+    threeSideLockOffsetKey,
+    threeSideInsetKey,
     b2GlassStyleKey,
     b4GlassStyleKey,
     insetKey,
@@ -439,6 +444,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     fillBKey: keyof DoorFormData;
     fillCKey: keyof DoorFormData;
     discRadiusKey: keyof DoorFormData;
+    borderInsetKey: keyof DoorFormData;
+    threeSideLockOffsetKey: keyof DoorFormData;
+    threeSideInsetKey: keyof DoorFormData;
     b2GlassStyleKey: keyof DoorFormData;
     b4GlassStyleKey: keyof DoorFormData;
     insetKey?: keyof DoorFormData;
@@ -550,6 +558,30 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               onChange={(v) => setField(discRadiusKey, Number(v))}
             />
           )}
+          {usesFourSideDiagonal(style) && (
+            <Input
+              label={`${title}外边距(mm)`}
+              value={(data[borderInsetKey] as number) ?? 30}
+              type="number"
+              onChange={(v) => setField(borderInsetKey, Number(v))}
+            />
+          )}
+          {usesThreeSideDiagonal(style) && (
+            <>
+              <Input
+                label={`${title}锁边偏移(mm)`}
+                value={(data[threeSideLockOffsetKey] as number) ?? 150}
+                type="number"
+                onChange={(v) => setField(threeSideLockOffsetKey, Number(v))}
+              />
+              <Input
+                label={`${title}上下及合页边宽度(mm)`}
+                value={(data[threeSideInsetKey] as number) ?? 60}
+                type="number"
+                onChange={(v) => setField(threeSideInsetKey, Number(v))}
+              />
+            </>
+          )}
         </div>
         {/* 右侧：填充选项 + B2/B4 玻璃线条（放在偏移数据的右侧）+ 玻璃线条边距/间距 */}
         <div className="space-y-3">
@@ -577,17 +609,25 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               )}
             </>
           )}
+          {(usesFourSideDiagonal(style) || usesThreeSideDiagonal(style)) && (
+            <Select
+              label={`${title}内部填充`}
+              value={(data[fillAKey] as string) || ""}
+              options={PANEL_FILL_OPTIONS}
+              onChange={(v) => setField(fillAKey, v)}
+            />
+          )}
           {usesHPanel(style) && (
             <>
               <Select
-                label={`${title}B2玻璃线条`}
+                label={`${title}B2`}
                 value={(data[b2GlassStyleKey] as string) || "无线条"}
                 options={GLASS_LINE_STYLES}
                 onChange={(v) => setField(b2GlassStyleKey, v)}
               />
               {usesHPlusPanel(style) && (
                 <Select
-                  label={`${title}B4玻璃线条`}
+                  label={`${title}B4`}
                   value={(data[b4GlassStyleKey] as string) || "无线条"}
                   options={GLASS_LINE_STYLES}
                   onChange={(v) => setField(b4GlassStyleKey, v)}
@@ -608,6 +648,14 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                     type="number"
                     onChange={(v) => setField(spacingKey, Number(v))}
                   />
+                  {(
+                    ["六格线条", "八格线条"].includes((data[b2GlassStyleKey] as string) || "")
+                    || (usesHPlusPanel(style) && ["六格线条", "八格线条"].includes((data[b4GlassStyleKey] as string) || ""))
+                  ) && (
+                    <div className="rounded-md bg-[#F2F2F7] px-3 py-2 text-xs text-[#636366]">
+                      六格、八格按区域固定均分，不使用图案内部线距。
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -875,6 +923,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "panel_fill_b",
                   fillCKey: "panel_fill_c",
                   discRadiusKey: "panel_disc_radius",
+                  borderInsetKey: "panel_border_inset",
+                  threeSideLockOffsetKey: "panel_three_side_lock_offset",
+                  threeSideInsetKey: "panel_three_side_inset",
                   b2GlassStyleKey: "panel_b2_glass_style",
                   b4GlassStyleKey: "panel_b4_glass_style",
                   insetKey: "glass_line_inset",
@@ -909,6 +960,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                     fillBKey: "back_panel_fill_b",
                     fillCKey: "back_panel_fill_c",
                     discRadiusKey: "back_panel_disc_radius",
+                    borderInsetKey: "back_panel_border_inset",
+                    threeSideLockOffsetKey: "back_panel_three_side_lock_offset",
+                    threeSideInsetKey: "back_panel_three_side_inset",
                     b2GlassStyleKey: "back_panel_b2_glass_style",
                     b4GlassStyleKey: "back_panel_b4_glass_style",
                     insetKey: "back_glass_line_inset",
@@ -933,6 +987,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "child_panel_fill_b",
                   fillCKey: "child_panel_fill_c",
                   discRadiusKey: "child_panel_disc_radius",
+                  borderInsetKey: "child_panel_border_inset",
+                  threeSideLockOffsetKey: "child_panel_three_side_lock_offset",
+                  threeSideInsetKey: "child_panel_three_side_inset",
                   b2GlassStyleKey: "child_panel_b2_glass_style",
                   b4GlassStyleKey: "child_panel_b4_glass_style",
                   insetKey: "child_glass_line_inset",
@@ -969,6 +1026,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   fillBKey: "child_back_panel_fill_b",
                   fillCKey: "child_back_panel_fill_c",
                   discRadiusKey: "child_back_panel_disc_radius",
+                  borderInsetKey: "child_back_panel_border_inset",
+                  threeSideLockOffsetKey: "child_back_panel_three_side_lock_offset",
+                  threeSideInsetKey: "child_back_panel_three_side_inset",
                   b2GlassStyleKey: "child_back_panel_b2_glass_style",
                   b4GlassStyleKey: "child_back_panel_b4_glass_style",
                   insetKey: "child_back_glass_line_inset",
