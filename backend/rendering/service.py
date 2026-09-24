@@ -372,9 +372,12 @@ def execute_precise_render_task(task_id: str, provider_request: RenderProviderRe
                 ai_config=provider_request.config,
                 reference_bindings=references,
                 include_psd=False,
+                selected_side=side,
             )
-            final_bytes = result["back_jpg"] if side == "back" else result["front_jpg"]
-            layer_pngs = result["back_layer_pngs"] if side == "back" else result["front_layer_pngs"]
+            final_bytes = result.get("selected_jpg")
+            layer_pngs = result.get("selected_layer_pngs")
+            if not final_bytes or not layer_pngs:
+                raise ValueError(f"精准模式未生成有效的{side}单面图层")
             segmentation = {"source": "dxf", "confirmed": True, "confidence": 1.0}
         else:
             from .precise_render import render_precise_image
@@ -489,8 +492,9 @@ def execute_component_regeneration(task_id: str, role: str) -> dict | None:
                 ai_config=config,
                 reference_bindings=single_binding,
                 include_psd=False,
+                selected_side=side,
             )
-            layer_pngs = result["back_layer_pngs"] if side == "back" else result["front_layer_pngs"]
+            layer_pngs = result.get("selected_layer_pngs") or {}
         else:
             from .precise_render import render_precise_image
 

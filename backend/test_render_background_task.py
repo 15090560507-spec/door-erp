@@ -56,10 +56,8 @@ def test_precise_background_task_persists_geometry_metadata(tmp_path, monkeypatc
     manifest = {"units": "mm", "transform_id": "cad-test", "roles": {}}
 
     monkeypatch.setattr(layered_render, "render_layered_dxf", lambda *args, **kwargs: {
-        "front_jpg": PNG_1X1,
-        "back_jpg": PNG_1X1,
-        "front_layer_pngs": {"panel": PNG_1X1},
-        "back_layer_pngs": {"panel": PNG_1X1},
+        "selected_jpg": PNG_1X1,
+        "selected_layer_pngs": {"panel": PNG_1X1},
         "material_mode": "flat",
         "material_note": "",
         "geometry_manifest": manifest,
@@ -70,6 +68,32 @@ def test_precise_background_task_persists_geometry_metadata(tmp_path, monkeypatc
         assert completed["status"] == "completed"
         assert completed["geometryValidation"] == validation
         assert completed["geometryManifest"]["units"] == "mm"
+    finally:
+        render_db.delete_task(task["id"])
+
+
+def test_precise_background_task_passes_selected_side_to_renderer(tmp_path, monkeypatch):
+    task = _precise_dxf_task(tmp_path)
+    render_db.update_task(task["id"], {"sourceSide": "back"})
+    captured = {}
+
+    def fake_render(*args, **kwargs):
+        captured.update(kwargs)
+        return {
+            "selected_side": "back",
+            "selected_jpg": PNG_1X1,
+            "selected_layer_pngs": {"panel": PNG_1X1},
+            "material_mode": "flat",
+            "material_note": "",
+            "geometry_manifest": {"units": "mm", "roles": {}},
+            "geometry_validation": {"valid": True, "errors": [], "warnings": []},
+        }
+
+    monkeypatch.setattr(layered_render, "render_layered_dxf", fake_render)
+    try:
+        completed = execute_precise_render_task(task["id"], _provider_request())
+        assert completed["status"] == "completed"
+        assert captured["selected_side"] == "back"
     finally:
         render_db.delete_task(task["id"])
 
