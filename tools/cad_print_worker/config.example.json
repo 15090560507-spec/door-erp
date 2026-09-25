@@ -1,8 +1,0 @@
-{
-  "baseUrl": "https://your-domain.example.com/api",
-  "deviceId": "win-main",
-  "deviceTokenEnv": "CAD_PRINT_DEVICE_TOKEN",
-  "autocadConsole": "D:\\Desin all\\CAD2022\\AutoCAD 2022\\accoreconsole.exe",
-  "pollSeconds": 5,
-  "workDir": "D:\\door-erp-cad-print-work"
-}
