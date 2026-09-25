@@ -326,6 +326,11 @@ export async function listRenderTasks(limit = 30, signal?: AbortSignal): Promise
   return data.tasks || [];
 }
 
+export async function getRenderTask(id: string, signal?: AbortSignal): Promise<RenderTask> {
+  const { data } = await api.get<{ task: RenderTask }>(`/render/tasks/${id}`, { signal });
+  return data.task;
+}
+
 export async function deleteRenderTask(id: string): Promise<void> {
   await api.delete(`/render/tasks/${id}`);
 }

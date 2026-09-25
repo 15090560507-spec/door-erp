@@ -4,10 +4,18 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
-  generateCad, generateCadPreview, downloadCadBlob,
+  generateCad, generateCadPreview, downloadCadBlob, downloadFileFromUrl,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
   resetPassword as apiResetPassword, apiErrorMessage,
 } from "@/lib/api";
+import {
+  createRenderTask,
+  extractTaskLineArt,
+  getRenderTask,
+  lineArtViewToFile,
+  listRenderModelConfigs,
+  type RenderTask,
+} from "@/lib/renderApi";
 import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
@@ -26,6 +34,7 @@ import { Inbox, RefreshCw } from "lucide-react";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
 const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
+const QUICK_RENDER_PROMPT = "以当前 CAD 线稿为结构和比例的最高约束，结合上传参考图生成真实、清晰的门类产品正面效果图。参考图用于整体款式、颜色和材质，不得改变门扇、门框、门套、玻璃及五金的位置。最终成图不显示 CAD 线稿、尺寸、文字、标注或辅助轮廓。";
 
 function productSummary(params?: DoorFormData) {
   if (!params) return "";
@@ -43,6 +52,27 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   return `${customer || "未命名"}${date}.dxf`;
 }
 
+function cadRequestFingerprint(data: DoorFormData) {
+  return JSON.stringify(data);
+}
+
+function base64ImageToFile(value: string, index: number): File {
+  const normalized = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+  const binary = window.atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let offset = 0; offset < binary.length; offset += 1) bytes[offset] = binary.charCodeAt(offset);
+  const format = normalized.startsWith("/9j/")
+    ? { extension: "jpg", mimeType: "image/jpeg" }
+    : normalized.startsWith("UklGR")
+      ? { extension: "webp", mimeType: "image/webp" }
+      : normalized.startsWith("R0lGOD")
+        ? { extension: "gif", mimeType: "image/gif" }
+        : { extension: "png", mimeType: "image/png" };
+  return new File([bytes], `drawing-reference-${index + 1}.${format.extension}`, {
+    type: format.mimeType,
+  });
+}
+
 export default function DashboardPage() {
   const activeModule = useModule();
   const { user, setModule } = useAuth();
@@ -57,9 +87,13 @@ export default function DashboardPage() {
   const [uploadImgB64, setUploadImgB64] = useState<string | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [cadBlob, setCadBlob] = useState<Blob | null>(null);
+  const [cadBlobFingerprint, setCadBlobFingerprint] = useState("");
   const [cadLoading, setCadLoading] = useState(false);
   const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
+  const [quickRenderLoading, setQuickRenderLoading] = useState(false);
+  const [quickRenderError, setQuickRenderError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -185,7 +219,11 @@ export default function DashboardPage() {
       setUploadImgB64(null);
       setReviewFeedback("");
       setCadBlob(null);
+      setCadBlobFingerprint("");
       setCadPreviewSvg(null);
+      setQuickRenderTask(null);
+      setQuickRenderLoading(false);
+      setQuickRenderError("");
       setMessage(null);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -215,7 +253,11 @@ export default function DashboardPage() {
         setUploadImgB64(t.drawing_img_b64 || null);
         setReviewFeedback(t.review_feedback || "");
         setCadBlob(null);
+        setCadBlobFingerprint("");
         setCadPreviewSvg(null);
+        setQuickRenderTask(null);
+        setQuickRenderLoading(false);
+        setQuickRenderError("");
       }).finally(() => {
         if (!cancelled) setTaskLoading(false);
       });
@@ -235,7 +277,11 @@ export default function DashboardPage() {
     setUploadImgB64(null);
     setReviewFeedback("");
     setCadBlob(null);
+    setCadBlobFingerprint("");
     setCadPreviewSvg(null);
+    setQuickRenderTask(null);
+    setQuickRenderLoading(false);
+    setQuickRenderError("");
     setMessage(null);
   };
 
@@ -244,6 +290,46 @@ export default function DashboardPage() {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setMessage(null), 4000);
   };
+
+  useEffect(() => {
+    const taskId = quickRenderTask?.id;
+    const status = quickRenderTask?.status;
+    if (!taskId || !["pending", "running"].includes(status || "")) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+
+    const poll = async () => {
+      controller = new AbortController();
+      try {
+        const task = await getRenderTask(taskId, controller.signal);
+        if (stopped) return;
+        setQuickRenderTask(task);
+        if (task.status === "completed") {
+          setQuickRenderLoading(false);
+          flash("效果图生成完成", "success");
+          return;
+        }
+        if (task.status === "failed") {
+          setQuickRenderLoading(false);
+          setQuickRenderError(task.errorMessage || "效果图生成失败");
+          return;
+        }
+        timer = setTimeout(poll, 3000);
+      } catch (error) {
+        if (stopped || controller.signal.aborted) return;
+        setQuickRenderLoading(false);
+        setQuickRenderError(apiErrorMessage(error, "读取效果图生成进度失败"));
+      }
+    };
+
+    timer = setTimeout(poll, 1500);
+    return () => {
+      stopped = true;
+      controller?.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [quickRenderTask?.id, quickRenderTask?.status]);
 
   const showCadError = (title: string, error: unknown, retry: () => void) => {
     setCadError({
@@ -399,6 +485,7 @@ export default function DashboardPage() {
     try {
       const blob = await generateCad(formData);
       setCadBlob(blob);
+      setCadBlobFingerprint(cadRequestFingerprint(formData));
       downloadCadBlob(blob, cadDownloadFilename(formData));
       flash("CAD 生成完成！", "success");
     } catch (error: unknown) {
@@ -418,9 +505,15 @@ export default function DashboardPage() {
     setPreviewLoading(true);
     setCadError(null);
     try {
+      const fingerprint = cadRequestFingerprint(formData);
+      if (!cadBlob || cadBlobFingerprint !== fingerprint) {
+        const blob = await generateCad(formData);
+        setCadBlob(blob);
+        setCadBlobFingerprint(fingerprint);
+      }
       const svg = await generateCadPreview(formData);
       setCadPreviewSvg(svg);
-      flash("CAD 预览已生成", "success");
+      flash("CAD 预览已生成，DXF 已缓存", "success");
     } catch (error: unknown) {
       showCadError("CAD 预览生成失败", error, () => void handleGeneratePreview());
     } finally {
@@ -437,14 +530,72 @@ export default function DashboardPage() {
     setCadLoading(true);
     setCadError(null);
     try {
-      const blob = await generateCad(formData);
-      setCadBlob(blob);
+      const fingerprint = cadRequestFingerprint(formData);
+      const blob = cadBlob && cadBlobFingerprint === fingerprint ? cadBlob : await generateCad(formData);
+      if (blob !== cadBlob) {
+        setCadBlob(blob);
+        setCadBlobFingerprint(fingerprint);
+      }
       downloadCadBlob(blob, cadDownloadFilename(formData));
-      flash("基准 CAD 底图已生成", "success");
+      flash(cadBlob && cadBlobFingerprint === fingerprint ? "已下载预览时缓存的 DXF" : "基准 CAD 底图已生成并下载", "success");
     } catch (error: unknown) {
       showCadError("CAD 生成失败", error, () => void handleGenerateCad());
     } finally {
       setCadLoading(false);
+    }
+  };
+
+  const handleGenerateEffect = async () => {
+    if (!activeTaskId) return;
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
+    if (!refImages.length) {
+      setQuickRenderError("请先在“沟通记录与参考图”中上传至少一张参考图");
+      return;
+    }
+    setQuickRenderLoading(true);
+    setQuickRenderError("");
+    setQuickRenderTask(null);
+    try {
+      const updatedTask = await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
+      setActiveTask(updatedTask);
+      const [extraction, configs] = await Promise.all([
+        extractTaskLineArt(activeTaskId),
+        listRenderModelConfigs(false),
+      ]);
+      const config = [...configs]
+        .filter((item) => item.enabled && item.hasApiKey)
+        .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
+      if (!config) throw new Error("没有可用的效果渲染模型，请先在效果渲染页面配置并启用模型");
+      const lineArt = await lineArtViewToFile(extraction.front, `${activeTaskId}-front-line-art.png`);
+      const references = refImages.map(base64ImageToFile);
+      const task = await createRenderTask({
+        modelConfigId: config.id,
+        prompt: QUICK_RENDER_PROMPT,
+        size: "2k",
+        count: 1,
+        selectedAssetIds: [],
+        lineArt,
+        styleReference: null,
+        tempAssets: [],
+        renderMode: "quick",
+        sourceType: "task",
+        sourceSide: "front",
+        sourceTaskId: activeTaskId,
+        referenceBindings: { panel: { assetIds: [] } },
+        referenceFiles: { panel: references },
+      });
+      setQuickRenderTask(task);
+      if (task.status === "completed") {
+        setQuickRenderLoading(false);
+        flash("效果图生成完成", "success");
+      }
+    } catch (error) {
+      setQuickRenderLoading(false);
+      setQuickRenderError(apiErrorMessage(error, "效果图生成失败"));
     }
   };
 
@@ -531,7 +682,11 @@ export default function DashboardPage() {
     setUploadImgB64(null);
     setReviewFeedback("");
     setCadBlob(null);
+    setCadBlobFingerprint("");
     setCadPreviewSvg(null);
+    setQuickRenderTask(null);
+    setQuickRenderLoading(false);
+    setQuickRenderError("");
     setModule("图纸信息录入");
   };
 
@@ -685,7 +840,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <p className="text-[12px] text-[#8E8E93]">
-                修改后点击{activeModule === "图纸绘制" ? "表单下方" : "上方"}“保存修改”。
+                修改后点击{activeModule === "图纸绘制" ? "页面最下方" : "上方"}“保存修改”。
               </p>
             </div>
           </details>
@@ -700,47 +855,75 @@ export default function DashboardPage() {
           {/* 表单 */}
           <DoorForm data={formData} onChange={setFormData} />
 
-          {activeModule === "图纸绘制" && (
-            <div className="ui-action-bar mt-5">
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                className="ui-button ui-button--primary min-w-36"
-              >
-                保存修改
-              </button>
-            </div>
-          )}
-
           {/* 模块特有操作 */}
           <div className="mt-6 space-y-4">
             {/* 绘制模块 */}
             {activeModule === "图纸绘制" && (
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
-                  <button
-                    onClick={handleGeneratePreview}
-                    disabled={previewLoading || cadLoading}
-                    className="w-full mb-2 py-2.5 rounded-lg bg-[#F2F2F7] text-[#1C1C1E] font-medium text-sm hover:bg-[#E5E5EA] transition-all disabled:opacity-50"
-                  >
-                    {previewLoading ? "正在生成预览..." : "预览 DXF"}
-                  </button>
-                  <button
-                    onClick={handleGenerateCad}
-                    disabled={cadLoading}
-                    className="w-full py-2.5 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-sm hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
-                  >
-                    {cadLoading ? "生成中..." : "生成 DXF"}
-                  </button>
-                  {cadBlob && (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                     <button
-                      onClick={() => downloadCadBlob(cadBlob!, cadDownloadFilename(formData))}
-                      className="w-full mt-2 py-2.5 rounded-lg bg-[#007AFF] text-white font-semibold text-sm transition-all"
+                      onClick={handleGeneratePreview}
+                      disabled={previewLoading || cadLoading}
+                      className="min-h-11 rounded-lg bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:bg-[#E5E5EA] disabled:opacity-50"
                     >
-                      确认下载 DXF
+                      {previewLoading ? "正在生成预览..." : "预览 DXF"}
                     </button>
+                    <button
+                      onClick={handleGenerateCad}
+                      disabled={cadLoading || previewLoading}
+                      className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
+                    >
+                      {cadLoading ? "生成中..." : "生成 DXF"}
+                    </button>
+                    <button
+                      onClick={handleGenerateEffect}
+                      disabled={quickRenderLoading}
+                      className="min-h-11 rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {quickRenderLoading ? "效果图生成中..." : "生成效果图"}
+                    </button>
+                  </div>
+                  {quickRenderError && (
+                    <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">
+                      {quickRenderError}
+                    </div>
                   )}
                 </Card>
+
+                {quickRenderTask && (
+                  <Card title="快速效果图">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-[#636366]">
+                        状态：{quickRenderTask.status === "completed" ? "已完成" : quickRenderTask.status === "failed" ? "生成失败" : "生成中"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleGenerateEffect}
+                        disabled={quickRenderLoading}
+                        className="rounded-lg border border-[#C7C7CC] bg-white px-3 py-2 text-sm font-medium text-[#1C1C1E] disabled:opacity-50"
+                      >
+                        重新生成
+                      </button>
+                    </div>
+                    {quickRenderTask.images?.[0]?.src ? (
+                      <div className="rounded-lg border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+                        <img src={quickRenderTask.images[0].src} alt="快速生成效果图" className="mx-auto max-h-[720px] w-full object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => void downloadFileFromUrl(quickRenderTask.images[0].src, `${activeTaskId || "door"}-效果图.jpg`)}
+                          className="mt-3 rounded-lg bg-[#1C1C1E] px-4 py-2 text-sm font-medium text-white"
+                        >
+                          下载效果图
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex min-h-40 items-center justify-center rounded-lg bg-[#F7F7FA] text-sm text-[#8E8E93]">
+                        {quickRenderTask.status === "failed" ? quickRenderTask.errorMessage || "效果图生成失败" : "正在生成效果图，请稍候..."}
+                      </div>
+                    )}
+                  </Card>
+                )}
 
                 <CadPreviewPanel
                   svg={cadPreviewSvg}
@@ -884,6 +1067,17 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </details>
+            )}
+            {activeModule === "图纸绘制" && (
+              <div className="ui-action-bar mt-6">
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="ui-button ui-button--primary min-w-36"
+                >
+                  保存修改
+                </button>
+              </div>
             )}
           </div>
         </div>
