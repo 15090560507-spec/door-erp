@@ -184,7 +184,7 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
                 {"center": center, "radius": radius},
             )
         )
-    elif kind == "TEXT":
+    elif kind in {"TEXT", "ATTRIB"}:
         text = str(entity.dxf.text or "")
         insert = _point(entity.dxf.insert)
         height = float(getattr(entity.dxf, "height", 24) or 24)

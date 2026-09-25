@@ -17,7 +17,9 @@ def _dxf_text(include_order_form: bool = True) -> str:
             close=True,
         )
         block.add_line((0, 300), (2000, 300))
-        msp.add_blockref("ORDER_FORM", (100, 50))
+        block.add_attdef("CUSTOMER", insert=(250, 150), height=80)
+        order_form = msp.add_blockref("ORDER_FORM", (100, 50))
+        order_form.add_auto_attribs({"CUSTOMER": "测试客户"})
     msp.add_lwpolyline(
         [(400, 500), (1000, 500), (1000, 2300), (400, 2300)],
         close=True,
@@ -39,6 +41,20 @@ def test_sheet_jpg_uses_order_form_outer_frame():
     assert image is not None
     assert max(image.shape[:2]) >= 600
     assert abs((image.shape[1] / image.shape[0]) - (2000 / 3000)) < 0.01
+
+
+def test_sheet_jpg_renders_order_form_attribute_values():
+    doc = ezdxf.read(io.StringIO(_dxf_text()))
+    insert = next(iter(doc.modelspace().query('INSERT[name=="ORDER_FORM"]')))
+    primitives = []
+    from cad_preview import _collect_entity
+
+    _collect_entity(insert, primitives)
+
+    assert any(
+        primitive.kind == "text" and primitive.data.get("text") == "测试客户"
+        for primitive in primitives
+    )
 
 
 def test_sheet_jpg_falls_back_to_visible_geometry_without_order_form():
