@@ -19,6 +19,10 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://124.223.87.161,https://124.223.87.161}
       - LEGACY_PRODUCTION_ENABLED=${LEGACY_PRODUCTION_ENABLED:-false}
+      - CAD_PRINT_DEVICE_TOKEN=${CAD_PRINT_DEVICE_TOKEN:?set CAD_PRINT_DEVICE_TOKEN in .env}
+      - CAD_PRINT_DEVICE_ID=${CAD_PRINT_DEVICE_ID:-win-main}
+      - CAD_PRINT_LEASE_SECONDS=${CAD_PRINT_LEASE_SECONDS:-300}
+      - CAD_PRINT_NODE_OFFLINE_SECONDS=${CAD_PRINT_NODE_OFFLINE_SECONDS:-45}
     volumes:
       # 数据持久化：JSON 数据库文件映射到宿主机 ./data 目录，防止重启丢失
       - ./data:/app/data

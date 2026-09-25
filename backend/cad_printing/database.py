@@ -91,10 +91,11 @@ class CadPrintDatabase:
         dxf_path: str,
         created_by: str,
         now: str | None = None,
+        job_id: str | None = None,
     ) -> dict:
         timestamp = now or utc_now_iso()
         item = {
-            "id": uuid.uuid4().hex[:16],
+            "id": job_id or uuid.uuid4().hex[:16],
             "sourceTaskId": source_task_id.strip(),
             "fingerprint": fingerprint,
             "dxfPath": dxf_path,
