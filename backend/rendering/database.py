@@ -260,8 +260,10 @@ class RenderDatabase:
 
         return self.tasks.update(mutate)
 
-    def list_tasks(self, limit: int = 30) -> list[dict]:
+    def list_tasks(self, limit: int = 30, source_task_id: str = "") -> list[dict]:
         items = self.tasks.load()
+        if source_task_id:
+            items = [item for item in items if item.get("sourceTaskId") == source_task_id]
         return [_task_defaults(item) for item in sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)[:limit]]
 
     def create_line_art_extraction(self, data: dict) -> dict:

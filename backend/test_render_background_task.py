@@ -50,6 +50,19 @@ def _precise_dxf_task(tmp_path):
     })
 
 
+def test_render_task_list_filters_latest_by_source_task():
+    first = render_db.create_task({"sourceTaskId": "drawing-a", "prompt": "first"})
+    unrelated = render_db.create_task({"sourceTaskId": "drawing-b", "prompt": "other"})
+    latest = render_db.create_task({"sourceTaskId": "drawing-a", "prompt": "latest"})
+    try:
+        matches = render_db.list_tasks(limit=1, source_task_id="drawing-a")
+        assert [item["id"] for item in matches] == [latest["id"]]
+        assert unrelated["id"] not in {item["id"] for item in matches}
+    finally:
+        for task in (first, unrelated, latest):
+            render_db.delete_task(task["id"])
+
+
 def test_precise_background_task_persists_geometry_metadata(tmp_path, monkeypatch):
     task = _precise_dxf_task(tmp_path)
     validation = {"valid": True, "errors": [], "warnings": []}

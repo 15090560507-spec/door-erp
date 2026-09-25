@@ -73,7 +73,7 @@ from production_routes import (
     production_db,
 )
 from rendering.cad_line_art import export_dxf_line_art
-from rendering.cad_sheet_jpg import render_dxf_sheet_jpg
+from rendering.cad_sheet_jpg import PLOT_CONFIG_VERSION, render_dxf_sheet_jpg
 from rendering.legacy_cleanup import cleanup_legacy_layered_outputs
 from trim_geometry import calculate_quote_trim_metrics
 from erpnext_bridge import sync_order_to_erpnext
@@ -342,16 +342,17 @@ def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
 
 
 def _cached_cad_sheet_jpg(key: str, dxf_bytes: bytes) -> tuple[dict, bool]:
+    cache_field = f"sheet_jpg:{PLOT_CONFIG_VERSION}"
     with _cad_cache_lock:
         entry = _cad_cache.get(key)
-        if entry and entry.get("sheet_jpg"):
-            return entry["sheet_jpg"], True
+        if entry and entry.get(cache_field):
+            return entry[cache_field], True
     started = time.perf_counter()
     result = render_dxf_sheet_jpg(dxf_bytes.decode("utf-8"))
     with _cad_cache_lock:
         entry = _cad_cache.get(key)
         if entry:
-            entry["sheet_jpg"] = result
+            entry[cache_field] = result
     logger.info(
         "[cad] sheet_jpg_rendered key=%s elapsed=%.3fs size=%dx%d order_form=%s",
         key[:10],
@@ -1019,7 +1020,7 @@ def generate_cad_jpg(req: CADRequest, current_user: Dict = Depends(get_current_u
         key, dxf_bytes, cad_cache_hit = _cached_cad(req)
         result, jpg_cache_hit = _cached_cad_sheet_jpg(key, dxf_bytes)
     except Exception as exc:
-        _raise_cad_error("线稿 JPG 导出", exc)
+        _raise_cad_error("CAD 打印 JPG 导出", exc)
 
     safe_customer = "".join(
         ch for ch in (req.dhdw or "未命名").strip()
@@ -1034,6 +1035,8 @@ def generate_cad_jpg(req: CADRequest, current_user: Dict = Depends(get_current_u
             "X-CAD-Cache": "HIT" if cad_cache_hit else "MISS",
             "X-CAD-JPG-Cache": "HIT" if jpg_cache_hit else "MISS",
             "X-CAD-JPG-Bounds": "ORDER_FORM" if result["usedOrderForm"] else "FALLBACK",
+            "X-CAD-JPG-Size": f'{result["width"]}x{result["height"]}',
+            "X-CAD-JPG-Plot": result.get("plotProfile", ""),
         },
     )
 

@@ -33,14 +33,18 @@ def _dxf_text(include_order_form: bool = True) -> str:
 
 
 def test_sheet_jpg_uses_order_form_outer_frame():
-    result = render_dxf_sheet_jpg(_dxf_text(), minimum_long_edge=600)
+    result = render_dxf_sheet_jpg(_dxf_text(), output_size=(1188, 840))
 
     assert result["usedOrderForm"] is True
     assert result["cadBBox"] == [100.0, 2100.0, 50.0, 3050.0]
     image = cv2.imdecode(np.frombuffer(result["content"], dtype=np.uint8), cv2.IMREAD_COLOR)
     assert image is not None
-    assert max(image.shape[:2]) >= 600
-    assert abs((image.shape[1] / image.shape[0]) - (2000 / 3000)) < 0.01
+    assert (image.shape[1], image.shape[0]) == (1188, 840)
+    assert result["plotProfile"].startswith("autocad-monochrome")
+    non_white = np.any(image < 245, axis=2)
+    colored = (np.max(image, axis=2) - np.min(image, axis=2) > 8) & non_white
+    assert np.count_nonzero(non_white) > 100
+    assert np.count_nonzero(colored) < np.count_nonzero(non_white) * 0.01
 
 
 def test_sheet_jpg_renders_order_form_attribute_values():
@@ -57,10 +61,8 @@ def test_sheet_jpg_renders_order_form_attribute_values():
     )
 
 
-def test_sheet_jpg_falls_back_to_visible_geometry_without_order_form():
-    result = render_dxf_sheet_jpg(_dxf_text(False), minimum_long_edge=600)
+def test_sheet_jpg_requires_order_form():
+    import pytest
 
-    assert result["usedOrderForm"] is False
-    image = cv2.imdecode(np.frombuffer(result["content"], dtype=np.uint8), cv2.IMREAD_COLOR)
-    assert image is not None
-    assert np.count_nonzero(image < 240) > 50
+    with pytest.raises(ValueError, match="ORDER_FORM"):
+        render_dxf_sheet_jpg(_dxf_text(False), output_size=(1188, 840))

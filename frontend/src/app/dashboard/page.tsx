@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
@@ -13,6 +13,7 @@ import {
   extractTaskLineArt,
   getRenderTask,
   lineArtViewToFile,
+  listRenderTasks,
   listRenderModelConfigs,
   type RenderTask,
 } from "@/lib/renderApi";
@@ -31,6 +32,7 @@ import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 import { localDateCompact } from "@/lib/dateTime";
 import { Inbox, RefreshCw } from "lucide-react";
+import { registerNavigationGuard, requestAppNavigation } from "@/lib/navigationGuard";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
 const LENGTH_PRODUCT_NAMES = ["牌匾", "雨棚", "其他"];
@@ -54,11 +56,15 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
 
 function cadJpgDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   const customer = (data.dhdw || "").trim().replace(/[\\/:*?"<>|\s]+/g, "");
-  return `${customer || "未命名"}-线稿.jpg`;
+  return `${customer || "未命名"}-CAD打印.jpg`;
 }
 
 function cadRequestFingerprint(data: DoorFormData) {
   return JSON.stringify(data);
+}
+
+function drawingEditSnapshot(data: DoorFormData, refText: string, refImages: string[]) {
+  return JSON.stringify({ data, refText, refImages });
 }
 
 function base64ImageToFile(value: string, index: number): File {
@@ -100,6 +106,9 @@ export default function DashboardPage() {
   const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
   const [quickRenderLoading, setQuickRenderLoading] = useState(false);
   const [quickRenderError, setQuickRenderError] = useState("");
+  const [savedEditSnapshot, setSavedEditSnapshot] = useState<string | null>(null);
+  const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
+  const [unsavedSaving, setUnsavedSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -126,6 +135,15 @@ export default function DashboardPage() {
   // setTimeout 清理：防止组件卸载后更新状态
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigationResolverRef = useRef<((allow: boolean) => void) | null>(null);
+
+  const currentEditSnapshot = useMemo(
+    () => drawingEditSnapshot(formData, refText, refImages),
+    [formData, refImages, refText],
+  );
+  const hasUnsavedChanges = Boolean(
+    activeTaskId && activeTask && savedEditSnapshot && currentEditSnapshot !== savedEditSnapshot,
+  );
 
   useEffect(() => {
     return () => {
@@ -134,6 +152,25 @@ export default function DashboardPage() {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
   }, []);
+
+  useEffect(() => registerNavigationGuard(() => {
+    if (!hasUnsavedChanges) return true;
+    if (navigationResolverRef.current) return false;
+    setUnsavedDialogOpen(true);
+    return new Promise<boolean>((resolve) => {
+      navigationResolverRef.current = resolve;
+    });
+  }), [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     moduleRef.current = activeModule;
@@ -230,6 +267,7 @@ export default function DashboardPage() {
       setQuickRenderTask(null);
       setQuickRenderLoading(false);
       setQuickRenderError("");
+      setSavedEditSnapshot(null);
       setMessage(null);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -242,27 +280,33 @@ export default function DashboardPage() {
     const timer = window.setTimeout(() => {
       setActiveTask(null);
       setTaskLoading(true);
-      getTask(taskId).then((t) => {
+      Promise.all([
+        getTask(taskId),
+        listRenderTasks(1, undefined, taskId).catch(() => [] as RenderTask[]),
+      ]).then(([t, renderTasks]) => {
         if (cancelled) return;
+        const loadedFormData = t.params ? {
+          ...DEFAULT_FORM_DATA,
+          ...t.params,
+          // 历史任务没有继承标记，必须继续使用原来的独立反面设置。
+          back_panel_same_as_front: t.params.back_panel_same_as_front ?? false,
+          child_back_same_as_front: t.params.child_back_same_as_front ?? false,
+        } : { ...DEFAULT_FORM_DATA };
+        const loadedRefText = t.ref_text || "";
+        const loadedRefImages = t.ref_images || [];
         setActiveTask(t);
-        if (t.params) {
-          setFormData({
-            ...DEFAULT_FORM_DATA,
-            ...t.params,
-            // 历史任务没有继承标记，必须继续使用原来的独立反面设置。
-            back_panel_same_as_front: t.params.back_panel_same_as_front ?? false,
-            child_back_same_as_front: t.params.child_back_same_as_front ?? false,
-          });
-        }
-        setRefText(t.ref_text || "");
-        setRefImages(t.ref_images || []);
+        setFormData(loadedFormData);
+        setRefText(loadedRefText);
+        setRefImages(loadedRefImages);
+        setSavedEditSnapshot(drawingEditSnapshot(loadedFormData, loadedRefText, loadedRefImages));
         setUploadImgB64(t.drawing_img_b64 || null);
         setReviewFeedback(t.review_feedback || "");
         setCadBlob(null);
         setCadBlobFingerprint("");
         setCadPreviewSvg(null);
-        setQuickRenderTask(null);
-        setQuickRenderLoading(false);
+        const latestRender = renderTasks[0] || null;
+        setQuickRenderTask(latestRender);
+        setQuickRenderLoading(Boolean(latestRender && ["pending", "running"].includes(latestRender.status)));
         setQuickRenderError("");
       }).finally(() => {
         if (!cancelled) setTaskLoading(false);
@@ -274,7 +318,7 @@ export default function DashboardPage() {
     };
   }, [activeTaskId]);
 
-  const backToList = () => {
+  const resetTaskView = () => {
     setActiveTaskId(null);
     setActiveTask(null);
     setFormData({ ...DEFAULT_FORM_DATA });
@@ -288,7 +332,13 @@ export default function DashboardPage() {
     setQuickRenderTask(null);
     setQuickRenderLoading(false);
     setQuickRenderError("");
+    setSavedEditSnapshot(null);
     setMessage(null);
+  };
+
+  const backToList = async (force = false) => {
+    if (!force && !(await requestAppNavigation())) return;
+    resetTaskView();
   };
 
   const flash = (text: string, type: "success" | "error" | "info") => {
@@ -324,8 +374,8 @@ export default function DashboardPage() {
         timer = setTimeout(poll, 3000);
       } catch (error) {
         if (stopped || controller.signal.aborted) return;
-        setQuickRenderLoading(false);
         setQuickRenderError(apiErrorMessage(error, "读取效果图生成进度失败"));
+        timer = setTimeout(poll, 3000);
       }
     };
 
@@ -462,22 +512,50 @@ export default function DashboardPage() {
     setSubmitting(false);
   };
 
-  const handleSaveEdit = async () => {
-    if (!activeTaskId) return;
+  const saveCurrentTask = async (showSuccess = true): Promise<boolean> => {
+    if (!activeTaskId) return false;
     const validation = validateDoorForm(formData);
     if (validation) {
       setValidationError(validation);
-      return;
+      return false;
     }
     try {
       await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
       const updated = await getTask(activeTaskId);
       setActiveTask(updated);
-      setSaveSuccessOpen(true);
+      setSavedEditSnapshot(drawingEditSnapshot(formData, refText, refImages));
+      if (showSuccess) setSaveSuccessOpen(true);
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
       fetchOverview();
-    } catch { flash("保存失败", "error"); }
+      return true;
+    } catch {
+      flash("保存失败", "error");
+      return false;
+    }
+  };
+
+  const handleSaveEdit = () => {
+    void saveCurrentTask(true);
+  };
+
+  const finishUnsavedNavigation = (allow: boolean) => {
+    const resolve = navigationResolverRef.current;
+    navigationResolverRef.current = null;
+    setUnsavedDialogOpen(false);
+    resolve?.(allow);
+  };
+
+  const handleSaveAndLeave = async () => {
+    setUnsavedSaving(true);
+    const saved = await saveCurrentTask(false);
+    setUnsavedSaving(false);
+    if (saved) finishUnsavedNavigation(true);
+  };
+
+  const handleDiscardAndLeave = () => {
+    setSavedEditSnapshot(currentEditSnapshot);
+    finishUnsavedNavigation(true);
   };
 
   const handleQuickCad = async () => {
@@ -562,9 +640,9 @@ export default function DashboardPage() {
     try {
       const blob = await generateCadJpg(formData);
       downloadCadBlob(blob, cadJpgDownloadFilename(formData));
-      flash("已按 ORDER_FORM 图框导出线稿 JPG", "success");
+      flash("已按 ORDER_FORM 图框导出 5940×4200 黑白 CAD 打印 JPG", "success");
     } catch (error: unknown) {
-      showCadError("线稿 JPG 导出失败", error, () => void handleDownloadCadJpg());
+      showCadError("CAD 打印 JPG 导出失败", error, () => void handleDownloadCadJpg());
     } finally {
       setCadJpgLoading(false);
     }
@@ -587,6 +665,7 @@ export default function DashboardPage() {
     try {
       const updatedTask = await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
       setActiveTask(updatedTask);
+      setSavedEditSnapshot(drawingEditSnapshot(formData, refText, refImages));
       const [extraction, configs] = await Promise.all([
         extractTaskLineArt(activeTaskId),
         listRenderModelConfigs(false),
@@ -634,9 +713,11 @@ export default function DashboardPage() {
         drawing_img_b64: uploadImgB64,
         status: "待初审",
         params: formData,
+        ref_text: refText,
+        ref_images: refImages,
       });
       flash("成功流转至初审！", "success");
-      backToList();
+      void backToList(true);
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
       fetchOverview();
@@ -649,7 +730,7 @@ export default function DashboardPage() {
     try {
       await updateTask(activeTaskId, { status: targetStatus, review_feedback: reviewFeedback });
       flash("已打回修改", "success");
-      backToList();
+      void backToList(true);
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
       fetchOverview();
@@ -663,7 +744,7 @@ export default function DashboardPage() {
     try {
       await updateTask(activeTaskId, { status: nextStatus, review_feedback: msg });
       flash(msg, "success");
-      backToList();
+      void backToList(true);
       fetchTasks(filterDate, filterStatus);
       fetchStatusCounts(filterDate);
       fetchOverview();
@@ -715,8 +796,9 @@ export default function DashboardPage() {
     setModule("图纸信息录入");
   };
 
-  const returnToDrawingList = () => {
-    backToList();
+  const returnToDrawingList = async () => {
+    if (!(await requestAppNavigation())) return;
+    resetTaskView();
     setModule("图纸绘制");
   };
 
@@ -735,6 +817,47 @@ export default function DashboardPage() {
           message="修改已保存"
           onConfirm={() => setSaveSuccessOpen(false)}
         />
+      )}
+
+      {unsavedDialogOpen && (
+        <div className="ui-dialog-backdrop" onClick={() => !unsavedSaving && finishUnsavedNavigation(false)}>
+          <div className="ui-dialog max-w-lg" onClick={(event) => event.stopPropagation()}>
+            <div className="ui-dialog__header">
+              <h3 className="ui-dialog__title">有未保存的图纸修改</h3>
+            </div>
+            <div className="ui-dialog__body">
+              <p className="text-sm leading-6 text-[#3A3A3C]">
+                图纸参数、沟通记录或参考图已经修改。保存后再离开，可以避免返回时内容丢失。
+              </p>
+            </div>
+            <div className="ui-dialog__footer">
+              <button
+                type="button"
+                disabled={unsavedSaving}
+                onClick={() => finishUnsavedNavigation(false)}
+                className="ui-button ui-button--secondary"
+              >
+                继续编辑
+              </button>
+              <button
+                type="button"
+                disabled={unsavedSaving}
+                onClick={handleDiscardAndLeave}
+                className="ui-button ui-button--secondary text-[#C93531]"
+              >
+                不保存离开
+              </button>
+              <button
+                type="button"
+                disabled={unsavedSaving}
+                onClick={() => void handleSaveAndLeave()}
+                className="ui-button ui-button--primary"
+              >
+                {unsavedSaving ? "正在保存..." : "保存并离开"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 居中 Toast 弹窗 — 点击任意处关闭 */}
@@ -819,7 +942,7 @@ export default function DashboardPage() {
           {/* 返回 + 标题 */}
           <div className="flex items-center gap-4 mb-4">
             <button
-              onClick={backToList}
+              onClick={() => void backToList()}
               className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-colors"
             >
               ← 返回列表
@@ -906,7 +1029,7 @@ export default function DashboardPage() {
                       disabled={cadJpgLoading || cadLoading || previewLoading}
                       className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
                     >
-                      {cadJpgLoading ? "正在导出..." : "下载线稿 JPG"}
+                      {cadJpgLoading ? "正在打印..." : "打印 JPG"}
                     </button>
                     <button
                       onClick={handleGenerateEffect}
@@ -1441,7 +1564,7 @@ function CadPreviewPanel({
       <Card title="CAD 图纸预览">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <p className="text-xs text-[#8E8E93]">
-          预览来自当前 DXF 数据；复杂填充在网页中可能会简化显示。线稿 JPG 请从上方操作栏直接导出。
+          网页预览可能简化复杂填充；正式 JPG 请使用上方“打印 JPG”，按 ORDER_FORM 图框和黑白打印样式导出。
         </p>
           <div className="flex items-center gap-2">
             <button

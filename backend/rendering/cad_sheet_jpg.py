@@ -1,61 +1,58 @@
-"""Render a printable JPEG directly from the generated DXF order sheet."""
+"""Plot the generated DXF order sheet to a fixed-size monochrome JPEG."""
 
 from __future__ import annotations
 
 import io
 import os
+import tempfile
 from typing import Iterable, Optional
 
-import cv2
 import ezdxf
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from ezdxf.addons.drawing import Frontend, RenderContext
+from ezdxf.addons.drawing.config import (
+    BackgroundPolicy,
+    ColorPolicy,
+    Configuration,
+    LinePolicy,
+    LineweightPolicy,
+)
 
-from cad_preview import LAYER_COLORS, Primitive, _bbox, _collect_entity
+from cad_preview import Primitive, _bbox, _collect_entity
 
 
 ORDER_FORM_NAMES = {"ORDERFORM", "ORDER_FORM"}
-MAX_CANVAS_EDGE = 10000
-FONT_CANDIDATES = (
-    "C:/Windows/Fonts/msyh.ttc",
-    "C:/Windows/Fonts/msyh.ttf",
-    "C:/Windows/Fonts/simhei.ttf",
+DEFAULT_OUTPUT_SIZE = (5940, 4200)
+DEFAULT_DPI = 100
+PLOT_CONFIG_VERSION = "autocad-monochrome-5940x4200-v1"
+FONT_FILES = (
     "C:/Windows/Fonts/simsun.ttc",
+    "C:/Windows/Fonts/msyh.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/arphic/uming.ttc",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
 )
+FONT_FAMILIES = ("SimSun", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans CJK JP")
 
 
-def render_dxf_sheet_jpg(dxf_text: str, minimum_long_edge: int = 4200) -> dict:
-    """Return a white-background JPEG cropped to the ORDER_FORM outer frame."""
+def render_dxf_sheet_jpg(
+    dxf_text: str,
+    output_size: tuple[int, int] = DEFAULT_OUTPUT_SIZE,
+) -> dict:
+    """Render the ORDER_FORM window with AutoCAD-like monochrome plot rules."""
     doc = ezdxf.read(io.StringIO(dxf_text))
-    primitives = _modelspace_primitives(doc)
-    if not primitives:
-        raise ValueError("DXF 中没有可导出的图纸内容")
-
-    order_bbox = _order_form_bbox(doc)
-    used_order_form = order_bbox is not None
-    crop_bbox = order_bbox or _primitive_bbox(primitives)
+    crop_bbox = _order_form_bbox(doc)
     if crop_bbox is None:
-        raise ValueError("DXF 中没有可识别的图框边界")
+        raise ValueError("DXF 中未找到 ORDER_FORM 图框，无法按打印窗口导出 JPG")
 
-    selected = [primitive for primitive in primitives if _intersects(primitive, crop_bbox)]
-    content, width, height = _render(selected, crop_bbox, minimum_long_edge)
+    content = _plot(doc, crop_bbox, output_size)
+    width, height = output_size
     return {
         "content": content,
         "width": width,
         "height": height,
-        "usedOrderForm": used_order_form,
+        "usedOrderForm": True,
         "cadBBox": [float(value) for value in crop_bbox],
+        "plotProfile": PLOT_CONFIG_VERSION,
     }
-
-
-def _modelspace_primitives(doc) -> list[Primitive]:
-    primitives: list[Primitive] = []
-    for entity in doc.modelspace().entities_in_redraw_order():
-        _collect_entity(entity, primitives)
-    return primitives
 
 
 def _order_form_bbox(doc) -> Optional[tuple[float, float, float, float]]:
@@ -85,117 +82,112 @@ def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
     return max(max_x - min_x, 0) * max(max_y - min_y, 0)
 
 
-def _intersects(primitive: Primitive, bbox: tuple[float, float, float, float]) -> bool:
-    if not primitive.points:
-        return False
-    min_x, max_x, min_y, max_y = _bbox(primitive.points)
-    left, right, bottom, top = bbox
-    return max_x >= left and min_x <= right and max_y >= bottom and min_y <= top
-
-
-def _render(
-    primitives: list[Primitive],
+def _fit_plot_window(
     bbox: tuple[float, float, float, float],
-    minimum_long_edge: int,
-) -> tuple[bytes, int, int]:
+    output_size: tuple[int, int],
+    margin_ratio: float = 0.006,
+) -> tuple[float, float, float, float]:
+    """Expand the CAD window to the page aspect ratio without stretching it."""
     min_x, max_x, min_y, max_y = bbox
-    content_width = max(max_x - min_x, 1.0)
-    content_height = max(max_y - min_y, 1.0)
-    margin_units = max(content_width, content_height) * 0.006
-    total_width = content_width + margin_units * 2
-    total_height = content_height + margin_units * 2
-    scale = max(0.01, minimum_long_edge / max(total_width, total_height))
-    scale = min(scale, MAX_CANVAS_EDGE / max(total_width, total_height))
-    width = max(64, int(round(total_width * scale)))
-    height = max(64, int(round(total_height * scale)))
-    canvas = np.full((height, width, 3), 255, dtype=np.uint8)
+    width = max(max_x - min_x, 1.0)
+    height = max(max_y - min_y, 1.0)
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+    width *= 1 + margin_ratio * 2
+    height *= 1 + margin_ratio * 2
+    page_ratio = output_size[0] / output_size[1]
+    if width / height < page_ratio:
+        width = height * page_ratio
+    else:
+        height = width / page_ratio
+    return (
+        center_x - width / 2,
+        center_x + width / 2,
+        center_y - height / 2,
+        center_y + height / 2,
+    )
 
-    def point(value: tuple[float, float]) -> tuple[int, int]:
-        return (
-            int(round((value[0] - min_x + margin_units) * scale)),
-            int(round((max_y - value[1] + margin_units) * scale)),
+
+def _plot(
+    doc,
+    crop_bbox: tuple[float, float, float, float],
+    output_size: tuple[int, int],
+) -> bytes:
+    try:
+        matplotlib_config = os.path.join(tempfile.gettempdir(), "door-erp-matplotlib")
+        os.makedirs(matplotlib_config, exist_ok=True)
+        os.environ.setdefault("MPLCONFIGDIR", matplotlib_config)
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+        from matplotlib import font_manager
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+    except ImportError as exc:
+        raise RuntimeError("CAD 打印后端未安装，请安装 matplotlib") from exc
+
+    width_px, height_px = output_size
+    figure = plt.figure(
+        figsize=(width_px / DEFAULT_DPI, height_px / DEFAULT_DPI),
+        dpi=DEFAULT_DPI,
+        facecolor="white",
+    )
+    axes = figure.add_axes((0, 0, 1, 1), facecolor="white")
+    axes.set_axis_off()
+    axes.set_aspect("auto")
+
+    _configure_cad_fonts(doc, font_manager)
+    context = RenderContext(doc)
+    backend = MatplotlibBackend(axes, adjust_figure=False)
+    config = Configuration(
+        color_policy=ColorPolicy.BLACK,
+        background_policy=BackgroundPolicy.WHITE,
+        line_policy=LinePolicy.ACCURATE,
+        lineweight_policy=LineweightPolicy.ABSOLUTE,
+        min_lineweight=0.1,
+        max_flattening_distance=0.1,
+    )
+    try:
+        Frontend(context, backend, config=config).draw_layout(doc.modelspace(), finalize=True)
+        left, right, bottom, top = _fit_plot_window(crop_bbox, output_size)
+        axes.set_xlim(left, right)
+        axes.set_ylim(bottom, top)
+        output = io.BytesIO()
+        figure.savefig(
+            output,
+            format="jpeg",
+            dpi=DEFAULT_DPI,
+            facecolor="white",
+            edgecolor="white",
+            pil_kwargs={"quality": 96, "subsampling": 0, "optimize": True},
         )
-
-    for primitive in primitives:
-        if primitive.kind == "text" or not primitive.points:
-            continue
-        mapped = np.array([point(value) for value in primitive.points], dtype=np.int32)
-        color = _layer_color(primitive.layer)
-        line_width = _line_width(primitive.layer, scale)
-        if primitive.kind == "wipeout" and len(mapped) >= 3:
-            cv2.fillPoly(canvas, [mapped], (255, 255, 255), lineType=cv2.LINE_AA)
-        elif primitive.kind == "line" and len(mapped) == 2:
-            cv2.line(canvas, tuple(mapped[0]), tuple(mapped[1]), color, line_width, cv2.LINE_AA)
-        elif primitive.kind in {"polyline", "arc"} and len(mapped) >= 2:
-            cv2.polylines(
-                canvas,
-                [mapped],
-                bool(primitive.data.get("closed", False)),
-                color,
-                line_width,
-                cv2.LINE_AA,
-            )
-        elif primitive.kind == "circle" and len(mapped) == 2:
-            center = point(primitive.data["center"])
-            radius = max(1, int(round(float(primitive.data["radius"]) * scale)))
-            cv2.circle(canvas, center, radius, color, line_width, cv2.LINE_AA)
-
-    image = Image.fromarray(canvas, "RGB")
-    draw = ImageDraw.Draw(image)
-    for primitive in primitives:
-        if primitive.kind != "text" or not primitive.points:
-            continue
-        text = str(primitive.data.get("text", "") or "").strip()
-        if not text:
-            continue
-        x, y = point(primitive.points[0])
-        size = max(8, min(96, int(round(float(primitive.data.get("height", 24) or 24) * scale))))
-        font = _font(size)
-        color = _layer_color(primitive.layer)
-        rotation = float(primitive.data.get("rotation", 0) or 0) % 360
-        if abs(rotation) < 0.5:
-            draw.text((x, y), text, fill=color, font=font, anchor="lm")
-        else:
-            _draw_rotated_text(image, (x, y), text, font, color, rotation)
-
-    output = io.BytesIO()
-    image.save(output, "JPEG", quality=96, subsampling=0, optimize=True)
-    return output.getvalue(), width, height
+        return output.getvalue()
+    finally:
+        plt.close(figure)
 
 
-def _layer_color(layer: str) -> tuple[int, int, int]:
-    value = LAYER_COLORS.get(layer, "#334155").lstrip("#")
-    return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+def _configure_cad_fonts(doc, font_manager) -> None:
+    """Map Chinese CAD text to a CJK font available on Windows or Linux."""
+    for path in FONT_FILES:
+        if os.path.exists(path):
+            try:
+                font_manager.fontManager.addfont(path)
+            except Exception:
+                pass
 
-
-def _line_width(layer: str, scale: float) -> int:
-    factor = 1.15 if layer == "A-DOOR-FRAME" else 0.8 if layer == "YQ_DIM" else 1.0
-    return max(1, min(5, int(round(scale * factor))))
-
-
-def _font(size: int) -> ImageFont.ImageFont:
-    for path in FONT_CANDIDATES:
-        if not os.path.exists(path):
-            continue
+    selected_family = ""
+    for family in FONT_FAMILIES:
         try:
-            return ImageFont.truetype(path, size)
-        except Exception:
+            font_manager.findfont(family, fallback_to_default=False)
+            selected_family = family
+            break
+        except ValueError:
             continue
-    return ImageFont.load_default()
+    if not selected_family:
+        return
 
-
-def _draw_rotated_text(
-    image: Image.Image,
-    origin: tuple[int, int],
-    text: str,
-    font: ImageFont.ImageFont,
-    color: tuple[int, int, int],
-    rotation: float,
-) -> None:
-    bounds = font.getbbox(text)
-    text_width = max(1, bounds[2] - bounds[0] + 8)
-    text_height = max(1, bounds[3] - bounds[1] + 8)
-    layer = Image.new("RGBA", (text_width, text_height), (255, 255, 255, 0))
-    ImageDraw.Draw(layer).text((4, 4), text, fill=(*color, 255), font=font, anchor="la")
-    rotated = layer.rotate(-rotation, expand=True, resample=Image.Resampling.BICUBIC)
-    image.paste(rotated, origin, rotated)
+    for style in doc.styles:
+        family, bold, italic = style.get_extended_font_data()
+        if style.dxf.name == "Standard" or family in {"", "SimSun"}:
+            style.dxf.font = ""
+            style.set_extended_font_data(selected_family, bold=bold, italic=italic)

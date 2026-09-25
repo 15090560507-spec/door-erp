@@ -321,8 +321,11 @@ export async function confirmRenderSegmentation(
   return data.segmentation;
 }
 
-export async function listRenderTasks(limit = 30, signal?: AbortSignal): Promise<RenderTask[]> {
-  const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", { params: { limit }, signal });
+export async function listRenderTasks(limit = 30, signal?: AbortSignal, sourceTaskId = ""): Promise<RenderTask[]> {
+  const { data } = await api.get<{ tasks: RenderTask[] }>("/render/tasks", {
+    params: { limit, sourceTaskId: sourceTaskId || undefined },
+    signal,
+  });
   return data.tasks || [];
 }
 

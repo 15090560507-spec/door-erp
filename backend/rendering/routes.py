@@ -159,8 +159,8 @@ async def create_render_task(
 
 
 @render_router.get("/api/render/tasks")
-def list_render_tasks(limit: int = 30, current_user: dict = Depends(get_current_user)):
-    return {"tasks": render_db.list_tasks(limit=limit)}
+def list_render_tasks(sourceTaskId: str = "", limit: int = 30, current_user: dict = Depends(get_current_user)):
+    return {"tasks": render_db.list_tasks(limit=limit, source_task_id=sourceTaskId)}
 
 
 @render_router.get("/api/render/tasks/{task_id}")

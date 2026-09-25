@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -32,6 +32,7 @@ import {
 import { useAuth, useModule } from "@/hooks/useAuth";
 import { canAccessManagement, MANAGEMENT_MODULES } from "@/lib/managementAccess";
 import { MODULE_OPTIONS, type ModuleName } from "@/lib/types";
+import { requestAppNavigation } from "@/lib/navigationGuard";
 
 const DRAWING_MODULES: ModuleName[] = ["任务总览", "图纸绘制", "图纸初审", "图纸终审"];
 const PINNED_KEY = "door_business_pinned_modules_v1";
@@ -145,9 +146,16 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
     });
   };
 
-  const handleNavigate = (module: ModuleName) => {
+  const handleNavigate = async (event: MouseEvent<HTMLAnchorElement>, module: ModuleName, href: string) => {
+    event.preventDefault();
+    if (!(await requestAppNavigation())) return;
     if (DRAWING_MODULES.includes(module)) setModule(module);
     onCloseMobile();
+    router.push(href);
+  };
+
+  const handleLogout = async () => {
+    if (await requestAppNavigation()) logout();
   };
 
   const renderItem = (item: { title: string; module: ModuleName }, allowPin = false) => {
@@ -165,7 +173,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
           title={collapsed ? item.title : undefined}
           onMouseEnter={() => router.prefetch(href)}
           onFocus={() => router.prefetch(href)}
-          onClick={() => handleNavigate(item.module)}
+          onClick={(event) => void handleNavigate(event, item.module, href)}
           className={`app-sidebar__item ${active ? "is-active" : ""}`}
         >
           <span className="app-sidebar__icon"><Icon size={19} strokeWidth={1.8} /></span>
@@ -232,7 +240,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
             <span className="app-sidebar__avatar">{user?.name?.slice(-1) || user?.uid}</span>
             <span className="app-sidebar__user-copy"><strong>{user?.name}</strong><small>{user?.role}</small></span>
           </div>
-          <button type="button" className="app-sidebar__footer-button" onClick={logout} aria-label="退出登录" title="退出登录">
+          <button type="button" className="app-sidebar__footer-button" onClick={() => void handleLogout()} aria-label="退出登录" title="退出登录">
             <LogOut size={18} /><span>退出登录</span>
           </button>
         </div>
