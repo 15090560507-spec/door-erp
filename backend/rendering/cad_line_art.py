@@ -13,6 +13,7 @@ from .storage import save_bytes
 
 
 IGNORED_LAYERS = {"YQ_DIM", "A-DOOR-mark", "ORDER_FORM"}
+STRUCTURAL_LAYERS = {"A-DOOR-PANEL", "A-DOOR-FRAME", "A-DOOR-TRIM", "A-DOOR-GLASS"}
 
 
 def export_dxf_line_art(dxf_text: str, minimum_long_edge: int = 2400) -> dict:
@@ -32,13 +33,24 @@ def export_dxf_line_art(dxf_text: str, minimum_long_edge: int = 2400) -> dict:
     result = {}
     for label, key in (("正面", "front"), ("背面", "back")):
         title_x, title_y = titles[label]
-        selected = [
+        view_primitives = [
             primitive for primitive in primitives
             if _is_view_geometry(primitive, title_x, title_y, half_width)
         ]
-        png = _render_primitives(selected, minimum_long_edge)
+        structural = [primitive for primitive in view_primitives if primitive.layer in STRUCTURAL_LAYERS]
+        structural_points = [point for primitive in structural for point in primitive.points]
+        if not structural_points:
+            raise ValueError(f"{label}视图没有可识别的门体结构边界")
+        structural_bbox = _bbox(structural_points)
+        canvas_bbox = _expanded_bbox(structural_bbox)
+        selected = [primitive for primitive in view_primitives if _inside_bbox(primitive, canvas_bbox)]
+        png, metadata = _render_primitives(selected, minimum_long_edge, canvas_bbox)
         saved = save_bytes(png, f"{key}-cad-line-art.png", "temp")
-        result[key] = {"url": saved["url"], "filePath": saved["filePath"]}
+        result[key] = {
+            "url": saved["url"],
+            "filePath": saved["filePath"],
+            "geometry": metadata,
+        }
     return result
 
 
@@ -57,25 +69,42 @@ def _is_view_geometry(primitive: Primitive, title_x: float, title_y: float, half
     return True
 
 
-def _render_primitives(primitives: list[Primitive], minimum_long_edge: int) -> bytes:
-    points = [point for primitive in primitives for point in primitive.points]
-    if not points:
+def _expanded_bbox(
+    bbox: tuple[float, float, float, float],
+    ratio: float = 0.025,
+) -> tuple[float, float, float, float]:
+    min_x, max_x, min_y, max_y = bbox
+    margin = max(max_x - min_x, max_y - min_y, 1.0) * ratio
+    return min_x - margin, max_x + margin, min_y - margin, max_y + margin
+
+
+def _inside_bbox(primitive: Primitive, bbox: tuple[float, float, float, float]) -> bool:
+    if primitive.kind == "text" or not primitive.points:
+        return False
+    min_x, max_x, min_y, max_y = _bbox(primitive.points)
+    left, right, bottom, top = bbox
+    return min_x >= left and max_x <= right and min_y >= bottom and max_y <= top
+
+
+def _render_primitives(
+    primitives: list[Primitive],
+    minimum_long_edge: int,
+    bbox: tuple[float, float, float, float],
+) -> tuple[bytes, dict]:
+    if not primitives:
         raise ValueError("视图中没有可导出的门体线条")
-    min_x, max_x, min_y, max_y = _bbox(points)
+    min_x, max_x, min_y, max_y = bbox
     width = max(max_x - min_x, 1)
     height = max(max_y - min_y, 1)
-    pad_units = max(width, height) * 0.025
-    total_width = width + pad_units * 2
-    total_height = height + pad_units * 2
-    scale = max(1.0, minimum_long_edge / max(total_width, total_height))
-    canvas_width = max(64, int(round(total_width * scale)))
-    canvas_height = max(64, int(round(total_height * scale)))
+    scale = max(1.0, minimum_long_edge / max(width, height))
+    canvas_width = max(64, int(round(width * scale)))
+    canvas_height = max(64, int(round(height * scale)))
     canvas = np.full((canvas_height, canvas_width, 3), 255, dtype=np.uint8)
 
     def point(value: tuple[float, float]) -> tuple[int, int]:
         return (
-            int(round((value[0] - min_x + pad_units) * scale)),
-            int(round((max_y - value[1] + pad_units) * scale)),
+            int(round((value[0] - min_x) * scale)),
+            int(round((max_y - value[1]) * scale)),
         )
 
     line_width = max(1, min(3, int(round(scale * 0.9))))
@@ -101,4 +130,12 @@ def _render_primitives(primitives: list[Primitive], minimum_long_edge: int) -> b
     encoded, output = cv2.imencode(".png", canvas, [cv2.IMWRITE_PNG_COMPRESSION, 1])
     if not encoded:
         raise ValueError("CAD线稿图片编码失败")
-    return output.tobytes()
+    metadata = {
+        "cadWidth": float(width),
+        "cadHeight": float(height),
+        "aspectRatio": float(width / height),
+        "pixelWidth": canvas_width,
+        "pixelHeight": canvas_height,
+        "cadBBox": [float(value) for value in bbox],
+    }
+    return output.tobytes(), metadata

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
-  generateCad, generateCadPreview, downloadCadBlob, downloadFileFromUrl,
+  generateCad, generateCadPreview, generateCadJpg, downloadCadBlob, downloadFileFromUrl,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
   resetPassword as apiResetPassword, apiErrorMessage,
 } from "@/lib/api";
@@ -52,6 +52,11 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   return `${customer || "未命名"}${date}.dxf`;
 }
 
+function cadJpgDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
+  const customer = (data.dhdw || "").trim().replace(/[\\/:*?"<>|\s]+/g, "");
+  return `${customer || "未命名"}-线稿.jpg`;
+}
+
 function cadRequestFingerprint(data: DoorFormData) {
   return JSON.stringify(data);
 }
@@ -91,6 +96,7 @@ export default function DashboardPage() {
   const [cadLoading, setCadLoading] = useState(false);
   const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [cadJpgLoading, setCadJpgLoading] = useState(false);
   const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
   const [quickRenderLoading, setQuickRenderLoading] = useState(false);
   const [quickRenderError, setQuickRenderError] = useState("");
@@ -545,6 +551,25 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDownloadCadJpg = async () => {
+    const validation = validateDoorForm(formData);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
+    setCadJpgLoading(true);
+    setCadError(null);
+    try {
+      const blob = await generateCadJpg(formData);
+      downloadCadBlob(blob, cadJpgDownloadFilename(formData));
+      flash("已按 ORDER_FORM 图框导出线稿 JPG", "success");
+    } catch (error: unknown) {
+      showCadError("线稿 JPG 导出失败", error, () => void handleDownloadCadJpg());
+    } finally {
+      setCadJpgLoading(false);
+    }
+  };
+
   const handleGenerateEffect = async () => {
     if (!activeTaskId) return;
     const validation = validateDoorForm(formData);
@@ -581,7 +606,7 @@ export default function DashboardPage() {
         lineArt,
         styleReference: null,
         tempAssets: [],
-        renderMode: "quick",
+        renderMode: "precise",
         sourceType: "task",
         sourceSide: "front",
         sourceTaskId: activeTaskId,
@@ -840,7 +865,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <p className="text-[12px] text-[#8E8E93]">
-                修改后点击{activeModule === "图纸绘制" ? "页面最下方" : "上方"}“保存修改”。
+                修改后点击{activeModule === "图纸绘制" ? "生成操作栏右侧" : "上方"}“保存修改”。
               </p>
             </div>
           </details>
@@ -861,7 +886,7 @@ export default function DashboardPage() {
             {activeModule === "图纸绘制" && (
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
                     <button
                       onClick={handleGeneratePreview}
                       disabled={previewLoading || cadLoading}
@@ -877,11 +902,25 @@ export default function DashboardPage() {
                       {cadLoading ? "生成中..." : "生成 DXF"}
                     </button>
                     <button
+                      onClick={handleDownloadCadJpg}
+                      disabled={cadJpgLoading || cadLoading || previewLoading}
+                      className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
+                    >
+                      {cadJpgLoading ? "正在导出..." : "下载线稿 JPG"}
+                    </button>
+                    <button
                       onClick={handleGenerateEffect}
                       disabled={quickRenderLoading}
                       className="min-h-11 rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
                     >
                       {quickRenderLoading ? "效果图生成中..." : "生成效果图"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      className="min-h-11 rounded-lg bg-[#1C1C1E] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90"
+                    >
+                      保存修改
                     </button>
                   </div>
                   {quickRenderError && (
@@ -892,7 +931,7 @@ export default function DashboardPage() {
                 </Card>
 
                 {quickRenderTask && (
-                  <Card title="快速效果图">
+                  <Card title="精准效果图">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm text-[#636366]">
                         状态：{quickRenderTask.status === "completed" ? "已完成" : quickRenderTask.status === "failed" ? "生成失败" : "生成中"}
@@ -1067,17 +1106,6 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </details>
-            )}
-            {activeModule === "图纸绘制" && (
-              <div className="ui-action-bar mt-6">
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  className="ui-button ui-button--primary min-w-36"
-                >
-                  保存修改
-                </button>
-              </div>
             )}
           </div>
         </div>
@@ -1408,55 +1436,12 @@ function CadPreviewPanel({
   const zoomOut = () => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))));
   const zoomIn = () => setZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))));
   const resetZoom = () => setZoom(1);
-  const downloadJpg = async () => {
-    if (!svg) return;
-
-    const viewBox = svg.match(/viewBox="([^"]+)"/)?.[1]?.split(/\s+/).map(Number) || [];
-    const sourceWidth = viewBox[2] || 2400;
-    const sourceHeight = viewBox[3] || 1600;
-    const scale = Math.min(3, 9000 / Math.max(sourceWidth, sourceHeight));
-    const width = Math.max(1, Math.round(sourceWidth * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
-
-    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        return;
-      }
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(image, 0, 0, width, height);
-      canvas.toBlob((jpgBlob) => {
-        URL.revokeObjectURL(url);
-        if (!jpgBlob) return;
-        const jpgUrl = URL.createObjectURL(jpgBlob);
-        const a = document.createElement("a");
-        a.href = jpgUrl;
-        a.download = "cad-preview.jpg";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(jpgUrl);
-      }, "image/jpeg", 0.95);
-    };
-    image.onerror = () => URL.revokeObjectURL(url);
-    image.src = url;
-  };
-
   return (
     <>
       <Card title="CAD 图纸预览">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <p className="text-xs text-[#8E8E93]">
-          预览与下载使用同一份 DXF 数据生成。复杂填充在网页预览中可能会简化显示。
+          预览来自当前 DXF 数据；复杂填充在网页中可能会简化显示。线稿 JPG 请从上方操作栏直接导出。
         </p>
           <div className="flex items-center gap-2">
             <button
@@ -1465,13 +1450,6 @@ function CadPreviewPanel({
               className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
             >
               放大查看
-            </button>
-            <button
-              onClick={downloadJpg}
-              disabled={!canOpen}
-              className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
-            >
-              下载 JPG
             </button>
             <button
               onClick={onRefresh}
@@ -1529,12 +1507,6 @@ function CadPreviewPanel({
                   aria-label="放大"
                 >
                   +
-                </button>
-                <button
-                  onClick={downloadJpg}
-                  className="px-4 h-9 rounded-lg border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF]"
-                >
-                  下载 JPG
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}

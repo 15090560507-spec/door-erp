@@ -73,6 +73,7 @@ from production_routes import (
     production_db,
 )
 from rendering.cad_line_art import export_dxf_line_art
+from rendering.cad_sheet_jpg import render_dxf_sheet_jpg
 from rendering.legacy_cleanup import cleanup_legacy_layered_outputs
 from trim_geometry import calculate_quote_trim_metrics
 from erpnext_bridge import sync_order_to_erpnext
@@ -308,6 +309,7 @@ def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
             "created": now,
             "dxf": dxf_bytes,
             "svg": None,
+            "sheet_jpg": None,
         }
         _cad_cache.move_to_end(key)
         while len(_cad_cache) > CAD_CACHE_MAX_ITEMS:
@@ -337,6 +339,28 @@ def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
             entry["svg"] = svg
     logger.info("[cad] preview_rendered key=%s elapsed=%.3fs", key[:10], time.perf_counter() - started)
     return svg, False
+
+
+def _cached_cad_sheet_jpg(key: str, dxf_bytes: bytes) -> tuple[dict, bool]:
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry and entry.get("sheet_jpg"):
+            return entry["sheet_jpg"], True
+    started = time.perf_counter()
+    result = render_dxf_sheet_jpg(dxf_bytes.decode("utf-8"))
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry:
+            entry["sheet_jpg"] = result
+    logger.info(
+        "[cad] sheet_jpg_rendered key=%s elapsed=%.3fs size=%dx%d order_form=%s",
+        key[:10],
+        time.perf_counter() - started,
+        result["width"],
+        result["height"],
+        result["usedOrderForm"],
+    )
+    return result, False
 
 
 def _raise_cad_error(stage: str, exc: Exception) -> None:
@@ -983,6 +1007,33 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
             "Cache-Control": "no-store",
             "X-CAD-Cache": "HIT" if cad_cache_hit else "MISS",
             "X-CAD-Preview-Cache": "HIT" if svg_cache_hit else "MISS",
+        },
+    )
+
+
+@app.post("/api/generate_cad_jpg")
+def generate_cad_jpg(req: CADRequest, current_user: Dict = Depends(get_current_user)):
+    """Render the generated DXF directly to a printable order-sheet JPEG."""
+    _validate_task_params(req.model_dump())
+    try:
+        key, dxf_bytes, cad_cache_hit = _cached_cad(req)
+        result, jpg_cache_hit = _cached_cad_sheet_jpg(key, dxf_bytes)
+    except Exception as exc:
+        _raise_cad_error("线稿 JPG 导出", exc)
+
+    safe_customer = "".join(
+        ch for ch in (req.dhdw or "未命名").strip()
+        if ch not in '\\/:*?"<>|' and not ch.isspace()
+    ) or "未命名"
+    filename = quote(f"{safe_customer}-线稿.jpg")
+    return Response(
+        content=result["content"],
+        media_type="image/jpeg",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "X-CAD-Cache": "HIT" if cad_cache_hit else "MISS",
+            "X-CAD-JPG-Cache": "HIT" if jpg_cache_hit else "MISS",
+            "X-CAD-JPG-Bounds": "ORDER_FORM" if result["usedOrderForm"] else "FALLBACK",
         },
     )
 

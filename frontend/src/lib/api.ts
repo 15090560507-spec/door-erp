@@ -309,6 +309,28 @@ export async function downloadFileFromUrl(url: string, filename: string): Promis
   downloadCadBlob(data, filename);
 }
 
+export async function generateCadJpg(formData: DoorFormData): Promise<Blob> {
+  try {
+    const { data } = await api.post<Blob>("/generate_cad_jpg", formData, {
+      responseType: "blob",
+      timeout: 120000,
+    });
+    return data;
+  } catch (error: unknown) {
+    const requestError = error as { response?: { data?: unknown }; userMessage?: string };
+    const body = requestError.response?.data;
+    if (body instanceof Blob) {
+      const text = await body.text();
+      try {
+        requestError.userMessage = extractApiErrorMessage(JSON.parse(text)) || cleanupApiErrorText(text);
+      } catch {
+        requestError.userMessage = cleanupApiErrorText(text);
+      }
+    }
+    throw requestError;
+  }
+}
+
 export function downloadCadBlob(blob: Blob, filename: string) {
   const downloadBlob = blob.type === "application/octet-stream"
     ? blob

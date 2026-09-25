@@ -119,6 +119,9 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
         try:
             for virtual_entity in entity.virtual_entities():
                 _collect_entity(virtual_entity, primitives, depth + 1)
+            if kind == "INSERT":
+                for attrib in getattr(entity, "attribs", []):
+                    _collect_entity(attrib, primitives, depth + 1)
             return
         except Exception:
             if kind == "INSERT":
