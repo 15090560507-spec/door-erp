@@ -80,7 +80,6 @@ from erpnext_bridge import sync_order_to_erpnext
 from door_cad.router import router as door_cad_router
 from bom_routes import router as bom_router
 from operations_routes import router as operations_router
-from cad_printing.routes import cad_print_router, configure_cad_generator
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -111,7 +110,6 @@ app.include_router(sales_order_router)
 app.include_router(door_cad_router)
 app.include_router(bom_router)
 app.include_router(operations_router)
-app.include_router(cad_print_router)
 cleanup_legacy_layered_outputs()
 
 # ===================== 数据库实例 =====================
@@ -326,15 +324,6 @@ def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
         len(dxf_bytes),
     )
     return key, dxf_bytes, False
-
-
-def _generate_cad_for_print(params: dict) -> tuple[str, bytes]:
-    request = CADRequest(**params)
-    key, dxf_bytes, _cache_hit = _cached_cad(request)
-    return key, dxf_bytes
-
-
-configure_cad_generator(_generate_cad_for_print)
 
 
 def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
