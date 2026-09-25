@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
-  generateCad, generateCadPreview, generateCadJpg, downloadCadBlob, downloadFileFromUrl,
+  generateCad, generateCadPreview, downloadCadBlob, downloadFileFromUrl,
   getUsers, createUser as apiCreateUser, deleteUser as apiDeleteUser,
   resetPassword as apiResetPassword, apiErrorMessage,
 } from "@/lib/api";
@@ -54,11 +54,6 @@ function cadDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
   return `${customer || "未命名"}${date}.dxf`;
 }
 
-function cadJpgDownloadFilename(data: Pick<DoorFormData, "dhdw">) {
-  const customer = (data.dhdw || "").trim().replace(/[\\/:*?"<>|\s]+/g, "");
-  return `${customer || "未命名"}-CAD打印.jpg`;
-}
-
 function cadRequestFingerprint(data: DoorFormData) {
   return JSON.stringify(data);
 }
@@ -102,7 +97,6 @@ export default function DashboardPage() {
   const [cadLoading, setCadLoading] = useState(false);
   const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [cadJpgLoading, setCadJpgLoading] = useState(false);
   const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
   const [quickRenderLoading, setQuickRenderLoading] = useState(false);
   const [quickRenderError, setQuickRenderError] = useState("");
@@ -589,15 +583,9 @@ export default function DashboardPage() {
     setPreviewLoading(true);
     setCadError(null);
     try {
-      const fingerprint = cadRequestFingerprint(formData);
-      if (!cadBlob || cadBlobFingerprint !== fingerprint) {
-        const blob = await generateCad(formData);
-        setCadBlob(blob);
-        setCadBlobFingerprint(fingerprint);
-      }
       const svg = await generateCadPreview(formData);
       setCadPreviewSvg(svg);
-      flash("CAD 预览已生成，DXF 已缓存", "success");
+      flash("CAD 预览已生成", "success");
     } catch (error: unknown) {
       showCadError("CAD 预览生成失败", error, () => void handleGeneratePreview());
     } finally {
@@ -626,25 +614,6 @@ export default function DashboardPage() {
       showCadError("CAD 生成失败", error, () => void handleGenerateCad());
     } finally {
       setCadLoading(false);
-    }
-  };
-
-  const handleDownloadCadJpg = async () => {
-    const validation = validateDoorForm(formData);
-    if (validation) {
-      setValidationError(validation);
-      return;
-    }
-    setCadJpgLoading(true);
-    setCadError(null);
-    try {
-      const blob = await generateCadJpg(formData);
-      downloadCadBlob(blob, cadJpgDownloadFilename(formData));
-      flash("已按 ORDER_FORM 图框导出 5940×4200 黑白 CAD 打印 JPG", "success");
-    } catch (error: unknown) {
-      showCadError("CAD 打印 JPG 导出失败", error, () => void handleDownloadCadJpg());
-    } finally {
-      setCadJpgLoading(false);
     }
   };
 
@@ -1009,7 +978,7 @@ export default function DashboardPage() {
             {activeModule === "图纸绘制" && (
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                     <button
                       onClick={handleGeneratePreview}
                       disabled={previewLoading || cadLoading}
@@ -1023,13 +992,6 @@ export default function DashboardPage() {
                       className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
                     >
                       {cadLoading ? "生成中..." : "生成 DXF"}
-                    </button>
-                    <button
-                      onClick={handleDownloadCadJpg}
-                      disabled={cadJpgLoading || cadLoading || previewLoading}
-                      className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
-                    >
-                      {cadJpgLoading ? "正在打印..." : "打印 JPG"}
                     </button>
                     <button
                       onClick={handleGenerateEffect}
@@ -1564,7 +1526,7 @@ function CadPreviewPanel({
       <Card title="CAD 图纸预览">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <p className="text-xs text-[#8E8E93]">
-          网页预览可能简化复杂填充；正式 JPG 请使用上方“打印 JPG”，按 ORDER_FORM 图框和黑白打印样式导出。
+          网页预览用于快速核对图纸；复杂填充可能简化显示，正式交付请下载 DXF 后使用 AutoCAD 打印。
         </p>
           <div className="flex items-center gap-2">
             <button
