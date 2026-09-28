@@ -558,6 +558,10 @@ def build_cad_params(req: CADRequest):
     if is_hanging_threshold:
         thf = 0
         thb = 0
+    elif req.threshold_type == "平底槛":
+        flat_threshold_height = max(0, _numeric(req.pdk))
+        thf = flat_threshold_height
+        thb = flat_threshold_height
 
     # --- 下槛处理 ---
     dj_val = ""

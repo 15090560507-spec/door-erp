@@ -1779,8 +1779,10 @@ def draw_door_in_frame(
         return None
 
     explicit_panel_preset = str(p.get("panel_preset", "") or "")
-    front_preset = detect_panel_preset(explicit_panel_preset) or detect_panel_preset(str(p.get("zmks", "")))
-    back_preset = detect_panel_preset(str(p.get("fmks", ""))) or front_preset
+    # 商品正反面款式仅用于报价、订单和图框文字。门板几何只能由门板设置
+    # 或显式的门板预设控制，避免商品款式暗中覆盖用户设置。
+    front_preset = detect_panel_preset(explicit_panel_preset)
+    back_preset = front_preset
     force_panel_preset = bool(explicit_panel_preset)
 
     def _group_glass_value(group: str, value_type: str) -> float:

@@ -2704,8 +2704,71 @@ def test_special_product_opening_mechanisms_and_template_aliases():
         check("sliding rail block is inserted", sliding_inserts.count("zdgy") >= 1, str(sliding_inserts[-20:]))
 
 
+def test_flat_threshold_uses_flat_height_on_both_views():
+    req = CADRequest(
+        threshold_type="平底槛",
+        pdk="38",
+        th_str="55/75",
+        fingerprint_lock="无",
+    )
+
+    info, checks, draw_params = build_cad_params(req)
+
+    check("flat threshold marks PDK", checks["PDK"] == "√", str(checks.get("PDK")))
+    check("flat threshold clears high-low marker", checks["GDK"] == "", str(checks.get("GDK")))
+    check("flat threshold writes PDK thickness", info["PXK"] == "38", str(info.get("PXK")))
+    check("flat threshold front uses PDK height", draw_params["th_front"] == 38, str(draw_params))
+    check("flat threshold back uses PDK height", draw_params["th_back"] == 38, str(draw_params))
+
+    msg, buffer = run_integrated_system(info, checks, draw_params)
+    check("flat threshold CAD generation returns buffer", buffer is not None, msg)
+
+
+def test_product_styles_do_not_control_panel_geometry():
+    common = {
+        "door_panel_style": "无造型",
+        "back_panel_same_as_front": False,
+        "back_door_panel_style": "无造型",
+        "panel_preset": "",
+        "fingerprint_lock": "无",
+    }
+    plain_req = CADRequest(zmks="普通款", fmks="普通款", **common)
+    named_req = CADRequest(zmks="紫荆花款", fmks="竖条款", **common)
+
+    signatures = []
+    for label, req in (("plain", plain_req), ("named", named_req)):
+        info, checks, draw_params = build_cad_params(req)
+        msg, buffer = run_integrated_system(info, checks, draw_params)
+        check(f"{label} product-style CAD generation returns buffer", buffer is not None, msg)
+        if not buffer:
+            return
+        doc = ezdxf.read(io.StringIO(buffer.getvalue()))
+        panel_lines = len([
+            entity for entity in doc.modelspace().query("LINE")
+            if entity.dxf.layer == "A-DOOR-PANEL"
+        ])
+        panel_hatches = len([
+            entity for entity in doc.modelspace().query("HATCH")
+            if entity.dxf.layer == "A-DOOR-HATCH"
+        ])
+        signatures.append((panel_lines, panel_hatches))
+
+    check(
+        "product front/back styles do not change panel geometry",
+        signatures[0] == signatures[1],
+        str(signatures),
+    )
+    check(
+        "product front/back styles do not add panel fills",
+        signatures[1][1] == 0,
+        str(signatures[1]),
+    )
+
+
 if __name__ == "__main__":
     test_cad_new_options_flow()
+    test_flat_threshold_uses_flat_height_on_both_views()
+    test_product_styles_do_not_control_panel_geometry()
     test_a1022_handle_backpack_handle_and_adjustable_hinge()
     test_split_handle_uses_directional_blocks()
     test_back_a1022_handle_direction_blocks()
