@@ -25,6 +25,11 @@ export interface InventoryWarehouseSummary extends InventoryWarehouse {
 }
 
 export interface TrackedProductionInventoryItem {
+  warehouse_id?: number | null;
+  warehouse_inferred?: boolean;
+  source_inferred?: boolean;
+  stock_anomaly?: boolean;
+  available_quantity?: number;
   warehouse_type: string;
   warehouse: string;
   location: string;

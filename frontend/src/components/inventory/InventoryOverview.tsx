@@ -5,6 +5,7 @@ import { Boxes, Factory, PackageCheck, PackageOpen, Plus, ShieldCheck, Trash2, T
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import { confirmInventoryAdjustment, createInventoryAdjustment, getInventoryBalances, getInventoryMaterials, getInventoryWarehouseOverview, getInventoryWarehouses } from "@/lib/inventoryApi";
 import type { InventoryBalance, InventoryMaterial, InventoryWarehouse, InventoryWarehouseSummary, TrackedProductionInventoryItem } from "@/lib/inventoryTypes";
+import { filterTrackedInventory } from "@/lib/trackedInventory";
 
 type Notice = (message: string, error?: boolean) => void;
 
@@ -36,7 +37,7 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   const selectedSummary = useMemo(() => warehouseSummaries.find((item) => String(item.id) === filters.warehouseId), [filters.warehouseId, warehouseSummaries]);
-  const visibleTracked = useMemo(() => trackedItems.filter((item) => !selectedSummary || item.warehouse === selectedSummary.name || item.warehouse_type === selectedSummary.warehouse_type), [selectedSummary, trackedItems]);
+  const visibleTracked = useMemo(() => filterTrackedInventory(trackedItems, filters), [filters, trackedItems]);
 
   return <div className="space-y-4">
     <section className="warehouse-cockpit">
@@ -46,20 +47,20 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
         const Icon = warehouseIcon(item.warehouse_type);
         return <button type="button" key={item.id} className={selected ? "is-selected" : ""} onClick={() => { const id = String(item.id); setWarehouseId(id); setFilters({ ...filters, warehouseId: id }); }}>
           <span className="warehouse-cockpit__icon"><Icon size={19}/></span><span className="warehouse-cockpit__name">{item.name}</span><small>{warehouseTypeLabel(item.warehouse_type)} · {item.locations.length} 个库位</small>
-          <strong>{item.tracked_count || item.sku_count}<em>{item.tracked_count ? "项在库" : "种物料"}</em></strong>
+          <strong className="warehouse-cockpit__counts"><span>{item.sku_count}<em>种公共物料</em></span><span>{item.tracked_count}<em>项订单库存</em></span></strong>
           <span className="warehouse-cockpit__quantities">{item.quantity_breakdown.length ? item.quantity_breakdown.slice(0,3).map((value) => <i key={value.unit}>{formatQty(value.quantity)} {value.unit}</i>) : <i>暂无库存</i>}</span>
           {item.low_stock_count > 0 && <span className="warehouse-cockpit__warning">{item.low_stock_count} 项低库存</span>}
         </button>;
       })}</div>
     </section>
-    {visibleTracked.length > 0 && <TrackedInventorySection title={selectedSummary ? `${selectedSummary.name} · 订单追踪库存` : "订单专属半成品与成品"} items={visibleTracked} />}
-    <section className="border border-[#D1D1D6] bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#E5E5EA] p-3">
-        <input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && setFilters({ q: q.trim(), warehouseId, lowOnly })} placeholder="搜索物料编码、名称、规格" className="h-9 min-w-64 flex-1 border border-[#C7C7CC] px-3 text-sm" />
+    <div className="flex flex-wrap items-center gap-2 border border-[#D1D1D6] bg-white p-3">
+        <input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && setFilters({ q: q.trim(), warehouseId, lowOnly })} placeholder="物料、规格、生产编号、客户、项目" className="h-9 min-w-64 flex-1 border border-[#C7C7CC] px-3 text-sm" />
         <select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} className="h-9 min-w-40 border border-[#C7C7CC] px-2 text-sm"><option value="">全部仓库</option>{warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <label className="flex h-9 items-center gap-2 border border-[#C7C7CC] px-3 text-sm"><input type="checkbox" checked={lowOnly} onChange={(event) => setLowOnly(event.target.checked)} />只看低库存</label>
         <button onClick={() => setFilters({ q: q.trim(), warehouseId, lowOnly })} className="h-9 bg-[#007AFF] px-5 text-sm text-white">查询</button><button onClick={() => setAdjusting(true)} className="h-9 border border-[#007AFF] px-4 text-sm text-[#007AFF]">盘点调整</button>
-      </div>
+    </div>
+    {visibleTracked.length > 0 && <TrackedInventorySection title={selectedSummary ? `${selectedSummary.name} · 订单追踪库存` : "订单专属半成品与成品"} items={visibleTracked} />}
+    <section className="border border-[#D1D1D6] bg-white">
       <div className="grid gap-2 p-3 lg:hidden">
         {loading ? <CompactEmpty text="正在加载库存..." /> : balances.length === 0 ? <CompactEmpty text="暂无库存记录，可通过盘点调整建立期初库存" /> : balances.map((item) => {
           const low = item.available < item.minimum_stock;
@@ -82,13 +83,13 @@ export default function InventoryOverview({ notify }: { notify: Notice }) {
 function TrackedInventorySection({ title, items }: { title: string; items: TrackedProductionInventoryItem[] }) {
   return <section className="tracked-inventory">
     <header><div><h3>{title}</h3><p>按 TM 生产编号追踪，不需要为每个非标尺寸建立物料档案。</p></div><span>{items.length} 项</span></header>
-    <div className="tracked-inventory__list">{items.slice(0, 24).map((item) => <article key={`${item.warehouse_type}-${item.door_unit_id}-${item.component_id || 0}`}>
+    <div className="tracked-inventory__list">{items.map((item) => <article key={JSON.stringify([item.warehouse_type, item.door_unit_id, item.technical_package_id, item.component_id, item.warehouse, item.location])}>
       <div className="tracked-inventory__identity"><span>{item.warehouse_type}</span><strong>{item.item_name}</strong><small>{item.production_no} · {item.customer}{item.project ? ` / ${item.project}` : ""}</small></div>
       <div><small>产品 / 尺寸</small><strong>{item.door_type || "未填写"} · {item.specification || "尺寸未填写"}</strong></div>
       <div><small>规格</small><strong>{item.specification || "按当前BOM"}</strong></div>
       <div><small>库位</small><strong>{item.warehouse}{item.location ? ` / ${item.location}` : ""}</strong></div>
       <div><small>在库</small><strong>{formatQty(item.quantity)} {item.unit}</strong></div>
-      <div><small>状态</small><strong>{item.status}</strong></div>
+      <div><small>状态</small><strong>{item.status}</strong><div className="tracked-inventory__flags">{item.source_inferred && <span>历史来源推断</span>}{item.warehouse_inferred && <span>仓库归属推断</span>}{item.warehouse_id == null && <span>仓库未匹配</span>}{item.stock_anomaly && <span className="is-danger">库存异常</span>}</div></div>
     </article>)}</div>
   </section>;
 }

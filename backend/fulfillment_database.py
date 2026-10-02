@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from bom_readiness import automatic_verification_status, bom_blockers
 from config import FULFILLMENT_DB_FILE, FULFILLMENT_FILES_DIR
 from inventory_database import InventoryDatabase
+from production_inventory import semi_finished_balances
 from requirement_service import RequirementService
 from schema_version import record_schema_version, schema_is_current
 from work_package_service import WorkPackageService
@@ -2449,31 +2450,36 @@ class FulfillmentDatabase:
     def _component_inventory_rows(self, door_id: int, package_id: int) -> List[Dict[str, Any]]:
         if package_id <= 0:
             return []
-        rows = self.fetch_all(
-            """SELECT c.id AS component_id, c.name, c.category, c.specification,
-                      c.planned_quantity, c.unit, c.operation_code,
-                      COALESCE(SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE 0 END), 0) AS inbound_quantity,
-                      COALESCE(SUM(CASE WHEN m.movement_type='拼装领用' THEN m.quantity ELSE 0 END), 0) AS issued_quantity,
-                      MAX(CASE WHEN m.movement_type='半成品入库' THEN m.warehouse ELSE '' END) AS warehouse,
-                      MAX(CASE WHEN m.movement_type='半成品入库' THEN m.location ELSE '' END) AS location
-               FROM fulfillment_components c
-               LEFT JOIN fulfillment_inventory_movements m
-                 ON m.component_id=c.id AND m.technical_package_id=c.technical_package_id
-               WHERE c.technical_package_id=? AND c.item_kind='manufactured_part'
-               GROUP BY c.id ORDER BY c.sequence_no, c.id""",
-            (package_id,),
-        )
+        conn = self._connect()
+        try:
+            rows = [dict(row) for row in conn.execute(
+                """SELECT id AS component_id, name, category, specification,
+                          planned_quantity, unit, operation_code FROM fulfillment_components
+                   WHERE technical_package_id=? AND item_kind='manufactured_part'
+                   ORDER BY sequence_no, id""", (package_id,),
+            ).fetchall()]
+            positions = semi_finished_balances(conn, door_id=door_id, package_id=package_id)
+        finally:
+            conn.close()
         for row in rows:
+            sources = [position for position in positions if position["component_id"] == row["component_id"]]
+            row["inbound_quantity"] = sum(source["inbound_quantity"] for source in sources)
+            row["issued_quantity"] = sum(source["issued_quantity"] for source in sources)
             row["planned_quantity"] = float(row["planned_quantity"] or 0)
             row["inbound_quantity"] = float(row["inbound_quantity"] or 0)
             row["issued_quantity"] = float(row["issued_quantity"] or 0)
             row["available_quantity"] = max(0.0, row["inbound_quantity"] - row["issued_quantity"])
             row["remaining_inbound_quantity"] = max(0.0, row["planned_quantity"] - row["inbound_quantity"])
+            row["source_inferred"] = any(source["source_inferred"] for source in sources)
+            row["stock_anomaly"] = any(source["stock_anomaly"] for source in sources)
+            row["positions"] = [source for source in sources if abs(source["quantity"]) > 1e-6]
+            row["warehouse"] = "、".join(dict.fromkeys(source["warehouse"] for source in row["positions"]))
+            row["location"] = "、".join(dict.fromkeys(source["location"] for source in row["positions"] if source["location"]))
         return rows
 
     def component_inbound(self, door_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
-        now = fulfillment_now()
         with self.transaction() as conn:
+            now = fulfillment_now()
             component = conn.execute(
                 """SELECT c.*, d.production_no, d.order_id
                    FROM fulfillment_components c
@@ -2513,8 +2519,8 @@ class FulfillmentDatabase:
         return self.get_door_unit(door_id) or {}
 
     def issue_assembly_components(self, door_id: int, remark: str, user: Dict[str, Any]) -> tuple[Dict[str, Any], int]:
-        now = fulfillment_now()
         with self.transaction() as conn:
+            now = fulfillment_now()
             door = conn.execute("SELECT * FROM fulfillment_door_units WHERE id=?", (door_id,)).fetchone()
             if not door:
                 raise LookupError("门樘生产单不存在")
@@ -2525,42 +2531,55 @@ class FulfillmentDatabase:
             if not package:
                 raise LookupError("生产BOM不存在")
             parts = conn.execute(
-                """SELECT c.*,
-                          COALESCE(SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE 0 END), 0) AS inbound_quantity,
-                          COALESCE(SUM(CASE WHEN m.movement_type='拼装领用' THEN m.quantity ELSE 0 END), 0) AS issued_quantity
-                   FROM fulfillment_components c
-                   LEFT JOIN fulfillment_inventory_movements m
-                     ON m.component_id=c.id AND m.technical_package_id=c.technical_package_id
+                """SELECT c.* FROM fulfillment_components c
                    WHERE c.technical_package_id=? AND c.item_kind='manufactured_part'
-                   GROUP BY c.id ORDER BY c.sequence_no, c.id""",
+                   ORDER BY c.sequence_no, c.id""",
                 (package["id"],),
             ).fetchall()
             if not parts:
                 raise RuntimeError("当前BOM没有需要领用的自制半成品")
+            positions = semi_finished_balances(conn, door_id=door_id, package_id=package["id"])
+            sources_by_part = {
+                part["id"]: [row for row in positions if row["component_id"] == part["id"]]
+                for part in parts
+            }
             shortages = []
             for part in parts:
                 planned = float(part["planned_quantity"] or part["quantity"] or 0)
-                inbound = float(part["inbound_quantity"] or 0)
-                issued = float(part["issued_quantity"] or 0)
-                if inbound - issued + 1e-6 < planned - issued:
-                    shortages.append(f"{part['name']} {max(0.0, inbound-issued):g}/{max(0.0, planned-issued):g}{part['unit']}")
+                sources = sources_by_part[part["id"]]
+                available = sum(source["quantity"] for source in sources)
+                issued = sum(source["issued_quantity"] for source in sources)
+                if any(source["stock_anomaly"] for source in sources):
+                    raise RuntimeError(f"{part['name']} 存在库存来源或数量异常，请先核对库存流水")
+                if available + 1e-6 < planned - issued:
+                    shortages.append(f"{part['name']} {max(0.0, available):g}/{max(0.0, planned-issued):g}{part['unit']}")
             if shortages:
                 raise RuntimeError("以下半成品尚未备齐：" + "；".join(shortages[:6]))
             changed = 0
             for part in parts:
                 planned = float(part["planned_quantity"] or part["quantity"] or 0)
-                issued = float(part["issued_quantity"] or 0)
+                sources = sources_by_part[part["id"]]
+                issued = sum(source["issued_quantity"] for source in sources)
                 quantity = max(0.0, planned - issued)
                 if quantity <= 1e-6:
                     continue
-                conn.execute(
-                    """INSERT INTO fulfillment_inventory_movements(
-                           door_unit_id, technical_package_id, component_id, movement_type,
-                           item_name, warehouse, quantity, unit, remark, operator_uid, created_at
-                       ) VALUES (?, ?, ?, '拼装领用', ?, '半成品仓', ?, ?, ?, ?, ?)""",
-                    (door_id, package["id"], part["id"], part["name"], quantity, part["unit"], remark,
-                     str(user.get("uid") or ""), now),
-                )
+                for source in sources:
+                    take = min(quantity, source["available_quantity"])
+                    if take <= 1e-6:
+                        continue
+                    conn.execute(
+                        """INSERT INTO fulfillment_inventory_movements(
+                               door_unit_id, technical_package_id, component_id, movement_type,
+                               item_name, warehouse, location, quantity, unit, remark, operator_uid, created_at
+                           ) VALUES (?, ?, ?, '拼装领用', ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (door_id, package["id"], part["id"], part["name"], source["warehouse"],
+                         source["location"], take, part["unit"], remark, str(user.get("uid") or ""), now),
+                    )
+                    quantity -= take
+                    if quantity <= 1e-6:
+                        break
+                if quantity > 1e-6:
+                    raise RuntimeError(f"{part['name']} 可用库存不足，请重新查询后领用")
                 changed += 1
             if not changed:
                 raise RuntimeError("当前半成品已经全部领用，无需重复操作")

@@ -6,6 +6,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from inventory_database import InventoryDatabase, inventory_now
+from production_inventory import semi_finished_balances
 
 
 EPSILON = 1e-9
@@ -510,23 +511,11 @@ class InventoryService:
             "SELECT 1 AS value FROM sqlite_master WHERE type='table' AND name='fulfillment_inventory_movements'"
         )
         if table_exists:
-            tracked_items.extend(self.db.fetch_all(
-                """SELECT '半成品' AS warehouse_type, m.warehouse, m.location,
-                          m.door_unit_id, m.technical_package_id, m.component_id,
-                          MAX(m.item_name) AS item_name, MAX(c.specification) AS specification,
-                          d.production_no, d.product_name AS door_type, 0 AS width, 0 AS height, d.status,
-                          o.customer, o.project,
-                          SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE -m.quantity END) AS quantity,
-                          MAX(m.unit) AS unit, MAX(m.created_at) AS updated_at
-                   FROM fulfillment_inventory_movements m
-                   JOIN fulfillment_door_units d ON d.id=m.door_unit_id
-                   JOIN fulfillment_orders o ON o.id=d.order_id
-                   LEFT JOIN fulfillment_components c ON c.id=m.component_id
-                   WHERE m.movement_type IN ('半成品入库','拼装领用') AND m.component_id IS NOT NULL
-                   GROUP BY m.door_unit_id, m.technical_package_id, m.component_id, m.warehouse, m.location
-                   HAVING SUM(CASE WHEN m.movement_type='半成品入库' THEN m.quantity ELSE -m.quantity END) > 0.000001
-                   ORDER BY updated_at DESC"""
-            ))
+            conn = self.db.connect()
+            try:
+                tracked_items.extend(row for row in semi_finished_balances(conn) if abs(row["quantity"]) > 1e-6)
+            finally:
+                conn.close()
             tracked_items.extend(self.db.fetch_all(
                 """SELECT '成品' AS warehouse_type, inbound.warehouse, inbound.location,
                           d.id AS door_unit_id, inbound.technical_package_id, NULL AS component_id,
@@ -545,12 +534,15 @@ class InventoryService:
 
         for item in tracked_items:
             item["quantity"] = float(item["quantity"] or 0)
-            candidates = [
-                summary for summary in summaries.values()
-                if summary["name"] == item["warehouse"]
-                or summary["warehouse_type"] == item["warehouse_type"]
-            ]
-            if not candidates:
+            exact = [summary for summary in summaries.values() if summary["name"] == item["warehouse"]]
+            typed = [summary for summary in summaries.values() if summary["warehouse_type"] == item["warehouse_type"]]
+            candidates = exact if exact else typed
+            item["warehouse_id"] = candidates[0]["id"] if len(candidates) == 1 else None
+            item["warehouse_inferred"] = not exact and item["warehouse_id"] is not None
+            item.setdefault("source_inferred", False)
+            item.setdefault("stock_anomaly", False)
+            item.setdefault("available_quantity", max(0.0, item["quantity"]))
+            if item["warehouse_id"] is None:
                 continue
             summary = candidates[0]
             summary["tracked_count"] += 1
@@ -563,6 +555,7 @@ class InventoryService:
                 for unit, quantity in sorted(summary["quantity_breakdown"].items())
                 if abs(quantity) > EPSILON
             ]
+        tracked_items.sort(key=lambda item: item["updated_at"], reverse=True)
         return {"warehouses": list(summaries.values()), "tracked_items": tracked_items}
 
     def create_adjustment(self, items: List[Dict[str, Any]], remark: str, created_by: str) -> Dict[str, Any]:

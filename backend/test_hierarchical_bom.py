@@ -128,6 +128,8 @@ class HierarchicalBomTest(unittest.TestCase):
         self.assertEqual(changed, len(parts))
         door = self.db.get_door_unit(door_id)
         self.assertTrue(all(row["available_quantity"] == 0 for row in door["component_inventory"]))
+        overview = InventoryService(self.db.inventory_db).warehouse_overview()
+        self.assertEqual(overview["tracked_items"], [])
 
 
 if __name__ == "__main__":
