@@ -66,8 +66,8 @@
 ### Task 4: Final Verification and Delivery
 
 - [x] Run `git diff --check`, review changes against the spec and verify the pre-existing data file remains unstaged.
-- [ ] Mark completed plan tasks, commit only this batch's files and push to the user's confirmed GitHub branch.
-- [ ] Report tests, limitations and the next batch without claiming that deferred modules are fixed.
+- [x] Mark completed plan tasks, commit only this batch's files and push to the user's confirmed GitHub branch.
+- [x] Report tests, limitations and the next batch without claiming that deferred modules are fixed.
 
 ## Verification Results
 
@@ -80,3 +80,5 @@
 - UI screenshots saved outside the repo in `F:/codex/inventory-ui-verification/`.
 - No production database, migration, paid rendering API or full production build was used.
 - Remaining work is batches 2-4 in the approved spec, not inventory migration or historical-flow editing.
+- Code commit `dd5ea0f` pushed to `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`.
+- Temporary UI verification processes stopped; existing development services and user data left untouched. Tencent Cloud deployment was not performed.
