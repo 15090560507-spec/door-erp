@@ -84,6 +84,8 @@ class OperationsWorkflowTest(unittest.TestCase):
     def test_assignment_and_payroll_lock_workflow(self):
         employee = self.create_employee()
         door_id = create_door(self.db, BomGenerationTest.base_params(), sales_order_id=32)
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE fulfillment_door_units SET billing_mode='legacy' WHERE id=?", (door_id,))
         response = self.client.put(f"/api/operations/door-units/{door_id}/assembly-assignment", json={
             "owner_id": employee["id"],
             "collaborator_ids": [],

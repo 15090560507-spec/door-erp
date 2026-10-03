@@ -55,7 +55,7 @@ export default function ComponentProcessTable({ door, busy, selectedIds, onToggl
   return <section className="component-process-board">
     <header className="component-process-board__header">
       <div><h3>部件生产进度</h3><p>逐项对应当前 BOM；自制件展开加工工序，外购件显示库存与采购状态。</p></div>
-      <div><span>{components.length} 项 BOM</span><span>{works.filter((item) => terminalStatuses.has(item.status || "")).length}/{works.length} 道工序完成</span><button type="button" disabled={busy || remaining > 0 || available === 0} onClick={() => void onIssueAll()}><PackageCheck size={14} />拼装领用全部</button></div>
+      <div><span>{components.length} 项 BOM</span><span>{works.filter((item) => item.status === "已完成").length}/{works.length} 道工序完成</span><button type="button" disabled={busy || remaining > 0 || available === 0} onClick={() => void onIssueAll()}><PackageCheck size={14} />拼装领用全部</button></div>
     </header>
     <div className="component-process-table-wrap">
       <table className="component-process-table">
@@ -65,7 +65,7 @@ export default function ComponentProcessTable({ door, busy, selectedIds, onToggl
           const componentWorks = worksByComponent.get(componentId) || [];
           const material = materialByComponent.get(componentId);
           const inventory = inventoryByComponent.get(componentId);
-          const selfMade = isSelfMade(component);
+          const selfMade = door.billing_mode === "whole_door" ? component.procurement_mode === "make" : isSelfMade(component);
           const assembly = component.item_kind === "assembly";
           const activeWorks = componentWorks.filter((item) => item.id && !terminalStatuses.has(item.status || ""));
           const materialState = selfMade
@@ -76,8 +76,8 @@ export default function ComponentProcessTable({ door, busy, selectedIds, onToggl
                   : material.received_quantity > 0 ? "已到货"
                     : material.purchased_quantity > 0 ? "采购中"
                       : material.reserved_quantity >= material.required_quantity - 0.005 ? "库存已预留" : "待备料";
-          const allDone = componentWorks.length > 0 && componentWorks.every((item) => terminalStatuses.has(item.status || ""));
-          const overallState = !selfMade ? materialState : !componentWorks.length ? "未生成工序" : allDone ? (assembly ? "拼装完成" : "加工完成") : componentWorks.some((item) => item.status === "进行中") ? "加工中" : "待加工";
+          const allDone = componentWorks.length > 0 && componentWorks.every((item) => item.status === "已完成");
+          const overallState = !selfMade ? materialState : !componentWorks.length ? "未生成工序" : componentWorks.some(item => item.status === "已取消") ? "有跳过工序" : allDone ? (assembly ? "拼装完成" : "加工完成") : componentWorks.some((item) => item.status === "进行中") ? "加工中" : "待加工";
           const planned = inventory?.planned_quantity || component.quantity || 0;
           const parent = <tr className="component-process-parent" key={`component-${componentId}`}>
             <td className="is-check"><input type="checkbox" aria-label={`选择${component.name}未完成工序`} disabled={!activeWorks.length} checked={activeWorks.length > 0 && activeWorks.every((item) => selectedIds.includes(item.id!))} onChange={(event) => activeWorks.forEach((item) => onToggle(item.id!, event.target.checked))} /></td>
@@ -86,7 +86,7 @@ export default function ComponentProcessTable({ door, busy, selectedIds, onToggl
             <td><Pill tone={materialState.startsWith("缺") ? "red" : selfMade ? "blue" : ["已领料", "已到货", "库存已预留"].includes(materialState) ? "green" : "amber"}>{materialState}</Pill></td>
             <td><span className="component-process-muted">{componentWorks.find((item) => item.executor_uid)?.executor_uid || "按工序分配"}</span></td>
             <td><Pill tone={allDone ? "green" : overallState === "未生成工序" ? "red" : "blue"}>{overallState}</Pill></td>
-            <td>{inventory ? `${amount(inventory.inbound_quantity)} / ${amount(inventory.planned_quantity)} ${inventory.unit}` : `${componentWorks.filter((item) => terminalStatuses.has(item.status || "")).length} / ${componentWorks.length} 道`}</td>
+            <td>{inventory ? `${amount(inventory.inbound_quantity)} / ${amount(inventory.planned_quantity)} ${inventory.unit}` : `${componentWorks.filter((item) => item.status === "已完成").length} / ${componentWorks.length} 道`}</td>
             <td>{inventory ? <button type="button" disabled={busy || inventory.remaining_inbound_quantity <= 0.005} onClick={() => void onInbound(componentId, inventory.remaining_inbound_quantity)}>完工入半成品</button> : <span className="component-process-muted">{selfMade ? "按工序推进" : "由库存/采购处理"}</span>}</td>
           </tr>;
           const children = componentWorks.length
@@ -106,7 +106,7 @@ function ProcessRow({ work, busy, selected, onToggle, onSave }: { work: Fulfillm
   const terminal = terminalStatuses.has(work.status || "");
   return <tr className={`component-process-child${selected ? " is-selected" : ""}`}>
     <td className="is-check"><input type="checkbox" disabled={terminal || !work.id} checked={selected} onChange={(event) => work.id && onToggle(work.id, event.target.checked)} /></td>
-    <td><strong><ChevronRight size={13} />{work.name.split("·").pop()}</strong><small>{work.route || work.category}</small></td>
+    <td><strong><ChevronRight size={13} />{work.name.split("·").pop()}</strong><small>{work.route_snapshot?.process_unconfigured ? "工艺未配置" : work.route_snapshot?.supplementary_work ? "补加工 · 不自动追加计件" : work.route || work.category}</small></td>
     <td><span>{work.operation_code || "工序"}</span><small>{work.inspection_required ? "需要过程检验" : "常规工序"}</small></td>
     <td><Pill tone={work.material_ready ? "green" : "amber"}>{work.material_ready ? "材料可用" : work.blocked_reason || work.readiness_status || "待物料"}</Pill></td>
     <td><input list="workforce-employees" value={executor} onChange={(event) => setExecutor(event.target.value)} placeholder="未分配" /></td>

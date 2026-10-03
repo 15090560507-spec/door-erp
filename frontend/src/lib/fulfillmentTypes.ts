@@ -249,6 +249,8 @@ export interface PayrollDraft {
 }
 
 export interface DoorUnitDetail extends DoorUnitSummary {
+  billing_mode?: "legacy" | "whole_door";
+  operation_fees?: import("./operationsTypes").DoorOperationFee[];
   order_no: string;
   customer: string;
   project: string;

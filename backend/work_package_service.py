@@ -190,7 +190,10 @@ class WorkPackageService:
             "SELECT COUNT(*) AS total FROM fulfillment_work_packages WHERE technical_package_id=? AND operation_code!=''",
             (package_id,),
         ).fetchone()
-        if existing and int(existing["total"] or 0) > 0:
+        door = conn.execute("SELECT billing_mode FROM fulfillment_door_units WHERE id=?", (door_id,)).fetchone()
+        whole_door = bool(door and door["billing_mode"] == "whole_door")
+        package = conn.execute("SELECT status FROM fulfillment_technical_packages WHERE id=?", (package_id,)).fetchone()
+        if existing and int(existing["total"] or 0) > 0 and (not whole_door or package["status"] == "已确认"):
             self.recompute(conn, door_id=door_id, now=now)
             return int(existing["total"])
 
@@ -214,8 +217,14 @@ class WorkPackageService:
         ).fetchall()
         work_ids_by_component: Dict[int, List[int]] = {}
         for component_index, component in enumerate(components, start=1):
+            if whole_door and component["procurement_mode"] != "make":
+                continue
             component_id = int(component["id"])
-            route = self._component_route(component)
+            if whole_door:
+                from component_route_service import component_route
+                route = component_route(conn, component)
+            else:
+                route = self._component_route(component)
             route_name = " → ".join(node.name for node in route)
             ids_by_code: Dict[str, int] = {}
             for operation_index, node in enumerate(route, start=1):

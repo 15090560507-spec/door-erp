@@ -60,6 +60,8 @@ class PersonnelWorkTest(unittest.TestCase):
             (door_id,),
         )
         if existing:
+            with self.db.transaction() as conn:
+                conn.execute("UPDATE fulfillment_technical_packages SET status='已确认' WHERE id=?", (existing["id"],))
             return int(existing["id"])
         now = fulfillment_now()
         with self.db.transaction() as conn:
@@ -107,10 +109,29 @@ class PersonnelWorkTest(unittest.TestCase):
         self.assertEqual(workers["E002"]["status"], "空闲")
         self.assertIsNone(workers["E002"]["current_work"])
         self.assertEqual(workers["E003"]["current_work"]["status"], "待质检")
+        self.assertEqual(workers["E003"]["status"], "待检")
         for worker in workers.values():
             self.assertNotIn("next_task", worker)
             self.assertNotIn("workload", worker)
             self.assertNotIn("payroll", worker)
+
+    def test_scheduled_cancelled_old_version_and_inactive_people(self):
+        employee = self.create_employee("E001", "张师傅", "下料组")
+        door = create_door(self.db, test_bom_generation.BomGenerationTest.base_params(), sales_order_id=93)
+        package = self.create_package(door)
+        self.add_work(package, door, employee, "待开工任务", "已排单")
+        worker = lambda: self.client.get("/api/operations/personnel-work").json()["departments"][0]["employees"][0]
+        self.assertEqual(worker()["status"], "待开工")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE fulfillment_orders SET status='已取消'")
+        self.assertEqual(worker()["status"], "空闲")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE fulfillment_orders SET status='履约中'")
+            conn.execute("INSERT INTO fulfillment_technical_packages(door_unit_id,version,status,product_snapshot_json,created_by,created_at,updated_at) VALUES (?,2,'草稿','{}','A','now','now')", (door,))
+        self.assertEqual(worker()["status"], "空闲")
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE workforce_employees SET is_active=0")
+        self.assertEqual(self.client.get("/api/operations/personnel-work").json()["departments"], [])
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import BomWorkbench from "@/components/BomWorkbench";
 import CalculationWorkbench from "@/components/CalculationWorkbench";
 import ComponentProcessTable from "@/components/production/ComponentProcessTable";
+import DoorPieceworkTable from "@/components/production/DoorPieceworkTable";
 import PersonnelWorkBoard from "@/components/production/PersonnelWorkBoard";
 import MetricStrip from "@/components/workspace/MetricStrip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
@@ -345,6 +346,7 @@ function WorkBoard({ door, busy, notify, onBusy, onChanged }: WorkbenchProps) {
       }}
     />
     <p className="production-process-note">工序状态可逐项调整，也可勾选后批量推进；需要过程检验的项目先提交质检，跳过时必须说明原因。</p>
+    {door.billing_mode === "whole_door" && <DoorPieceworkTable fees={door.operation_fees || []} employees={employees} busy={busy} notify={notify} onSaved={async fee => { await onChanged({ ...door, operation_fees: (door.operation_fees || []).map(row => row.id === fee.id ? fee : row) }); }} />}
     <section className="assembly-assignment-panel">
       <div className="mb-3"><h3 className="text-sm font-semibold">拼装人员</h3><p className="mt-1 text-xs text-[#636366]">整樘门设置一名主要拼装人员，也可勾选协作人员；每道加工工序仍单独记录执行人。</p></div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_minmax(220px,1fr)_150px_150px_minmax(220px,1fr)_auto]">

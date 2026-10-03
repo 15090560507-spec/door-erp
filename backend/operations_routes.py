@@ -18,6 +18,7 @@ from operations_models import (
     PayrollCalculateInput,
     PayrollEntryUpdate,
     PayrollStatusUpdate,
+    PieceworkAllocationSave,
     RouteTemplateUpdate,
 )
 
@@ -43,6 +44,7 @@ def _route_payload(template: Dict) -> Dict:
     for step in steps:
         step["predecessor_codes"] = json.loads(step.pop("predecessor_codes_json") or "[]")
         step["material_operations"] = json.loads(step.pop("material_operations_json") or "[]")
+        step["applicable_groups"] = json.loads(step.pop("applicable_groups_json") or "[]")
         step["inspection_required"] = bool(step["inspection_required"])
         step["is_active"] = bool(step["is_active"])
     return {**template, "is_default": bool(template["is_default"]), "is_active": bool(template["is_active"]), "steps": steps}
@@ -58,6 +60,9 @@ def list_route_templates(current_user: Dict = Depends(get_current_user)):
 def update_route_template(template_id: int, req: RouteTemplateUpdate, current_user: Dict = Depends(get_current_user)):
     now = fulfillment_now()
     try:
+        from component_route_service import validate_steps
+        from door_piecework_service import money_cents
+        validate_steps(req.steps)
         with fulfillment_db.transaction() as conn:
             template = conn.execute("SELECT * FROM process_route_templates WHERE id=?", (template_id,)).fetchone()
             if not template:
@@ -80,20 +85,35 @@ def update_route_template(template_id: int, req: RouteTemplateUpdate, current_us
                            template_id, step_code, name, category, sequence_no,
                            predecessor_codes_json, material_operations_json,
                            inspection_required, standard_minutes, piece_rate,
-                           default_role, work_center, weight, is_active
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           default_role, work_center, weight, is_active, applicable_groups_json
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         template_id, step.step_code, step.name, step.category,
                         step.sequence_no or sequence, json_dumps(step.predecessor_codes),
                         json_dumps(step.material_operations), int(step.inspection_required),
-                        step.standard_minutes, step.piece_rate, step.default_role,
-                        step.work_center, step.weight, int(step.is_active),
+                        step.standard_minutes, money_cents(step.piece_rate) / 100, step.default_role,
+                        step.work_center, step.weight, int(step.is_active), json_dumps(step.applicable_groups),
                     ),
                 )
     except Exception as exc:
         raise _fail(exc) from exc
     template = fulfillment_db.fetch_one("SELECT * FROM process_route_templates WHERE id=?", (template_id,))
     return {"template": _route_payload(template or {}), "message": "工艺路线模板已更新；已发布门樘仍使用原快照"}
+
+
+@router.put("/piecework/{fee_id}/allocations")
+def save_piecework_allocations(fee_id: int, req: PieceworkAllocationSave, current_user: Dict = Depends(get_current_user)):
+    from door_piecework_service import DoorPieceworkService
+    try:
+        with fulfillment_db.transaction() as conn:
+            previous = conn.execute("SELECT revision FROM door_operation_fees WHERE id=?", (fee_id,)).fetchone()
+            fee = DoorPieceworkService.save_allocations(conn, fee_id, req.revision, req.allocations, req.confirm, fulfillment_now(), str(current_user.get("uid") or ""))
+            if previous and previous["revision"] != fee["revision"]:
+                fulfillment_db.add_event(conn, order_id=None, door_unit_id=fee["door_unit_id"], entity_type="piecework", entity_id=fee_id,
+                    action="确认计件分配" if req.confirm else "保存计件分配草稿", detail=f"分配 {fee['allocated_cents']/100:.2f} 元，未分 {fee['remaining_cents']/100:.2f} 元", user=current_user)
+        return {"fee": fee, "message": "计件分配已确认" if req.confirm else "分配草稿已保存"}
+    except Exception as exc:
+        raise _fail(exc) from exc
 
 
 def _employee_payload(row: Dict) -> Dict:
@@ -124,14 +144,21 @@ def list_personnel_work(current_user: Dict = Depends(get_current_user)):
                   d.id AS door_unit_id, d.order_id, d.production_no
            FROM fulfillment_work_packages w
            JOIN fulfillment_door_units d ON d.id=w.door_unit_id
-           WHERE w.status NOT IN ('已完成', '已取消')
+           JOIN fulfillment_orders o ON o.id=d.order_id
+           JOIN fulfillment_technical_packages p ON p.id=w.technical_package_id
+           WHERE w.status NOT IN ('草稿', '已完成', '已取消')
+             AND o.status NOT IN ('已取消', '已作废') AND p.status='已确认'
+             AND p.version=(SELECT MAX(latest.version) FROM fulfillment_technical_packages latest WHERE latest.door_unit_id=d.id)
              AND (w.employee_id IS NOT NULL OR w.executor_uid!='')
            ORDER BY CASE w.status
                       WHEN '进行中' THEN 1
-                      WHEN '待质检' THEN 2
-                      WHEN '已排单' THEN 3
-                      WHEN '待排单' THEN 4
-                      ELSE 5
+                      WHEN '异常' THEN 2
+                      WHEN '返工' THEN 3
+                      WHEN '暂停' THEN 4
+                      WHEN '待质检' THEN 5
+                      WHEN '已排单' THEN 6
+                      WHEN '待排单' THEN 7
+                      ELSE 8
                     END,
                     w.sequence_no, w.id"""
     )
@@ -159,7 +186,7 @@ def list_personnel_work(current_user: Dict = Depends(get_current_user)):
             "employee_no": employee["employee_no"],
             "name": employee["name"],
             "role_name": employee.get("role_name") or "",
-            "status": "工作中" if current_work else "空闲",
+            "status": ({"进行中": "工作中", "待排单": "待开工", "已排单": "待开工", "待质检": "待检"}.get(current_work["status"], current_work["status"]) if current_work else "空闲"),
             "current_work": current_work,
         })
     return {"departments": [{"name": name, "employees": rows} for name, rows in departments.items()]}
@@ -321,7 +348,7 @@ def calculate_payroll(req: PayrollCalculateInput, current_user: Dict = Depends(g
     try:
         with fulfillment_db.transaction() as conn:
             period = conn.execute("SELECT * FROM payroll_periods WHERE month=?", (req.month,)).fetchone()
-            if period and period["status"] == "已锁定":
+            if period and (period["status"] == "已锁定" or (period["status"] == "已审批" and conn.execute("SELECT 1 FROM door_operation_fees WHERE status='已确认' AND completed_at LIKE ? LIMIT 1", (f"{req.month}%",)).fetchone())):
                 raise RuntimeError("该工资期间已锁定，不能重新计算")
             if not period:
                 cursor = conn.execute(
@@ -336,9 +363,16 @@ def calculate_payroll(req: PayrollCalculateInput, current_user: Dict = Depends(g
                 piecework = conn.execute(
                     """SELECT COALESCE(SUM(d.amount), 0) AS total FROM fulfillment_payroll_drafts d
                        JOIN fulfillment_work_packages w ON w.id=d.work_package_id
-                       WHERE d.employee_uid=? AND w.completed_at LIKE ? AND d.status!='已冲销'""",
+                       JOIN fulfillment_door_units door ON door.id=d.door_unit_id
+                       WHERE door.billing_mode='legacy' AND d.employee_uid=? AND w.completed_at LIKE ? AND d.status!='已冲销'""",
                     (employee["employee_no"], f"{req.month}%"),
                 ).fetchone()["total"]
+                new_cents = conn.execute("""SELECT COALESCE(SUM(a.amount_cents),0) AS total
+                    FROM door_operation_allocations a JOIN door_operation_fees f ON f.id=a.fee_id
+                    JOIN fulfillment_door_units d ON d.id=f.door_unit_id JOIN fulfillment_orders o ON o.id=d.order_id
+                    WHERE a.employee_id=? AND d.billing_mode='whole_door' AND f.status='已确认'
+                      AND f.completed_at LIKE ? AND o.status NOT IN ('已取消','已作废')""", (employee["id"], f"{req.month}%")).fetchone()["total"]
+                piecework = float(piecework or 0) + int(new_cents) / 100
                 current = conn.execute("SELECT * FROM payroll_entries WHERE period_id=? AND employee_id=?", (period_id, employee["id"])).fetchone()
                 values = {key: float(current[key] or 0) if current else 0 for key in ("overtime_amount", "allowance", "bonus", "deduction", "social_insurance", "tax", "other_withholding")}
                 base_salary = float(employee["base_salary"] or 0)

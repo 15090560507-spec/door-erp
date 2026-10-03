@@ -17,7 +17,8 @@ class RouteStepInput(BaseModel):
     material_operations: list[str] = Field(default_factory=list)
     inspection_required: bool = False
     standard_minutes: float = Field(default=0, ge=0)
-    piece_rate: float = Field(default=0, ge=0)
+    piece_rate: str | float = 0
+    applicable_groups: list[str] = Field(default_factory=list)
     default_role: str = ""
     work_center: str = ""
     weight: float = Field(default=1, ge=0)
@@ -82,3 +83,15 @@ class PayrollEntryUpdate(BaseModel):
 
 class PayrollStatusUpdate(BaseModel):
     status: str
+
+
+class PieceworkAllocationInput(BaseModel):
+    employee_id: int = Field(gt=0)
+    amount: str
+    note: str = ""
+
+
+class PieceworkAllocationSave(BaseModel):
+    revision: int = Field(ge=1)
+    confirm: bool = False
+    allocations: list[PieceworkAllocationInput] = Field(default_factory=list)

@@ -28,7 +28,7 @@ export interface PersonnelWorkEmployee {
   employee_no: string;
   name: string;
   role_name: string;
-  status: "工作中" | "空闲";
+  status: "工作中" | "待开工" | "待检" | "暂停" | "异常" | "返工" | "空闲";
   current_work: PersonnelCurrentWork | null;
 }
 
@@ -45,9 +45,10 @@ export interface RouteStep {
   sequence_no: number;
   predecessor_codes: string[];
   material_operations: string[];
+  applicable_groups: string[];
   inspection_required: boolean;
   standard_minutes: number;
-  piece_rate: number;
+  piece_rate: number | string;
   default_role: string;
   work_center: string;
   weight: number;
@@ -104,4 +105,33 @@ export interface PayrollPeriod {
   approved_by?: string;
   approved_at?: string;
   entries?: PayrollEntry[];
+}
+
+export interface PieceworkAllocation {
+  employee_id: number;
+  amount_cents: number;
+  note: string;
+  employee_name: string;
+  employee_no: string;
+}
+
+export interface DoorOperationFee {
+  id: number;
+  door_unit_id: number;
+  technical_package_id: number;
+  billing_operation_code: string;
+  name: string;
+  status: "加工中" | "需核对" | "待分配" | "未设置计件单价" | "已确认";
+  revision: number;
+  total_cents: number;
+  allocated_cents: number;
+  remaining_cents: number;
+  completed_at: string | null;
+  allocations: PieceworkAllocation[];
+}
+
+export interface PieceworkAllocationSave {
+  revision: number;
+  confirm: boolean;
+  allocations: Array<{ employee_id: number; amount: string; note: string }>;
 }

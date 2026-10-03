@@ -1,11 +1,16 @@
 import { api } from "./api";
-import type { AttendanceRow, PayrollEntry, PayrollPeriod, PersonnelWorkDepartment, RouteTemplate, WorkforceEmployee } from "./operationsTypes";
+import type { AttendanceRow, DoorOperationFee, PieceworkAllocationSave, PayrollEntry, PayrollPeriod, PersonnelWorkDepartment, RouteTemplate, WorkforceEmployee } from "./operationsTypes";
 
 export type EmployeePayload = Omit<WorkforceEmployee, "id">;
 
 export async function getEmployees() {
   const { data } = await api.get<{ employees: WorkforceEmployee[] }>("/operations/employees");
   return data.employees;
+}
+
+export async function savePieceworkAllocations(feeId: number, payload: PieceworkAllocationSave) {
+  const { data } = await api.put<{ fee: DoorOperationFee; message: string }>(`/operations/piecework/${feeId}/allocations`, payload);
+  return data;
 }
 
 export async function getPersonnelWork() {
