@@ -139,9 +139,9 @@ page becomes empty.
 - [x] Content-aware layout chosen over scaling the whole sheet or the doors.
 - [x] Design confirmed in conversation.
 - [x] Written specification and self-review for scope and consistency.
-- [ ] User review of this written specification.
-- [ ] Implementation plan.
-- [ ] Implementation, verification and delivery.
+- [x] User review of this written specification, approved by the subsequent request to continue adjusting.
+- [x] Implementation plan.
+- [x] Implementation and verification; delivery is tracked in the implementation plan.
 
 Delivery follows the user's standing request to push changes to
 `15090560507-spec/door-erp`, branch

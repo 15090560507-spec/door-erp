@@ -123,6 +123,8 @@ export interface QuoteResponse {
 export interface QuoteListResponse {
   quotes: QuoteResponse[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface AiConfig {

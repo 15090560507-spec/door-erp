@@ -761,7 +761,7 @@ export default function QuotePage() {
             onClick={() => setHistoryOpen(true)}
             className="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-white border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors"
           >
-            最近报价
+            报价历史
           </button>
           <button
             type="button"

@@ -15,6 +15,7 @@ from ezdxf.addons import Importer
 from ezdxf.disassemble import recursive_decompose
 
 from cad_occlusion import CadOcclusionManager, structural_group_for_layer
+from cad_order_layout import adapt_order_sheet
 
 from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
 from trim_geometry import calculate_trim_geometry
@@ -2583,18 +2584,21 @@ def run_integrated_system(
         for block in doc.blocks:
             update_attribute_definitions(block)
 
+        layout_notes = []
         for insert in ms.query('INSERT'):
             to_replace = []
             for attrib in insert.attribs:
                 tag = attrib.dxf.tag.strip().upper()
                 if tag == "BZ":
-                    ms.add_mtext(all_attrs["BZ"], dxfattribs={
+                    note = ms.add_mtext(all_attrs["BZ"], dxfattribs={
                         'insert': attrib.dxf.insert,
                         'char_height': attrib.dxf.height,
                         'layer': attrib.dxf.layer,
                         'style': attrib.dxf.style
-                    }).dxf.width = 6000
-                    to_replace.append(attrib)
+                    })
+                    note.dxf.width = 6000
+                    layout_notes.append(note)
+                    to_replace.append(attrib.dxf.tag)
                 elif tag in all_attrs:
                     attrib.dxf.text = str(all_attrs[tag])
                 elif tag == "QC_TEXT":
@@ -2610,8 +2614,8 @@ def run_integrated_system(
                     else:
                         attrib.dxf.text = "木箱"
 
-            for old_attrib in to_replace:
-                old_attrib.destroy()
+            for tag in to_replace:
+                insert.delete_attrib(tag)
 
         sel_hys = checks.get('hys', '葫芦头合页')
         hinge_name = CONFIG.HINGE_TYPES.get(sel_hys, "hlt")
@@ -2649,6 +2653,7 @@ def run_integrated_system(
         lh = draw_p.get("light_h", 0)
 
         draw_started = time.perf_counter()
+        template_handles = {entity.dxf.handle for entity in ms}
         if draw_p.get("simple_product"):
             # 牌匾、铝艺栅栏、雨棚只输出订货单信息，不套用门框门板几何。
             drawer.update_progress("简化产品无需绘制门体结构")
@@ -2657,6 +2662,10 @@ def run_integrated_system(
             if not draw_p.get("front_only"):
                 draw_door_in_frame(drawer, "背面", draw_p, True, use_light, lw, lh)
         drawer.occlusion.apply()
+        drawing_entities = [entity for entity in ms if entity.dxf.handle not in template_handles]
+        layout_warning = adapt_order_sheet(doc, drawing_entities, layout_notes)
+        if layout_warning:
+            logger.warning("[cad-layout] %s", layout_warning)
         draw_elapsed = time.perf_counter() - draw_started
 
         write_started = time.perf_counter()
@@ -2671,7 +2680,7 @@ def run_integrated_system(
             write_elapsed,
             time.perf_counter() - total_started,
         )
-        return "图纸生成成功！", buffer
+        return (f"图纸生成成功！ {layout_warning}" if layout_warning else "图纸生成成功！"), buffer
 
     except Exception as e:
         import traceback

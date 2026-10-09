@@ -80,8 +80,11 @@ export async function rememberQuoteItems(items: QuoteItem[]): Promise<{ remember
 
 // ===================== 报价单 API =====================
 
-export async function getQuotes(): Promise<QuoteListResponse> {
-  const { data } = await api.get<QuoteListResponse>("/quotes");
+export async function getQuotes(
+  params: { limit?: number; offset?: number; q?: string; quoteDate?: string } = {},
+  signal?: AbortSignal,
+): Promise<QuoteListResponse> {
+  const { data } = await api.get<QuoteListResponse>("/quotes", { params, signal });
   return data;
 }
 

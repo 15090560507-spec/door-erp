@@ -427,10 +427,15 @@ def delete_accessory(accessory_id: int, current_user: dict = Depends(require_rol
 # ===================== 报价单管理 =====================
 
 @quote_router.get("/api/quotes")
-def list_quotes(current_user: dict = Depends(get_current_user)):
-    """获取报价单列表（最新 50 条，不含 items 明细以优化性能）"""
-    quotes = quote_db.get_all(limit=50)
-    return {"quotes": quotes}
+def list_quotes(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    q: str = Query("", max_length=200),
+    quoteDate: str = Query("", max_length=10),
+    current_user: dict = Depends(get_current_user),
+):
+    """分页查询全部报价历史，不限制保存数量。"""
+    return quote_db.get_page(limit=limit, offset=offset, q=q, quote_date=quoteDate)
 
 
 @quote_router.post("/api/quotes", status_code=201)

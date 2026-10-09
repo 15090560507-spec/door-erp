@@ -46,6 +46,7 @@ from models import (
 )
 from drawing import run_integrated_system
 from drawing import _load_template
+from cad_order_layout import ORDER_LAYOUT_VERSION
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
@@ -276,6 +277,7 @@ def _cad_cache_key(req: CADRequest) -> str:
         template_version = 0
     payload = {
         "template": template_version,
+        "layout": ORDER_LAYOUT_VERSION,
         "request": req.model_dump(mode="json"),
     }
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
@@ -310,6 +312,8 @@ def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
             "dxf": dxf_bytes,
             "svg": None,
             "sheet_jpg": None,
+            "layout_warning": result_msg.split("Adaptive layout skipped:", 1)[-1].strip()
+            if "Adaptive layout skipped:" in result_msg else "",
         }
         _cad_cache.move_to_end(key)
         while len(_cad_cache) > CAD_CACHE_MAX_ITEMS:
@@ -324,6 +328,12 @@ def _cached_cad(req: CADRequest) -> tuple[str, bytes, bool]:
         len(dxf_bytes),
     )
     return key, dxf_bytes, False
+
+
+def _cad_layout_headers(key: str) -> Dict[str, str]:
+    with _cad_cache_lock:
+        warning = (_cad_cache.get(key) or {}).get("layout_warning", "")
+    return {"X-CAD-Layout-Warning": quote(warning)} if warning else {}
 
 
 def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
@@ -961,7 +971,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     """
     _validate_task_params(req.model_dump())
     try:
-        _, dxf_bytes, cache_hit = _cached_cad(req)
+        key, dxf_bytes, cache_hit = _cached_cad(req)
     except Exception as exc:
         _raise_cad_error("DXF 生成", exc)
     bytes_io = io.BytesIO(dxf_bytes)
@@ -985,6 +995,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
                 f"filename*=UTF-8''{encoded_filename}"
             ),
             "X-CAD-Cache": "HIT" if cache_hit else "MISS",
+            **_cad_layout_headers(key),
         }
     )
 
@@ -1012,6 +1023,7 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
             "Cache-Control": "no-store",
             "X-CAD-Cache": "HIT" if cad_cache_hit else "MISS",
             "X-CAD-Preview-Cache": "HIT" if svg_cache_hit else "MISS",
+            **_cad_layout_headers(key),
         },
     )
 
@@ -1041,6 +1053,7 @@ def generate_cad_jpg(req: CADRequest, current_user: Dict = Depends(get_current_u
             "X-CAD-JPG-Bounds": "ORDER_FORM" if result["usedOrderForm"] else "FALLBACK",
             "X-CAD-JPG-Size": f'{result["width"]}x{result["height"]}',
             "X-CAD-JPG-Plot": result.get("plotProfile", ""),
+            **_cad_layout_headers(key),
         },
     )
 

@@ -197,6 +197,35 @@ class QuoteDatabaseManager:
 
     def get_all(self, limit: int = 50) -> List[Dict]:
         """返回报价单列表（不含明细），最新在前"""
+        return self.get_page(limit=limit)["quotes"]
+
+    def get_page(self, limit: int = 50, offset: int = 0, q: str = "", quote_date: str = "") -> Dict:
+        """Search the complete collection before selecting lightweight summaries."""
+        if not 1 <= limit <= 200 or offset < 0:
+            raise ValueError("Invalid quote pagination")
+        query = (q or "").strip().casefold()
+
+        def matches(quote: Dict) -> bool:
+            if quote_date and quote.get("quoteDate") != quote_date:
+                return False
+            if not query:
+                return True
+            values = [quote.get(key, "") for key in ("id", "customerName", "projectName")]
+            items = list(quote.get("items") or [])
+            for group in quote.get("doorGroups") or []:
+                values.append(group.get("groupName", ""))
+                items.extend(group.get("items") or [])
+            for item in items:
+                values.extend(item.get(key, "") for key in ("productName", "width", "height"))
+                width, height = item.get("width"), item.get("height")
+                if width is not None and height is not None:
+                    values.append(f"{width} x {height}")
+                    try:
+                        values.append(f"{float(width):g} x {float(height):g}")
+                    except (TypeError, ValueError):
+                        pass
+            return query in " ".join(str(value) for value in values if value is not None).casefold()
+
         def is_positive(value) -> bool:
             try:
                 return float(value or 0) > 0
@@ -221,9 +250,10 @@ class QuoteDatabaseManager:
 
         with self._lock:
             quotes = self._load_unlocked()
-            quotes_sorted = sorted(quotes, key=lambda q: q.get("id", 0), reverse=True)
+            quotes_sorted = sorted((quote for quote in quotes if matches(quote)),
+                                   key=lambda quote: quote.get("id", 0), reverse=True)
             result = []
-            for q in quotes_sorted[:limit]:
+            for q in quotes_sorted[offset:offset + limit]:
                 summary = {k: v for k, v in q.items() if k not in ("items", "doorGroups")}
                 groups = q.get("doorGroups") or [{"items": q.get("items") or []}]
                 main_items = []
@@ -239,7 +269,7 @@ class QuoteDatabaseManager:
                     "doorCount": len(groups),
                 })
                 result.append(summary)
-            return result
+            return {"quotes": result, "total": len(quotes_sorted), "limit": limit, "offset": offset}
 
     def get_by_id(self, quote_id: int) -> Optional[Dict]:
         """返回单个报价单（含 items）"""
@@ -417,9 +447,14 @@ class QuoteDatabaseManager:
         """内部读取（调用方必须持锁）"""
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
+                data = json.load(f)
+            if not isinstance(data, list) or any(not isinstance(quote, dict) for quote in data):
+                raise ValueError("报价历史数据格式错误，请检查备份后重试")
+            return data
+        except FileNotFoundError:
             return []
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError("报价历史数据读取失败，请检查备份后重试") from error
 
     def _atomic_save(self, data: List[Dict]):
         """原子写入：先写临时文件再原子替换（需在锁内调用），写入前自动备份"""
