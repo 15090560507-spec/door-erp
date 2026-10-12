@@ -92,8 +92,8 @@ must use the same final layout.
 - [x] Alternatives and correction presented.
 - [x] User confirmed uniform frame scaling with fixed aspect ratio.
 - [x] Written specification and consistency review.
-- [ ] User review of the written specification.
-- [ ] Implementation plan, correction, verification and GitHub delivery.
+- [x] User review of the written specification, approved by the subsequent request to continue.
+- [x] Implementation plan, correction and verification; GitHub delivery is tracked in the plan.
 
 Exclude the existing `data/users_database.json` changes and `.superpowers/` from
 commits. Delivery uses the previously authorized GitHub repository and branch.

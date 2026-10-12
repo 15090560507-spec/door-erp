@@ -7,7 +7,7 @@ from ezdxf import bbox
 from ezdxf.math import Matrix44, Vec3
 
 
-ORDER_LAYOUT_VERSION = 'content-aware-order-sheet-v1'
+ORDER_LAYOUT_VERSION = 'fixed-aspect-order-sheet-v2'
 ORDER_NAMES = {'ORDER_FORM', 'ORDERFORM'}
 
 
@@ -31,6 +31,34 @@ def _wrap(text, width, height):
             used += advance
         lines.append(line)
     return lines
+
+
+def _note_layout(texts, width, height):
+    paragraphs = [_wrap(text, width, height) for text in texts]
+    populated = [lines for lines in paragraphs if any(lines)]
+    used = sum(len(lines) * height * 1.7 for lines in populated)
+    used += max(0, len(populated) - 1) * height * 0.5
+    widest = max((_text_width(line, height) for lines in paragraphs for line in lines), default=0)
+    return paragraphs, used, widest
+
+
+def _fit_notes(texts, width, available_height, minimum=64):
+    """Find the largest non-stretched note font fitting both region dimensions."""
+    if not any(texts):
+        return [], minimum, 0.0
+    low, high = minimum, max(minimum, available_height / 1.7)
+    lines, used, widest = _note_layout(texts, width, low)
+    if used > available_height or widest > width:
+        return None
+    for _ in range(40):
+        candidate = (low + high) / 2
+        _, needed, widest = _note_layout(texts, width, candidate)
+        if needed <= available_height and widest <= width:
+            low = candidate
+        else:
+            high = candidate
+    lines, used, _ = _note_layout(texts, width, low)
+    return lines, low, used
 
 
 def _rectangle(entity):
@@ -105,61 +133,45 @@ def adapt_order_sheet(doc, drawing_entities, notes):
         if draw_width <= 0 or draw_height <= 0:
             raise ValueError('Drawing bounds have no usable area')
 
-        # The readability floor applies to metadata only, not door annotations.
-        scale = max(0.35, min(1.5, draw_height / 6500))
-        padding = max(90, min(260, draw_height * 0.035))
-        left_width = max(draw_width + padding * 2, left * scale * 0.72)
-        note_height = max(64, min(180, 152 * scale))
-        note_width = left_width - padding * 2
-        note_lines = [_wrap(note.plain_text(), note_width, note_height) for note in notes]
-        note_space = sum(max(1, len(lines)) * note_height * 1.7 + padding * 0.5
-                         for lines in note_lines if any(lines))
         legal = next((entity for entity in block.query('MTEXT')
                       if entity.dxf.insert.x < left and footer < entity.dxf.insert.y < height * 0.15), None)
         if legal is None:
             raise ValueError('Order-sheet legal remarks could not be located')
-        legal_height = legal.dxf.char_height * scale
-        legal_lines = _wrap(legal.plain_text(), left_width - padding, legal_height)
-        footer_row = footer * scale
-        footer_space = footer_row + len(legal_lines) * legal_height * 1.7 + padding
-        header_space = (height - header) * scale
-        body_space = draw_height + padding * 2 + note_space
-        new_height = footer_space + body_space + header_space
-        x_ratio = left_width / left
-        body_ratio = (footer_space + body_space - footer_row) / (header - footer)
+        padding_base = 180.0
+        legal_lines = _wrap(legal.plain_text(), left - padding_base, legal.dxf.char_height)
+        legal_top = footer + len(legal_lines) * legal.dxf.char_height * 1.7 + 60
+        body_bottom = legal_top + padding_base
+        texts = [note.plain_text() for note in notes]
+        note_reserve = 850 if any(texts) else 0
+        usable_width = left - padding_base * 2
+        usable_height = header - body_bottom - padding_base - note_reserve
+        if usable_width <= 0 or usable_height <= 0:
+            raise ValueError('Order-sheet content region is too small')
 
-        def map_x(x):
-            return x * x_ratio if x < left else left_width + (x - left) * scale
-
-        def map_y(y):
-            if y <= footer:
-                return y * scale
-            if y >= header:
-                return new_height - (height - y) * scale
-            return footer_row + (y - footer) * body_ratio
-
-        def mapped(point):
-            return Vec3(map_x(point.x), map_y(point.y), point.z)
-
-        origin = Vec3(extent.extmin.x - padding,
-                      extent.extmin.y - padding - footer_space, insert.dxf.insert.z)
+        # One scale for the entire grid: never independently resize its axes.
+        scale = max(0.35, draw_width / usable_width, draw_height / usable_height)
+        for _ in range(80):
+            note_width = usable_width * scale
+            note_space = (header - body_bottom - padding_base * 2) * scale - draw_height
+            fitted = _fit_notes(texts, note_width, note_space)
+            if fitted is not None:
+                break
+            scale *= 1.1
+        else:
+            raise ValueError('Manufacturing notes cannot fit at a readable height')
+        note_lines, note_height, note_used = fitted
+        padding = padding_base * scale
+        left_width = left * scale
+        origin = Vec3(extent.center.x - left_width / 2,
+                      extent.extmin.y - body_bottom * scale, insert.dxf.insert.z)
         old_origin = insert.dxf.insert
-        logo_scale = min(scale, x_ratio)
-        logo_transform = Matrix44.chain(
-            Matrix44.scale(logo_scale),
-            Matrix44.translate((map_x(logo) - logo * logo_scale) / 2,
-                               new_height - header_space - header * logo_scale, 0),
-        )
+        transform = Matrix44.scale(scale)
 
         def fit_text(entity, old_point, tagged=False):
             kind = entity.dxftype()
             if kind == 'MTEXT':
-                entity.dxf.char_height *= scale
-                entity.dxf.width = max(entity.dxf.char_height * 2, min(
-                    map_x(old_point.x + entity.dxf.width) - map_x(old_point.x),
-                    map_x(width if old_point.x >= left else left) - map_x(old_point.x) - 20 * scale))
-            else:
-                entity.dxf.height *= scale
+                entity.dxf.width = min(entity.dxf.width,
+                    ((width if old_point.x >= left else left) - old_point.x - 20) * scale)
             if tagged or kind == 'MTEXT':
                 # Attribute values must stay in their actual grid cell, not spill
                 # across the table border when customers/styles have long names.
@@ -169,7 +181,7 @@ def adapt_order_sheet(doc, drawing_entities, notes):
                     if (abs(start.x - end.x) < 0.01 and start.x > old_point.x
                             and min(start.y, end.y) <= old_point.y <= max(start.y, end.y)):
                         boundaries.append(float(start.x))
-                available = max(20 * scale, map_x(min(boundaries)) - map_x(old_point.x) - 40 * scale)
+                available = max(20 * scale, (min(boundaries) - old_point.x - 40) * scale)
                 if kind == 'MTEXT':
                     entity.dxf.width = min(entity.dxf.width, available)
                     estimated = max((_text_width(line, entity.dxf.char_height)
@@ -186,43 +198,28 @@ def adapt_order_sheet(doc, drawing_entities, notes):
             replacement = entity.copy()
             kind = entity.dxftype()
             if entity is legal:
+                replacement.transform(transform)
                 replacement.text = '\\P'.join(legal_lines)
-                replacement.dxf.insert = (padding / 2, footer_space - padding / 2, 0)
-                replacement.dxf.char_height = legal_height
+                replacement.dxf.insert = (padding / 2, legal_top * scale, 0)
                 replacement.dxf.width = left_width - padding
             elif kind in ('SPLINE', 'CIRCLE'):
                 shape_bounds = bbox.extents([entity], fast=True)
                 if not shape_bounds.has_data or shape_bounds.extmax.x > logo or shape_bounds.extmin.y < header:
                     raise ValueError('Unsupported graphic outside order-sheet logo')
-                replacement.transform(logo_transform)
-            elif kind == 'LINE':
-                replacement.dxf.start = mapped(entity.dxf.start)
-                replacement.dxf.end = mapped(entity.dxf.end)
-            elif kind == 'LWPOLYLINE':
-                points = list(entity.get_points())
-                if _rectangle(entity) == (0.0, 0.0, round(width, 4), round(height, 4)):
-                    replacement.set_points([(map_x(float(x)), map_y(float(y)), sw * scale, ew * scale, bulge)
-                                            for x, y, sw, ew, bulge in points])
-                else:
-                    # Checkbox and threshold symbols keep their aspect ratio.
-                    center = bbox.extents([entity], fast=True).center
-                    replacement.transform(Matrix44.chain(Matrix44.scale(scale), Matrix44.translate(
-                        map_x(center.x) - center.x * scale, map_y(center.y) - center.y * scale, 0)))
+                replacement.transform(transform)
+            elif kind in ('LINE', 'LWPOLYLINE'):
+                replacement.transform(transform)
             elif kind in ('MTEXT', 'TEXT', 'ATTDEF'):
                 point = entity.dxf.insert
-                if kind == 'MTEXT' and point.x < logo and point.y >= header:
-                    replacement.transform(logo_transform)
-                else:
-                    replacement.dxf.insert = mapped(point)
-                    if kind in ('TEXT', 'ATTDEF') and entity.dxf.hasattr('align_point'):
-                        replacement.dxf.align_point = mapped(entity.dxf.align_point)
+                replacement.transform(transform)
+                if not (kind == 'MTEXT' and point.x < logo and point.y >= header):
                     fit_text(replacement, point, kind != 'MTEXT')
                     if kind == 'MTEXT' and entity.plain_text().strip() in (
                             '\u9ad8\u4f4e', '\u5e73\u5e95', '\u540a\u811a'):
                         # These labels straddle the original value-column line;
                         # treat them as value-cell labels rather than tiny cells.
                         available = 430 * scale
-                        replacement.dxf.insert = (map_x(column) + 15 * scale, map_y(point.y), point.z)
+                        replacement.dxf.insert = ((column + 15) * scale, point.y * scale, point.z)
                         replacement.dxf.width = available
                         replacement.dxf.char_height = min(entity.dxf.char_height * scale,
                             available / max(_text_width(entity.plain_text(), 1), 1))
@@ -234,22 +231,22 @@ def adapt_order_sheet(doc, drawing_entities, notes):
         for attribute in insert.attribs:
             replacement = attribute.copy()
             point = attribute.dxf.insert - old_origin
-            replacement.dxf.insert = mapped(point) + origin
-            if attribute.dxf.hasattr('align_point'):
-                replacement.dxf.align_point = mapped(attribute.dxf.align_point - old_origin) + origin
+            replacement.transform(Matrix44.chain(Matrix44.translate(*(-old_origin)),
+                                                  transform, Matrix44.translate(*origin)))
             fit_text(replacement, point, True)
             attributes.append(replacement)
 
         note_replacements = []
-        note_top = footer_space + padding + draw_height + padding + note_space
+        note_top = origin.y + header * scale - padding - (note_space - note_used) / 2
         for note, lines in zip(notes, note_lines):
             replacement = note.copy()
             replacement.text = '\\P'.join(lines)
-            replacement.dxf.insert = origin + Vec3(padding, note_top, 0)
+            replacement.dxf.insert = (origin.x + padding, note_top, origin.z)
             replacement.dxf.char_height = note_height
             replacement.dxf.width = note_width
             replacement.dxf.attachment_point = 1
-            note_top -= max(1, len(lines)) * note_height * 1.7 + padding * 0.5
+            if any(lines):
+                note_top -= len(lines) * note_height * 1.7 + note_height * 0.5
             note_replacements.append(replacement)
 
         # Commit only after the whole template can be laid out successfully.

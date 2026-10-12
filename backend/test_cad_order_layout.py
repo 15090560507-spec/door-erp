@@ -9,7 +9,7 @@ import ezdxf
 from ezdxf import bbox
 from ezdxf.lldxf.tagwriter import TagCollector
 
-from cad_order_layout import adapt_order_sheet
+from cad_order_layout import adapt_order_sheet, _template_grid, _fit_notes, _note_layout
 from config import TEMPLATE_PATH
 from rendering.cad_sheet_jpg import _order_form_bbox
 
@@ -52,8 +52,38 @@ class OrderLayoutTests(unittest.TestCase):
         self.assertLess(new[2], extent.extmin.y)
         self.assertGreater(new[3], extent.extmax.y)
         self.assertGreater(notes[0].dxf.insert.y, extent.extmax.y)
-        self.assertLess(notes[0].dxf.char_height, 152)
+        self.assertGreater(notes[0].dxf.char_height, 0)
         self.assertEqual(notes[0].dxf.style, 'Standard')
+
+    def test_original_frame_ratio_and_uniform_grid_scale(self):
+        for width, height, both in ((900, 2100, False), (1400, 2470, True),
+                                    (7000, 1800, True), (1400, 12000, True)):
+            with self.subTest(width=width, height=height, both=both):
+                doc, _, drawings, notes = self.sample(width, height, both)
+                old_grid = _template_grid(doc.blocks['ORDER_FORM'])[:-1]
+                old = _order_form_bbox(doc)
+                protected = [TagCollector.dxftags(entity) for entity in drawings]
+                self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
+                new = _order_form_bbox(doc)
+                self.assertAlmostEqual((new[1] - new[0]) / (new[3] - new[2]),
+                                       (old[1] - old[0]) / (old[3] - old[2]), places=9)
+                scale = (new[1] - new[0]) / (old[1] - old[0])
+                new_grid = _template_grid(doc.blocks['ORDER_FORM'])[:-1]
+                for before, after in zip(old_grid, new_grid):
+                    self.assertAlmostEqual(after, before * scale, places=3)
+                self.assertEqual(protected, [TagCollector.dxftags(entity) for entity in drawings])
+
+    def test_late_template_failure_keeps_all_entities_unchanged(self):
+        doc, insert, drawings, notes = self.sample()
+        block = doc.blocks['ORDER_FORM']
+        block.add_point((100, 100))
+        before = [TagCollector.dxftags(entity) for entity in block]
+        old_insert = TagCollector.dxftags(insert)
+        old_note = TagCollector.dxftags(notes[0])
+        self.assertIn('Unsupported', adapt_order_sheet(doc, drawings, notes))
+        self.assertEqual(before, [TagCollector.dxftags(entity) for entity in block])
+        self.assertEqual(old_insert, TagCollector.dxftags(insert))
+        self.assertEqual(old_note, TagCollector.dxftags(notes[0]))
 
     def test_long_notes_wrap_and_reserve_space(self):
         note = 'A manufacturing specification with dimensions 200/180/20/20mm. ' * 20
@@ -62,6 +92,74 @@ class OrderLayoutTests(unittest.TestCase):
         self.assertIn('\\P', notes[0].text)
         self.assertEqual(notes[0].text.replace('\\P', '').replace(' ', ''), note.replace(' ', ''))
         self.assertGreater(notes[0].dxf.insert.y, bbox.extents(drawings, fast=True).extmax.y)
+
+    def test_notes_use_largest_fitting_height_without_text_loss(self):
+        examples = [
+            ['Handle=200*40mm'],
+            ['Trim=160/140/20/20mm\nHandle=200*40mm'],
+            ['\u5916\u95e8\u5957\u5bbd/\u538b\u5899/\u5de6\u53f3\u538b\u6846/\u4e0a\u538b\u6846=160/140/20/20mm' * 20],
+            ['', 'Front=200mm', 'Back=400mm\nLock=120mm'],
+        ]
+        for texts in examples:
+            with self.subTest(texts=texts):
+                fitted = _fit_notes(texts, 5000, 1800)
+                self.assertIsNotNone(fitted)
+                lines, font_height, used = fitted
+                self.assertLessEqual(used, 1800)
+                for text, paragraph in zip(texts, lines):
+                    self.assertEqual(''.join(paragraph), text.replace('\n', ''))
+                _, larger_height, larger_width = _note_layout(texts, 5000, font_height * 1.00001)
+                self.assertTrue(larger_height > 1800 or larger_width > 5000)
+
+    def test_note_region_is_above_door_below_header_and_inside_left_panel(self):
+        for text in ('Handle=200*40mm', 'Trim=160/140/20/20mm\nHandle=200*40mm',
+                     '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 50):
+            with self.subTest(text=text):
+                doc, insert, drawings, notes = self.sample(note=text)
+                self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
+                _, _, left, _, header, _, _, _ = _template_grid(doc.blocks['ORDER_FORM'])
+                _, used, widest = _note_layout([notes[0].plain_text()], notes[0].dxf.width,
+                                              notes[0].dxf.char_height)
+                top = notes[0].dxf.insert.y
+                self.assertLess(top, insert.dxf.insert.y + header)
+                self.assertGreater(top - used, bbox.extents(drawings, fast=True).extmax.y)
+                self.assertGreater(notes[0].dxf.insert.x, insert.dxf.insert.x)
+                self.assertLess(notes[0].dxf.insert.x + widest, insert.dxf.insert.x + left)
+                self.assertEqual(notes[0].plain_text().replace('\n', ''), text.replace('\n', ''))
+
+    def test_empty_notes_do_not_change_ratio_or_expand_text_region(self):
+        doc, _, drawings, _ = self.sample()
+        old = _order_form_bbox(doc)
+        self.assertIsNone(adapt_order_sheet(doc, drawings, []))
+        new = _order_form_bbox(doc)
+        self.assertAlmostEqual((new[1] - new[0]) / (new[3] - new[2]),
+                               (old[1] - old[0]) / (old[3] - old[2]), places=9)
+        self.assertEqual(_fit_notes([], 500, 100), ([], 64, 0.0))
+
+    def test_notes_that_cannot_fit_request_a_larger_region(self):
+        self.assertIsNone(_fit_notes(['Text' * 1000], 100, 100))
+
+    def test_long_notes_expand_only_the_uniform_sheet_scale(self):
+        text = '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 100
+        short_doc, _, short_drawings, short_notes = self.sample()
+        doc, _, drawings, notes = self.sample(note=text)
+        original = _order_form_bbox(doc)
+        self.assertIsNone(adapt_order_sheet(short_doc, short_drawings, short_notes))
+        self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
+        short, long = _order_form_bbox(short_doc), _order_form_bbox(doc)
+        self.assertGreater(long[1] - long[0], short[1] - short[0])
+        self.assertAlmostEqual((long[1] - long[0]) / (long[3] - long[2]),
+                               (original[1] - original[0]) / (original[3] - original[2]), places=9)
+        self.assertGreaterEqual(notes[0].dxf.char_height, 64)
+        self.assertEqual(notes[0].plain_text().replace('\n', ''), text)
+
+    def test_layout_version_invalidates_generated_output_cache(self):
+        import main
+        from models import CADRequest
+        request = CADRequest(dw=1400, dh=2470)
+        corrected_key = main._cad_cache_key(request)
+        with patch('main.ORDER_LAYOUT_VERSION', 'content-aware-order-sheet-v1'):
+            self.assertNotEqual(corrected_key, main._cad_cache_key(request))
 
     def test_large_drawing_is_contained_without_scaling(self):
         doc, _, drawings, notes = self.sample(width=5000, height=6000)
@@ -131,6 +229,9 @@ class OrderLayoutTests(unittest.TestCase):
                 self.assertIsNotNone(buffer, message)
                 self.assertNotIn('skipped', message)
                 adapted = ezdxf.read(io.StringIO(buffer.getvalue()))
+                old_bounds, new_bounds = _order_form_bbox(baseline), _order_form_bbox(adapted)
+                self.assertAlmostEqual((new_bounds[1] - new_bounds[0]) / (new_bounds[3] - new_bounds[2]),
+                                       (old_bounds[1] - old_bounds[0]) / (old_bounds[3] - old_bounds[2]), places=9)
 
                 def protected(doc):
                     return [TagCollector.dxftags(entity) for entity in doc.modelspace()
