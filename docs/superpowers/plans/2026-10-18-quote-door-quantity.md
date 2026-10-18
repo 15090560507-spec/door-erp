@@ -55,4 +55,4 @@ Files: `backend/quote_excel.py`, `quote-template-pdf/src/renderQuote.mjs`, sales
 ## Task 4: Delivery
 
 - [x] Review desktop/mobile screenshots, focused regressions and generated outputs; document verification.
-- [ ] Check diff, commit only scoped files, push the authorized branch and confirm status.
+- [x] Check diff, commit only scoped files, push the authorized branch and confirm status. Feature commit: `21a5c44`; push confirmed to `feat/semicircle-handles-and-quote-form-improvements`.
