@@ -115,11 +115,13 @@ function quoteGroups(quote) {
   if (Array.isArray(quote.doorGroups) && quote.doorGroups.length) {
     return quote.doorGroups.map((group, index) => ({
       groupName: group.groupName || `第${index + 1}樘门`,
+      doorQuantity: group.doorQuantity ?? 1,
       items: Array.isArray(group.items) ? group.items : [],
     }));
   }
   return [{
     groupName: "第1樘门",
+    doorQuantity: 1,
     items: Array.isArray(quote.items) ? quote.items : [],
   }];
 }
@@ -145,10 +147,10 @@ function renderItemRows(groups, minimumItemRows) {
         <td class="item cell-center">${escapeHtml(quoteAmount(item))}</td>
       </tr>`);
     });
-    if (groups.length > 1) {
+    if (groups.length > 1 || group.doorQuantity > 1) {
       rows.push(`<tr class="group-subtotal">
-        <td colspan="9">${escapeHtml(group.groupName)}小计</td>
-        <td class="cell-center">${escapeHtml(totalAmount(group.items))}</td>
+        <td colspan="9">${escapeHtml(group.groupName)}${group.doorQuantity > 1 ? `：单樘 ${escapeHtml(totalAmount(group.items))} 元 × ${escapeHtml(group.doorQuantity)} 樘` : '小计'}</td>
+        <td class="cell-center">${escapeHtml(totalAmount(group.items) * group.doorQuantity)}</td>
       </tr>`);
     }
   });
@@ -189,7 +191,7 @@ function buildLayoutCss(layout) {
 function renderHtml(quote, cssText, layout) {
   const groups = quoteGroups(quote);
   const items = groups.flatMap((group) => group.items);
-  const total = totalAmount(items);
+  const total = groups.reduce((sum, group) => sum + totalAmount(group.items) * group.doorQuantity, 0);
   const noticeText = quote.noticeText || layout.defaultNoticeText;
 
   return `<!doctype html>
@@ -231,9 +233,9 @@ function renderHtml(quote, cssText, layout) {
           <td class="head spec" colspan="2">规格</td>
           <td class="head" rowspan="2">开启方向</td>
           <td class="head" rowspan="2">单位</td>
-          <td class="head" rowspan="2">数量</td>
+          <td class="head" rowspan="2">单樘<br>用量</td>
           <td class="head" rowspan="2">单价</td>
-          <td class="head" rowspan="2">总金额/元</td>
+          <td class="head" rowspan="2">单樘金额/元</td>
         </tr>
         <tr class="r8">
           <td class="head">宽</td>

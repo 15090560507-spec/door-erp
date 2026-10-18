@@ -67,6 +67,7 @@ export interface QuoteTrimMetrics {
 
 export interface QuoteDoorGroup {
   groupName: string;
+  doorQuantity?: number;
   taskId: string;
   pricingMode: QuotePricingMode;
   trimUnitPrice: number;
@@ -98,6 +99,7 @@ export interface QuoteItemResponse {
 
 export interface QuoteDoorGroupResponse {
   groupName: string;
+  doorQuantity?: number;
   taskId: string;
   pricingMode: QuotePricingMode;
   trimUnitPrice: number;
@@ -248,6 +250,19 @@ export function quoteItemAmountText(item: QuoteItem): string {
   if (!quantity && !unitPrice) return "0";
   if (!quantity || !Number.isFinite(unitPrice)) return "";
   return String(Math.round(quantity * unitPrice));
+}
+
+export function quoteDoorQuantity(group: { doorQuantity?: number }): number {
+  const value = group.doorQuantity ?? 1;
+  return Number.isSafeInteger(value) && value >= 1 ? value : 0;
+}
+
+export function quoteGroupUnitTotal(group: { items: QuoteItem[] }): number {
+  return group.items.reduce((sum, item) => sum + (Number(quoteItemAmountText(item)) || 0), 0);
+}
+
+export function quoteGroupTotal(group: QuoteDoorGroup): number {
+  return quoteGroupUnitTotal(group) * quoteDoorQuantity(group);
 }
 
 export const UNIT_OPTIONS = ["m²", "件", "套", "个", "组", "樘", "把", "支", "块", "条", "根", "台"];

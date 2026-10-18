@@ -5,6 +5,7 @@ export interface SalesOrderQuoteChoice {
   group_index: number;
   group_name: string;
   amount: number;
+  door_quantity?: number;
   pricing_mode?: string;
   items?: SalesOrderQuoteItem[];
 }
@@ -92,6 +93,7 @@ export interface SalesOrderLine extends Partial<SalesOrderTechnicalDetails> {
 }
 
 export interface SalesOrderChargeLine {
+  rounding_door_quantity?: number;
   id?: number;
   door_line_no: number | null;
   source_type: "quote" | "manual";

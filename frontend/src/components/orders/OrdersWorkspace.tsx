@@ -79,6 +79,7 @@ function chargesFromQuote(choice: SalesOrderQuoteChoice | undefined, doorLineNo:
       quantity,
       unit: item.unit || "项",
       unit_price: Number(item.unitPrice || 0),
+      rounding_door_quantity: doorQuantity,
       pricing_mode: choice.pricing_mode || "",
       remark: item.remark || "",
     }];
@@ -210,7 +211,7 @@ export default function OrdersWorkspace() {
       const existingIds = new Set(current.lines.map((line) => line.task_id));
       const additions = selectedCandidates.filter((candidate) => !existingIds.has(candidate.task_id)).map((candidate): SalesOrderEditorLine => {
         const quote = candidate.quotes[0];
-        return { source_type: "drawing", task_id: candidate.task_id, product_name: candidate.product_name, door_type: candidate.door_type, width: candidate.width, height: candidate.height, opening_direction: candidate.opening_direction, color: candidate.color, drawing_status: candidate.drawing_status, source_approved_at: candidate.approved_at, quote_id: quote?.quote_id || null, quote_group_index: quote?.group_index ?? null, quoteChoices: candidate.quotes, quantity: 1, unit: "樘", unit_price: quote?.amount || 0, remark: "", technical_details: { ...emptyTechnical(), ...candidate.technical_details } };
+        return { source_type: "drawing", task_id: candidate.task_id, product_name: candidate.product_name, door_type: candidate.door_type, width: candidate.width, height: candidate.height, opening_direction: candidate.opening_direction, color: candidate.color, drawing_status: candidate.drawing_status, source_approved_at: candidate.approved_at, quote_id: quote?.quote_id || null, quote_group_index: quote?.group_index ?? null, quoteChoices: candidate.quotes, quantity: quote?.door_quantity || 1, unit: "樘", unit_price: quote?.amount || 0, remark: "", technical_details: { ...emptyTechnical(), ...candidate.technical_details } };
       });
       const charges = additions.flatMap((line, index) => chargesFromQuote(line.quoteChoices[0], current.lines.length + index + 1, line.quantity));
       return { ...current, customer_name: current.customer_name || selectedCandidates[0]?.customer_name || "", project_name: current.project_name || selectedCandidates[0]?.project_name || "", lines: [...current.lines, ...additions], charge_lines: [...current.charge_lines, ...charges] };
@@ -227,10 +228,11 @@ export default function OrdersWorkspace() {
     let chargeLines = current.charge_lines;
     if (Object.prototype.hasOwnProperty.call(changes, "quote_id")) {
       const choice = previous.quoteChoices.find((item) => item.quote_id === changes.quote_id && item.group_index === changes.quote_group_index);
+      if (choice) lines[index] = { ...lines[index], quantity: choice.door_quantity || 1, unit_price: choice.amount };
       chargeLines = [...chargeLines.filter((charge) => charge.door_line_no !== index + 1), ...chargesFromQuote(choice, index + 1, lines[index].quantity)];
     } else if (changes.quantity && previous.quantity > 0 && changes.quantity !== previous.quantity) {
       const ratio = changes.quantity / previous.quantity;
-      chargeLines = chargeLines.map((charge) => charge.door_line_no === index + 1 && charge.source_type === "quote" ? { ...charge, quantity: Number((charge.quantity * ratio).toFixed(6)) } : charge);
+      chargeLines = chargeLines.map((charge) => charge.door_line_no === index + 1 && charge.source_type === "quote" ? { ...charge, quantity: Number((charge.quantity * ratio).toFixed(6)), rounding_door_quantity: changes.quantity } : charge);
     }
     return { ...current, lines, charge_lines: chargeLines };
   });

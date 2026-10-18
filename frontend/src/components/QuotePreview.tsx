@@ -1,7 +1,7 @@
 "use client";
 
 import type { QuoteDoorGroup } from "@/lib/quoteTypes";
-import { quoteItemAmountText, quoteItemQuantityText } from "@/lib/quoteTypes";
+import { quoteItemAmountText, quoteItemQuantityText, quoteDoorQuantity, quoteGroupUnitTotal, quoteGroupTotal } from "@/lib/quoteTypes";
 import {
   QUOTE_PREVIEW_COLUMN_WIDTHS_MM,
   QUOTE_PREVIEW_PAGE_WIDTH_MM,
@@ -34,10 +34,7 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
   }];
   const itemCount = groups.reduce((count, group) => count + group.items.length, 0);
   const emptyRows = Math.max(0, 8 - itemCount);
-  const groupTotals = groups.map((group) => group.items.reduce((sum, item) => {
-    const amount = Number(quoteItemAmountText(item));
-    return Number.isFinite(amount) ? sum + amount : sum;
-  }, 0));
+  const groupTotals = groups.map(quoteGroupTotal);
   const total = groupTotals.reduce((sum, amount) => sum + amount, 0);
 
   const cell = "border border-black px-[1.1mm] align-middle";
@@ -99,9 +96,9 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
               <td className={head} colSpan={2}>规格</td>
               <td className={head} rowSpan={2}>开启方向</td>
               <td className={head} rowSpan={2}>单位</td>
-              <td className={head} rowSpan={2}>数量</td>
+              <td className={head} rowSpan={2}>单樘<br/>用量</td>
               <td className={head} rowSpan={2}>单价</td>
-              <td className={head} rowSpan={2}>总金额/元</td>
+              <td className={head} rowSpan={2}>单樘金额/元</td>
             </tr>
             <tr style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.tableHeader) }}>
               <td className={head}>宽</td>
@@ -129,14 +126,14 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                     </tr>
                   );
                 });
-                if (groups.length > 1) {
+                if (groups.length > 1 || quoteDoorQuantity(group) > 1) {
                   rows.push(
                     <tr
                       className="bg-[#E8F2FF]"
                       style={{ height: millimeters(QUOTE_PREVIEW_ROW_HEIGHTS_MM.subtotal) }}
                       key={`subtotal-${groupIndex}`}
                     >
-                      <td className={`${cell} text-right font-bold`} colSpan={9}>{group.groupName || `第${groupIndex + 1}樘门`}小计</td>
+                      <td className={`${cell} text-right font-bold`} colSpan={9}>{group.groupName || `第${groupIndex + 1}组门`}：单樘 {quoteGroupUnitTotal(group)} 元 × {quoteDoorQuantity(group)} 樘</td>
                       <td className={`${cell} text-center font-bold`}>{groupTotals[groupIndex]}</td>
                     </tr>
                   );

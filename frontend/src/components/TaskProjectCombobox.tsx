@@ -1,22 +1,14 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { TaskItem } from "@/lib/types";
+import { taskProjectLabel as taskLabel } from "@/lib/taskProjectLabel";
 
 interface Props {
   tasks: TaskItem[];
   value: string;
   onChange: (taskId: string) => void;
   searchTasks?: (query: string) => Promise<TaskItem[]>;
-}
-
-function taskLabel(task: TaskItem): string {
-  return [
-    task.customer || "未填客户",
-    task.project || "未填项目",
-    task.door_type || "",
-    task.size || "",
-  ].filter(Boolean).join(" / ");
 }
 
 function taskSearchText(task: TaskItem): string {
@@ -84,19 +76,18 @@ export default function TaskProjectCombobox({ tasks, value, onChange, searchTask
     }, 250);
   };
 
-  const matches = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const source = remoteMatches ?? (normalized
-      ? tasks.filter((task) => taskSearchText(task).includes(normalized))
-      : tasks);
-    return source.slice(0, 20);
-  }, [query, remoteMatches, tasks]);
+  const normalized = query.trim().toLowerCase();
+  const source = remoteMatches ?? (normalized
+    ? tasks.filter((task) => taskSearchText(task).includes(normalized))
+    : tasks);
+  const matches = source.slice(0, 20);
 
   return (
     <div ref={rootRef} className="relative mt-1">
       <input
         type="text"
         value={query}
+        title={selectedTask ? taskLabel(selectedTask) : undefined}
         placeholder="输入客户、项目、门型、尺寸或任务ID搜索"
         onFocus={() => {
           if (value) {

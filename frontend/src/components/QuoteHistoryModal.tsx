@@ -259,7 +259,7 @@ export default function QuoteHistoryModal({ open, onClose, onLoad }: Props) {
                       {doors.map((door, index) => (
                         <span key={index} className="block">
                           <span className="block truncate" title={door.name}>{door.name}</span>
-                          <span className="block text-[#8E8E93] whitespace-nowrap">{door.size}</span>
+                          <span className="block text-[#8E8E93] whitespace-nowrap">{door.size}{quote.doorCount ? ` · ${quote.doorCount} 樘` : ""}</span>
                         </span>
                       ))}
                     </span>

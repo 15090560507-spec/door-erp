@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from auth import get_current_user
 from config import SALES_ORDER_FILES_DIR
 from quote_routes import quote_db
+from quote_quantities import quote_door_quantity
 from sales_order_database import SalesOrderDatabase
 from sales_order_models import (
     SalesOrderCancel,
@@ -109,7 +110,14 @@ def _quote_group_total(group: Dict) -> float:
 
 def _charge_amount(charge: Dict) -> float:
     amount = float(charge.get("quantity") or 0) * float(charge.get("unit_price") or 0)
-    return float(round(amount)) if charge.get("source_type") == "quote" else round(amount, 2)
+    doors = max(1, int(charge.get('rounding_door_quantity') or 1))
+    return float(round(amount / doors) * doors) if charge.get("source_type") == "quote" else round(amount, 2)
+
+
+def _rounding_door_quantity(line: Dict) -> int:
+    # Only new quote snapshots opt into per-door rounding; historical orders keep their rule.
+    group = (line.get('quote_snapshot') or {}).get('group') or {}
+    return max(1, int(line.get('quantity') or 1)) if 'doorQuantity' in group else 1
 
 
 def _charge_item_type(product_name: str) -> str:
@@ -157,7 +165,13 @@ def _charges_from_lines(lines: List[Dict]) -> List[Dict]:
                     "quantity": round(base_quantity * int(line.get("quantity") or 1), 6),
                     "unit": str(item.get("unit") or "项"),
                     "unit_price": float(item.get("unitPrice") or 0),
-                    "amount": float(round(base_quantity * int(line.get("quantity") or 1) * float(item.get("unitPrice") or 0))),
+                    "rounding_door_quantity": _rounding_door_quantity(line),
+                    "amount": _charge_amount({
+                        "source_type": "quote",
+                        "quantity": base_quantity * int(line.get("quantity") or 1),
+                        "unit_price": float(item.get("unitPrice") or 0),
+                        "rounding_door_quantity": _rounding_door_quantity(line),
+                    }),
                     "pricing_mode": str(group.get("pricingMode") or ""),
                     "remark": str(item.get("remark") or ""),
                 })
@@ -179,7 +193,7 @@ def _charges_from_lines(lines: List[Dict]) -> List[Dict]:
     return charges
 
 
-def _charges_from_input(items, line_count: int) -> List[Dict]:
+def _charges_from_input(items, line_count: int, lines: Optional[List[Dict]] = None) -> List[Dict]:
     charges: List[Dict] = []
     for index, item in enumerate(items, start=1):
         door_line_no = item.door_line_no
@@ -201,6 +215,8 @@ def _charges_from_input(items, line_count: int) -> List[Dict]:
             "pricing_mode": item.pricing_mode.strip(),
             "remark": item.remark.strip(),
         }
+        if lines and door_line_no is not None:
+            charge['rounding_door_quantity'] = _rounding_door_quantity(lines[door_line_no - 1])
         charge["amount"] = _charge_amount(charge)
         charges.append(charge)
     return charges
@@ -348,7 +364,7 @@ def _line_from_input(item, expected_customer: str, line_no: int) -> Dict:
             "quote_date": quote_match.get("quote_date", ""),
             "updated_at": quote_match.get("updated_at", ""),
             "group_index": quote_match["group_index"],
-            "group": quote_match["group"],
+            "group": dict(quote_match["group"], doorQuantity=quote_door_quantity(quote_match["group"])),
         }
         suggested_price = _quote_group_total(quote_match["group"])
     unit_price = suggested_price if item.unit_price is None else float(item.unit_price)
@@ -402,7 +418,7 @@ def _prepare_order(req, exclude_order_id: Optional[int] = None) -> tuple[Dict, L
         raise ValueError("订单客户必须与所选图纸客户一致")
 
     lines = [_line_from_input(item, customer, index) for index, item in enumerate(req.lines, start=1)]
-    charges = _charges_from_input(req.charge_lines, len(lines)) if req.charge_lines else _charges_from_lines(lines)
+    charges = _charges_from_input(req.charge_lines, len(lines), lines) if req.charge_lines else _charges_from_lines(lines)
     _apply_charge_totals(lines, charges)
     data = req.model_dump(exclude={"lines", "charge_lines"})
     data["customer_name"] = customer
@@ -433,6 +449,7 @@ def _candidate(task: Dict) -> Dict:
         "updated_at": match.get("updated_at", ""),
         "group_index": match["group_index"],
         "group_name": match["group"].get("groupName", ""),
+        "door_quantity": quote_door_quantity(match['group']),
         "amount": _quote_group_total(match["group"]),
         "pricing_mode": str(match["group"].get("pricingMode") or ""),
         "items": match["group"].get("items") or [],
@@ -479,6 +496,13 @@ def _enrich_order(order: Dict) -> Dict:
         line["quote_choices"] = _candidate(task)["quotes"] if task else []
         enriched_lines.append(line)
     result["lines"] = enriched_lines
+    result["charge_lines"] = []
+    for stored_charge in order.get("charge_lines") or []:
+        charge = dict(stored_charge)
+        door_line_no = int(charge.get("door_line_no") or 0)
+        if 0 < door_line_no <= len(enriched_lines):
+            charge["rounding_door_quantity"] = _rounding_door_quantity(enriched_lines[door_line_no - 1])
+        result["charge_lines"].append(charge)
     result["releasable_count"] = sum(
         int(line.get("quantity") or 0)
         for line in enriched_lines

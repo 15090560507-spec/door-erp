@@ -62,6 +62,7 @@ class QuoteItemRequest(BaseModel):
 class QuoteDoorGroupRequest(BaseModel):
     """同一报价单中的一樘门及其配件"""
     groupName: str = ""
+    doorQuantity: int = Field(default=1, ge=1, strict=True)
     taskId: str = ""
     pricingMode: str = "outerArea"
     trimUnitPrice: float = 0.0
@@ -96,6 +97,7 @@ class QuoteItemResponse(BaseModel):
 class QuoteDoorGroupResponse(BaseModel):
     """报价单门组响应"""
     groupName: str = ""
+    doorQuantity: int = Field(default=1, ge=1, strict=True)
     taskId: str = ""
     pricingMode: str = "outerArea"
     trimUnitPrice: float = 0.0

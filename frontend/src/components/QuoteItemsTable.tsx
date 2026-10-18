@@ -189,9 +189,9 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
             <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">高</th>
             <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">开启方向</th>
             <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">单位</th>
-            <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">数量</th>
+            <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">单樘用量</th>
             <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">单价</th>
-            <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">总金额</th>
+            <th className="px-1 py-2 text-left font-medium text-[#8E8E93]">单樘金额</th>
             <th className="px-1 py-2 text-center font-medium text-[#8E8E93]">操作</th>
           </tr>
         </thead>
@@ -357,7 +357,7 @@ export default function QuoteItemsTable({ items, onChange }: Props) {
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-[#1C1C1E] bg-[#F2F2F7]/70">
-            <td colSpan={7} className="px-3 py-2 text-right text-[13px] font-semibold text-[#1C1C1E]">总价</td>
+            <td colSpan={7} className="px-3 py-2 text-right text-[13px] font-semibold text-[#1C1C1E]">单樘合计</td>
             <td className="px-4 py-2 text-right text-[14px] font-semibold tabular-nums text-[#1C1C1E]">{totalAmount}</td>
             <td />
           </tr>

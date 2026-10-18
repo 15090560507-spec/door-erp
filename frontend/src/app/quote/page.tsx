@@ -11,11 +11,12 @@ import type {
   QuoteTrimMetrics,
   QuoteTrimSideMetrics,
 } from "@/lib/quoteTypes";
-import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection } from "@/lib/quoteTypes";
+import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection, quoteDoorQuantity, quoteGroupUnitTotal, quoteGroupTotal } from "@/lib/quoteTypes";
 import { createQuote, getAccessories, getQuoteTrimMetrics, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
 import { api, getTask, getTasks, updateTask } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
+import QuoteDoorQuantity from "@/components/QuoteDoorQuantity";
 import QuotePreview from "@/components/QuotePreview";
 import AccessoryModal from "@/components/AccessoryModal";
 import AiConfigModal from "@/components/AiConfigModal";
@@ -79,7 +80,8 @@ function withMinimumQuoteRows(rows: QuoteItem[], minimum = DEFAULT_QUOTE_ROW_COU
 
 function createQuoteGroup(index = 0): QuoteDoorGroup {
   return {
-    groupName: `第${index + 1}樘门`,
+    groupName: `第${index + 1}组门`,
+    doorQuantity: 1,
     taskId: "",
     pricingMode: "outerArea",
     trimUnitPrice: 0,
@@ -383,6 +385,7 @@ export default function QuotePage() {
 
   async function saveCurrentQuote(saveAsNew: boolean) {
     const form = collectForm();
+    if (form.doorGroups.some((group) => !quoteDoorQuantity(group))) { showFeedback("error", "无法保存", "樘数须为大于 0 的整数"); return; }
     if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
     if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
     if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
@@ -428,6 +431,7 @@ export default function QuotePage() {
 
   function requestQuoteSave(saveAsNew: boolean) {
     const form = collectForm();
+    if (form.doorGroups.some((group) => !quoteDoorQuantity(group))) { showFeedback("error", "无法保存", "樘数须为大于 0 的整数"); return; }
     if (!form.customerName) { showFeedback("error", "无法保存", "请填写客户名称"); return; }
     if (!form.quoteDate) { showFeedback("error", "无法保存", "请选择日期"); return; }
     if (!form.items.length) { showFeedback("error", "无法保存", "至少填写一条品名型号"); return; }
@@ -438,8 +442,8 @@ export default function QuotePage() {
       const width = num(dimensionItem?.width);
       const height = num(dimensionItem?.height);
       return width > 0 && height > 0
-        ? `${label}：${width} × ${height} mm`
-        : `${label}：未填写宽、高尺寸`;
+        ? `${label}：${width} × ${height} mm · ${quoteDoorQuantity(group)} 樘`
+        : `${label}：未填写宽、高尺寸 · ${quoteDoorQuantity(group)} 樘`;
     });
     setSaveConfirmation({
       saveAsNew,
@@ -708,6 +712,7 @@ export default function QuotePage() {
         }];
     setDoorGroups(sourceGroups.map((group, index) => ({
       groupName: group.groupName || `第${index + 1}樘门`,
+      doorQuantity: 'doorQuantity' in group ? group.doorQuantity ?? 1 : 1,
       taskId: group.taskId || "",
       pricingMode: group.pricingMode || "outerArea",
       trimUnitPrice: group.trimUnitPrice || 0,
@@ -880,13 +885,14 @@ export default function QuotePage() {
             <div className="space-y-5">
               {doorGroups.map((group, groupIndex) => (
                 <section key={groupIndex} className="border-t border-[#E5E5EA]/60 pt-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <input
                       value={group.groupName}
                       onChange={(event) => updateDoorGroup(groupIndex, { groupName: event.target.value })}
                       aria-label={`第 ${groupIndex + 1} 个门组名称`}
-                      className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[#1C1C1E] outline-none"
+                      className="min-w-28 flex-1 bg-transparent text-[14px] font-semibold text-[#1C1C1E] outline-none"
                     />
+                    <QuoteDoorQuantity value={group.doorQuantity} label={`第${groupIndex + 1}组`} onChange={(doorQuantity) => updateDoorGroup(groupIndex, { doorQuantity })}/>
                     <button
                       type="button"
                       onClick={() => removeDoorGroup(groupIndex)}
@@ -973,6 +979,10 @@ export default function QuotePage() {
                       setQuoteDirty(true);
                     }}
                   />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5E5EA] bg-[#007AFF]/5 px-4 py-3" aria-live="polite">
+                    <span className="text-[13px] text-[#636366]">单樘合计 ¥{quoteGroupUnitTotal(group).toLocaleString()} × {quoteDoorQuantity(group) || "—"} 樘</span>
+                    <strong className="text-[16px] tabular-nums text-[#007AFF]">本组合计 {quoteDoorQuantity(group) ? `¥${quoteGroupTotal(group).toLocaleString()}` : "—"}</strong>
+                  </div>
                 </section>
               ))}
             </div>
@@ -982,7 +992,7 @@ export default function QuotePage() {
               onClick={addDoorGroup}
               className="mt-5 w-full rounded-lg border border-dashed border-[#007AFF] px-4 py-2 text-[13px] font-medium text-[#007AFF] hover:bg-[#007AFF]/5"
             >
-              + 添加一樘门
+              + 添加一组门
             </button>
           </div>
 

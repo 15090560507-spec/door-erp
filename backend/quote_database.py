@@ -16,6 +16,7 @@ from config import (
     ACCESSORIES_BACKUP_DIR, QUOTES_BACKUP_DIR,
 )
 from database import backup_file_before_replace
+from quote_quantities import quote_door_quantity
 
 
 ACCESSORY_EXTRA_FIELDS = ("priceType", "priceMode", "frontStyle", "backStyle")
@@ -266,7 +267,7 @@ class QuoteDatabaseManager:
                     "doorSummary": first_item.get("productName", ""),
                     "doorWidth": first_item.get("width"),
                     "doorHeight": first_item.get("height"),
-                    "doorCount": len(groups),
+                    "doorCount": sum(quote_door_quantity(group) for group in groups),
                 })
                 result.append(summary)
             return {"quotes": result, "total": len(quotes_sorted), "limit": limit, "offset": offset}
@@ -286,6 +287,8 @@ class QuoteDatabaseManager:
                             "trimUnitPrice": 0,
                             "items": list(result.get("items") or []),
                         }]
+                    result['doorGroups'] = [dict(group, doorQuantity=quote_door_quantity(group))
+                                            for group in result['doorGroups']]
                     return result
             return None
 
@@ -372,6 +375,7 @@ class QuoteDatabaseManager:
             raise ValueError("单张报价单最多只能有 100 个项目")
 
         for group_index, group in enumerate(door_groups):
+            quote_door_quantity(group)
             group_items = group.get("items") or []
             if not group_items:
                 raise ValueError(f"第 {group_index + 1} 樘门至少需要一个项目")
@@ -404,6 +408,7 @@ class QuoteDatabaseManager:
         global_row = 0
         for group_index, group in enumerate(door_groups):
             saved_group = {
+                "doorQuantity": quote_door_quantity(group),
                 "groupName": str(group.get("groupName") or f"第{group_index + 1}樘门").strip(),
                 "taskId": str(group.get("taskId") or "").strip(),
                 "pricingMode": str(group.get("pricingMode") or "outerArea"),

@@ -15,6 +15,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from PIL import Image
+from quote_quantities import quote_door_quantity
 
 
 def _resolve_project_root(module_file: str = __file__) -> Path:
@@ -150,9 +151,9 @@ def _apply_shared_quote_layout(
         "E8": "高",
         "F7": "开启方向",
         "G7": "单位",
-        "H7": "数量",
+        "H7": "单樘\n用量" if any(quote_door_quantity(group) > 1 for group in _quote_groups(quote)) else "数量",
         "I7": "单价",
-        "J7": "总金额/元",
+        "J7": "单樘金额/元" if any(quote_door_quantity(group) > 1 for group in _quote_groups(quote)) else "总金额/元",
         f"A{terms_row}": layout["termsText"],
         f"A{invoice_row}": layout["invoiceText"],
         f"A{bank_row}": layout["bankText"],
@@ -434,7 +435,7 @@ def generate_excel(quote: dict, output_path: str):
         for item in group_items:
             display_rows.append(("item", item, group_index))
             items.append(item)
-        if len(groups) > 1:
+        if len(groups) > 1 or quote_door_quantity(group) > 1:
             display_rows.append(("subtotal", group, group_index))
     minimum_display_rows = int(QUOTE_LAYOUT["minimumItemRows"])
     template_item_rows = 8
@@ -471,6 +472,11 @@ def generate_excel(quote: dict, output_path: str):
             group_rows = group_item_rows.get(marker, [])
             ws[f"A{row}"] = f'{payload.get("groupName") or f"第{marker + 1}樘门"}小计'
             ws[f"J{row}"] = f"=SUM({','.join(f'J{item_row}' for item_row in group_rows)})" if group_rows else "=0"
+            quantity = quote_door_quantity(payload)
+            if quantity > 1:
+                unit_total = sum(_quote_amount(item) for item in payload.get('items') or [])
+                ws[f'A{row}'] = f'{payload.get("groupName") or f"第{marker + 1}组门"}：单樘 {unit_total} 元 × {quantity} 樘'
+                ws[f'J{row}'].value += f'*{quantity}'
             continue
 
         item = payload
