@@ -7,7 +7,7 @@ from ezdxf import bbox
 from ezdxf.math import Matrix44, Vec3
 
 
-ORDER_LAYOUT_VERSION = 'fixed-aspect-order-sheet-v2'
+ORDER_LAYOUT_VERSION = 'proportional-notes-order-sheet-v3'
 ORDER_NAMES = {'ORDER_FORM', 'ORDERFORM'}
 
 
@@ -42,23 +42,24 @@ def _note_layout(texts, width, height):
     return paragraphs, used, widest
 
 
-def _fit_notes(texts, width, available_height, minimum=64):
-    """Find the largest non-stretched note font fitting both region dimensions."""
-    if not any(texts):
-        return [], minimum, 0.0
-    low, high = minimum, max(minimum, available_height / 1.7)
-    lines, used, widest = _note_layout(texts, width, low)
-    if used > available_height or widest > width:
-        return None
-    for _ in range(40):
-        candidate = (low + high) / 2
-        _, needed, widest = _note_layout(texts, width, candidate)
-        if needed <= available_height and widest <= width:
-            low = candidate
-        else:
-            high = candidate
-    lines, used, _ = _note_layout(texts, width, low)
-    return lines, low, used
+def _proportional_notes(texts, heights, width):
+    """Wrap in template coordinates so sheet scaling cannot change font ratios."""
+    paragraphs = []
+    used = 0.0
+    previous_height = None
+    for text, height in zip(texts, heights):
+        if not math.isfinite(height) or height <= 0:
+            raise ValueError('Invalid manufacturing note height')
+        lines, needed, widest = _note_layout([text], width, height)
+        if widest > width:
+            raise ValueError('Manufacturing note glyph exceeds the note region')
+        paragraphs.append(lines[0])
+        if text:
+            if previous_height is not None:
+                used += previous_height * 0.5
+            used += needed
+            previous_height = height
+    return paragraphs, used
 
 
 def _rectangle(entity):
@@ -142,24 +143,18 @@ def adapt_order_sheet(doc, drawing_entities, notes):
         legal_top = footer + len(legal_lines) * legal.dxf.char_height * 1.7 + 60
         body_bottom = legal_top + padding_base
         texts = [note.plain_text() for note in notes]
-        note_reserve = 850 if any(texts) else 0
+        note_heights = [float(note.dxf.char_height) for note in notes]
         usable_width = left - padding_base * 2
-        usable_height = header - body_bottom - padding_base - note_reserve
+        note_lines, note_used_base = _proportional_notes(texts, note_heights, usable_width)
+        usable_height = header - body_bottom - padding_base * 2 - note_used_base
         if usable_width <= 0 or usable_height <= 0:
-            raise ValueError('Order-sheet content region is too small')
+            raise ValueError('Manufacturing notes cannot fit at proportional height')
 
         # One scale for the entire grid: never independently resize its axes.
         scale = max(0.35, draw_width / usable_width, draw_height / usable_height)
-        for _ in range(80):
-            note_width = usable_width * scale
-            note_space = (header - body_bottom - padding_base * 2) * scale - draw_height
-            fitted = _fit_notes(texts, note_width, note_space)
-            if fitted is not None:
-                break
-            scale *= 1.1
-        else:
-            raise ValueError('Manufacturing notes cannot fit at a readable height')
-        note_lines, note_height, note_used = fitted
+        note_width = usable_width * scale
+        note_space = (header - body_bottom - padding_base * 2) * scale - draw_height
+        note_used = note_used_base * scale
         padding = padding_base * scale
         left_width = left * scale
         origin = Vec3(extent.center.x - left_width / 2,
@@ -238,7 +233,8 @@ def adapt_order_sheet(doc, drawing_entities, notes):
 
         note_replacements = []
         note_top = origin.y + header * scale - padding - (note_space - note_used) / 2
-        for note, lines in zip(notes, note_lines):
+        for note, lines, original_height in zip(notes, note_lines, note_heights):
+            note_height = original_height * scale
             replacement = note.copy()
             replacement.text = '\\P'.join(lines)
             replacement.dxf.insert = (origin.x + padding, note_top, origin.z)

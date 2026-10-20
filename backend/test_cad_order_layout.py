@@ -9,12 +9,23 @@ import ezdxf
 from ezdxf import bbox
 from ezdxf.lldxf.tagwriter import TagCollector
 
-from cad_order_layout import adapt_order_sheet, _template_grid, _fit_notes, _note_layout
+from cad_order_layout import adapt_order_sheet, _template_grid, _proportional_notes, _note_layout
 from config import TEMPLATE_PATH
 from rendering.cad_sheet_jpg import _order_form_bbox
 
 
 class OrderLayoutTests(unittest.TestCase):
+    def test_note_height_tracks_uniform_sheet_scale(self):
+        for width, height, both in ((900, 2100, False), (1400, 2470, True), (5000, 6000, True)):
+            with self.subTest(width=width, height=height, both=both):
+                doc, _, drawings, notes = self.sample(width, height, both)
+                old = _order_form_bbox(doc)
+                original_height = notes[0].dxf.char_height
+                self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
+                new = _order_form_bbox(doc)
+                scale = (new[1] - new[0]) / (old[1] - old[0])
+                self.assertAlmostEqual(notes[0].dxf.char_height, original_height * scale)
+
     def sample(self, width=1400, height=2470, both=True, note='Trim=160/140/20/20mm\nHandle=200*40mm'):
         doc = ezdxf.readfile(TEMPLATE_PATH)
         ms = doc.modelspace()
@@ -93,7 +104,7 @@ class OrderLayoutTests(unittest.TestCase):
         self.assertEqual(notes[0].text.replace('\\P', '').replace(' ', ''), note.replace(' ', ''))
         self.assertGreater(notes[0].dxf.insert.y, bbox.extents(drawings, fast=True).extmax.y)
 
-    def test_notes_use_largest_fitting_height_without_text_loss(self):
+    def test_notes_wrap_at_original_heights_without_text_loss(self):
         examples = [
             ['Handle=200*40mm'],
             ['Trim=160/140/20/20mm\nHandle=200*40mm'],
@@ -102,18 +113,27 @@ class OrderLayoutTests(unittest.TestCase):
         ]
         for texts in examples:
             with self.subTest(texts=texts):
-                fitted = _fit_notes(texts, 5000, 1800)
-                self.assertIsNotNone(fitted)
-                lines, font_height, used = fitted
-                self.assertLessEqual(used, 1800)
+                lines, used = _proportional_notes(texts, [152] * len(texts), 5000)
+                self.assertGreater(used, 0)
                 for text, paragraph in zip(texts, lines):
                     self.assertEqual(''.join(paragraph), text.replace('\n', ''))
-                _, larger_height, larger_width = _note_layout(texts, 5000, font_height * 1.00001)
-                self.assertTrue(larger_height > 1800 or larger_width > 5000)
+                    _, _, widest = _note_layout(['\n'.join(paragraph)], 5000, 152)
+                    self.assertLessEqual(widest, 5000)
+
+    def test_each_note_preserves_its_original_height_ratio(self):
+        doc, _, drawings, notes = self.sample()
+        notes.append(doc.modelspace().add_mtext('Workshop note', dxfattribs={
+            'char_height': 80, 'width': 6000, 'style': 'Standard'}))
+        old = _order_form_bbox(doc)
+        self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
+        new = _order_form_bbox(doc)
+        scale = (new[1] - new[0]) / (old[1] - old[0])
+        self.assertAlmostEqual(notes[0].dxf.char_height, 152 * scale)
+        self.assertAlmostEqual(notes[1].dxf.char_height, 80 * scale)
 
     def test_note_region_is_above_door_below_header_and_inside_left_panel(self):
         for text in ('Handle=200*40mm', 'Trim=160/140/20/20mm\nHandle=200*40mm',
-                     '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 50):
+                     '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 12):
             with self.subTest(text=text):
                 doc, insert, drawings, notes = self.sample(note=text)
                 self.assertIsNone(adapt_order_sheet(doc, drawings, notes))
@@ -134,13 +154,20 @@ class OrderLayoutTests(unittest.TestCase):
         new = _order_form_bbox(doc)
         self.assertAlmostEqual((new[1] - new[0]) / (new[3] - new[2]),
                                (old[1] - old[0]) / (old[3] - old[2]), places=9)
-        self.assertEqual(_fit_notes([], 500, 100), ([], 64, 0.0))
+        self.assertEqual(_proportional_notes([], [], 500), ([], 0.0))
 
-    def test_notes_that_cannot_fit_request_a_larger_region(self):
-        self.assertIsNone(_fit_notes(['Text' * 1000], 100, 100))
+    def test_notes_that_cannot_fit_warn_without_partial_changes(self):
+        doc, insert, drawings, notes = self.sample(note='Text' * 10000)
+        before = [TagCollector.dxftags(entity) for entity in doc.blocks['ORDER_FORM']]
+        note_before = TagCollector.dxftags(notes[0])
+        insert_before = TagCollector.dxftags(insert)
+        self.assertIn('proportional height', adapt_order_sheet(doc, drawings, notes))
+        self.assertEqual(before, [TagCollector.dxftags(entity) for entity in doc.blocks['ORDER_FORM']])
+        self.assertEqual(note_before, TagCollector.dxftags(notes[0]))
+        self.assertEqual(insert_before, TagCollector.dxftags(insert))
 
     def test_long_notes_expand_only_the_uniform_sheet_scale(self):
-        text = '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 100
+        text = '\u95e8\u6846\u95e8\u5957\u8bf4\u660e=200/180/20/20mm ' * 20
         short_doc, _, short_drawings, short_notes = self.sample()
         doc, _, drawings, notes = self.sample(note=text)
         original = _order_form_bbox(doc)
@@ -206,6 +233,7 @@ class OrderLayoutTests(unittest.TestCase):
         self.assertEqual(shape.dxf.center, (0, 0, 0))
 
     def test_actual_door_generation_preserves_every_non_sheet_entity(self):
+        from cad_download import editable_sheet_dxf
         from drawing import run_integrated_system
         from main import build_cad_params
         from models import CADRequest
@@ -220,6 +248,7 @@ class OrderLayoutTests(unittest.TestCase):
             with self.subTest(variant=variant):
                 request = CADRequest(dhdw='Layout verification', ys='Test', mshd=80,
                                      sel_nk='\u5185\u5f00', sel_kx='\u53f3\u5f00',
+                                     sm='车间生产批注：三元乙丙密封条，靠外装无墙厚。\n合页边开孔位置按确认图复核。',
                                      sel_hys='\u53ef\u62c6\u5378\u5408\u9875', st_val='\u8fde\u4f53\u9501', **variant)
                 info, checks, params = build_cad_params(request)
                 with patch('drawing.adapt_order_sheet', return_value=None):
@@ -232,6 +261,11 @@ class OrderLayoutTests(unittest.TestCase):
                 old_bounds, new_bounds = _order_form_bbox(baseline), _order_form_bbox(adapted)
                 self.assertAlmostEqual((new_bounds[1] - new_bounds[0]) / (new_bounds[3] - new_bounds[2]),
                                        (old_bounds[1] - old_bounds[0]) / (old_bounds[3] - old_bounds[2]), places=9)
+                sheet_scale = (new_bounds[1] - new_bounds[0]) / (old_bounds[1] - old_bounds[0])
+                old_note = next(e for e in baseline.modelspace().query('MTEXT') if '车间生产批注' in e.plain_text())
+                new_note = next(e for e in adapted.modelspace().query('MTEXT') if '车间生产批注' in e.plain_text())
+                self.assertAlmostEqual(new_note.dxf.char_height, old_note.dxf.char_height * sheet_scale)
+                self.assertEqual(new_note.plain_text().replace('\n', ''), old_note.plain_text().replace('\n', ''))
 
                 def protected(doc):
                     return [TagCollector.dxftags(entity) for entity in doc.modelspace()
@@ -240,11 +274,21 @@ class OrderLayoutTests(unittest.TestCase):
 
                 self.assertEqual(protected(baseline), protected(adapted))
                 self.assertFalse(adapted.audit().has_errors)
+                download_bytes = editable_sheet_dxf(buffer.getvalue().encode('utf-8'))
+                downloaded = ezdxf.read(io.StringIO(download_bytes.decode('utf-8')))
+                self.assertIsNone(_order_form_bbox(downloaded))
+                for entity in adapted.modelspace():
+                    if entity.dxftype() == 'INSERT' and entity.dxf.name == 'ORDER_FORM':
+                        continue
+                    self.assertEqual(TagCollector.dxftags(entity),
+                                     TagCollector.dxftags(downloaded.entitydb[entity.dxf.handle]))
+                self.assertFalse(downloaded.audit().has_errors)
                 if os.environ.get('CAD_LAYOUT_ARTIFACT_DIR'):
                     from rendering.cad_sheet_jpg import render_dxf_sheet_jpg
                     folder = Path(os.environ['CAD_LAYOUT_ARTIFACT_DIR'])
                     folder.mkdir(parents=True, exist_ok=True)
-                    (folder / f'adaptive-{index}.dxf').write_text(buffer.getvalue(), encoding='utf-8')
+                    (folder / f'adaptive-{index}.dxf').write_bytes(buffer.getvalue().encode('utf-8'))
+                    (folder / f'editable-{index}.dxf').write_bytes(download_bytes)
                     for label, doc in (('before', baseline), ('after', adapted)):
                         stream = io.StringIO()
                         doc.write(stream)

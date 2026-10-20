@@ -47,6 +47,7 @@ from models import (
 from drawing import run_integrated_system
 from drawing import _load_template
 from cad_order_layout import ORDER_LAYOUT_VERSION
+from cad_download import CAD_DOWNLOAD_VERSION, editable_sheet_dxf
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
@@ -334,6 +335,23 @@ def _cad_layout_headers(key: str) -> Dict[str, str]:
     with _cad_cache_lock:
         warning = (_cad_cache.get(key) or {}).get("layout_warning", "")
     return {"X-CAD-Layout-Warning": quote(warning)} if warning else {}
+
+
+def _cached_cad_download(key: str, dxf_bytes: bytes) -> tuple[bytes, bool]:
+    cache_field = f"download:{CAD_DOWNLOAD_VERSION}"
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry and entry.get(cache_field):
+            return entry[cache_field], True
+    started = time.perf_counter()
+    result = editable_sheet_dxf(dxf_bytes)
+    with _cad_cache_lock:
+        entry = _cad_cache.get(key)
+        if entry and entry.get("dxf") == dxf_bytes:
+            entry[cache_field] = result
+    logger.info("[cad] editable_download key=%s elapsed=%.3fs bytes=%d",
+                key[:10], time.perf_counter() - started, len(result))
+    return result, False
 
 
 def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
@@ -972,9 +990,10 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     _validate_task_params(req.model_dump())
     try:
         key, dxf_bytes, cache_hit = _cached_cad(req)
+        download_bytes, download_hit = _cached_cad_download(key, dxf_bytes)
     except Exception as exc:
         _raise_cad_error("DXF 生成", exc)
-    bytes_io = io.BytesIO(dxf_bytes)
+    bytes_io = io.BytesIO(download_bytes)
 
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
     ts = shanghai_now().strftime("%Y%m%d")
@@ -995,6 +1014,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
                 f"filename*=UTF-8''{encoded_filename}"
             ),
             "X-CAD-Cache": "HIT" if cache_hit else "MISS",
+            "X-CAD-Download-Cache": "HIT" if download_hit else "MISS",
             **_cad_layout_headers(key),
         }
     )
