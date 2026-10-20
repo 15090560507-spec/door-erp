@@ -55,4 +55,6 @@ Browser verification also exposed a mobile sidebar covering the unsaved dialog. 
 
 - [x] Run TypeScript/scoped ESLint and focused backend tests; keep unrelated existing CAD failures separate.
 - [x] Generate default/众鼎/兰庭/custom long-title DXF, SVG, JPG and editable copies in `F:/codex/overview-branding-verification`. Inspect blank cells, title position and output consistency; verify simple-product mode as well.
-- [ ] Record verification, review scoped diff, commit and push the authorized branch without account data or `.superpowers/`.
+- [x] Record verification, review scoped diff, commit and push the authorized branch without account data or `.superpowers/`.
+
+Implementation and verification committed as `2b0dffc` and pushed to `origin/feat/semicircle-handles-and-quote-form-improvements`.

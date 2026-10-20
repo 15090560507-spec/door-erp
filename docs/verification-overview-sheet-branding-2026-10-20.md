@@ -29,3 +29,7 @@
 - No AutoCAD application/native plotting session was run for this change. Artifact validation uses the existing DXF pipeline and JPG renderer; this work does not claim to change its printing engine.
 - The full legacy CAD baseline was not rerun. This change does not claim to repair its previously known failures.
 - Preexisting `data/users_database.json` and `.superpowers/` changes are excluded from delivery.
+
+## Delivery
+
+Implementation commit `2b0dffc` was pushed to `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`.
