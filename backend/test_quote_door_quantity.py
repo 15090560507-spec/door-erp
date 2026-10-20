@@ -80,6 +80,25 @@ class QuoteDoorQuantityTests(unittest.TestCase):
         self.assertIn('*2', subtotals[0][9].value)
         self.assertEqual(sheet['H10'].value, 1)
 
+    def test_outer_area_screenshot_keeps_fraction_through_storage_and_excel(self):
+        from quote_excel import _quote_quantity, _quote_amount
+        data = payload(1)
+        data['doorGroups'][0]['items'] = [{
+            'productName': 'Outer area regression', 'width': 950, 'height': 2310,
+            'unit': 'm2', 'unitPrice': 1480, 'quantity': None,
+        }]
+        saved = self.db.create(data)
+        item = self.db.get_by_id(saved['id'])['doorGroups'][0]['items'][0]
+        self.assertIsNone(item['quantity'])
+        self.assertAlmostEqual(_quote_quantity(item), 2.1945)
+        self.assertEqual(_quote_amount(item), 3248)
+        filename = self.root / 'outer-area.xlsx'
+        generate_excel(saved, str(filename))
+        sheet = load_workbook(filename).worksheets[0]
+        self.assertIn('D9*E9*0.000001', sheet['H9'].value)
+        self.assertEqual(sheet['H9'].number_format, '0.####')
+        self.assertIn('ROUND(H9*I9,0)', sheet['J9'].value)
+
     def test_order_quote_choice_keeps_per_door_amount_and_exposes_count(self):
         import sales_order_routes
         from unittest.mock import patch
