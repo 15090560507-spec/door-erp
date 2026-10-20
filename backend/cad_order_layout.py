@@ -7,7 +7,7 @@ from ezdxf import bbox
 from ezdxf.math import Matrix44, Vec3
 
 
-ORDER_LAYOUT_VERSION = 'proportional-notes-order-sheet-v3'
+ORDER_LAYOUT_VERSION = 'centered-branding-order-sheet-v4'
 ORDER_NAMES = {'ORDER_FORM', 'ORDERFORM'}
 
 
@@ -164,6 +164,8 @@ def adapt_order_sheet(doc, drawing_entities, notes):
 
         def fit_text(entity, old_point, tagged=False):
             kind = entity.dxftype()
+            if kind in ('ATTDEF', 'ATTRIB') and entity.dxf.tag.upper() == 'TT':
+                return  # The full title cell is fitted and centered after reflow.
             if kind == 'MTEXT':
                 entity.dxf.width = min(entity.dxf.width,
                     ((width if old_point.x >= left else left) - old_point.x - 20) * scale)

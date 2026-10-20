@@ -16,6 +16,7 @@ from ezdxf.disassemble import recursive_decompose
 
 from cad_occlusion import CadOcclusionManager, structural_group_for_layer
 from cad_order_layout import adapt_order_sheet
+from cad_sheet_branding import apply_order_sheet_branding
 
 from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
 from trim_geometry import calculate_trim_geometry
@@ -2666,6 +2667,7 @@ def run_integrated_system(
         layout_warning = adapt_order_sheet(doc, drawing_entities, layout_notes)
         if layout_warning:
             logger.warning("[cad-layout] %s", layout_warning)
+        apply_order_sheet_branding(doc, info.get("TT"))
         draw_elapsed = time.perf_counter() - draw_started
 
         write_started = time.perf_counter()

@@ -48,6 +48,7 @@ from drawing import run_integrated_system
 from drawing import _load_template
 from cad_order_layout import ORDER_LAYOUT_VERSION
 from cad_download import CAD_DOWNLOAD_VERSION, editable_sheet_dxf
+from cad_sheet_branding import normalize_order_title
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
@@ -639,7 +640,7 @@ def build_cad_params(req: CADRequest):
 
     # --- info_map ---
     info_map = {
-        "TT": (req.order_title or "浙江西州将军铜门订货单").strip(),
+        "TT": normalize_order_title(req.order_title),
         "DHDW": req.dhdw, "GDMC": req.gdmc, "ZZCL": product_display, "CPMC": product_display,
         "DHRQ": req.dhrq, "DDH": req.ddh, "SL": req.sl,
         "YS": req.ys, "ZMLS": req.zmls, "FMLS": req.fmls,

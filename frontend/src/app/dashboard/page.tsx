@@ -130,6 +130,7 @@ export default function DashboardPage() {
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationResolverRef = useRef<((allow: boolean) => void) | null>(null);
+  const pendingDrawingTaskRef = useRef<string | null>(null);
 
   const currentEditSnapshot = useMemo(
     () => drawingEditSnapshot(formData, refText, refImages),
@@ -245,10 +246,12 @@ export default function DashboardPage() {
     return () => window.clearTimeout(timer);
   }, [fetchOverview, activeModule]);
 
-  // 切换模块时自动返回任务列表（保留表单数据以便返回继续编辑）
+  // Consume an overview selection only after the module reset, including StrictMode retries.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setActiveTaskId(null);
+      const pendingTaskId = activeModule === "图纸绘制" ? pendingDrawingTaskRef.current : null;
+      pendingDrawingTaskRef.current = null;
+      setActiveTaskId(pendingTaskId);
       setActiveTask(null);
       setTaskLoading(false);
       setRefText("");
@@ -266,6 +269,16 @@ export default function DashboardPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [activeModule]);
+
+  const openTask = async (task: TaskItem) => {
+    if (!(await requestAppNavigation())) return;
+    if (activeModule === "任务总览") {
+      pendingDrawingTaskRef.current = task.id;
+      setModule("图纸绘制");
+    } else {
+      setActiveTaskId(task.id);
+    }
+  };
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -1421,9 +1434,7 @@ export default function DashboardPage() {
                     <TaskCard
                       key={t.id}
                       task={t}
-                      onClick={(task) => {
-                        setActiveTaskId(task.id);
-                      }}
+                      onClick={(task) => void openTask(task)}
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(activeModule) ? handleDeleteTask : undefined}
                       onCopy={activeModule === "图纸绘制" ? handleCopyTask : undefined}
                       onToggleQuoteStatus={toggleTaskQuoteStatus}

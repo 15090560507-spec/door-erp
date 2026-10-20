@@ -34,7 +34,12 @@ export default function TaskCard({
         role="button"
         tabIndex={0}
         onClick={() => onClick(task)}
-        onKeyDown={(e) => { if (e.key === "Enter") onClick(task); }}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onClick(task);
+          }
+        }}
         className="task-list-row__main cursor-pointer"
       >
         <div className="flex items-center gap-3">

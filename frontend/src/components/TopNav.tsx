@@ -148,9 +148,9 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
 
   const handleNavigate = async (event: MouseEvent<HTMLAnchorElement>, module: ModuleName, href: string) => {
     event.preventDefault();
+    onCloseMobile();
     if (!(await requestAppNavigation())) return;
     if (DRAWING_MODULES.includes(module)) setModule(module);
-    onCloseMobile();
     router.push(href);
   };
 
