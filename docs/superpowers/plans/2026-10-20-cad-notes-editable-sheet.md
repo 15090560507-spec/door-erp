@@ -71,4 +71,4 @@ Interface: `_cached_cad_download(key: str, dxf_bytes: bytes) -> tuple[bytes, boo
 
 - [x] Generate actual baseline/internal/download DXF samples and small/large Chinese-note previews in `F:/codex/cad-editable-sheet-verification` with isolated DATA_DIR; inspect the rendered images and compare protected entities before/after.
 - [x] Write `docs/superpowers/specs/2026-10-20-cad-notes-editable-sheet-verification.md` with test and artifact results, limitations and no cloud deployment claim.
-- [ ] Review staged diff, commit only scoped changes, and push to `feat/semicircle-handles-and-quote-form-improvements`; leave account data and `.superpowers/` untouched.
+- [x] Review staged diff, commit only scoped changes, and push to `feat/semicircle-handles-and-quote-form-improvements`; leave account data and `.superpowers/` untouched. Functional commit `6b56d4a`, remote push confirmed.
