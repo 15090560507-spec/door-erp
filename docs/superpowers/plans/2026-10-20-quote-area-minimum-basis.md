@@ -44,4 +44,4 @@ Files: new `tools/verify_quote_area_basis.mjs`; no new production UI or backend 
 
 ## Task 3: Delivery
 
-- [ ] Document checks and artifact locations, review the scoped diff, commit and push the authorized branch. Preserve unrelated user data and explain that old saved quotes require explicit review.
+- [x] Document checks and artifact locations, review the scoped diff, commit and push the authorized branch. Preserve unrelated user data and explain that old saved quotes require explicit review. Functional commit `de070a5`; remote push confirmed.
