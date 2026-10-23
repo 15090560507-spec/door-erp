@@ -27,3 +27,7 @@ Implemented only in `F:/Vibe Coding/door-erp-main - 26.5.28` after fast-forwardi
 ## Limits
 
 The full legacy CAD baseline was not rerun; this does not claim to fix its known unrelated failures. The actual CAD geometry and existing server renderer were checked, not an AutoCAD desktop plotting session. Existing exported files must be regenerated to show the new styles.
+
+## Delivery
+
+Feature commit `c0949da` pushed to the authorized GitHub branch. Final disc suite rerun after uniform XYZ block scaling passed all 7 tests and 10 subtests. The original account file and supplied DXF hashes still match the pre-sync backup (DXF is now tracked in the feature commit).

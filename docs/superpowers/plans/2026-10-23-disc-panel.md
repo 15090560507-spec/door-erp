@@ -21,4 +21,6 @@
 - [x] Implement `backend/disc_panel.py`; wire four groups through `models.py`, both mappings in `main.py`, and `drawing.py`.
 - [x] Add subtype, nullable center height and nullable outer fill to frontend types/defaults; render shared controls in `DoorForm.tsx`. A blank height explicitly means auto linkage, with a reset icon; no stale copied numeric height.
 - [x] Generate real CAD fixtures, run focused regression/type/lint checks, exercise desktop/mobile UI with isolated mock tasks, inspect screenshots.
-- [ ] Commit only feature files plus supplied DXF template; exclude account data, other local files and credentials. Push the authorized branch and report exact verification.
+- [x] Commit only feature files plus supplied DXF template; exclude account data, other local files and credentials. Push the authorized branch and report exact verification.
+
+Delivered as `c0949da`, pushed to `origin/feat/semicircle-handles-and-quote-form-improvements`. Final disc-only rerun after uniform XYZ scaling: 7 passed, 10 subtests passed.
