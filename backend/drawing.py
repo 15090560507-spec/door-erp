@@ -17,6 +17,7 @@ from ezdxf.disassemble import recursive_decompose
 from cad_occlusion import CadOcclusionManager, structural_group_for_layer
 from cad_order_layout import adapt_order_sheet
 from cad_sheet_branding import apply_order_sheet_branding
+from disc_panel import disc_geometry, disc_center_height, disc_fill, draw_disc_fill
 
 from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
 from trim_geometry import calculate_trim_geometry
@@ -481,6 +482,7 @@ class EzdxfDrawer:
                 hatch.set_pattern_definition(pattern_lines)
         hatch.paths.add_polyline_path([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], is_closed=True)
         hatch.set_seed_points([((x1 + x2) / 2, (y1 + y2) / 2)])
+        return hatch
 
     def draw_line(self, p1, p2, layer, linetype=None):
         attribs = {'layer': layer}
@@ -1818,6 +1820,9 @@ def draw_door_in_frame(
             "fill_b": str(p.get(f"{prefix}fill_b", p.get("panel_fill_b", "")) or ""),
             "fill_c": str(p.get(f"{prefix}fill_c", p.get("panel_fill_c", "")) or ""),
             "disc_radius": float(p.get(f"{prefix}disc_radius", p.get("panel_disc_radius", 120)) or 0),
+            "disc_style": p.get('panel_disc_style' if group == 'front' else f'{group}_panel_disc_style', '圆形'),
+            "disc_center_height": p.get('panel_disc_center_height' if group == 'front' else f'{group}_panel_disc_center_height'),
+            "disc_outer_fill": p.get('panel_disc_outer_fill' if group == 'front' else f'{group}_panel_disc_outer_fill'),
             "border_inset": float(p.get(
                 f"{prefix}border_inset",
                 p.get("panel_border_inset", 30),
@@ -2110,19 +2115,23 @@ def draw_door_in_frame(
 
             if panel_style == "圆盘造型":
                 radius = float(settings["disc_radius"])
-                center_y = 1050
-                if radius <= 0:
-                    continue
-                if not (panel_y_bot < center_y - radius and center_y + radius < panel_y_top):
-                    continue
-                if direction == 1 and lock_edge + radius > px2:
-                    continue
-                if direction == -1 and lock_edge - radius < px1:
-                    continue
-                if direction == 1:
-                    drawer.draw_arc(off((lock_edge, center_y)), radius, 270, 90, 'A-DOOR-PANEL')
+                disc_style = str(settings['disc_style'])
+                center_y = disc_center_height(settings['disc_center_height'],
+                    p.get('fmls') if is_back else p.get('zmls'), p.get('handle_size', ''), panel_y_bot)
+                geometry = disc_geometry(drawer.doc, disc_style, radius, center_y, lock_edge,
+                                         direction, (px1, panel_y_bot, px2, panel_y_top))
+                fill_name = disc_fill(disc_style, settings['disc_outer_fill'])
+                if fill_name and fill_name != '无':
+                    draw_disc_fill(drawer, (*off((px1, panel_y_bot)), *off((px2, panel_y_top))),
+                                   [off(point) for point in geometry.boundary], hatch_library.get(fill_name))
+                if geometry.block_name:
+                    entity = drawer.ms.add_blockref(geometry.block_name, off(geometry.center),
+                        dxfattribs={'layer': 'A-DOOR-PANEL', 'xscale': geometry.scale,
+                                    'yscale': geometry.scale, 'zscale': geometry.scale})
+                    drawer.occlusion.register(entity, 'panel')
                 else:
-                    drawer.draw_arc(off((lock_edge, center_y)), radius, 90, 270, 'A-DOOR-PANEL')
+                    start, end = (270, 90) if direction == 1 else (90, 270)
+                    drawer.draw_arc(off(geometry.center), radius, start, end, 'A-DOOR-PANEL')
                 continue
 
             panel_lock_offset_x = float(settings["lock_offset_x"])

@@ -11,6 +11,7 @@ import {
 import { loadDropdownOptions } from "@/lib/api";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 import LubanRulerModal from "@/components/LubanRulerModal";
+import DiscPanelFields from "@/components/DiscPanelFields";
 import { lubanResult, LUBAN_RULER_VERSIONS, DEFAULT_LUBAN_RULER_KIND, type LubanRulerKind } from "@/lib/lubanRuler";
 
 interface Props {
@@ -464,6 +465,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
           />
         </div>
         {/* 左侧：宽（尺寸参数） */}
+        {usesDiscPanel(style) && <DiscPanelFields title={title} radiusKey={discRadiusKey} data={data} onChange={onChange} />}
         <div className="space-y-3">
           {usesThreeColumnPanel(style) && (
             <>
@@ -549,14 +551,6 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 </>
               )}
             </div>
-          )}
-          {usesDiscPanel(style) && (
-            <Input
-              label={`${title}圆盘半径(mm)`}
-              value={(data[discRadiusKey] as number) ?? 120}
-              type="number"
-              onChange={(v) => setField(discRadiusKey, Number(v))}
-            />
           )}
           {usesFourSideDiagonal(style) && (
             <Input

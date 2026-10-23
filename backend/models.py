@@ -1,7 +1,7 @@
 """
 Pydantic 模型 - 请求/响应数据定义
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -121,6 +121,9 @@ class CADRequest(BaseModel):
     panel_fill_b: str = ""              # B区填充
     panel_fill_c: str = ""              # C区填充
     panel_disc_radius: int = 120        # 圆盘造型半径
+    panel_disc_style: Literal['圆形', '圆形牡丹花', '四叶草牡丹花'] = '圆形'
+    panel_disc_center_height: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    panel_disc_outer_fill: Optional[str] = None
     panel_border_inset: int = 30        # 四边对角线条外边距
     panel_three_side_lock_offset: int = 150 # 三边对角线条锁边偏移
     panel_three_side_inset: int = 60    # 三边对角线条上下及合页边宽度
@@ -140,6 +143,9 @@ class CADRequest(BaseModel):
     back_panel_fill_b: str = ""
     back_panel_fill_c: str = ""
     back_panel_disc_radius: int = 120
+    back_panel_disc_style: Literal['圆形', '圆形牡丹花', '四叶草牡丹花'] = '圆形'
+    back_panel_disc_center_height: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    back_panel_disc_outer_fill: Optional[str] = None
     back_panel_border_inset: int = 30
     back_panel_three_side_lock_offset: int = 150
     back_panel_three_side_inset: int = 60
@@ -159,6 +165,9 @@ class CADRequest(BaseModel):
     child_panel_fill_b: str = ""
     child_panel_fill_c: str = ""
     child_panel_disc_radius: int = 120
+    child_panel_disc_style: Literal['圆形', '圆形牡丹花', '四叶草牡丹花'] = '圆形'
+    child_panel_disc_center_height: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    child_panel_disc_outer_fill: Optional[str] = None
     child_panel_border_inset: int = 30
     child_panel_three_side_lock_offset: int = 150
     child_panel_three_side_inset: int = 60
@@ -180,6 +189,9 @@ class CADRequest(BaseModel):
     child_back_panel_fill_b: str = ""
     child_back_panel_fill_c: str = ""
     child_back_panel_disc_radius: int = 120
+    child_back_panel_disc_style: Literal['圆形', '圆形牡丹花', '四叶草牡丹花'] = '圆形'
+    child_back_panel_disc_center_height: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    child_back_panel_disc_outer_fill: Optional[str] = None
     child_back_panel_border_inset: int = 30
     child_back_panel_three_side_lock_offset: int = 150
     child_back_panel_three_side_inset: int = 60
