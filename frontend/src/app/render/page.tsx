@@ -8,21 +8,17 @@ import type { TaskItem } from "@/lib/types";
 import {
   RENDER_CATEGORIES,
   createRenderModelConfig,
-  createRenderSegmentation,
   createRenderTask,
-  confirmRenderSegmentation,
   deleteRenderAsset,
   deleteRenderModelConfig,
   deleteRenderTask,
   extractDxfLineArt,
   extractTaskLineArt,
   extractUploadedLineArt,
-  generateRenderTaskPsd,
   lineArtViewToFile,
   listRenderAssets,
   listRenderModelConfigs,
   listRenderTasks,
-  regenerateRenderComponent,
   renderTaskFileToFile,
   updateRenderModelConfig,
   updateLineArtCrop,
@@ -32,9 +28,7 @@ import {
   type RenderModelConfig,
   type RenderTask,
   type LineArtExtraction,
-  type RenderMode,
   type RenderReferenceRole,
-  type RenderSegmentation,
 } from "@/lib/renderApi";
 import { restoreRenderHistory } from "@/lib/renderHistory";
 
@@ -50,17 +44,12 @@ const REFERENCE_ROLE_OPTIONS: Array<{ role: RenderReferenceRole; label: string; 
 ];
 const REFERENCE_ROLE_LABEL = Object.fromEntries(REFERENCE_ROLE_OPTIONS.map((item) => [item.role, item.label])) as Record<RenderReferenceRole, string>;
 
-function resolveRenderSize(renderMode: RenderMode, selectedSize: string) {
-  if (selectedSize === "auto") return renderMode === "precise" ? "4k" : "2k";
-  return selectedSize;
+function resolveRenderSize(selectedSize: string) {
+  return selectedSize === "auto" ? "2k" : selectedSize;
 }
 const LineArtCropEditor = dynamic(() => import("@/components/LineArtCropEditor"), {
   ssr: false,
   loading: () => <div className="flex min-h-72 items-center justify-center text-sm text-[#8E8E93]">正在加载裁剪工具...</div>,
-});
-const RenderSegmentationEditor = dynamic(() => import("@/components/RenderSegmentationEditor"), {
-  ssr: false,
-  loading: () => <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 text-sm text-white">正在加载区域校对工具...</div>,
 });
 const EMPTY_CONFIG: ModelConfigInput = {
   name: "",
@@ -137,10 +126,7 @@ export default function RenderPage() {
   const [selectedLineArtSide, setSelectedLineArtSide] = useState<"front" | "back">("front");
   const [lineArtBusy, setLineArtBusy] = useState(false);
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
-  const [segmentation, setSegmentation] = useState<RenderSegmentation | null>(null);
-  const [segmentationEditorOpen, setSegmentationEditorOpen] = useState(false);
-  const [psdConvertPrompt, setPsdConvertPrompt] = useState(false);
-  const [psdAction, setPsdAction] = useState<"" | "generating" | "downloading">("");
+  const [psdDownloading, setPsdDownloading] = useState(false);
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
   const [activeReferenceRole, setActiveReferenceRole] = useState<RenderReferenceRole>("panel");
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -233,7 +219,6 @@ export default function RenderPage() {
     setSize(restored.size);
     setSelectedLineArtSide(restored.sourceSide);
     setSelectedDrawingTaskId(restored.sourceTaskId);
-    setSegmentation(restored.segmentation);
     setOrderSheet(null);
     setDxfFile(null);
     setLineArt(null);
@@ -421,7 +406,7 @@ export default function RenderPage() {
     );
   }
 
-  async function submitTask(renderMode: RenderMode, segmentationOverride?: RenderSegmentation) {
+  async function submitTask() {
     if (lineArtSource === "direct" && !lineArt) return setMessage("请上传线稿图");
     if (lineArtSource === "dxf" && !dxfFile) return setMessage("请上传 DXF 文件");
     if (lineArtSource !== "direct" && !lineArtExtraction) return setMessage("请先生成正面和反面线稿");
@@ -436,29 +421,13 @@ export default function RenderPage() {
       return;
     }
     if (!selectedLineArt) return setMessage("未选择可用线稿");
-    const confirmedSegmentation = segmentationOverride || segmentation;
-    if (renderMode === "precise" && !["task", "dxf"].includes(lineArtSource) && !confirmedSegmentation?.confirmed) {
-      setLineArtBusy(true);
-      setMessage("正在识别门扇、门框、门套和五金区域...");
-      try {
-        const next = await createRenderSegmentation(selectedLineArt);
-        setSegmentation(next);
-        setSegmentationEditorOpen(true);
-        setMessage("请确认彩色部件区域后继续精准生成");
-      } catch (error) {
-        setErrorDialog({ title: "部件区域识别失败", message: (error as Error).message || "请检查线稿图片后重试" });
-      } finally {
-        setLineArtBusy(false);
-      }
-      return;
-    }
     setLoading(true);
     setSubmitConfigText("正在保存当前模型配置...");
     setMessage("正在保存当前模型配置...");
     const submittedAt = Date.now();
     setSubmitWatchSince(submittedAt);
     const taskAssetIds = Array.from(new Set(referenceGroups.flatMap((group) => group.assetIds)));
-    const effectiveSize = resolveRenderSize(renderMode, size);
+    const effectiveSize = resolveRenderSize(size);
     const referenceBindings = Object.fromEntries(referenceGroups.map((group) => [group.role, { assetIds: group.assetIds }])) as Record<RenderReferenceRole, { assetIds: string[] }>;
     const referenceFiles = Object.fromEntries(referenceGroups.map((group) => [group.role, group.files])) as Record<RenderReferenceRole, File[]>;
     try {
@@ -480,13 +449,12 @@ export default function RenderPage() {
           lineArt: selectedLineArt,
           styleReference: null,
           tempAssets: [],
-          renderMode,
+          renderMode: "quick",
           sourceType: lineArtSource === "task" ? "task" : lineArtSource === "dxf" ? "dxf" : "image",
           sourceSide: selectedLineArtSide,
           sourceTaskId: lineArtSource === "task" ? selectedDrawingTaskId : "",
           referenceBindings,
           referenceFiles,
-          segmentationId: confirmedSegmentation?.id,
           sourceDxf: lineArtSource === "dxf" ? dxfFile : null,
         }),
         wait(8000).then(() => null),
@@ -504,7 +472,7 @@ export default function RenderPage() {
       }
       setActiveTask(task);
       setTasks(await listRenderTasks());
-      setMessage(task.status === "completed" ? `${renderMode === "precise" ? "精准分区" : "快速 AI"}效果图生成完成` : `任务状态：${task.status}`);
+      setMessage(task.status === "completed" ? "效果图生成完成" : `任务状态：${task.status}`);
       if (!isLiveRenderStatus(task.status)) setSubmitWatchSince(null);
     } catch (error: unknown) {
       const err = error as { userMessage?: string; message?: string; task?: RenderTask; raw?: string };
@@ -547,7 +515,6 @@ export default function RenderPage() {
     try {
       const extraction = await extractTaskLineArt(selectedDrawingTaskId);
       setLineArtExtraction(extraction);
-      setSegmentation(null);
       setSelectedLineArtSide("front");
       setMessage("正面和反面线稿已生成，请选择本次要使用的一面");
     } catch (error) {
@@ -560,7 +527,6 @@ export default function RenderPage() {
   async function handleOrderSheet(file: File | null) {
     setOrderSheet(file);
     setLineArtExtraction(null);
-    setSegmentation(null);
     if (!file) return;
     setLineArtBusy(true);
     setMessage("正在识别订单图中的正面和反面门体...");
@@ -580,7 +546,6 @@ export default function RenderPage() {
   async function handleDxf(file: File | null) {
     setDxfFile(file);
     setLineArtExtraction(null);
-    setSegmentation(null);
     if (!file) return;
     setLineArtBusy(true);
     setMessage("正在从 DXF 提取正面和反面结构线稿...");
@@ -600,7 +565,6 @@ export default function RenderPage() {
     if (!lineArtExtraction) return;
     const updated = await updateLineArtCrop(lineArtExtraction.id, value);
     setLineArtExtraction(updated);
-    setSegmentation(null);
     setCropEditorOpen(false);
     setMessage("正面和反面裁剪已更新");
   }
@@ -713,43 +677,16 @@ export default function RenderPage() {
     }
   }
 
-  async function regenerateComponent(role: RenderReferenceRole) {
-    if (!activeTask) return;
+  async function downloadHistoricalPsd() {
+    if (!activeTask?.psdFile?.url) return;
     try {
-      const next = await regenerateRenderComponent(activeTask.id, role);
-      setActiveTask(next);
-      setMessage(`${REFERENCE_ROLE_LABEL[role]}正在重新生成，其他部件保持不变`);
+      setPsdDownloading(true);
+      await downloadFileFromUrl(activeTask.psdFile.url, activeTask.psdFile.originalName || `${activeTask.id}-分层效果图.psd`);
+      setMessage("分层 PSD 已开始下载");
     } catch (error) {
-      setErrorDialog({ title: "部件重新生成失败", message: (error as Error).message || "请稍后重试" });
-    }
-  }
-
-  async function exportPsd() {
-    if (!activeTask) return;
-    if (activeTask.renderMode !== "precise") {
-      setPsdConvertPrompt(true);
-      return;
-    }
-    let task = activeTask;
-    try {
-      if (!task.psdFile?.url) {
-        setPsdAction("generating");
-        setMessage("正在生成 4K 分层 PSD，请稍候...");
-        task = await generateRenderTaskPsd(task.id);
-        setActiveTask(task);
-        setTasks((current) => current.map((item) => item.id === task.id ? task : item));
-      }
-      if (!task.psdFile?.url) {
-        throw new Error("PSD 已生成，但后端没有返回可下载文件");
-      }
-      setPsdAction("downloading");
-      setMessage("PSD 已生成，正在开始下载...");
-      await downloadFileFromUrl(task.psdFile.url, task.psdFile.originalName || `${task.id}-分层效果图.psd`);
-      setMessage("分层 PSD 已生成并开始下载");
-    } catch (error) {
-      setErrorDialog({ title: "PSD 导出失败", message: (error as Error).message || "请稍后重试" });
+      setErrorDialog({ title: "PSD 下载失败", message: (error as Error).message || "请稍后重试" });
     } finally {
-      setPsdAction("");
+      setPsdDownloading(false);
     }
   }
 
@@ -782,18 +719,6 @@ export default function RenderPage() {
           </div>
         </div>
       )}
-      {psdConvertPrompt && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/35 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-md rounded-2xl border border-white/60 bg-white p-5 shadow-2xl">
-            <h2 className="text-[16px] font-semibold text-[#1C1C1E]">需要先生成精准分区结果</h2>
-            <p className="mt-2 text-[13px] leading-6 text-[#636366]">快速 AI 图片没有可靠的独立部件层。系统将沿用当前线稿和参考素材转为精准分区生成，完成后即可生成 PSD。</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setPsdConvertPrompt(false)} className="rounded-lg border border-[#D1D1D6] px-4 py-2 text-[13px] font-medium text-[#3C3C43]">取消</button>
-              <button type="button" onClick={() => { setPsdConvertPrompt(false); void submitTask("precise"); }} className="rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white">转为精准生成</button>
-            </div>
-          </div>
-        </div>
-      )}
       {previewImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5" onClick={() => setPreviewImage(null)}>
           <div className="relative max-h-full max-w-[92vw]" onClick={(event) => event.stopPropagation()}>
@@ -811,23 +736,6 @@ export default function RenderPage() {
       )}
       {cropEditorOpen && lineArtExtraction?.sourceUrl && (
         <LineArtCropEditor extraction={lineArtExtraction} onCancel={() => setCropEditorOpen(false)} onSave={saveLineArtCrop} />
-      )}
-      {segmentationEditorOpen && segmentation && (
-        <RenderSegmentationEditor
-          segmentation={segmentation}
-          onCancel={() => setSegmentationEditorOpen(false)}
-          onConfirm={async (masks) => {
-            try {
-              const confirmed = await confirmRenderSegmentation(segmentation.id, masks);
-              setSegmentation(confirmed);
-              setSegmentationEditorOpen(false);
-              setMessage("部件区域已确认，正在提交精准分区生成...");
-              await submitTask("precise", confirmed);
-            } catch (error) {
-              setErrorDialog({ title: "部件区域保存失败", message: (error as Error).message || "请稍后重试" });
-            }
-          }}
-        />
       )}
       {loading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/65 px-4 backdrop-blur-[2px]">
@@ -900,7 +808,7 @@ export default function RenderPage() {
             <button
               key={value}
               type="button"
-              onClick={() => { setLineArtSource(value); setLineArtExtraction(null); setSegmentation(null); }}
+              onClick={() => { setLineArtSource(value); setLineArtExtraction(null); }}
               className={`rounded-lg px-3 py-2 text-[12px] font-medium ${lineArtSource === value ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#3C3C43]"}`}
             >
               {value === "task" ? "关联图纸项目" : value === "dxf" ? "上传 DXF" : value === "upload" ? "上传完整订单图" : "直接上传线稿"}
@@ -912,7 +820,7 @@ export default function RenderPage() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
             <div>
               <span className="text-[12px] font-medium text-[#8E8E93]">选择图纸项目</span>
-              <TaskProjectCombobox tasks={drawingTasks} value={selectedDrawingTaskId} onChange={(value) => { setSelectedDrawingTaskId(value); setLineArtExtraction(null); setSegmentation(null); }} />
+              <TaskProjectCombobox tasks={drawingTasks} value={selectedDrawingTaskId} onChange={(value) => { setSelectedDrawingTaskId(value); setLineArtExtraction(null); }} />
             </div>
             <button type="button" onClick={() => void generateTaskLineArt()} disabled={lineArtBusy || !selectedDrawingTaskId} className="self-end rounded-lg bg-[#007AFF] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50">{lineArtBusy ? "生成中..." : "生成正反面线稿"}</button>
           </div>
@@ -930,7 +838,7 @@ export default function RenderPage() {
         )}
 
         {lineArtSource === "direct" && (
-          <UploadBox title="线稿图" file={lineArt} onPick={(file) => { setLineArt(file); setSegmentation(null); }} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+          <UploadBox title="线稿图" file={lineArt} onPick={setLineArt} onPreview={(src, title) => setPreviewImage({ src, title })} required />
         )}
 
         {lineArtSource !== "direct" && lineArtExtraction && (
@@ -950,15 +858,6 @@ export default function RenderPage() {
                 </label>
               ))}
             </div>
-          </div>
-        )}
-        {["upload", "direct"].includes(lineArtSource) && segmentation && (
-          <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] px-3 py-2">
-            <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${segmentation.confirmed ? "bg-[#34C759]/12 text-[#248A3D]" : "bg-[#FF9500]/12 text-[#9A5A00]"}`}>
-              {segmentation.confirmed ? "部件区域已确认" : `识别置信度 ${Math.round(segmentation.confidence * 100)}%`}
-            </span>
-            <span className="flex-1 text-[11px] text-[#8E8E93]">精准模式将严格沿用当前区域边界。</span>
-            <button type="button" onClick={() => setSegmentationEditorOpen(true)} className="rounded-lg border border-[#D1D1D6] bg-white px-3 py-1.5 text-[12px] font-medium text-[#3C3C43]">检查区域</button>
           </div>
         )}
       </section>
@@ -1137,7 +1036,7 @@ export default function RenderPage() {
             <span className="text-[12px] font-medium text-[#8E8E93]">提示词</span>
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px]" />
           </label>
-          <Select label="输出清晰度" value={size} onChange={setSize} options={[["auto", "自动（快速 2K / 精准 4K）"], ["1k", "1K"], ["2k", "2K"], ["4k", "4K"]]} />
+          <Select label="输出清晰度" value={size} onChange={setSize} options={[["auto", "自动（2K）"], ["1k", "1K"], ["2k", "2K"], ["4k", "4K"]]} />
           <label>
             <span className="text-[12px] font-medium text-[#8E8E93]">数量</span>
             <input type="number" min={1} max={1} value={count} disabled onChange={(event) => setCount(clampCount(event.target.value))} className="mt-1 w-full rounded-lg border border-[#E5E5EA] px-3 py-2 text-[13px] disabled:bg-[#F2F2F7]" />
@@ -1146,11 +1045,8 @@ export default function RenderPage() {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
           <div className="flex-1" />
-          <button type="button" onClick={() => void submitTask("quick")} disabled={loading} className="rounded-lg border border-[#D1D1D6] bg-white px-5 py-2 text-[13px] font-medium text-[#1C1C1E] disabled:opacity-50">
-            {loading ? "提交中..." : `快速 AI 生成 · ${resolveRenderSize("quick", size).toUpperCase()}`}
-          </button>
-          <button type="button" onClick={() => void submitTask("precise")} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">
-            {loading ? "提交中..." : `精准分区生成 · ${resolveRenderSize("precise", size).toUpperCase()}`}
+          <button type="button" onClick={() => void submitTask()} disabled={loading} className="rounded-lg bg-[#007AFF] px-5 py-2 text-[13px] font-medium text-white disabled:opacity-50">
+            {loading ? "提交中..." : `一键生成效果图 · ${resolveRenderSize(size).toUpperCase()}`}
           </button>
         </div>
       </section>
@@ -1193,7 +1089,7 @@ export default function RenderPage() {
           {activeTask && (
             <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
               <span className={`rounded-full px-2 py-1 font-medium ${activeTask.renderMode === "precise" ? "bg-[#007AFF]/10 text-[#007AFF]" : "bg-[#F2F2F7] text-[#636366]"}`}>
-                {activeTask.renderMode === "precise" ? "精准分区" : "快速 AI"}
+                {activeTask.renderMode === "precise" ? "历史分区结果" : "快速 AI"}
               </span>
               <span className="rounded-full bg-[#F2F2F7] px-2 py-1 text-[#636366]">{activeTask.sourceSide === "back" ? "反面" : "正面"}</span>
               <span className={`rounded-full px-2 py-1 ${activeTask.materialMode === "ai" ? "bg-[#34C759]/10 text-[#248A3D]" : "bg-[#FF9F0A]/10 text-[#A05A00]"}`}>
@@ -1207,29 +1103,17 @@ export default function RenderPage() {
               {activeTask.materialNote}
             </div>
           )}
-          {activeTask?.status === "completed" && activeTask.images?.length > 0 && (
+          {activeTask?.status === "completed" && activeTask.psdFile?.url && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
               <span className="mr-1 text-[12px] font-semibold text-[#1C1C1E]">结果操作</span>
-              {activeTask.renderMode === "precise" && REFERENCE_ROLE_OPTIONS.map((item) => (
-                <button
-                  key={item.role}
-                  type="button"
-                  onClick={() => void regenerateComponent(item.role)}
-                  disabled={!taskRoleHasReferences(activeTask, item.role)}
-                  className="rounded-lg border border-[#D1D1D6] bg-white px-3 py-1.5 text-[11px] font-medium text-[#3C3C43] disabled:cursor-not-allowed disabled:opacity-40"
-                  title={taskRoleHasReferences(activeTask, item.role) ? `只重新生成${item.label}` : `${item.label}没有独立参考图`}
-                >
-                  重生成{item.label}
-                </button>
-              ))}
               <div className="flex-1" />
               <button
                 type="button"
-                onClick={() => void exportPsd()}
-                disabled={Boolean(psdAction)}
+                onClick={() => void downloadHistoricalPsd()}
+                disabled={psdDownloading}
                 className="min-w-[132px] rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-[12px] font-medium text-white disabled:cursor-wait disabled:opacity-60"
               >
-                {psdAction === "generating" ? "正在生成 PSD..." : psdAction === "downloading" ? "正在下载 PSD..." : activeTask.psdFile?.url ? "下载分层 PSD" : "生成并下载 PSD"}
+                {psdDownloading ? "正在下载 PSD..." : "下载分层 PSD"}
               </button>
             </div>
           )}
@@ -1253,7 +1137,7 @@ export default function RenderPage() {
                 <div className="flex items-start gap-2">
                   <button type="button" onClick={() => void restoreHistoryTask(task)} className="min-w-0 flex-1 cursor-pointer text-left">
                     <span className="font-medium">{task.status}</span>
-                    <span className="ml-2 rounded-full bg-white px-1.5 py-0.5 text-[10px]">{task.renderMode === "precise" ? "精准" : "快速"}</span>
+                    <span className="ml-2 rounded-full bg-white px-1.5 py-0.5 text-[10px]">{task.renderMode === "precise" ? "历史分区" : "快速"}</span>
                     <span className="ml-2">{formatRenderTime(task.finishedAt || task.createdAt)}</span>
                     <span className="mt-1 block truncate text-[11px] opacity-70">{renderTaskModelText(task, configs)}</span>
                     {task.errorMessage && <span className="mt-1 block truncate text-[11px] text-[#FF3B30]">{task.errorMessage}</span>}
@@ -1319,7 +1203,7 @@ function CompactDxfUpload({ file, busy, onPick }: { file: File | null; busy: boo
       <input type="file" accept=".dxf,application/dxf" className="hidden" onChange={(event) => { onPick(event.target.files?.[0] || null); event.currentTarget.value = ""; }} />
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-medium text-[#1C1C1E]">{busy ? "正在读取 DXF..." : file ? file.name : "点击上传 DXF 文件"}</p>
-        <p className="mt-1 text-[11px] text-[#8E8E93]">精准模式直接读取门扇、门框、门套和五金图层</p>
+        <p className="mt-1 text-[11px] text-[#8E8E93]">DXF 格式</p>
       </div>
       {file && <button type="button" onClick={(event) => { event.preventDefault(); onPick(null); }} className="ml-3 rounded-lg bg-white px-3 py-1.5 text-[12px] text-[#FF3B30]">清空</button>}
     </label>
@@ -1513,11 +1397,6 @@ function pickDefaultConfig(configs: RenderModelConfig[]): RenderModelConfig | un
   return [...configs]
     .filter((item) => item.enabled)
     .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
-}
-
-function taskRoleHasReferences(task: RenderTask, role: RenderReferenceRole): boolean {
-  const binding = task.referenceBindings?.[role];
-  return Boolean(binding?.assetIds?.length || binding?.files?.length);
 }
 
 function renderGeometryRoleLabel(role: string): string {
