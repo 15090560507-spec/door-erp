@@ -224,6 +224,8 @@ const metrics = params => {
       });
       assert.deepEqual(fit.sides, expectedSides); assert.ok(fit.uniform && fit.fits && fit.fill > .94, JSON.stringify(fit));
     };
+    await checkFit(panel, ['front']);
+    await panel.getByRole('button', { name: '正面和反面', exact: true }).click();
     await checkFit(panel, ['front', 'back']);
     await panel.scrollIntoViewIfNeeded();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'cad-both-desktop.png') });
@@ -247,8 +249,8 @@ const metrics = params => {
     await panel.getByRole('button', { name: '反面', exact: true }).click();
     await page.getByRole('button', { name: '预览 DXF', exact: true }).click();
     await panel.locator('[data-cad-preview-canvas] svg').waitFor();
-    await checkFit(panel, ['front', 'back']);
-    assert.equal(previewRequests, 2, 'a new preview defaults to both sides');
+    await checkFit(panel, ['back']);
+    assert.equal(previewRequests, 2, 'manual refresh preserves the selected view');
     await field('颜色').fill('Changed color');
     await page.getByRole('button', { name: '去报价', exact: true }).click();
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
@@ -372,9 +374,24 @@ const metrics = params => {
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     };
     const initialDock = await dock.boundingBox();
+    assert.ok(Math.abs(initialDock.width - 510) < 1 && Math.abs(initialDock.height - 660) < 1, JSON.stringify(initialDock));
+    await dock.getByRole('button', { name: '放大小窗', exact: true }).click();
+    assert.ok((await dock.boundingBox()).width > initialDock.width + 40);
+    await dock.getByRole('button', { name: '缩小小窗', exact: true }).click();
+    const resizeWindow = async (dx, dy) => {
+      const corner = await dock.getByRole('button', { name: '调整小窗大小', exact: true }).boundingBox();
+      const x = corner.x + corner.width / 2, y = corner.y + corner.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.mouse.move(x + dx, y + dy, { steps: 8 }); await page.mouse.up();
+      await page.waitForTimeout(80);
+    };
+    await resizeWindow(-60, -90);
+    assert.ok(Math.abs((await dock.boundingBox()).width - 450) < 2 && Math.abs((await dock.boundingBox()).height - 570) < 2);
+    await resizeWindow(60, 90);
+    const dragStart = await dock.boundingBox();
     await drag(-430, 150);
     const movedDock = await dock.boundingBox();
-    assert.ok(Math.abs(movedDock.x - (initialDock.x - 430)) < 2 && Math.abs(movedDock.y - (initialDock.y + 150)) < 2);
+    assert.ok(Math.abs(movedDock.x - (dragStart.x - 430)) < 2 && Math.abs(movedDock.y - (dragStart.y + 150)) < 2);
     await drag(-3000, -2000);
     assert.ok((await dock.boundingBox()).x >= 8 && (await dock.boundingBox()).y >= 8);
     await dock.getByRole('button', { name: '移动图纸小窗', exact: true }).press('Shift+ArrowRight');
@@ -395,6 +412,13 @@ const metrics = params => {
     await page.waitForTimeout(600); assert.equal(previewRequests, beforeLive);
     await dock.locator('[data-cad-preview-canvas] svg').waitFor();
     assert.equal(previewRequests, beforeLive + 1);
+    assert.equal(await dock.getByRole('button', { name: '正面', exact: true }).getAttribute('aria-pressed'), 'true');
+    const canvasInside = await dock.evaluate(el => {
+      const panel = el.getBoundingClientRect(), canvas = el.querySelector('[data-cad-preview-canvas]').getBoundingClientRect();
+      return canvas.top >= panel.top && canvas.bottom <= panel.bottom - 2;
+    });
+    assert.ok(canvasInside, 'the default preview canvas must fit without clipping dimensions');
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'floating-default-front.png') });
     await field('订货单位').fill('Live preview only');
     await page.waitForTimeout(1700); assert.equal(previewRequests, beforeLive + 1);
     await dock.getByRole('switch', { name: '自动预览', exact: true }).uncheck();
@@ -424,6 +448,20 @@ const metrics = params => {
     assert.equal(await dock.locator('[data-cad-preview-canvas] svg').getAttribute('data-request-width'), '1380');
     assert.equal(paramSaves, beforeSaves, 'automatic preview must never save a form');
     await dock.getByRole('switch', { name: '自动预览', exact: true }).uncheck();
+    assert.equal(await dock.getByRole('button', { name: '正面', exact: true }).getAttribute('aria-pressed'), 'true');
+    await dock.getByRole('button', { name: '反面', exact: true }).click();
+    const beforeDock = await dock.boundingBox(), requestsBeforeDock = previewRequests;
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.locator('[data-live-cad-preview][data-preview-mode="docked"]').waitFor();
+    assert.ok(await dock.evaluate(el => el.parentElement.hasAttribute('data-preview-home') && getComputedStyle(el).position !== 'fixed'));
+    assert.ok((await dock.boundingBox()).width > beforeDock.width * 1.5);
+    assert.equal(await dock.getByRole('button', { name: '反面', exact: true }).getAttribute('aria-pressed'), 'true');
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'docked-large-desktop.png') });
+    await page.locator('.door-form').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await page.locator('[data-live-cad-preview][data-preview-mode="floating"]').waitFor();
+    const restored = await dock.boundingBox();
+    assert.ok(Math.abs(restored.x - beforeDock.x) < 1 && Math.abs(restored.y - beforeDock.y) < 1 && Math.abs(restored.width - beforeDock.width) < 1);
+    assert.equal(previewRequests, requestsBeforeDock, 'docking and restoring must not regenerate CAD');
     await dock.getByRole('button', { name: '收起小窗', exact: true }).click();
     await field('正面门板样式').selectOption('四边对角线条');
     await dock.getByRole('button', { name: '展开小窗', exact: true }).click();
@@ -463,7 +501,8 @@ const metrics = params => {
       referencePreserved: true, clearStartsNewEntry: true, requestedPreviewOnly: true, sideSwitchWithoutRequests: true,
       previewFitWithoutDistortion: true, rowQuoteNavigation: true, explicitQuoteSave: true, recognitionAfterPreview: true,
       threeColumnBalanced: true, panelExpanded: true, floatingPreviewNoSpace: true, mouseAndTouchDrag: true,
-      boundedOnResize: true, previewCollapse: true, livePreviewOptIn: true, debouncedLatestOnly: true,
+      boundedOnResize: true, previewCollapse: true, previewDefault150Percent: true, resizablePreview: true,
+      frontDefault: true, scrollDockAndRestore: true, livePreviewOptIn: true, debouncedLatestOnly: true,
       livePreviewFailureRetention: true, noAutoSave: true, newTaskSaved: newTasks, errors, unexpected }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

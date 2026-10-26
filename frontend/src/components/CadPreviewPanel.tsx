@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, Minus, Plus, RotateCcw, X } from "lucide-react";
 
-type Side = "both" | "front" | "back";
+export type CadPreviewSide = "both" | "front" | "back";
+type Side = CadPreviewSide;
 const sides: { value: Side; label: string }[] = [
   { value: "front", label: "正面" }, { value: "back", label: "反面" }, { value: "both", label: "正面和反面" },
 ];
@@ -47,8 +48,12 @@ function PreviewCanvas({ svg, side, fitFrame = false }: { svg: string; side: Sid
     dangerouslySetInnerHTML={markup} />;
 }
 
-export default function CadPreviewPanel({ svg, loading, embedded = false }: { svg: string | null; loading: boolean; embedded?: boolean }) {
-  const [side, setSide] = useState<Side>("both");
+export default function CadPreviewPanel({ svg, loading, embedded = false, side: selectedSide, onSideChange }: {
+  svg: string | null; loading: boolean; embedded?: boolean; side?: Side; onSideChange?: (side: Side) => void;
+}) {
+  const [localSide, setLocalSide] = useState<Side>("both");
+  const side = selectedSide ?? localSide;
+  const setSide = onSideChange ?? setLocalSide;
   const [isOpen, setIsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {

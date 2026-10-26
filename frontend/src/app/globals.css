@@ -551,8 +551,15 @@ textarea:focus-visible {
 @media (max-width: 640px) { .door-form-trim-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .drawing-form-workspace { min-width: 0; }
-.drawing-preview-dock { position: fixed; z-index: 80; width: min(340px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; min-width: 0; border: 1px solid #D1D5DB; border-radius: 8px; background: #FFF; padding: 12px; box-shadow: 0 12px 38px rgba(22,22,27,.18); }
-.drawing-preview-dock [data-cad-preview-canvas] { max-height: 320px; }
+.drawing-preview-dock { position: fixed; z-index: 80; display: flex; flex-direction: column; width: min(510px, calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: hidden; min-width: 0; border: 1px solid #D1D5DB; border-radius: 8px; background: #FFF; padding: 12px; box-shadow: 0 12px 38px rgba(22,22,27,.18); }
+.drawing-preview-dock .drawing-preview-body { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: auto; padding-bottom: 8px; }
+.drawing-preview-dock [data-cad-preview-panel] { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.drawing-preview-dock [data-cad-preview-panel] > div:first-child { flex-shrink: 0; }
+.drawing-preview-dock [data-cad-preview-panel] > div:nth-child(2) { min-height: 0; flex: 1; }
+.drawing-preview-dock [data-cad-preview-canvas] { height: 100%; max-height: none; }
+.drawing-preview-home-panel { min-width: 0; border: 1px solid #E2E2E8; border-radius: 8px; background: #FFF; padding: 18px; }
+.drawing-preview-empty { display: flex; min-height: 176px; align-items: center; justify-content: center; border: 1px solid #E2E2E8; border-radius: 6px; background: #F8FAFC; color: #777780; font-size: 12px; }
+.drawing-preview-empty--large { min-height: min(60vh, 500px); }
 
 .door-form-section {
   padding: 16px;

@@ -22,8 +22,8 @@ import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import DrawingFormActions from "@/components/DrawingFormActions";
-import CadPreviewPanel from "@/components/CadPreviewPanel";
 import DrawingFormWorkspace from "@/components/DrawingFormWorkspace";
+import { previewFingerprint } from "@/lib/liveCadPreview";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
 import ClipboardUpload from "@/components/ClipboardUpload";
@@ -105,8 +105,8 @@ export default function DashboardPage() {
   const [cadBlobFingerprint, setCadBlobFingerprint] = useState("");
   const [cadLoading, setCadLoading] = useState(false);
   const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
+  const [cadPreviewKey, setCadPreviewKey] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewRevision, setPreviewRevision] = useState(0);
   const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
   const [quickRenderLoading, setQuickRenderLoading] = useState(false);
   const [quickRenderError, setQuickRenderError] = useState("");
@@ -142,6 +142,13 @@ export default function DashboardPage() {
   const navigationResolverRef = useRef<((allow: boolean) => void) | null>(null);
   const pendingDrawingTaskRef = useRef<string | null>(null);
   const savePromiseRef = useRef<Promise<TaskItem | null> | null>(null);
+  const previewInputRef = useRef(formData);
+  useEffect(() => { previewInputRef.current = formData; }, [formData]);
+  const acceptPreview = useCallback((svg: string, fingerprint: string) => {
+    if (fingerprint !== previewFingerprint(previewInputRef.current)) return;
+    setCadPreviewSvg(svg);
+    setCadPreviewKey(fingerprint);
+  }, []);
 
   const currentEditSnapshot = useMemo(
     () => drawingEditSnapshot(formData, refText, refImages),
@@ -613,11 +620,11 @@ export default function DashboardPage() {
       return;
     }
     setPreviewLoading(true);
-    setPreviewRevision(value => value + 1);
     setCadError(null);
     try {
       const svg = await generateCadPreview(formData);
-      setCadPreviewSvg(svg);
+      acceptPreview(svg, previewFingerprint(formData));
+      requestAnimationFrame(() => document.querySelector("[data-preview-home]")?.scrollIntoView({ block: "start" }));
       flash("CAD 预览已生成", "success");
     } catch (error: unknown) {
       showCadError("CAD 预览生成失败", error, () => void handleGeneratePreview());
@@ -817,6 +824,26 @@ export default function DashboardPage() {
       onPreview={() => void handleGeneratePreview()} onCad={() => void handleGenerateCad()}
       onRender={() => void handleGenerateEffect()} onSave={handleSaveEdit}
       onQuote={() => void handleGoToQuote()} />
+  );
+  const workspaceActions = (
+                <Card title="第 1 步：生成基准 CAD 底图">
+                  {drawingActions}
+                  {quickRenderError && <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">{quickRenderError}</div>}
+                  {activeModule === "图纸信息录入" && <div className="mt-3 flex justify-end">
+                    <button type="button" disabled={submitting || quickRenderLoading || quoteOpening}
+                      onClick={async () => {
+                        if (!(await requestAppNavigation())) return;
+                        setEntryTaskId(null);
+                        setEntryFormRevision(value => value + 1);
+                        setSavedEditSnapshot(null);
+                        setFormData({ ...DEFAULT_FORM_DATA });
+                        setRefText(""); setRefImages([]);
+                        setCadPreviewSvg(null); setCadBlob(null); setCadBlobFingerprint("");
+                        setQuickRenderTask(null); setQuickRenderError("");
+                      }}
+                      className="px-3 py-2 text-sm text-[#636366] hover:text-[#1C1C1E] disabled:opacity-50">清空表单</button>
+                  </div>}
+                </Card>
   );
   const renderResult = quickRenderTask && (
     <Card title="效果图">
@@ -1039,7 +1066,7 @@ export default function DashboardPage() {
 
           {/* 表单 */}
           {activeModule === "图纸绘制" ? (
-            <DrawingFormWorkspace key={activeTaskId} data={formData}>
+            <DrawingFormWorkspace key={activeTaskId} data={formData} actions={workspaceActions} svg={cadPreviewSvg} renderedKey={cadPreviewKey} manualLoading={previewLoading} onPreview={acceptPreview}>
               <DoorForm data={formData} onChange={setFormData} />
             </DrawingFormWorkspace>
           ) : <DoorForm data={formData} onChange={setFormData} />}
@@ -1049,22 +1076,9 @@ export default function DashboardPage() {
             {/* 绘制模块 */}
             {activeModule === "图纸绘制" && (
               <>
-                <Card title="第 1 步：生成基准 CAD 底图">
-                  {drawingActions}
-                  {quickRenderError && (
-                    <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">
-                      {quickRenderError}
-                    </div>
-                  )}
-                </Card>
 
                 {renderResult}
 
-                <CadPreviewPanel
-                  key={previewRevision}
-                  svg={cadPreviewSvg}
-                  loading={previewLoading}
-                />
 
                 <Card title="第 2 步：上传深化图纸并提交初审">
                   <ClipboardUpload onImage={setUploadImgB64} />
@@ -1273,39 +1287,14 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <DrawingFormWorkspace key={`entry-${entryFormRevision}`} data={formData}>
+              <DrawingFormWorkspace key={`entry-${entryFormRevision}`} data={formData} actions={workspaceActions} svg={cadPreviewSvg} renderedKey={cadPreviewKey} manualLoading={previewLoading} onPreview={acceptPreview}>
                 <DoorForm data={formData} onChange={setFormData} />
               </DrawingFormWorkspace>
 
               <div className="mt-6 space-y-4">
-                <Card title="第 1 步：生成基准 CAD 底图">
-                  {drawingActions}
-                  {quickRenderError && <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">{quickRenderError}</div>}
-                  <div className="mt-3 flex justify-end">
-                    <button type="button" disabled={submitting || quickRenderLoading || quoteOpening}
-                      onClick={async () => {
-                        if (!(await requestAppNavigation())) return;
-                        setEntryTaskId(null);
-                        setEntryFormRevision(value => value + 1);
-                        setSavedEditSnapshot(null);
-                        setFormData({ ...DEFAULT_FORM_DATA });
-                        setRefText(""); setRefImages([]);
-                        setCadPreviewSvg(null); setCadBlob(null); setCadBlobFingerprint("");
-                        setQuickRenderTask(null); setQuickRenderError("");
-                      }}
-                      className="px-3 py-2 text-sm text-[#636366] hover:text-[#1C1C1E] disabled:opacity-50">清空表单</button>
-                  </div>
-                </Card>
                 {renderResult}
               </div>
 
-              <div className="mt-6">
-                <CadPreviewPanel
-                  key={previewRevision}
-                  svg={cadPreviewSvg}
-                  loading={previewLoading}
-                />
-              </div>
             </div>
           )}
 

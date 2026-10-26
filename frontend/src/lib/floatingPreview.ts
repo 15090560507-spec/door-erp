@@ -1,5 +1,19 @@
 export type FloatingPosition = { x: number; y: number };
-type Size = { width: number; height: number };
+export type FloatingSize = { width: number; height: number };
+type Size = FloatingSize;
+export const DEFAULT_FLOATING_SIZE: FloatingSize = { width: 510, height: 660 };
+
+export function clampFloatingSize(size: FloatingSize, viewport: Size): FloatingSize {
+  const widthLimit = Math.max(1, viewport.width - 16), heightLimit = Math.max(1, viewport.height - 16);
+  return {
+    width: Math.max(Math.min(280, widthLimit), Math.min(size.width, widthLimit)),
+    height: Math.max(Math.min(240, heightLimit), Math.min(size.height, heightLimit)),
+  };
+}
+
+export function shouldDockPreview(actionBottom: number, viewportHeight: number): boolean {
+  return actionBottom <= viewportHeight;
+}
 
 export function clampFloatingPosition(position: FloatingPosition, panel: Size, viewport: Size): FloatingPosition {
   const margin = 8;
@@ -10,6 +24,6 @@ export function clampFloatingPosition(position: FloatingPosition, panel: Size, v
 }
 
 export function initialFloatingPosition(viewport: Size): FloatingPosition {
-  return clampFloatingPosition({ x: viewport.width - 356, y: 96 },
-    { width: Math.min(340, viewport.width - 16), height: 260 }, viewport);
+  const panel = clampFloatingSize(DEFAULT_FLOATING_SIZE, viewport);
+  return clampFloatingPosition({ x: viewport.width - panel.width - 16, y: 96 }, panel, viewport);
 }
