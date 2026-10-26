@@ -492,6 +492,9 @@ export default function DashboardPage() {
     if (data.handle_size && !/^\s*\d+(\.\d+)?\s*[*xX×]\s*\d+(\.\d+)?\s*$/.test(data.handle_size)) {
       return "拉手尺寸格式请填写为 40*800 或 800*40";
     }
+    if (!Number.isFinite(Number(data.lock_core_height)) || Number(data.lock_core_height) <= 0) {
+      return "锁芯离地高度请输入大于0的有效数值（mm）";
+    }
     return missing.length > 0 ? `请填写以下必填项：${missing.join("、")}` : null;
   };
 

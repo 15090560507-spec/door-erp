@@ -81,6 +81,9 @@ function extractApiErrorMessage(value: unknown): string {
 }
 
 const API_FIELD_LABELS: Record<string, string> = {
+  lock_core_height: "锁芯离地高度",
+  frame_assembly: "框套是否分体",
+  installation_method: "安装方式",
   outer_landscape_left_width: "左景宽度",
   outer_landscape_right_width: "右景宽度",
   outer_landscape_top_height: "上景高度",

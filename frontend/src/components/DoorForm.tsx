@@ -721,6 +721,10 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             options={o("DOOR_TYPES", DOOR_TYPES)}
             onChange={(v) => onChange(applyFrameDefaults({ ...data, door_type: v }))}
           />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <Select label="框套是否分体" value={data.frame_assembly ?? "框套一体"} options={["框套一体", "框套分体"]} onChange={(v) => set("frame_assembly", v)} />
+            <Select label="安装方式" value={data.installation_method ?? ""} options={["", "拉片安装", "膨胀螺丝安装"]} onChange={(v) => set("installation_method", v)} />
+          </div>
           <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[#E5E5EA] pt-3 sm:grid-cols-2">
             <div>
               <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>左右开向</div>
@@ -1081,8 +1085,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
             <Combobox label="开启机构" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
           </div>
-          <div className="mt-3">
+          <div className="mt-3 grid grid-cols-2 items-end gap-3">
             <Combobox label="配置数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
+            <Combobox label="锁芯离地高度(mm)" value={String(data.lock_core_height ?? 1050)} options={["950", "1050", "1150"]} onChange={(v) => set("lock_core_height", v)} />
           </div>
         </Card>
 

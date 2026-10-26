@@ -6,7 +6,14 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ===================== 表单数据模型（生成 CAD 用） =====================
-class CADRequest(BaseModel):
+class DrawingInputOptions(BaseModel):
+    """Stored input metadata; these options do not alter CAD geometry yet."""
+    lock_core_height: float = Field(default=1050, gt=0, allow_inf_nan=False)
+    frame_assembly: Literal['框套一体', '框套分体'] = '框套一体'
+    installation_method: Literal['', '拉片安装', '膨胀螺丝安装'] = ''
+
+
+class CADRequest(DrawingInputOptions):
     """生成 CAD 图纸的请求参数，对应 Streamlit 表单所有字段"""
     dhdw: str = ""                      # 订货单位/客户
     gdmc: str = ""                      # 项目名称
@@ -256,6 +263,11 @@ class TaskCreateRequest(BaseModel):
     ref_text: str = ""                  # 沟通要求文字
     ref_images: List[str] = []          # 参考图片 base64 数组
 
+    @field_validator('params')
+    @classmethod
+    def validate_drawing_input_options(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        return {**value, **DrawingInputOptions.model_validate(value).model_dump()}
+
 
 class ChangeEntry(BaseModel):
     """单个字段变更记录"""
@@ -281,6 +293,13 @@ class TaskUpdateRequest(BaseModel):
     ref_images: Optional[List[str]] = None
     quote_status: Optional[str] = None   # 未报价 / 已报价
     confirm_status: Optional[str] = None  # 未确认 / 已确认
+
+    @field_validator('params')
+    @classmethod
+    def validate_drawing_input_options(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if value is None:
+            return None
+        return {**value, **DrawingInputOptions.model_validate(value).model_dump()}
 
 
 class TaskResponse(BaseModel):

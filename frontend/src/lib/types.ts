@@ -74,6 +74,9 @@ export interface DoorFormData {
   fingerprint_lock: string;
   sel_hys: string;
   hysl: string;
+  lock_core_height: number | string;
+  frame_assembly: string;
+  installation_method: string;
   has_outer: boolean;
   has_outer_portal: boolean;
   has_outer_portal2: boolean;
@@ -346,6 +349,7 @@ export const DEFAULT_FORM_DATA: DoorFormData = {
   zmks: "", fmks: "",
   zmls: "", fmls: "", handle_size: "", st_val: "", fingerprint_lock: "",
   hysl: "3个/扇", sel_hys: "", qh: "", mshd: "",
+  lock_core_height: 1050, frame_assembly: "框套一体", installation_method: "",
   sm: "", trim_style_outer: "", trim_style_inner: "", lock_side_offset: 0, panel_preset: "",
   door_panel_style: "无造型", back_panel_same_as_front: true, back_door_panel_style: "无造型",
   child_door_panel_style: "", child_back_same_as_front: true, child_back_door_panel_style: "",
