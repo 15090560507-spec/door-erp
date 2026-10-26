@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Trash2 } from "lucide-react";
+import { Calculator, Copy, Trash2 } from "lucide-react";
 import type { TaskItem } from "@/lib/types";
 import StatusBadge from "./StatusBadge";
 
@@ -9,6 +9,7 @@ interface Props {
   onClick: (task: TaskItem) => void;
   onDelete?: (task: TaskItem) => void;
   onCopy?: (task: TaskItem) => void;
+  onQuote?: (task: TaskItem) => void;
   onToggleQuoteStatus?: (task: TaskItem) => void;
 }
 
@@ -17,6 +18,7 @@ export default function TaskCard({
   onClick,
   onDelete,
   onCopy,
+  onQuote,
   onToggleQuoteStatus,
 }: Props) {
   const quoteStatus = task.quote_status || "未报价";
@@ -75,8 +77,14 @@ export default function TaskCard({
         </div>
       </div>
 
-      {(onCopy || onDelete) && (
+      {(onQuote || onCopy || onDelete) && (
         <div className="task-list-row__actions">
+          {onQuote && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onQuote(task); }}
+              className="task-list-row__action" title="项目报价" aria-label="项目报价">
+              <Calculator size={16} />
+            </button>
+          )}
           {onCopy && (
             <button
               onClick={(e) => { e.stopPropagation(); onCopy(task); }}

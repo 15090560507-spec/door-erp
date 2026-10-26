@@ -22,6 +22,7 @@ import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
 import DrawingFormActions from "@/components/DrawingFormActions";
+import CadPreviewPanel from "@/components/CadPreviewPanel";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
 import ClipboardUpload from "@/components/ClipboardUpload";
@@ -84,6 +85,7 @@ function base64ImageToFile(value: string, index: number): File {
 export default function DashboardPage() {
   const router = useRouter();
   const [quoteOpening, setQuoteOpening] = useState(false);
+  const [quoteSaveDialogOpen, setQuoteSaveDialogOpen] = useState(false);
   const activeModule = useModule();
   const { user, setModule } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -102,6 +104,7 @@ export default function DashboardPage() {
   const [cadLoading, setCadLoading] = useState(false);
   const [cadPreviewSvg, setCadPreviewSvg] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const [quickRenderTask, setQuickRenderTask] = useState<RenderTask | null>(null);
   const [quickRenderLoading, setQuickRenderLoading] = useState(false);
   const [quickRenderError, setQuickRenderError] = useState("");
@@ -549,21 +552,33 @@ export default function DashboardPage() {
     void saveCurrentTask(true);
   };
 
-  const handleGoToQuote = async () => {
+  const handleGoToQuote = async (selectedTaskId?: string) => {
     if (quoteOpening) return;
+    const taskId = selectedTaskId || activeTaskId || entryTaskId;
+    if (!selectedTaskId && (!taskId || hasUnsavedChanges)) {
+      setQuoteSaveDialogOpen(true);
+      return;
+    }
+    if (!taskId) return;
     setQuoteOpening(true);
     try {
-      let taskId = activeTaskId;
-      if (taskId) {
-        if (!(await requestAppNavigation())) return;
-      } else {
-        const task = entryTaskId && !hasUnsavedChanges ? { id: entryTaskId } : await persistCurrentTask(false);
-        if (!task) return;
-        taskId = task.id;
-      }
+      if (!(await requestAppNavigation())) return;
       router.push(`/quote?taskId=${encodeURIComponent(taskId)}`);
     } catch (error) {
       flash(apiErrorMessage(error, "报价页面打开失败，请重试"), "error");
+    } finally {
+      setQuoteOpening(false);
+    }
+  };
+
+  const handleSaveAndQuote = async () => {
+    if (quoteOpening) return;
+    setQuoteOpening(true);
+    try {
+      const task = await persistCurrentTask(false);
+      if (!task) { setQuoteSaveDialogOpen(false); return; }
+      setQuoteSaveDialogOpen(false);
+      router.push(`/quote?taskId=${encodeURIComponent(task.id)}`);
     } finally {
       setQuoteOpening(false);
     }
@@ -596,6 +611,7 @@ export default function DashboardPage() {
       return;
     }
     setPreviewLoading(true);
+    setPreviewRevision(value => value + 1);
     setCadError(null);
     try {
       const svg = await generateCadPreview(formData);
@@ -824,6 +840,12 @@ export default function DashboardPage() {
   // ===================== 通用背景 =====================
   return (
     <div>
+      {quoteSaveDialogOpen && (
+        <NoticeDialog title="请先保存表单" message="当前表单尚未保存，保存后将进入该项目的报价。"
+          confirmLabel={quoteOpening ? "正在保存..." : "保存并报价"} cancelLabel="继续编辑"
+          onConfirm={() => void handleSaveAndQuote()}
+          onCancel={quoteOpening ? undefined : () => setQuoteSaveDialogOpen(false)} />
+      )}
       {saveSuccessOpen && (
         <NoticeDialog
           title="保存成功"
@@ -1033,9 +1055,9 @@ export default function DashboardPage() {
                 {renderResult}
 
                 <CadPreviewPanel
+                  key={previewRevision}
                   svg={cadPreviewSvg}
                   loading={previewLoading}
-                  onRefresh={handleGeneratePreview}
                 />
 
                 <Card title="第 2 步：上传深化图纸并提交初审">
@@ -1270,9 +1292,9 @@ export default function DashboardPage() {
 
               <div className="mt-6">
                 <CadPreviewPanel
+                  key={previewRevision}
                   svg={cadPreviewSvg}
                   loading={previewLoading}
-                  onRefresh={handleGeneratePreview}
                 />
               </div>
             </div>
@@ -1405,6 +1427,7 @@ export default function DashboardPage() {
                       onClick={(task) => void openTask(task)}
                       onDelete={["任务总览", "图纸绘制", "图纸信息录入"].includes(activeModule) ? handleDeleteTask : undefined}
                       onCopy={activeModule === "图纸绘制" ? handleCopyTask : undefined}
+                      onQuote={["任务总览", "图纸绘制"].includes(activeModule) ? (task) => void handleGoToQuote(task.id) : undefined}
                       onToggleQuoteStatus={toggleTaskQuoteStatus}
                     />
                   ))}
@@ -1475,122 +1498,6 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h4 className="text-[17px] font-semibold text-[#1C1C1E] mb-3 pb-2.5 border-b border-[#F2F2F7]">{title}</h4>
       {children}
     </div>
-  );
-}
-
-function CadPreviewPanel({
-  svg,
-  loading,
-  onRefresh,
-}: {
-  svg: string | null;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const canOpen = Boolean(svg);
-  const zoomPercent = Math.round(zoom * 100);
-
-  const openPreview = () => {
-    if (!canOpen) return;
-    setIsOpen(true);
-  };
-
-  const zoomOut = () => setZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))));
-  const zoomIn = () => setZoom((value) => Math.min(4, Number((value + 0.25).toFixed(2))));
-  const resetZoom = () => setZoom(1);
-  return (
-    <>
-      <Card title="CAD 图纸预览">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <p className="text-xs text-[#8E8E93]">
-          网页预览用于快速核对图纸；复杂填充可能简化显示，正式交付请下载 DXF 后使用 AutoCAD 打印。
-        </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openPreview}
-              disabled={!canOpen}
-              className="px-4 py-2 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-40"
-            >
-              放大查看
-            </button>
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="px-4 py-2 rounded-lg bg-[#007AFF] text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50"
-            >
-              {loading ? "生成中..." : "生成预览"}
-            </button>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={openPreview}
-          disabled={!canOpen}
-          className="block w-full text-left h-[560px] overflow-auto rounded-lg border border-[#D1D5DB] bg-[#F8FAFC] p-3 disabled:cursor-default"
-        >
-          {svg ? (
-            <div
-              className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto [&_svg]:min-w-[1100px]"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-sm text-[#8E8E93]">
-              点击“生成预览”查看当前图纸。
-            </div>
-          )}
-        </button>
-      </Card>
-
-      {isOpen && svg && (
-        <div className="fixed inset-0 z-[100] bg-black/70 p-4">
-          <div className="h-full rounded-xl bg-white shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[#E5E5EA]">
-              <div>
-                <h3 className="text-base font-semibold text-[#1C1C1E]">CAD 图纸预览</h3>
-                <p className="text-xs text-[#8E8E93]">滚动查看全图，使用缩放按钮放大标注文字。</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={zoomOut}
-                  className="w-9 h-9 rounded-lg border border-[#C7C7CC] text-lg font-semibold hover:border-[#007AFF] hover:text-[#007AFF]"
-                  aria-label="缩小"
-                >
-                  -
-                </button>
-                <button
-                  onClick={resetZoom}
-                  className="min-w-16 h-9 px-3 rounded-lg border border-[#C7C7CC] text-sm font-medium hover:border-[#007AFF] hover:text-[#007AFF]"
-                >
-                  {zoomPercent}%
-                </button>
-                <button
-                  onClick={zoomIn}
-                  className="w-9 h-9 rounded-lg border border-[#C7C7CC] text-lg font-semibold hover:border-[#007AFF] hover:text-[#007AFF]"
-                  aria-label="放大"
-                >
-                  +
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="ml-2 px-4 h-9 rounded-lg bg-[#1C1C1E] text-white text-sm font-semibold hover:opacity-90"
-                >
-                  关闭
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
-              <div
-                className="[&_svg]:block [&_svg]:w-full [&_svg]:h-auto"
-                style={{ width: `${zoom * 100}%`, minWidth: 1200 }}
-                dangerouslySetInnerHTML={{ __html: svg }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 

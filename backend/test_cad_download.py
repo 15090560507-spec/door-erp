@@ -205,7 +205,7 @@ class EditableSheetRouteTests(unittest.TestCase):
             self.assertIsNone(_order_form_bbox(decoded(first.content)))
             self.assertEqual(self.client.post('/api/generate_cad_preview', json=payload).status_code, 200)
             self.assertEqual(self.client.post('/api/generate_cad_jpg', json=payload).status_code, 200)
-            svg.assert_called_once_with(self.key, self.source)
+            svg.assert_called_once_with(self.key, self.source, doors_only=False)
             plot.assert_called_once_with(self.key, self.source)
         self.assertEqual(main._cad_cache[self.key]['dxf'], self.source)
 

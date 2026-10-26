@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AxiosError } from "axios";
-import { api, generateCad } from "./api.ts";
+import { api, generateCad, generateCadPreview } from "./api.ts";
 import type { DoorFormData } from "./types.ts";
 
 const formData = {} as DoorFormData;
@@ -80,4 +80,17 @@ test("non-CAD timeout handling is unchanged", async (t) => {
     assert.equal(error.userMessage, "请求超时，请检查网络后重试");
     return true;
   });
+});
+
+test("preview requests grouped door views without changing drawing parameters", async (t) => {
+  const adapter = api.defaults.adapter;
+  t.after(() => { api.defaults.adapter = adapter; });
+  api.defaults.adapter = async (config) => {
+    assert.equal(config.url, "/generate_cad_preview");
+    assert.equal(config.responseType, "text");
+    assert.deepEqual(config.params, { doors_only: true });
+    assert.deepEqual(JSON.parse(config.data), formData);
+    return { config, data: '<svg><g data-cad-view="front"/></svg>', status: 200, statusText: "OK", headers: {} };
+  };
+  assert.equal(await generateCadPreview(formData), '<svg><g data-cad-view="front"/></svg>');
 });

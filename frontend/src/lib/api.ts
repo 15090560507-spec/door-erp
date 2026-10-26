@@ -288,6 +288,7 @@ export async function generateCad(formData: DoorFormData): Promise<Blob> {
 export async function generateCadPreview(formData: DoorFormData): Promise<string> {
   try {
     const { data } = await api.post<string>("/generate_cad_preview", formData, {
+      params: { doors_only: true },
       responseType: "text",
     });
     return data;

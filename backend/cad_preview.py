@@ -202,12 +202,66 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
         )
 
 
-def render_dxf_svg(dxf_text: str) -> str:
+def _door_view_groups(primitives: list[Primitive]) -> dict[str, list[Primitive]]:
+    titles = {
+        str(p.data.get("text", "")).strip(): p.points[0]
+        for p in primitives
+        if p.kind == "text" and str(p.data.get("text", "")).strip() in {"正面", "背面", "反面"}
+    }
+    back_label = "背面" if "背面" in titles else "反面"
+    if "正面" not in titles or back_label not in titles:
+        return {"front": _filter_to_door_views(primitives)}
+    centers = {"front": titles["正面"], "back": titles[back_label]}
+    gap = abs(centers["front"][0] - centers["back"][0])
+    if gap < 1:
+        return {"front": _filter_to_door_views(primitives)}
+    structural_layers = {"A-DOOR-FRAME", "A-DOOR-PANEL", "A-DOOR-TRIM", "A-DOOR-GLASS"}
+
+    def side_of(p: Primitive) -> str:
+        left, right, _, _ = _bbox(p.points)
+        center = (left + right) / 2
+        return min(centers, key=lambda side: abs(center - centers[side][0]))
+
+    result = {}
+    for side, (_, title_y) in centers.items():
+        structure = [
+            p for p in primitives if p.points and p.kind not in {"text", "insert"}
+            and p.layer in structural_layers and side_of(p) == side
+            and _bbox(p.points)[1] - _bbox(p.points)[0] < gap * 1.8
+            and _bbox(p.points)[2] <= title_y + 250
+        ]
+        if not structure:
+            continue
+        left, right, bottom, top = _bbox([point for p in structure for point in p.points])
+        # Keep dimensions around each actual door, excluding the order form and notes.
+        margin = max(right - left, top - bottom, 1) * 0.2
+        upper = max(top, title_y) + max(80, margin * 0.15)
+        selected = []
+        for p in primitives:
+            if not p.points or p.layer == "ORDER_FORM" or side_of(p) != side:
+                continue
+            x0, x1, y0, y1 = _bbox(p.points)
+            if x0 >= left - margin and x1 <= right + margin and y0 >= bottom - margin and y1 <= upper:
+                selected.append(p)
+        result[side] = selected
+    return result or {"front": _filter_to_door_views(primitives)}
+
+
+def render_dxf_svg(dxf_text: str, doors_only: bool = False) -> str:
     doc = ezdxf.read(io.StringIO(dxf_text))
     primitives: list[Primitive] = []
     for entity in doc.modelspace().entities_in_redraw_order():
         _collect_entity(entity, primitives)
-    primitives = _filter_to_door_views(primitives)
+    group_starts: dict[int, str] = {}
+    if doors_only:
+        groups = _door_view_groups(primitives)
+        primitives = []
+        for side, group in groups.items():
+            if group:
+                group_starts[len(primitives)] = side
+                primitives.extend(group)
+    else:
+        primitives = _filter_to_door_views(primitives)
 
     all_points = [point for primitive in primitives for point in primitive.points]
     if not all_points:
@@ -243,7 +297,11 @@ def render_dxf_svg(dxf_text: str) -> str:
         f'<rect class="cad-bg" x="0" y="0" width="{fmt(view_width)}" height="{fmt(view_height)}"/>',
     ]
 
-    for primitive in primitives:
+    for index, primitive in enumerate(primitives):
+        if index in group_starts:
+            if index:
+                parts.append("</g>")
+            parts.append(f'<g data-cad-view="{group_starts[index]}">')
         color = _color(primitive.layer)
         stroke_width = "1.6"
         if primitive.layer == "YQ_DIM":
@@ -301,8 +359,11 @@ def render_dxf_svg(dxf_text: str) -> str:
                 f'<text class="cad-text" x="{fmt(sx(x))}" y="{fmt(sy(y))}" font-size="{fmt(font_size)}"{transform}>{text}</text>'
             )
 
-    parts.append(
-        f'<text class="cad-note" x="{fmt(pad)}" y="{fmt(view_height - pad * 0.25)}">Preview is generated from DXF geometry.</text>'
-    )
+    if group_starts:
+        parts.append("</g>")
+    if not doors_only:
+        parts.append(
+            f'<text class="cad-note" x="{fmt(pad)}" y="{fmt(view_height - pad * 0.25)}">Preview is generated from DXF geometry.</text>'
+        )
     parts.append("</svg>")
     return "".join(parts)

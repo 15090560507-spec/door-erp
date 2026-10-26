@@ -354,17 +354,18 @@ def _cached_cad_download(key: str, dxf_bytes: bytes) -> tuple[bytes, bool]:
     return result, False
 
 
-def _cached_cad_svg(key: str, dxf_bytes: bytes) -> tuple[str, bool]:
+def _cached_cad_svg(key: str, dxf_bytes: bytes, doors_only: bool = False) -> tuple[str, bool]:
+    cache_field = "svg:door-views-v1" if doors_only else "svg"
     with _cad_cache_lock:
         entry = _cad_cache.get(key)
-        if entry and entry.get("svg"):
-            return entry["svg"], True
+        if entry and entry.get(cache_field):
+            return entry[cache_field], True
     started = time.perf_counter()
-    svg = render_dxf_svg(dxf_bytes.decode("utf-8"))
+    svg = render_dxf_svg(dxf_bytes.decode("utf-8"), doors_only=doors_only)
     with _cad_cache_lock:
         entry = _cad_cache.get(key)
         if entry:
-            entry["svg"] = svg
+            entry[cache_field] = svg
     logger.info("[cad] preview_rendered key=%s elapsed=%.3fs", key[:10], time.perf_counter() - started)
     return svg, False
 
@@ -1044,7 +1045,7 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
 
 # ===================== API: 用户登录 =====================
 @app.post("/api/generate_cad_preview")
-def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_current_user)):
+def generate_cad_preview(req: CADRequest, doors_only: bool = False, current_user: Dict = Depends(get_current_user)):
     """
     Reuse the CAD export path and render the generated DXF as an SVG preview.
     """
@@ -1054,7 +1055,7 @@ def generate_cad_preview(req: CADRequest, current_user: Dict = Depends(get_curre
     except Exception as exc:
         _raise_cad_error("DXF 生成", exc)
     try:
-        svg, svg_cache_hit = _cached_cad_svg(key, dxf_bytes)
+        svg, svg_cache_hit = _cached_cad_svg(key, dxf_bytes, doors_only=doors_only)
     except Exception as exc:
         _raise_cad_error("DXF 预览转换", exc)
 

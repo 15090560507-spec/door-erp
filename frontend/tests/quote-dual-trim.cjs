@@ -44,8 +44,10 @@ const metrics = params => {
 (async () => {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const errors = [], unexpected = [];
-  let savedPayload, trimRequests = 0, newTasks = 0, paramSaves = 0, failNextSave = false, renderRequests = 0;
+  let savedPayload, trimRequests = 0, newTasks = 0, paramSaves = 0, failNextSave = false, renderRequests = 0, previewRequests = 0;
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=';
+  const previewSvg = process.env.CAD_PREVIEW_FIXTURE ? fs.readFileSync(process.env.CAD_PREVIEW_FIXTURE, 'utf8')
+    : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5000 4000"><g data-cad-view="front"><rect x="100" y="100" width="900" height="2100" fill="none" stroke="blue"/><text x="100" y="2250">900</text></g><g data-cad-view="back"><rect x="2100" y="100" width="900" height="2100" fill="none" stroke="orange"/><text x="2100" y="2250">900</text></g></svg>';
   try {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1100 } });
     await context.addCookies([{ name: 'auth_token', value: 'mock-quote-only', url: baseUrl }]);
@@ -62,6 +64,11 @@ const metrics = params => {
       if (url.pathname === '/api/auth/verify') return json(user);
       if (url.pathname === '/api/accessories') return json({ accessories: [{ id: 1, category: '制作材料', name: '0.8mm', unitPrice: 1480, unit: 'm2' }] });
       if (url.pathname === '/api/admin/dropdown-options') return json({});
+      if (url.pathname === '/api/generate_cad_preview') {
+        previewRequests++;
+        assert.equal(url.searchParams.get('doors_only'), 'true');
+        return route.fulfill({ status: 200, headers, contentType: 'image/svg+xml', body: previewSvg });
+      }
       if (url.pathname === '/api/tasks/overview') return json({ total: tasks.size, customers: [], door_types: [], status_counts: {} });
       if (url.pathname === '/api/render/model-configs') return json({ configs: [{ id: 'mock-model', enabled: true, hasApiKey: true }] });
       if (url.pathname.startsWith('/api/render/line-art/tasks/')) {
@@ -177,18 +184,72 @@ const metrics = params => {
     assert.equal(await input(await namedRow('内包套'), 6).inputValue(), '500');
     assert.equal(await page.getByLabel('第1组另一侧门套系数', { exact: true }).count(), 0);
     await page.goto(`${baseUrl}/dashboard`);
+    const outerTaskRow = page.locator('.task-list-row').filter({ hasText: 'Outer Customer' }).first();
+    await outerTaskRow.getByRole('button', { name: '项目报价', exact: true }).waitFor();
+    assert.deepEqual(await outerTaskRow.locator('.task-list-row__actions button').evaluateAll(els => els.map(el => el.getAttribute('aria-label'))), ['项目报价', '复制表单', '删除表单']);
+    await outerTaskRow.getByRole('button', { name: '项目报价', exact: true }).click();
+    await page.waitForURL('**/quote?taskId=outer-task');
+    await page.getByRole('button', { name: '更新报价', exact: true }).waitFor();
+    assert.equal(newTasks, 0);
+    await page.goto(`${baseUrl}/dashboard`);
     await page.locator('.task-list-row__main').filter({ hasText: 'Outer Customer' }).first().click();
     await page.locator('.door-form').waitFor();
     const field = label => page.locator('.door-form label').filter({ hasText: new RegExp(`^\\s*\\*?${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) }).first().locator('..').locator('input,select').first();
     const actions = () => page.locator('[data-drawing-actions]');
     const editActions = await actions().getByRole('button').allTextContents();
     const editFields = await page.locator('.door-form label').allTextContents();
+    const buttonsStyle = await actions().getByRole('button').evaluateAll(els => els.map(el => ({ bg: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color, border: getComputedStyle(el).borderColor })));
+    assert.ok(buttonsStyle.slice(0, 4).every(style => JSON.stringify(style) === JSON.stringify(buttonsStyle[0])));
+    assert.notDeepEqual(buttonsStyle[4], buttonsStyle[0]);
+    assert.equal(await page.locator('[data-cad-preview-panel]').count(), 0);
+    await page.getByRole('button', { name: '预览 DXF', exact: true }).click();
+    const panel = page.locator('[data-cad-preview-panel]');
+    await panel.locator('[data-cad-preview-canvas] svg').waitFor();
+    assert.equal(await panel.getByRole('button', { name: '生成预览', exact: true }).count(), 0);
+    const checkFit = async (container, expectedSides) => {
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const fit = await container.locator('[data-cad-preview-canvas] svg').evaluate(svg => {
+        const view = svg.viewBox.baseVal, scale = svg.getScreenCTM();
+        const groups = [...svg.querySelectorAll('g[data-cad-view]')].filter(g => getComputedStyle(g).display !== 'none');
+        const boxes = groups.map(g => g.getBBox());
+        return { sides: groups.map(g => g.dataset.cadView), uniform: Math.abs(Math.abs(scale.a) - Math.abs(scale.d)) < .0001,
+          fits: boxes.every(b => b.x >= view.x && b.y >= view.y && b.x + b.width <= view.x + view.width && b.y + b.height <= view.y + view.height),
+          fill: Math.max((Math.max(...boxes.map(b => b.x + b.width)) - Math.min(...boxes.map(b => b.x))) / view.width,
+            (Math.max(...boxes.map(b => b.y + b.height)) - Math.min(...boxes.map(b => b.y))) / view.height) };
+      });
+      assert.deepEqual(fit.sides, expectedSides); assert.ok(fit.uniform && fit.fits && fit.fill > .94, JSON.stringify(fit));
+    };
+    await checkFit(panel, ['front', 'back']);
+    await panel.scrollIntoViewIfNeeded();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'cad-both-desktop.png') });
+    await panel.getByRole('button', { name: '正面', exact: true }).click();
+    await checkFit(panel, ['front']);
+    await panel.getByRole('button', { name: '反面', exact: true }).click();
+    await checkFit(panel, ['back']);
+    assert.equal(previewRequests, 1, 'side switching must not regenerate CAD');
+    await panel.getByRole('button', { name: '放大查看', exact: true }).click();
+    const previewDialog = page.getByRole('dialog', { name: 'CAD 图纸预览', exact: true });
+    await checkFit(previewDialog, ['back']);
+    await previewDialog.getByRole('button', { name: '正面和反面', exact: true }).click();
+    await checkFit(previewDialog, ['front', 'back']);
+    await previewDialog.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await panel.scrollIntoViewIfNeeded();
+    await checkFit(panel, ['front', 'back']);
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'cad-both-mobile.png') });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await panel.getByRole('button', { name: '反面', exact: true }).click();
+    await page.getByRole('button', { name: '预览 DXF', exact: true }).click();
+    await panel.locator('[data-cad-preview-canvas] svg').waitFor();
+    await checkFit(panel, ['front', 'back']);
+    assert.equal(previewRequests, 2, 'a new preview defaults to both sides');
     await field('颜色').fill('Changed color');
     await page.getByRole('button', { name: '去报价', exact: true }).click();
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
     assert.ok(page.url().endsWith('/dashboard'));
     await page.getByRole('button', { name: '去报价', exact: true }).click();
-    await page.getByRole('button', { name: '保存并离开', exact: true }).click();
+    await page.getByRole('button', { name: '保存并报价', exact: true }).click();
     await page.waitForURL('**/quote?taskId=outer-task');
     await page.getByRole('button', { name: '更新报价', exact: true }).waitFor();
     assert.equal(tasks.get('outer-task').params.ys, 'Changed color'); assert.equal(paramSaves, 1);
@@ -206,7 +267,12 @@ const metrics = params => {
       const innerStart = editFields.indexOf('内包套');
       return i <= innerStart || i > innerStart + 4;
     }));
-    assert.deepEqual(editActions, ['预览 DXF', '生成 DXF', '生成效果图', '保存表单', '去报价']);
+    assert.deepEqual(editActions, ['预览 DXF', '生成 DXF', '生成效果图', '去报价', '保存表单']);
+    assert.equal(await page.locator('[data-cad-preview-panel]').count(), 0);
+    await page.getByRole('button', { name: '去报价', exact: true }).click();
+    await page.getByRole('heading', { name: '请先保存表单', exact: true }).waitFor();
+    assert.equal(newTasks, 0);
+    await page.getByRole('button', { name: '继续编辑', exact: true }).click();
     const note = page.getByPlaceholder('在此打字或粘贴沟通要求');
     await note.fill('Reference and customer notes stay after saving');
     await page.getByLabel('上传图片', { exact: true }).setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
@@ -248,10 +314,15 @@ const metrics = params => {
       const rect = el.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, fits: el.scrollWidth <= el.clientWidth };
     }));
     assert.ok(actionBoxes.every((box, i) => box.fits && (!i || box.top >= actionBoxes[i - 1].bottom)));
+    await field('颜色').fill('Quote-confirmed entry');
     await page.getByRole('button', { name: '去报价', exact: true }).click();
+    await page.getByRole('heading', { name: '请先保存表单', exact: true }).waitFor();
+    assert.equal(tasks.get('new-1').params.ys, 'Updated entry color');
+    await page.getByRole('button', { name: '保存并报价', exact: true }).click();
     await page.waitForURL('**/quote?taskId=new-1');
     await page.waitForFunction(() => document.querySelector('textarea')?.value.includes('单门'));
     assert.equal(newTasks, 1);
+    assert.equal(tasks.get('new-1').params.ys, 'Quote-confirmed entry');
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.waitForTimeout(200);
     await screenshot('mobile.png');
@@ -277,6 +348,7 @@ const metrics = params => {
     console.log(JSON.stringify({ largerSidePricing: true, factorEditing: true, reorderedLink: true, previewNoWrap: true,
       savedHistoryPreserved: true, splitModeUnchanged: true, unsavedCancelAndSave: true, matchingFormActions: true,
       entrySaveStays: true, repeatSaveUpdates: true, failedSaveRetry: true, entryRenderLinked: true,
-      referencePreserved: true, clearStartsNewEntry: true, newTaskSaved: newTasks, errors, unexpected }));
+      referencePreserved: true, clearStartsNewEntry: true, requestedPreviewOnly: true, sideSwitchWithoutRequests: true,
+      previewFitWithoutDistortion: true, rowQuoteNavigation: true, explicitQuoteSave: true, newTaskSaved: newTasks, errors, unexpected }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
