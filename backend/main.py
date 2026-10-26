@@ -355,7 +355,7 @@ def _cached_cad_download(key: str, dxf_bytes: bytes) -> tuple[bytes, bool]:
 
 
 def _cached_cad_svg(key: str, dxf_bytes: bytes, doors_only: bool = False) -> tuple[str, bool]:
-    cache_field = "svg:door-views-v1" if doors_only else "svg"
+    cache_field = "svg:door-views-v2" if doors_only else "svg"
     with _cad_cache_lock:
         entry = _cad_cache.get(key)
         if entry and entry.get(cache_field):

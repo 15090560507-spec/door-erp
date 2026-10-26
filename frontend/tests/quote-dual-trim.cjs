@@ -419,6 +419,34 @@ const metrics = params => {
     });
     assert.ok(canvasInside, 'the default preview canvas must fit without clipping dimensions');
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'floating-default-front.png') });
+    await checkFit(dock, ['front']);
+    const canvas = dock.locator('[data-cad-preview-canvas]');
+    const readView = () => canvas.locator('svg').evaluate(svg => {
+      const b = svg.viewBox.baseVal; return { x: b.x, y: b.y, width: b.width, height: b.height };
+    });
+    const fitted = await readView(), windowBeforePan = await dock.boundingBox(), requestsBeforePan = previewRequests;
+    const canvasDrag = async (button, dx, dy) => {
+      const box = await canvas.boundingBox(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down({ button });
+      await page.mouse.move(x + dx, y + dy, { steps: 8 }); await page.mouse.up({ button });
+    };
+    await canvasDrag('left', 35, 25);
+    const panned = await readView();
+    assert.ok(panned.x < fitted.x && panned.y < fitted.y);
+    assert.equal(panned.width, fitted.width);
+    assert.deepEqual(await dock.boundingBox(), windowBeforePan, 'canvas drag must not move the window');
+    await canvasDrag('right', 0, -70);
+    const zoomed = await readView();
+    assert.ok(zoomed.width < panned.width * .7);
+    assert.ok(Math.abs(zoomed.width / zoomed.height - fitted.width / fitted.height) < 1e-6);
+    assert.equal(await canvas.evaluate(el => !el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))), true);
+    assert.equal(await page.locator('.door-form').evaluate(el => !el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))), false);
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'canvas-panned-zoomed.png') });
+    await canvasDrag('right', 0, 70);
+    assert.ok(Math.abs((await readView()).width - panned.width) < .01);
+    await dock.getByRole('button', { name: '适应画布', exact: true }).click();
+    await checkFit(dock, ['front']);
+    assert.equal(previewRequests, requestsBeforePan, 'pan, zoom and fit must not regenerate CAD');
     await field('订货单位').fill('Live preview only');
     await page.waitForTimeout(1700); assert.equal(previewRequests, beforeLive + 1);
     await dock.getByRole('switch', { name: '自动预览', exact: true }).uncheck();
@@ -451,6 +479,26 @@ const metrics = params => {
     assert.equal(await dock.getByRole('button', { name: '正面', exact: true }).getAttribute('aria-pressed'), 'true');
     await dock.getByRole('button', { name: '反面', exact: true }).click();
     const beforeDock = await dock.boundingBox(), requestsBeforeDock = previewRequests;
+    const scrollCanvasMidpoint = async offset => {
+      await page.locator('[data-preview-dock-region]').evaluate((el, offset) => {
+        const r = el.getBoundingClientRect(); window.scrollBy(0, r.top + r.height / 2 - innerHeight + offset);
+      }, offset);
+      await page.waitForTimeout(100);
+    };
+    await scrollCanvasMidpoint(-12);
+    assert.equal(await dock.getAttribute('data-preview-mode'), 'floating', '49% of the large canvas must not dock');
+    const scrollBeforeDock = await page.evaluate(() => scrollY);
+    await scrollCanvasMidpoint(12);
+    await page.locator('[data-live-cad-preview][data-preview-mode="docked"]').waitFor();
+    const canvasVisible = await dock.locator('[data-cad-preview-canvas]').evaluate(el => {
+      const r = el.getBoundingClientRect(); return (innerHeight - r.top) / r.height;
+    });
+    assert.ok(canvasVisible >= .5 && canvasVisible < .56, `actual canvas visible ratio: ${canvasVisible}`);
+    assert.ok(Math.abs((await page.evaluate(() => scrollY)) - scrollBeforeDock - 24) < 2, 'docking must not jump the page');
+    await page.waitForTimeout(200);
+    assert.equal(await dock.getAttribute('data-preview-mode'), 'docked', 'stable target must not oscillate');
+    await scrollCanvasMidpoint(-12);
+    await page.locator('[data-live-cad-preview][data-preview-mode="floating"]').waitFor();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.locator('[data-live-cad-preview][data-preview-mode="docked"]').waitFor();
     assert.ok(await dock.evaluate(el => el.parentElement.hasAttribute('data-preview-home') && getComputedStyle(el).position !== 'fixed'));
@@ -460,7 +508,7 @@ const metrics = params => {
     await page.locator('.door-form').evaluate(el => el.scrollIntoView({ block: 'start' }));
     await page.locator('[data-live-cad-preview][data-preview-mode="floating"]').waitFor();
     const restored = await dock.boundingBox();
-    assert.ok(Math.abs(restored.x - beforeDock.x) < 1 && Math.abs(restored.y - beforeDock.y) < 1 && Math.abs(restored.width - beforeDock.width) < 1);
+    assert.ok(Math.abs(restored.x - beforeDock.x) < 1 && Math.abs(restored.y - beforeDock.y) < 1 && Math.abs(restored.width - beforeDock.width) < 1, JSON.stringify({ restored, beforeDock }));
     assert.equal(previewRequests, requestsBeforeDock, 'docking and restoring must not regenerate CAD');
     await dock.getByRole('button', { name: '收起小窗', exact: true }).click();
     await field('正面门板样式').selectOption('四边对角线条');
@@ -487,6 +535,17 @@ const metrics = params => {
     await dock.scrollIntoViewIfNeeded();
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'live-preview-mobile.png') });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
+    await scrollCanvasMidpoint(-12);
+    assert.equal(await dock.getAttribute('data-preview-mode'), 'floating');
+    await scrollCanvasMidpoint(12);
+    await page.locator('[data-live-cad-preview][data-preview-mode="docked"]').waitFor();
+    const mobileVisible = await dock.locator('[data-cad-preview-canvas]').evaluate(el => {
+      const r = el.getBoundingClientRect(); return (innerHeight - r.top) / r.height;
+    });
+    assert.ok(mobileVisible >= .5 && mobileVisible < .56, `mobile canvas visible ratio: ${mobileVisible}`);
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'docked-large-mobile.png') });
+    await page.locator('.door-form').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await page.locator('[data-live-cad-preview][data-preview-mode="floating"]').waitFor();
     await page.setViewportSize({ width: 1920, height: 1100 });
     await page.getByRole('button', { name: /返回列表/ }).click();
     await page.getByRole('button', { name: '不保存离开', exact: true }).click();
@@ -502,7 +561,8 @@ const metrics = params => {
       previewFitWithoutDistortion: true, rowQuoteNavigation: true, explicitQuoteSave: true, recognitionAfterPreview: true,
       threeColumnBalanced: true, panelExpanded: true, floatingPreviewNoSpace: true, mouseAndTouchDrag: true,
       boundedOnResize: true, previewCollapse: true, previewDefault150Percent: true, resizablePreview: true,
-      frontDefault: true, scrollDockAndRestore: true, livePreviewOptIn: true, debouncedLatestOnly: true,
+      frontDefault: true, scrollDockAndRestore: true, halfCanvasDocking: true, canvasPanAndRightZoom: true,
+      gesturesWithoutCadRequests: true, livePreviewOptIn: true, debouncedLatestOnly: true,
       livePreviewFailureRetention: true, noAutoSave: true, newTaskSaved: newTasks, errors, unexpected }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

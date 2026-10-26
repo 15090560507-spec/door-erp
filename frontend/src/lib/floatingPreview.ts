@@ -11,8 +11,8 @@ export function clampFloatingSize(size: FloatingSize, viewport: Size): FloatingS
   };
 }
 
-export function shouldDockPreview(actionBottom: number, viewportHeight: number): boolean {
-  return actionBottom <= viewportHeight;
+export function shouldDockPreview(canvasTop: number, canvasHeight: number, viewportHeight: number): boolean {
+  return canvasHeight > 0 && canvasTop + canvasHeight / 2 <= viewportHeight;
 }
 
 export function clampFloatingPosition(position: FloatingPosition, panel: Size, viewport: Size): FloatingPosition {

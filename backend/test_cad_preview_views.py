@@ -20,6 +20,16 @@ class PreviewViewTests(unittest.TestCase):
             msp.add_text("2100", dxfattribs={"height": 40, "insert": (x + 1150, 1000), "layer": "YQ_DIM"})
         msp.add_text("ORDER HEADER", dxfattribs={"insert": (500, 2500), "layer": "ORDER_FORM"})
         msp.add_text("UNRELATED NOTES", dxfattribs={"insert": (500, 5000)})
+        # Nearby anchors used to pass the spatial filter despite very long text.
+        msp.add_text("备注：本图纸仅供参考，生产尺寸按照标注", dxfattribs={"insert": (0, -250)})
+        msp.add_text("锁体", dxfattribs={"insert": (4200, 1200)})
+        block = doc.blocks.new('sheet-near-door')
+        block.add_text('SHEET LABEL', dxfattribs={"insert": (0, 0)})
+        block.add_line((0, 0), (100, 0))
+        msp.add_blockref(block.name, (50, 100), dxfattribs={"layer": "ORDER_FORM"})
+        dim = msp.add_linear_dim(base=(0, -100), p1=(0, 0), p2=(1000, 0),
+                                 dxfattribs={"layer": "YQ_DIM"})
+        dim.render()
         stream = io.StringIO()
         doc.write(stream)
         svg = render_dxf_svg(stream.getvalue(), doors_only=True)
@@ -31,6 +41,10 @@ class PreviewViewTests(unittest.TestCase):
             self.assertEqual(len(group.findall('{http://www.w3.org/2000/svg}path')), 1)
         self.assertNotIn('ORDER HEADER', svg)
         self.assertNotIn('UNRELATED NOTES', svg)
+        self.assertNotIn('本图纸', svg)
+        self.assertNotIn('锁体', svg)
+        self.assertNotIn('SHEET LABEL', svg)
+        self.assertIn('1000', svg)
         self.assertNotIn('Preview is generated', svg)
         self.assertNotIn('data-cad-view', render_dxf_svg(stream.getvalue()))
 
@@ -80,10 +94,14 @@ class PreviewViewTests(unittest.TestCase):
         from drawing import run_integrated_system
         from main import build_cad_params
         from models import CADRequest
-        for door_type in ('单门', '对开门', '两定两开'):
+        for door_type in ('单门', '对开门', '两定两开', 'wide-front'):
             with self.subTest(door_type=door_type):
-                request = CADRequest(door_type=door_type, dw=2440 if door_type == '两定两开' else 1400,
+                request = CADRequest(door_type='对开门' if door_type == 'wide-front' else door_type, dw=2440 if door_type == '两定两开' else 1400,
                                      dh=2520, has_outer=True, has_inner=True, zmls='A1022', fmls='背包拉手')
+                if door_type == 'wide-front':
+                    request = CADRequest(door_type='对开门', dw=2940, dh=2360, has_outer=False, has_inner=False,
+                                         door_panel_style='H型布局', panel_b2_glass_style='单圈外围线',
+                                         back_panel_same_as_front=True, zmls='自制长拉手', handle_size='50*1200')
                 info, checks, params = build_cad_params(request)
                 message, buffer = run_integrated_system(info, checks, params)
                 self.assertIsNotNone(buffer, message)
@@ -92,6 +110,10 @@ class PreviewViewTests(unittest.TestCase):
                 groups = root.findall('{http://www.w3.org/2000/svg}g')
                 self.assertEqual([g.get('data-cad-view') for g in groups], ['front', 'back'])
                 self.assertTrue(all(len(g) > 10 for g in groups))
+                for group in groups:
+                    texts = ''.join(group.itertext())
+                    for unwanted in ('本图纸', '锁体', '指纹锁', '开启机构', '配置数量', '门扇厚度'):
+                        self.assertNotIn(unwanted, texts)
                 if os.environ.get('CAD_PREVIEW_TEST_ARTIFACTS'):
                     folder = Path(os.environ['CAD_PREVIEW_TEST_ARTIFACTS'])
                     folder.mkdir(parents=True, exist_ok=True)

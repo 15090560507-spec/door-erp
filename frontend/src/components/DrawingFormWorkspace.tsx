@@ -27,7 +27,7 @@ export default function DrawingFormWorkspace({ data, children, actions, svg, ren
   const [home, setHome] = useState<HTMLDivElement | null>(null);
   const [side, setSide] = useState<CadPreviewSide>("front");
   const panelRef = useRef<HTMLElement>(null);
-  const actionRef = useRef<HTMLDivElement>(null);
+  const dockRegionRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Motion | null>(null);
   const moveFrame = useRef<number | null>(null);
   const pending = useRef<{ position: FloatingPosition; size?: FloatingSize } | null>(null);
@@ -82,11 +82,16 @@ export default function DrawingFormWorkspace({ data, children, actions, svg, ren
     let frame: number | null = null;
     const measure = () => {
       frame = null;
-      if (actionRef.current) setDocked(shouldDockPreview(actionRef.current.getBoundingClientRect().bottom, innerHeight));
+      const rect = dockRegionRef.current?.getBoundingClientRect();
+      if (rect) setDocked(shouldDockPreview(rect.top, rect.height, innerHeight));
     };
     const schedule = () => { if (frame === null) frame = requestAnimationFrame(measure); };
     const observer = new ResizeObserver(schedule);
-    if (actionRef.current) observer.observe(actionRef.current);
+    if (dockRegionRef.current) {
+      observer.observe(dockRegionRef.current);
+      const workspace = dockRegionRef.current.parentElement?.parentElement;
+      if (workspace) observer.observe(workspace);
+    }
     window.addEventListener("scroll", schedule, true);
     window.addEventListener("resize", schedule);
     schedule();
@@ -101,6 +106,7 @@ export default function DrawingFormWorkspace({ data, children, actions, svg, ren
   useEffect(() => {
     if (!positioned || docked || !panelRef.current) return;
     const observer = new ResizeObserver(() => {
+      if (panelRef.current?.dataset.previewMode !== "floating") return;
       const rect = panelRef.current?.getBoundingClientRect();
       if (!rect) return;
       setPosition(value => {
@@ -173,8 +179,11 @@ export default function DrawingFormWorkspace({ data, children, actions, svg, ren
   return (
     <div className="drawing-form-workspace">
       <div className="min-w-0">{children}</div>
-      <div ref={actionRef} data-preview-action-boundary className="mt-6">{actions}</div>
-      <div ref={setHome} data-preview-home className={docked ? "mt-4" : ""} />
+      <div data-preview-action-boundary className="mt-6">{actions}</div>
+      <div ref={setHome} data-preview-home className="drawing-preview-home mt-4">
+        <div ref={dockRegionRef} data-preview-dock-region className="drawing-preview-dock-region" />
+        {!docked && <div aria-hidden="true" className="drawing-preview-home-placeholder"><h4 className="text-base font-semibold">CAD 图纸预览</h4></div>}
+      </div>
       {position && target && createPortal(
         <aside ref={panelRef} data-live-cad-preview data-preview-mode={docked ? "docked" : "floating"} data-minimized={minimized}
           aria-label={docked ? "CAD 图纸预览" : "图纸悬浮预览"}

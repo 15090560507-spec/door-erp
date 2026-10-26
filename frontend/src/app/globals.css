@@ -557,7 +557,11 @@ textarea:focus-visible {
 .drawing-preview-dock [data-cad-preview-panel] > div:first-child { flex-shrink: 0; }
 .drawing-preview-dock [data-cad-preview-panel] > div:nth-child(2) { min-height: 0; flex: 1; }
 .drawing-preview-dock [data-cad-preview-canvas] { height: 100%; max-height: none; }
-.drawing-preview-home-panel { min-width: 0; border: 1px solid #E2E2E8; border-radius: 8px; background: #FFF; padding: 18px; }
+.drawing-preview-home { --preview-canvas-top: 170px; position: relative; min-height: calc(var(--preview-canvas-top) + 20px + min(60vh, 500px)); }
+.drawing-preview-dock-region { position: absolute; top: var(--preview-canvas-top); left: 18px; right: 18px; height: min(60vh, 500px); pointer-events: none; }
+.drawing-preview-home-panel, .drawing-preview-home-placeholder { min-width: 0; border: 1px solid #E2E2E8; border-radius: 8px; background: #FFF; padding: 18px; }
+.drawing-preview-home-placeholder { height: calc(var(--preview-canvas-top) + 20px + min(60vh, 500px)); }
+.drawing-preview-home-panel [data-cad-preview-canvas] { height: min(60vh, 500px); max-height: none; }
 .drawing-preview-empty { display: flex; min-height: 176px; align-items: center; justify-content: center; border: 1px solid #E2E2E8; border-radius: 6px; background: #F8FAFC; color: #777780; font-size: 12px; }
 .drawing-preview-empty--large { min-height: min(60vh, 500px); }
 

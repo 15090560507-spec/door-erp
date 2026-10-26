@@ -25,9 +25,11 @@ test("default window is 1.5x wider and resize dimensions remain bounded", () => 
   assert.deepEqual(clampFloatingSize({ width: 20, height: 20 }, { width: 1920, height: 1080 }), { width: 280, height: 240 });
 });
 
-test("docking begins when the save bar reaches the lower preview region", () => {
-  assert.equal(shouldDockPreview(1100, 1000), false);
-  assert.equal(shouldDockPreview(1000, 1000), true);
-  assert.equal(shouldDockPreview(-10, 1000), true);
-  assert.equal(shouldDockPreview(1100, 1000), false);
+test("docking waits for half the large canvas, and stays docked below it", () => {
+  assert.equal(shouldDockPreview(1000, 500, 1000), false);
+  assert.equal(shouldDockPreview(751, 500, 1000), false);
+  assert.equal(shouldDockPreview(750, 500, 1000), true);
+  assert.equal(shouldDockPreview(-600, 500, 1000), true);
+  assert.equal(shouldDockPreview(751, 500, 1000), false);
+  assert.equal(shouldDockPreview(0, 0, 1000), false);
 });

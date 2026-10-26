@@ -97,12 +97,18 @@ def _arc_sample_points(
     return [_arc_point(center, radius, start_angle + delta * i / steps) for i in range(steps + 1)]
 
 
-def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) -> None:
+def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0,
+                    door_preview: bool = False, parent_layer: str = "0") -> None:
     if depth > 3:
         return
 
     kind = entity.dxftype()
     layer = _layer(entity)
+    if door_preview:
+        # Layer 0 in virtual block/dimension entities inherits the owner's layer.
+        layer = parent_layer if layer == "0" else layer
+        if layer == "ORDER_FORM":
+            return
 
     if kind == "WIPEOUT":
         try:
@@ -118,10 +124,10 @@ def _collect_entity(entity: Any, primitives: list[Primitive], depth: int = 0) ->
     if kind in {"INSERT", "DIMENSION"}:
         try:
             for virtual_entity in entity.virtual_entities():
-                _collect_entity(virtual_entity, primitives, depth + 1)
+                _collect_entity(virtual_entity, primitives, depth + 1, door_preview, layer)
             if kind == "INSERT":
                 for attrib in getattr(entity, "attribs", []):
-                    _collect_entity(attrib, primitives, depth + 1)
+                    _collect_entity(attrib, primitives, depth + 1, door_preview, layer)
             return
         except Exception:
             if kind == "INSERT":
@@ -240,6 +246,8 @@ def _door_view_groups(primitives: list[Primitive]) -> dict[str, list[Primitive]]
         for p in primitives:
             if not p.points or p.layer == "ORDER_FORM" or side_of(p) != side:
                 continue
+            if p.kind == "text" and p.layer != "YQ_DIM" and str(p.data.get("text", "")).strip() not in {"正面", "背面", "反面"}:
+                continue
             x0, x1, y0, y1 = _bbox(p.points)
             if x0 >= left - margin and x1 <= right + margin and y0 >= bottom - margin and y1 <= upper:
                 selected.append(p)
@@ -251,7 +259,7 @@ def render_dxf_svg(dxf_text: str, doors_only: bool = False) -> str:
     doc = ezdxf.read(io.StringIO(dxf_text))
     primitives: list[Primitive] = []
     for entity in doc.modelspace().entities_in_redraw_order():
-        _collect_entity(entity, primitives)
+        _collect_entity(entity, primitives, door_preview=doors_only)
     group_starts: dict[int, str] = {}
     if doors_only:
         groups = _door_view_groups(primitives)
