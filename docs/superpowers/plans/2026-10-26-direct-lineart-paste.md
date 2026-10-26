@@ -9,7 +9,7 @@
 - [x] Confirm typical input is front line-art screenshots, inspect source selection and paste handlers.
 - [x] Repair default, source-area paste routing and explicit upload controls; keep order-sheet compatibility.
 - [x] Verify direct paste preview/no extraction, order-sheet single extraction, text/reference independence, clear/replace, quick-generation payload and mobile layout.
-- [ ] Push verified changes and deliver Tencent Cloud commands.
+- [x] Pushed repair `e6b1981` to the authorized branch. Tencent Cloud commands accompany delivery; no remote deployment was performed.
 
 ## Verification
 
