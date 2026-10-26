@@ -124,7 +124,7 @@ export default function RenderPage() {
   const referenceUploadLock = useRef(false);
   const assetRequestId = useRef(0);
   const [lineArt, setLineArt] = useState<File | null>(null);
-  const [lineArtSource, setLineArtSource] = useState<"task" | "dxf" | "upload" | "direct">("task");
+  const [lineArtSource, setLineArtSource] = useState<"task" | "dxf" | "upload" | "direct">("direct");
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
   const [selectedDrawingTaskId, setSelectedDrawingTaskId] = useState("");
   const [orderSheet, setOrderSheet] = useState<File | null>(null);
@@ -611,6 +611,31 @@ export default function RenderPage() {
     }
   }
 
+  function receiveDirectLineArt(file: File | null) {
+    setLineArt(file);
+    setLineArtExtraction(null);
+    setSelectedLineArtSide("front");
+    setMessage(file ? `已载入正面线稿：${file.name}` : "正面线稿已清空");
+  }
+
+  function pasteSourceImage(event: ClipboardEvent<HTMLElement>) {
+    if (event.defaultPrevented || isClipboardTextTarget(event.target)) return;
+    const [file] = clipboardImageFiles(event.clipboardData);
+    if (!file) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (lineArtBusy) {
+      setMessage("图纸正在读取，请完成后再粘贴");
+      return;
+    }
+    if (lineArtSource === "upload") {
+      void handleOrderSheet(file);
+    } else {
+      setLineArtSource("direct");
+      receiveDirectLineArt(file);
+    }
+  }
+
   async function handleDxf(file: File | null) {
     setDxfFile(file);
     setLineArtExtraction(null);
@@ -865,21 +890,21 @@ export default function RenderPage() {
         </div>}
       </section>
 
-      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+      <section aria-label="图纸上传" tabIndex={0} onPaste={pasteSourceImage} className="rounded-lg border border-[#E5E5EA]/60 bg-white p-4 outline-none focus-within:border-[#007AFF]/40">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="mr-2">
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">线稿来源 *</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">生成两张独立线稿后，选择正面或反面作为本次输入。</p>
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">图纸 / 线稿 *</h2>
           </div>
           <div className="flex-1" />
-          {(["task", "dxf", "upload", "direct"] as const).map((value) => (
+          {(["direct", "upload", "dxf", "task"] as const).map((value) => (
             <button
               key={value}
               type="button"
+              aria-label={value === "direct" ? "选择正面线稿" : undefined}
               onClick={() => { setLineArtSource(value); setLineArtExtraction(null); }}
               className={`rounded-lg px-3 py-2 text-[12px] font-medium ${lineArtSource === value ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#3C3C43]"}`}
             >
-              {value === "task" ? "关联图纸项目" : value === "dxf" ? "上传 DXF" : value === "upload" ? "上传完整订单图" : "直接上传线稿"}
+              {value === "task" ? "关联图纸项目" : value === "dxf" ? "上传 DXF" : value === "upload" ? "完整订货单" : "正面线稿"}
             </button>
           ))}
         </div>
@@ -896,7 +921,7 @@ export default function RenderPage() {
 
         {lineArtSource === "upload" && (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
-            <CompactSourceUpload file={orderSheet} onPick={(file) => void handleOrderSheet(file)} />
+            <CompactSourceUpload file={orderSheet} busy={lineArtBusy} onPick={(file) => void handleOrderSheet(file)} />
             {lineArtExtraction?.sourceUrl && <button type="button" onClick={() => setCropEditorOpen(true)} className="self-end rounded-lg bg-[#F2F2F7] px-4 py-2 text-[13px] font-medium">调整裁剪</button>}
           </div>
         )}
@@ -906,7 +931,7 @@ export default function RenderPage() {
         )}
 
         {lineArtSource === "direct" && (
-          <UploadBox title="线稿图" file={lineArt} onPick={setLineArt} onPreview={(src, title) => setPreviewImage({ src, title })} required />
+          <UploadBox title={selectedLineArtSide === "back" ? "反面线稿" : "正面线稿"} file={lineArt} onPick={receiveDirectLineArt} onPreview={(src, title) => setPreviewImage({ src, title })} required />
         )}
 
         {lineArtSource !== "direct" && lineArtExtraction && (
@@ -1189,25 +1214,30 @@ export default function RenderPage() {
 }
 
 function UploadBox({ title, file, onPick, onPreview, required }: { title: string; file: File | null; onPick: (file: File | null) => void; onPreview: (src: string, title: string) => void; required?: boolean }) {
-  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
-    const [pastedFile] = imageFilesFromClipboard(event);
-    if (!pastedFile) return;
-    event.preventDefault();
-    onPick(pastedFile);
-  }
+  const picker = useRef<HTMLInputElement>(null);
 
   return (
-    <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+    <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{title}{required ? " *" : ""}</h2>
-        {file && <button type="button" onClick={() => onPick(null)} className="text-[12px] text-[#FF3B30]">清空</button>}
+        <div className="flex items-center gap-3">
+          {file && <button type="button" onClick={() => onPick(null)} className="text-[12px] text-[#FF3B30]">清空</button>}
+          <button type="button" onClick={() => picker.current?.click()} className="inline-flex items-center gap-2 rounded-md bg-[#007AFF] px-3 py-2 text-[12px] font-medium text-white">
+            <ImagePlus size={16} aria-hidden="true" />上传{title}
+          </button>
+        </div>
       </div>
-      <label
+      <div
         tabIndex={0}
-        onPaste={handlePaste}
-        className="flex min-h-[240px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#C7C7CC] bg-[#F2F2F7] p-3 outline-none focus:border-[#007AFF]"
+        role="group"
+        aria-label={`${title}上传区`}
+        onClick={event => event.currentTarget.focus()}
+        title="点击此区域后按 Ctrl+V 粘贴线稿截图"
+        className="flex min-h-[240px] cursor-text items-center justify-center rounded-lg border border-dashed border-[#C7C7CC] bg-[#F7F7FA] p-3 outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/15"
       >
         <input
+          ref={picker}
+          aria-label={`选择${title}图片`}
           type="file"
           accept="image/*"
           onChange={(event) => {
@@ -1220,13 +1250,12 @@ function UploadBox({ title, file, onPick, onPreview, required }: { title: string
           <div className="w-full text-center">
             <FilePreviewImage file={file} className="mx-auto max-h-[220px] max-w-full rounded-lg object-contain" onPreview={onPreview} />
             <p className="mt-2 truncate text-[12px] text-[#3C3C43]">{file.name}</p>
-            <p className="mt-1 text-[11px] text-[#8E8E93]">点击可重新上传，也可以 Ctrl+V 粘贴替换</p>
           </div>
         ) : (
-          <span className="text-center text-[13px] text-[#8E8E93]">点击上传{title}，或 Ctrl+V 粘贴图片</span>
+          <span className="text-center text-[13px] text-[#8E8E93]">尚未上传{title}</span>
         )}
-      </label>
-    </section>
+      </div>
+    </div>
   );
 }
 
@@ -1243,11 +1272,13 @@ function CompactDxfUpload({ file, busy, onPick }: { file: File | null; busy: boo
   );
 }
 
-function CompactSourceUpload({ file, onPick }: { file: File | null; onPick: (file: File | null) => void }) {
+function CompactSourceUpload({ file, busy, onPick }: { file: File | null; busy: boolean; onPick: (file: File | null) => void }) {
   function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
     const [pastedFile] = imageFilesFromClipboard(event);
     if (!pastedFile) return;
     event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
     onPick(pastedFile);
   }
 
@@ -1256,6 +1287,7 @@ function CompactSourceUpload({ file, onPick }: { file: File | null; onPick: (fil
       <input
         type="file"
         accept="image/*"
+        disabled={busy}
         className="hidden"
         onChange={(event) => {
           onPick(event.target.files?.[0] || null);
@@ -1263,7 +1295,7 @@ function CompactSourceUpload({ file, onPick }: { file: File | null; onPick: (fil
         }}
       />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-[#1C1C1E]">{file ? file.name : "点击上传完整订单图，或 Ctrl+V 粘贴"}</p>
+        <p className="text-[13px] font-medium text-[#1C1C1E]">{busy ? "正在识别完整订货单..." : file ? file.name : "上传完整订货单"}</p>
         <p className="mt-1 text-[11px] text-[#8E8E93]">保留原图并自动提取正面、反面两个门体区域</p>
       </div>
       {file && <button type="button" onClick={(event) => { event.preventDefault(); onPick(null); }} className="ml-3 rounded-lg bg-white px-3 py-1.5 text-[12px] text-[#FF3B30]">清空</button>}

@@ -30,6 +30,7 @@ const legacy = {
   const library = [{ id: 'old-trim', name: 'Old Trim', category: '包套', url: '/api/mock/trim.png', thumbnailUrl: '/api/mock/trim.png' }];
   let failUpload = false;
   let lastBindings;
+  let extractionRequests = 0;
   let tasks = [legacy];
   try {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1100 } });
@@ -48,6 +49,11 @@ const legacy = {
       if (url.pathname === '/api/render/model-configs' && method === 'GET') return json({ configs: [config] });
       if (url.pathname === '/api/render/model-configs/mock-model' && method === 'PUT') return json({ config });
       if (url.pathname === '/api/tasks' && method === 'GET') return json({ tasks: [], total: 0 });
+      if (url.pathname === '/api/render/line-art/extractions' && method === 'POST') {
+        extractionRequests += 1;
+        return json({ extraction: { id: `sheet-${extractionRequests}`, sourceType: 'upload',
+          front: { url: '/api/mock/front.png' }, back: { url: '/api/mock/back.png' }, reviewRequired: false, warnings: [] } });
+      }
       const bodyField = name => req.postDataBuffer()?.toString('utf8').match(new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)`))?.[1];
       if (url.pathname === '/api/render/assets' && method === 'GET') {
         const category = url.searchParams.get('category');
@@ -68,6 +74,7 @@ const legacy = {
         assert.equal(field('renderMode'), 'quick');
         assert.equal(field('segmentationId'), '');
         assert.equal(field('count'), '1');
+        assert.equal(field('sourceSide'), 'front');
         assert.match(body, /name="lineArt"; filename=/);
         lastBindings = JSON.parse(field('referenceBindings'));
         assert.ok(lastBindings.panel.assetIds.length || /name="panelReferences"; filename=/.test(body));
@@ -88,6 +95,14 @@ const legacy = {
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
+    const pasteImage = async (target = page.getByRole('region', { name: '参考素材', exact: true }), name = 'screenshot.png') => target.evaluate((element, { base64, name }) => {
+      const binary = atob(base64), bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], name, { type: 'image/png' }));
+      const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    }, { base64: png.toString('base64'), name });
     await page.goto(`${baseUrl}/render`, { timeout: 120000 });
     const generate = page.getByRole('button', { name: /^一键生成效果图/ });
     await generate.waitFor({ timeout: 120000 });
@@ -97,9 +112,37 @@ const legacy = {
     assert.deepEqual(await page.getByRole('tablist', { name: '素材分类' }).getByRole('tab').allTextContents(), ['门扇款式', '拉手', '合页', '颜色', '门套款式', '花件']);
     assert.equal(await page.getByRole('heading', { name: '部件参考', exact: true }).count(), 0);
     await generate.click();
-    await page.getByText('请先生成正面和反面线稿', { exact: true }).waitFor();
-    await page.getByRole('button', { name: '直接上传线稿', exact: true }).click();
-    await page.locator('input[type=file]').filter({ hasNot: page.locator('[multiple]') }).first().setInputFiles({ name: 'line.png', mimeType: 'image/png', buffer: png });
+    await page.getByText('请上传线稿图', { exact: true }).waitFor();
+    const source = page.getByRole('region', { name: '图纸上传', exact: true });
+    const frontZone = page.getByRole('group', { name: '正面线稿上传区', exact: true });
+    let chooserEvents = 0;
+    page.on('filechooser', () => chooserEvents++);
+    await frontZone.click();
+    assert.equal(chooserEvents, 0, 'focusing the paste area must not open a file dialog');
+    assert.equal(await pasteImage(frontZone, 'front-paste.png'), true);
+    await page.getByText('front-paste.png', { exact: true }).waitFor();
+    assert.equal(extractionRequests, 0, 'a direct line-art paste must not extract front/back views');
+    assert.equal(uploads.length, 0, 'a source drawing must not become a reference asset');
+    await source.getByRole('button', { name: '清空', exact: true }).click();
+    await page.getByText('尚未上传正面线稿', { exact: true }).waitFor();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '上传正面线稿', exact: true }).click();
+    await (await chooser).setFiles({ name: 'line.png', mimeType: 'image/png', buffer: png });
+    assert.equal(chooserEvents, 1);
+    await page.getByRole('button', { name: '完整订货单', exact: true }).click();
+    const extracted = page.waitForResponse(r => r.url().endsWith('/api/render/line-art/extractions'));
+    await pasteImage(source, 'order-sheet.png');
+    await extracted;
+    await page.getByRole('img', { name: '正面线稿', exact: true }).waitFor();
+    assert.equal(extractionRequests, 1);
+    const replaced = page.waitForResponse(r => r.url().endsWith('/api/render/line-art/extractions'));
+    await pasteImage(source.locator('label').filter({ hasText: 'order-sheet.png' }).first(), 'order-sheet-replaced.png');
+    await replaced;
+    assert.equal(extractionRequests, 2, 'a paste on the child label must be handled only once');
+    await page.getByRole('button', { name: '选择正面线稿', exact: true }).click();
+    await pasteImage(source, 'front-replaced.png');
+    await page.getByText('front-replaced.png', { exact: true }).waitFor();
+    assert.equal(extractionRequests, 2);
     await generate.click();
     await page.getByText('请为门扇款式选择或上传至少一张参考图', { exact: true }).waitFor();
     await page.locator('input[type=file][multiple]').first().setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: png });
@@ -125,14 +168,6 @@ const legacy = {
     assert.equal((await downloaded).suggestedFilename(), 'legacy.psd');
     await submit('4k');
     const workspace = page.getByRole('region', { name: '参考素材', exact: true });
-    const pasteImage = async (target = workspace, name = 'screenshot.png') => target.evaluate((element, { base64, name }) => {
-      const binary = atob(base64), bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
-      const data = new DataTransfer();
-      data.items.add(new File([bytes], name, { type: 'image/png' }));
-      const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
-      element.dispatchEvent(event);
-      return event.defaultPrevented;
-    }, { base64: png.toString('base64'), name });
     await page.getByRole('tab', { name: '拉手', exact: true }).click();
     assert.equal(await pasteImage(), true);
     await page.getByRole('combobox', { name: 'screenshot作用部件', exact: true }).waitFor();
@@ -175,6 +210,7 @@ const legacy = {
       const section = generate.locator('xpath=ancestor::section[1]');
       await section.screenshot({ path: path.join(artifactDir, name) });
       await workspace.screenshot({ path: path.join(artifactDir, `references-${name}`) });
+      await source.screenshot({ path: path.join(artifactDir, `source-${name}`) });
       await page.screenshot({ path: path.join(artifactDir, `full-${name}`), fullPage: true });
     };
     await saveScreenshot('desktop.png');
@@ -185,7 +221,7 @@ const legacy = {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     assert.deepEqual(submissions, [{ mode: 'quick', size: '2k' }, { mode: 'quick', size: '4k' }, { mode: 'quick', size: '4k' }, { mode: 'quick', size: '4k' }]);
-    console.log(JSON.stringify({ submissions, uploadedCategories: uploads.map(asset => asset.category), pasteDeduplicated: true, textPasteUnaffected: true, roleRouting: lastBindings, legacyRestored: true, existingPsdDownloaded: true, errors, unexpected }));
+    console.log(JSON.stringify({ submissions, directPasteWithoutExtraction: true, explicitFilePicker: true, orderSheetExtractions: extractionRequests, uploadedCategories: uploads.map(asset => asset.category), pasteDeduplicated: true, textPasteUnaffected: true, roleRouting: lastBindings, legacyRestored: true, existingPsdDownloaded: true, errors, unexpected }));
   } finally {
     await browser.close();
   }
