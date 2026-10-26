@@ -14,4 +14,4 @@
 - [x] Add category/clipboard helpers and regression tests, plus backend alias-filter compatibility.
 - [x] Merge page controls; implement upload-and-select, area paste handling, thumbnails and target adjustment.
 - [x] Run focused backend/frontend checks and mocked desktop/mobile browser tests, including quick-only regression.
-- [ ] Review, push GitHub, and provide Tencent Cloud commands with the delivery.
+- [x] Reviewed and pushed implementation `97b214f` to the authorized GitHub branch. Tencent Cloud update commands accompany the user-facing delivery; deployment is not performed locally.
