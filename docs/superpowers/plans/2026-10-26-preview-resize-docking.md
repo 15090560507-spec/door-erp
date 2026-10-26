@@ -7,4 +7,4 @@
 - [x] Share manual/automatic SVG state and controlled side selection so docking does not regenerate or lose the selected view.
 - [x] Put one docking home directly beneath the action bar and use frame-throttled scroll observation with no layout oscillation.
 - [x] Test size defaults, resizing, front default, drag/touch, docking/restoration, no duplicate requests and existing save/quote/auto-preview behavior.
-- [ ] Commit, push and provide front-end-only Tencent Cloud update commands.
+- [x] Feature `1d25234` pushed to the approved GitHub branch. Front-end-only Tencent Cloud update commands are included in the task close-out.
