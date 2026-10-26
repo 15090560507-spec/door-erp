@@ -24,4 +24,4 @@
 - [x] In `frontend/src/components/DoorForm.tsx`, add optional Select display labels and render only controls used by each active region, including a bar-pitch label for vertical-only patterns.
 - [x] Update the legacy grid tests in `backend/test_cad_new_options.py` to assert configured paired-line width rather than hard-coded 15mm, without weakening center/count assertions.
 - [x] Run geometry, cache/download, metadata, frontend tests, type checking, lint, and desktop/mobile verification. Record the user's confirmed spacing interpretation and existing baseline failures in the verification record.
-- [ ] Review and push only this repair's files to the authorized branch; do not claim cloud deployment.
+- [x] Reviewed and pushed repair commit `ad9abc7` to the authorized branch. Tencent Cloud deployment is still required.
