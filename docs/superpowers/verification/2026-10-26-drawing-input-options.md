@@ -51,3 +51,7 @@ F:/codex/verify-drawing-input-options.cjs
 ## Limits
 
 The full legacy CAD baseline and production Next build were not rerun for this metadata-only feature. The existing shared Combobox behavior was reused rather than redesigned. Tencent cloud deployment was not performed; both backend and frontend must be rebuilt there to receive this change. User account data, untracked assets, layout mockups, local environment files, and test artifacts are excluded from the feature commit.
+
+## Delivery
+
+Feature commit `46c4032` was pushed to `15090560507-spec/door-erp` on `feat/semicircle-handles-and-quote-form-improvements`. The first SSH attempt was reset; the retry succeeded. Local test services remain on ports 3164/8164 with isolated data. Tencent cloud has not been updated from this session.

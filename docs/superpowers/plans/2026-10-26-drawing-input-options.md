@@ -39,4 +39,4 @@ Files: `frontend/src/lib/types.ts`, `frontend/src/components/DoorForm.tsx`, `fro
 ## Task 3: Delivery
 
 - [x] Record exact test and screenshot results, including metadata-only scope and deployment limits, in the verification record.
-- [ ] Review the scoped diff, stage only feature files, and push to `feat/semicircle-handles-and-quote-form-improvements` on `15090560507-spec/door-erp`.
+- [x] Review the scoped diff, stage only feature files, and push to `feat/semicircle-handles-and-quote-form-improvements` on `15090560507-spec/door-erp`.
