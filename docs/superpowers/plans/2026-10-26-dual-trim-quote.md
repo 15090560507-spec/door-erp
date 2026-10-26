@@ -13,3 +13,5 @@
 - [x] Fix quantity-preview wrapping without rounding or changing A4/column widths; verify standard and unusually long values.
 - [x] Verify backend/frontend and mocked browser workflows, including exports and mobile.
 - [ ] Review and push scoped changes; provide Tencent Cloud update commands.
+
+Delivery: implementation is committed locally as `8158b02`. SSH pushes on ports 22 and 443 were reset; HTTPS did not complete and was stopped; GitHub connector transport was unavailable. Remote delivery is not confirmed. Cloud instructions must check this repair commit before building/stopping any service. No cloud deployment occurred.
