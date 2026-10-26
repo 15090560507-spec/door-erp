@@ -11,6 +11,7 @@ from PIL import Image
 from psd_tools.constants import Compression
 
 from .database import render_db
+from .asset_categories import canonical_asset_category
 from .database import utc_now_iso
 from .image_geometry import encode_jpeg
 from .layered_render import DxfGeometryValidationError
@@ -290,9 +291,10 @@ def _normalize_reference_bindings(raw: dict | None, legacy_asset_ids: list[str])
 
 
 def _role_for_category(category: str) -> str:
-    if category in {"门扇", "款式", "颜色", "纹理"}:
+    category = canonical_asset_category(category)
+    if category in {"门扇款式", "颜色", "纹理"}:
         return "panel"
-    if category in {"包套", "门头"}:
+    if category in {"门套款式", "门头"}:
         return "trim"
     if category == "门框":
         return "frame"

@@ -1,6 +1,6 @@
 import { api } from "./api";
 
-export const RENDER_CATEGORIES = ["门扇", "门框", "款式", "花件", "拉手", "锁具", "合页", "颜色", "纹理", "玻璃", "门头", "包套", "其他"];
+export { RENDER_CATEGORIES } from "./renderAssetCategories";
 export type RenderMode = "quick" | "precise";
 export type RenderReferenceRole = "panel" | "trim" | "frame" | "glass" | "hardware";
 

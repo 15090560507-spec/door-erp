@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
+import { ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ImagePlus, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import { downloadFileFromUrl, getTasks } from "@/lib/api";
@@ -31,13 +32,15 @@ import {
   type RenderReferenceRole,
 } from "@/lib/renderApi";
 import { restoreRenderHistory } from "@/lib/renderHistory";
+import { renderCategoryLabel, renderCategoryRole } from "@/lib/renderAssetCategories";
+import { clipboardImageFiles, isClipboardTextTarget } from "@/lib/clipboardImages";
 
 const DEFAULT_PROMPT = "基于图纸生成清晰、真实的门类产品效果图。严格保持门型结构、比例和部件位置，以参考款式图为整体风格参考，配件素材仅用于对应部件、材质、颜色和细节。最终成图不显示 CAD 线稿、尺寸线、文字、标注箭头或辅助轮廓，玻璃和五金位于门扇表面上方，接缝表现为真实窄黑缝。";
 const ASSET_PAGE_SIZE = 24;
 const TASK_LIST_LIMIT = 20;
 const REFERENCE_ROLE_OPTIONS: Array<{ role: RenderReferenceRole; label: string; description: string; required?: boolean }> = [
   { role: "panel", label: "门扇款式", description: "控制门扇内部款式、颜色和质感", required: true },
-  { role: "trim", label: "门套 / 门头门柱", description: "控制门套、门头和门柱的造型与材质" },
+  { role: "trim", label: "门套款式", description: "控制门套的造型与材质" },
   { role: "frame", label: "门框材质", description: "为空时继承门扇颜色与材质" },
   { role: "glass", label: "玻璃", description: "控制玻璃颜色、透明度、纹理和反光" },
   { role: "hardware", label: "五金配件", description: "拉手、锁具、合页、花件及其他配件" },
@@ -108,14 +111,18 @@ export default function RenderPage() {
   const [configForm, setConfigForm] = useState<ModelConfigInput>(EMPTY_CONFIG);
   const [editingConfigId, setEditingConfigId] = useState("");
   const [assets, setAssets] = useState<RenderAsset[]>([]);
+  const [knownAssets, setKnownAssets] = useState<Record<string, RenderAsset>>({});
   const [tasks, setTasks] = useState<RenderTask[]>([]);
   const [modelConfigOpen, setModelConfigOpen] = useState(false);
-  const [assetLibraryOpen, setAssetLibraryOpen] = useState(false);
-  const [category, setCategory] = useState("");
+  const [assetLibraryOpen, setAssetLibraryOpen] = useState(true);
+  const [category, setCategory] = useState("门扇款式");
   const [search, setSearch] = useState("");
   const [assetOffset, setAssetOffset] = useState(0);
   const [assetHasMore, setAssetHasMore] = useState(false);
   const [assetLoading, setAssetLoading] = useState(false);
+  const [referenceUploading, setReferenceUploading] = useState(false);
+  const referenceUploadLock = useRef(false);
+  const assetRequestId = useRef(0);
   const [lineArt, setLineArt] = useState<File | null>(null);
   const [lineArtSource, setLineArtSource] = useState<"task" | "dxf" | "upload" | "direct">("task");
   const [drawingTasks, setDrawingTasks] = useState<TaskItem[]>([]);
@@ -128,7 +135,7 @@ export default function RenderPage() {
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
   const [psdDownloading, setPsdDownloading] = useState(false);
   const [referenceGroups, setReferenceGroups] = useState<ReferenceGroup[]>(() => createDefaultReferenceGroups());
-  const [activeReferenceRole, setActiveReferenceRole] = useState<RenderReferenceRole>("panel");
+  const [colorTargetRole, setColorTargetRole] = useState<RenderReferenceRole>("panel");
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [size, setSize] = useState("auto");
   const [count, setCount] = useState(1);
@@ -144,7 +151,7 @@ export default function RenderPage() {
   const selectedReferenceFiles = referenceGroups.flatMap((group) => group.files);
   const selectedReferenceAssetCount = selectedReferenceAssetIds.length;
   const uploadedReferenceFileCount = selectedReferenceFiles.length;
-  const activeReferenceGroup = referenceGroups.find((group) => group.role === activeReferenceRole) || referenceGroups[0];
+  const uploadCategory = category || "门扇款式";
   const selectedReferenceRoles = getSelectedReferenceRoles(referenceGroups);
   const referencePromptGuidance = buildReferencePromptGuidance(selectedReferenceRoles);
   const activeTaskId = activeTask?.id || "";
@@ -170,6 +177,16 @@ export default function RenderPage() {
         setEditingConfigId(defaultConfig?.id || "");
         if (defaultConfig) setConfigForm(formFromConfig(defaultConfig));
         setActiveTask(nextTasks[0] || null);
+        try {
+          const initialAssets = await listRenderAssets({ category: "门扇款式", limit: ASSET_PAGE_SIZE }, controller.signal);
+          if (cancelled || assetRequestId.current !== 0) return;
+          setAssets(current => Array.from(new Map([...current, ...initialAssets].map(asset => [asset.id, asset])).values()));
+          setKnownAssets(current => ({ ...current, ...Object.fromEntries(initialAssets.map(asset => [asset.id, asset])) }));
+          setAssetOffset(initialAssets.length);
+          setAssetHasMore(initialAssets.length === ASSET_PAGE_SIZE);
+        } catch {
+          if (!cancelled) setMessage("素材库暂时无法加载，请重新选择分类重试");
+        }
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
         setMessage(`效果渲染数据加载失败：${(error as Error).message || "请检查网络连接"}`);
@@ -244,18 +261,12 @@ export default function RenderPage() {
       };
     }
     setReferenceGroups(nextGroups);
-    const firstReference = nextGroups.find((group) => group.assetIds.length || group.files.length);
-    if (firstReference) setActiveReferenceRole(firstReference.role);
 
     const selectedAssetIds = Array.from(new Set(nextGroups.flatMap((group) => group.assetIds)));
     if (selectedAssetIds.length) {
       try {
         const availableAssets = await listRenderAssets({ limit: 200 });
-        setAssets((current) => {
-          const merged = new Map(current.map((asset) => [asset.id, asset]));
-          availableAssets.forEach((asset) => merged.set(asset.id, asset));
-          return Array.from(merged.values());
-        });
+        rememberAssets(availableAssets);
       } catch {
         warnings.push("素材库详情暂时无法加载");
       }
@@ -290,6 +301,7 @@ export default function RenderPage() {
     const nextCategory = options.categoryValue ?? category;
     const nextSearch = options.searchValue ?? search;
     const nextOffset = reset ? 0 : assetOffset;
+    const requestId = ++assetRequestId.current;
     setAssetLoading(true);
     try {
       const nextAssets = await listRenderAssets({
@@ -298,12 +310,22 @@ export default function RenderPage() {
         limit: ASSET_PAGE_SIZE,
         offset: nextOffset,
       });
-      setAssets((current) => reset ? nextAssets : [...current, ...nextAssets]);
+      if (requestId !== assetRequestId.current) return;
+      setAssets((current) => reset ? nextAssets : Array.from(new Map([...current, ...nextAssets].map(asset => [asset.id, asset])).values()));
+      rememberAssets(nextAssets);
       setAssetOffset(nextOffset + nextAssets.length);
       setAssetHasMore(nextAssets.length === ASSET_PAGE_SIZE);
+    } catch (error) {
+      if (requestId === assetRequestId.current) {
+        setErrorDialog({ title: "素材库加载失败", message: (error as Error).message || "请稍后重试" });
+      }
     } finally {
-      setAssetLoading(false);
+      if (requestId === assetRequestId.current) setAssetLoading(false);
     }
+  }
+
+  function rememberAssets(items: RenderAsset[]) {
+    setKnownAssets(current => ({ ...current, ...Object.fromEntries(items.map(asset => [asset.id, asset])) }));
   }
 
   async function toggleAssetLibrary() {
@@ -320,6 +342,7 @@ export default function RenderPage() {
 
   async function handleCategoryChange(value: string) {
     setCategory(value);
+    setAssets([]);
     await loadAssets({ reset: true, categoryValue: value });
   }
 
@@ -364,13 +387,14 @@ export default function RenderPage() {
   }
 
   function toggleReferenceAsset(asset: RenderAsset) {
+    const targetRole = renderCategoryRole(asset.category, colorTargetRole);
     setReferenceGroups((current) => {
       const exists = current.some((group) => group.assetIds.includes(asset.id));
       if (exists) {
         return current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== asset.id) }));
       }
       const next = current.length ? [...current] : createDefaultReferenceGroups();
-      const index = Math.max(0, next.findIndex((group) => group.role === activeReferenceRole));
+      const index = Math.max(0, next.findIndex((group) => group.role === targetRole));
       next[index] = { ...next[index], assetIds: [...next[index].assetIds, asset.id] };
       return next;
     });
@@ -380,14 +404,58 @@ export default function RenderPage() {
     setReferenceGroups((current) => current.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => id !== assetId) })));
   }
 
-  function addReferenceFiles(files: File[], role: RenderReferenceRole = activeReferenceRole) {
+  function moveReferenceAsset(assetId: string, role: RenderReferenceRole) {
+    setReferenceGroups(current => current.map(group => ({
+      ...group,
+      assetIds: group.role === role
+        ? Array.from(new Set([...group.assetIds, assetId]))
+        : group.assetIds.filter(id => id !== assetId),
+    })));
+  }
+
+  function moveReferenceFile(file: File, role: RenderReferenceRole) {
+    setReferenceGroups(current => current.map(group => ({
+      ...group, files: group.role === role
+        ? [...group.files.filter(item => item !== file), file]
+        : group.files.filter(item => item !== file),
+    })));
+  }
+
+  async function uploadReferenceImages(files: File[]) {
+    if (!files.length || referenceUploadLock.current) return;
+    referenceUploadLock.current = true;
+    setReferenceUploading(true);
+    const destination = uploadCategory;
+    const targetRole = renderCategoryRole(destination, colorTargetRole);
+    let completed = 0;
+    try {
+      for (const file of files) {
+        const asset = await uploadRenderAsset({ file, name: file.name.replace(/\.[^.]+$/, "") || "截图",
+          category: destination, favorite: true });
+        rememberAssets([asset]);
+        setAssets(current => [asset, ...current.filter(item => item.id !== asset.id)]);
+        setAssetOffset(current => current + 1);
+        setReferenceGroups(current => current.map(group => group.role === targetRole
+          ? { ...group, assetIds: Array.from(new Set([...group.assetIds, asset.id])) } : group));
+        completed += 1;
+      }
+      setMessage(`已上传并选用 ${completed} 张${destination}参考图`);
+    } catch (error) {
+      const failure = error as { userMessage?: string; message?: string };
+      setErrorDialog({ title: "参考图上传失败", message: `已成功上传 ${completed} 张。${failure.userMessage || failure.message || "请稍后重试"}` });
+    } finally {
+      referenceUploadLock.current = false;
+      setReferenceUploading(false);
+    }
+  }
+
+  function pasteReferenceImages(event: ClipboardEvent<HTMLElement>) {
+    if (isClipboardTextTarget(event.target)) return;
+    const files = clipboardImageFiles(event.clipboardData);
     if (!files.length) return;
-    setReferenceGroups((current) => {
-      const next = current.length ? [...current] : createDefaultReferenceGroups();
-      const index = Math.max(0, next.findIndex((group) => group.role === role));
-      next[index] = { ...next[index], files: [...next[index].files, ...files] };
-      return next;
-    });
+    event.preventDefault();
+    event.stopPropagation();
+    void uploadReferenceImages(files);
   }
 
   function removeReferenceFile(targetFile: File) {
@@ -862,96 +930,59 @@ export default function RenderPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
-        <div className="mb-3">
-          <h2 className="text-[15px] font-semibold text-[#1C1C1E]">部件参考</h2>
-          <p className="mt-1 text-[12px] text-[#8E8E93]">先选择作用部件，再从素材库选择或上传参考图；系统不会把门扇、门套和五金素材混用。</p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
-          {REFERENCE_ROLE_OPTIONS.map((item) => {
-            const group = referenceGroups.find((candidate) => candidate.role === item.role);
-            const amount = (group?.assetIds.length || 0) + (group?.files.length || 0);
-            const active = activeReferenceRole === item.role;
-            return (
-              <button
-                key={item.role}
-                type="button"
-                onClick={() => setActiveReferenceRole(item.role)}
-                className={`min-h-24 rounded-xl border p-3 text-left transition-colors ${active ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA] bg-[#F7F7FA] hover:bg-white"}`}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-semibold text-[#1C1C1E]">{item.label}{item.required ? " *" : ""}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${amount ? "bg-[#34C759]/12 text-[#248A3D]" : "bg-white text-[#8E8E93]"}`}>{amount}</span>
-                </span>
-                <span className="mt-2 block text-[11px] leading-5 text-[#8E8E93]">{item.description}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-[#1C1C1E]">当前作用于：{REFERENCE_ROLE_LABEL[activeReferenceRole]}</p>
-            <p className="mt-1 text-[11px] text-[#8E8E93]">在下方素材库点“选择”的图片也会归入当前部件。</p>
-          </div>
-          <CompactImageUpload files={activeReferenceGroup?.files || []} onChange={(files) => addReferenceFiles(files, activeReferenceRole)} />
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4">
+      <section
+        aria-label="参考素材"
+        tabIndex={0}
+        onPaste={pasteReferenceImages}
+        className="rounded-lg border border-[#E5E5EA]/60 bg-white p-4 outline-none focus-within:border-[#007AFF]/40"
+        title="选择分类后，在此区域按 Ctrl+V 粘贴截图"
+      >
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => void toggleAssetLibrary()} className="text-left">
-            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 素材库</h2>
-            <p className="mt-1 text-[12px] text-[#8E8E93]">从个人素材库选择，或上传本次专用参考图；选中的内容会统一放到下方本次素材栏。</p>
+            <h2 className="text-[15px] font-semibold text-[#1C1C1E]">{assetLibraryOpen ? "▼" : "▶"} 参考素材</h2>
           </button>
           <div className="flex-1" />
-          {assetLibraryOpen && (
-            <>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onBlur={handleSearchBlur}
-                placeholder="搜索素材"
-                className="h-9 rounded-lg border border-[#E5E5EA] px-3 text-[13px]"
-              />
-              <LibraryUploadButton
-                category={category}
-                onUploaded={(asset) => {
-                  setAssets((current) => [asset, ...current]);
-                  setMessage("素材已上传到个人素材库");
-                }}
-              />
-            </>
-          )}
+          <button type="button" disabled={referenceUploading} onClick={() => { setAssetLibraryOpen(true); void handleCategoryChange(""); }} className={`text-[12px] ${category ? "text-[#636366]" : "font-semibold text-[#007AFF]"}`}>全部素材</button>
+          <input
+            value={search}
+            aria-label="搜索素材"
+            disabled={referenceUploading}
+            onChange={(event) => setSearch(event.target.value)}
+            onBlur={handleSearchBlur}
+            onKeyDown={(event) => { if (event.key === "Enter") { setAssetLibraryOpen(true); void handleSearchBlur(); } }}
+            placeholder="搜索素材"
+            className="h-9 min-w-0 max-w-full rounded-md border border-[#E5E5EA] px-3 text-[13px]"
+          />
+          <label className={`inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md bg-[#007AFF] px-3 py-2 text-[12px] font-medium text-white ${referenceUploading ? "opacity-50" : ""}`}>
+            <ImagePlus size={16} aria-hidden="true" />
+            {referenceUploading ? "上传中..." : `上传${uploadCategory}`}
+            <input aria-label={`上传${uploadCategory}参考图`} type="file" accept="image/*" multiple disabled={referenceUploading} className="hidden"
+              onChange={(event) => { void uploadReferenceImages(imageFilesFromList(event.target.files)); event.currentTarget.value = ""; }} />
+          </label>
         </div>
+
+        <div role="tablist" aria-label="素材分类" className="mb-3 grid grid-cols-2 gap-1 border-b border-[#E5E5EA] pb-3 sm:grid-cols-3 xl:grid-cols-6">
+          {RENDER_CATEGORIES.map(item => (
+            <button key={item} role="tab" aria-selected={category === item} type="button" disabled={referenceUploading}
+              onClick={() => { setAssetLibraryOpen(true); void handleCategoryChange(item); }}
+              className={`min-h-9 rounded-md px-3 py-2 text-[13px] font-medium disabled:opacity-50 ${category === item ? "bg-[#007AFF]/10 text-[#007AFF]" : "text-[#636366] hover:bg-[#F2F2F7]"}`}>
+              {item}
+            </button>
+          ))}
+        </div>
+        {(category === "颜色" || !category) && (
+          <div className="mb-3 max-w-xs">
+            <Select label="颜色作用部件" value={colorTargetRole} onChange={value => setColorTargetRole(value as RenderReferenceRole)} options={REFERENCE_ROLE_OPTIONS.map(item => [item.role, item.label])} />
+          </div>
+        )}
 
         {assetLibraryOpen && (
           <>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[132px_1fr]">
-              <div className="rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-2">
-                <button
-                  type="button"
-                  onClick={() => void handleCategoryChange("")}
-                  className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === "" ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-                >
-                  全部分类
-                </button>
-                {RENDER_CATEGORIES.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => void handleCategoryChange(item)}
-                    className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[12px] font-medium ${category === item ? "bg-[#007AFF] text-white" : "text-[#3C3C43] hover:bg-white"}`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" aria-busy={assetLoading}>
                 {assets.map((asset) => {
                   const selected = selectedReferenceAssetIds.includes(asset.id);
                   return (
-                    <div key={asset.id} className={`grid grid-cols-[120px_1fr] gap-3 rounded-xl border p-2 ${selected ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
+                    <div key={asset.id} className={`grid grid-cols-[88px_minmax(0,1fr)] gap-3 rounded-lg border p-2 ${selected ? "border-[#007AFF] bg-[#007AFF]/5" : "border-[#E5E5EA]"}`}>
                       <button
                         type="button"
                         onClick={() => setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
@@ -961,16 +992,16 @@ export default function RenderPage() {
                       </button>
                       <div className="min-w-0">
                         <p className="truncate text-left text-[13px] font-medium text-[#1C1C1E]">{asset.name}</p>
-                        <p className="mt-1 truncate text-left text-[12px] text-[#8E8E93]">{asset.category}</p>
+                        <p className="mt-1 truncate text-left text-[12px] text-[#8E8E93]">{renderCategoryLabel(asset.category)}</p>
                         <div className="mt-4 flex gap-2">
                           <button
                             type="button"
                             onClick={() => toggleReferenceAsset(asset)}
                             className={`flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium ${selected ? "bg-[#007AFF] text-white" : "bg-[#F2F2F7] text-[#1C1C1E]"}`}
                           >
-                            {selected ? "已选" : `用于${REFERENCE_ROLE_LABEL[activeReferenceRole]}`}
+                            {selected ? "已选" : `选用 · ${REFERENCE_ROLE_LABEL[renderCategoryRole(asset.category, colorTargetRole)]}`}
                           </button>
-                          <button type="button" onClick={() => removeAsset(asset.id)} className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-[12px] text-[#FF3B30]">删除</button>
+                          <button type="button" onClick={() => removeAsset(asset.id)} title={`删除${asset.name}`} aria-label={`删除素材${asset.name}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#FF3B30] hover:bg-[#FF3B30]/5"><Trash2 size={15} /></button>
                         </div>
                       </div>
                     </div>
@@ -979,7 +1010,6 @@ export default function RenderPage() {
                 {assetLoading && <p className="col-span-full text-[13px] text-[#8E8E93]">素材加载中...</p>}
                 {!assetLoading && !assets.length && <p className="col-span-full text-[13px] text-[#8E8E93]">暂无素材</p>}
               </div>
-            </div>
 
             {assetHasMore && (
               <div className="mt-3 flex justify-center">
@@ -991,41 +1021,44 @@ export default function RenderPage() {
           </>
         )}
 
-        <div className="mt-3 rounded-xl border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+        <div className="mt-3 border-t border-[#E5E5EA] pt-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <div className="text-[13px] font-semibold text-[#1C1C1E]">本次素材</div>
-            <span className="text-[12px] text-[#8E8E93]">已选素材 {selectedReferenceAssetCount} 个，本次上传参考图 {uploadedReferenceFileCount} 个</span>
+            <div className="text-[13px] font-semibold text-[#1C1C1E]">已选参考图</div>
+            <span className="text-[12px] text-[#8E8E93]">{selectedReferenceAssetCount + uploadedReferenceFileCount} 张</span>
           </div>
           {(selectedReferenceAssetIds.length > 0 || selectedReferenceFiles.length > 0) ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {selectedReferenceAssetIds.map((assetId) => {
-                const asset = assets.find((item) => item.id === assetId);
+                const asset = knownAssets[assetId];
                 const role = referenceGroups.find((group) => group.assetIds.includes(assetId))?.role;
                 return (
-                  <span key={assetId} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-[#3C3C43]">
+                  <div key={assetId} className="flex min-w-0 items-center gap-2 border-b border-[#E5E5EA]/60 py-2 text-[11px] text-[#3C3C43]">
                     <button
                       type="button"
                       onClick={() => asset && setPreviewImage({ src: asset.url || asset.thumbnailUrl, title: asset.name })}
-                      className="max-w-[180px] truncate"
+                      className="min-w-0 flex-1 text-left"
                     >
-                      {role ? `${REFERENCE_ROLE_LABEL[role]}：` : ""}{asset?.name || assetId}
+                      {asset && <img src={asset.thumbnailUrl || asset.url} alt="" className="float-left mr-2 h-10 w-10 rounded-md bg-[#F2F2F7] object-contain" />}
+                      <span className="block truncate">{asset?.name || assetId}</span>
                     </button>
-                    <button type="button" onClick={() => removeReferenceAsset(assetId)} className="text-[#FF3B30]">×</button>
-                  </span>
+                    <select aria-label={`${asset?.name || assetId}作用部件`} value={role || "panel"} onChange={event => moveReferenceAsset(assetId, event.target.value as RenderReferenceRole)} className="min-w-0 max-w-[110px] rounded-md border border-[#E5E5EA] bg-white px-1 py-1 text-[11px]">
+                      {REFERENCE_ROLE_OPTIONS.map(item => <option key={item.role} value={item.role}>{item.label}</option>)}
+                    </select>
+                    <button type="button" onClick={() => removeReferenceAsset(assetId)} title="移除参考图" aria-label={`移除参考图${asset?.name || assetId}`} className="shrink-0 text-[#FF3B30]">×</button>
+                  </div>
                 );
               })}
               {referenceGroups.flatMap((group) => group.files.map((file, index) => (
-                  <span key={`${group.role}-${file.name}-${file.lastModified}-${index}`} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-[#3C3C43]">
-                    <span className="text-[#8E8E93]">{REFERENCE_ROLE_LABEL[group.role]}：</span>
+                  <div key={`${group.role}-${file.name}-${file.lastModified}-${index}`} className="flex min-w-0 items-center gap-2 border-b border-[#E5E5EA]/60 py-2 text-[11px] text-[#3C3C43]">
                     <TempFileChip file={file} onPreview={(src, title) => setPreviewImage({ src, title })} onRemove={() => removeReferenceFile(file)} />
-                  </span>
+                    <select aria-label={`${file.name}作用部件`} value={group.role} onChange={event => moveReferenceFile(file, event.target.value as RenderReferenceRole)} className="min-w-0 max-w-[110px] rounded-md border border-[#E5E5EA] bg-white px-1 py-1 text-[11px]">
+                      {REFERENCE_ROLE_OPTIONS.map(item => <option key={item.role} value={item.role}>{item.label}</option>)}
+                    </select>
+                  </div>
                 ))) }
             </div>
           ) : (
-            <p className="text-[12px] text-[#8E8E93]">还没有选择素材。可以在上方素材库点“选择”，或用“上传图”添加本次专用参考图。</p>
-          )}
-          {referencePromptGuidance && (
-            <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[12px] leading-5 text-[#3C3C43]">{referencePromptGuidance}</p>
+            <p className="text-[12px] text-[#8E8E93]">未选择参考图</p>
           )}
         </div>
       </section>
@@ -1238,41 +1271,6 @@ function CompactSourceUpload({ file, onPick }: { file: File | null; onPick: (fil
   );
 }
 
-function CompactImageUpload({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
-  function appendFiles(nextFiles: File[]) {
-    if (!nextFiles.length) return;
-    onChange(nextFiles);
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
-    const pastedFiles = imageFilesFromClipboard(event);
-    if (!pastedFiles.length) return;
-    event.preventDefault();
-    appendFiles(pastedFiles);
-  }
-
-  return (
-    <label
-      tabIndex={0}
-      onPaste={handlePaste}
-      className="flex h-9 cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#C7C7CC] bg-[#F2F2F7] px-2 text-[12px] font-medium text-[#3C3C43] outline-none focus:border-[#007AFF]"
-      title="上传或 Ctrl+V 粘贴本组参考图"
-    >
-      上传图{files.length ? ` ${files.length}` : ""}
-      <input
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={(event) => {
-          appendFiles(imageFilesFromList(event.target.files));
-          event.currentTarget.value = "";
-        }}
-        className="hidden"
-      />
-    </label>
-  );
-}
-
 function TempFileChip({ file, onPreview, onRemove }: { file: File; onPreview: (src: string, title: string) => void; onRemove: () => void }) {
   const src = useMemo(() => URL.createObjectURL(file), [file]);
 
@@ -1281,62 +1279,13 @@ function TempFileChip({ file, onPreview, onRemove }: { file: File; onPreview: (s
   }, [src]);
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F7] px-2 py-1 text-[11px] text-[#3C3C43]">
-      <button type="button" onClick={() => src && onPreview(src, file.name)} className="max-w-[180px] truncate">
-        {file.name}
+    <span className="inline-flex min-w-0 flex-1 items-center gap-1 text-[11px] text-[#3C3C43]">
+      <button type="button" onClick={() => src && onPreview(src, file.name)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <img src={src} alt="" className="h-10 w-10 shrink-0 rounded-md bg-[#F2F2F7] object-contain" />
+        <span className="truncate">{file.name}</span>
       </button>
       <button type="button" onClick={onRemove} className="text-[#FF3B30]">×</button>
     </span>
-  );
-}
-
-function LibraryUploadButton({ category, onUploaded }: { category: string; onUploaded: (asset: RenderAsset) => void }) {
-  const [uploading, setUploading] = useState(false);
-
-  async function uploadFiles(files: File[]) {
-    if (!files.length || uploading) return;
-    setUploading(true);
-    try {
-      for (const file of files) {
-        const asset = await uploadRenderAsset({
-          file,
-          name: file.name.replace(/\.[^.]+$/, "") || file.name,
-          category: category || "其他",
-          favorite: true,
-        });
-        onUploaded(asset);
-      }
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLLabelElement>) {
-    const files = imageFilesFromClipboard(event);
-    if (!files.length) return;
-    event.preventDefault();
-    void uploadFiles(files);
-  }
-
-  return (
-    <label
-      tabIndex={0}
-      onPaste={handlePaste}
-      className="cursor-pointer rounded-lg bg-[#007AFF] px-3 py-2 text-[13px] font-medium text-white outline-none focus:ring-2 focus:ring-[#007AFF]/30"
-    >
-      {uploading ? "上传中..." : "上传素材"}
-      <input
-        type="file"
-        accept="image/*"
-        multiple
-        disabled={uploading}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => {
-          void uploadFiles(imageFilesFromList(event.target.files));
-          event.currentTarget.value = "";
-        }}
-        className="hidden"
-      />
-    </label>
   );
 }
 
@@ -1362,12 +1311,7 @@ function imageFilesFromList(fileList: FileList | null): File[] {
 }
 
 function imageFilesFromClipboard(event: ClipboardEvent): File[] {
-  const files = imageFilesFromList(event.clipboardData?.files || null);
-  if (files.length) return files;
-  return Array.from(event.clipboardData?.items || [])
-    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file));
+  return clipboardImageFiles(event.clipboardData);
 }
 
 function Input({ label, value, onChange, type = "text", placeholder = "" }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {

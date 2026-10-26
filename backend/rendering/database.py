@@ -9,6 +9,7 @@ from typing import Any
 from config import BACKUP_DIR, DATA_DIR
 from database import backup_file_before_replace
 from .models import ProviderCapabilities
+from .asset_categories import canonical_asset_category
 
 
 RENDER_DB_DIR = os.path.join(DATA_DIR, "render")
@@ -138,13 +139,14 @@ class RenderDatabase:
         query = q.strip().lower()
         items = [item for item in self.assets.load() if item.get("active", True)]
         if category:
-            items = [item for item in items if item.get("category") == category]
+            expected = canonical_asset_category(category)
+            items = [item for item in items if canonical_asset_category(item.get("category", "")) == expected]
         if favorite is not None:
             items = [item for item in items if bool(item.get("favorite")) is favorite]
         if query:
             items = [
                 item for item in items
-                if query in " ".join([item.get("name", ""), item.get("category", ""), " ".join(item.get("tags", [])), item.get("remark", "")]).lower()
+                if query in " ".join([item.get("name", ""), item.get("category", ""), canonical_asset_category(item.get("category", "")), " ".join(item.get("tags", [])), item.get("remark", "")]).lower()
             ]
         sorted_items = sorted(items, key=lambda item: item.get("updatedAt", ""), reverse=True)
         safe_offset = max(0, int(offset or 0))
