@@ -10,4 +10,4 @@
 - [x] Unify secondary button styles and order preview/DXF/render/quote/save, highlighting only save.
 - [x] Add save-before-quote confirmation and task-row quote icon before copy/delete.
 - [x] Verify browser interactions, real generated CAD framing, mobile/desktop screenshots, type checks and regression tests.
-- [ ] Commit, push the approved GitHub branch and provide Tencent Cloud update commands.
+- [x] Commit and push: `44ca210` delivered to the approved GitHub branch. Guarded Tencent Cloud update commands are included in the task close-out.

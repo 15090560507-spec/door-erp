@@ -19,3 +19,5 @@
 - Browser APIs/model generation were mocked; no paid model calls or production records were used. Local isolated backend was restarted on 8164; frontend remains on 3164. Production is not deployed by these checks.
 
 Artifacts: `F:/codex/drawing-preview-verification/`, including real SVG fixtures and `cad-both-desktop.png`, `cad-both-mobile.png`.
+
+GitHub delivery confirmed: `44ca210` on `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`.
