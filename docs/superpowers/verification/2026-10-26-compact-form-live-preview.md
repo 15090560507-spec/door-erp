@@ -16,3 +16,5 @@
 - Existing save/quote/history/area/preview navigation scenarios also passed. Rendering workspace regression `render-quick-only.cjs` passed.
 - Desktop 1920x1100 and mobile 390x1000 screenshots inspected; no document overflow or obstructed controls. Artifacts: `F:/codex/compact-form-verification/three-column-desktop.png` and `live-preview-mobile.png`.
 - All browser model/API calls were mocked. No production records, paid model calls or server deployment were involved. CAD computation load remains real when the user enables auto mode in production; debounce and serialization reduce, but do not eliminate, that cost.
+
+GitHub delivery confirmed: `7620a53` on `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`.

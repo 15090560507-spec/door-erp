@@ -13,4 +13,4 @@
 - [x] Reorganize the shared form and quote recognition placement.
 - [x] Implement bounded latest-only preview queue and dock with explicit auto opt-in.
 - [x] Verify debounce, serialization, stale suppression, disabling, cache reuse, failure retention, cross-record isolation and responsive layouts.
-- [ ] Run regression checks, commit, push and provide guarded Tencent Cloud update commands.
+- [x] Regression checks passed; feature `7620a53` pushed to the approved GitHub branch. Guarded Tencent Cloud update commands are included in the task close-out.
