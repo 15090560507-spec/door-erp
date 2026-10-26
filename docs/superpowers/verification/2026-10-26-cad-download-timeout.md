@@ -56,3 +56,7 @@ These are local body-processing and in-process HTTP measurements, not TCP packet
 The retained editable-sheet regressions cover attribute values, hidden attributes, nested sheets, inherited display, transformations, preserved non-sheet dimensions/hardware, cache separation, and preview/print source isolation. Failed conversion still returns the original error rather than partial DXF output. A fixed test clock makes the filename assertion deterministic.
 
 The complete legacy CAD baseline and a production Next build were not rerun for this narrow transport change. No browser layout changed. The cloud site has not been deployed or live-tested from this session. After rebuilding backend and frontend, verify the same formerly failing door downloads fully before the 60-second limit and opens normally in CAD. Keep layout/new-field work deferred until this repair is confirmed online.
+
+## Delivery
+
+Code and tests were committed as `02b4b5f` and pushed successfully to `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`. A final focused route rerun passed all four tests after fixing the test clock. Delivery-status updates are documentation-only. The existing user database modification and unrelated untracked assets were not staged or committed. Tencent cloud deployment remains outstanding.

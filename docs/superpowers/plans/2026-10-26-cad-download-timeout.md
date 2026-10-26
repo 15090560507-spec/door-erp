@@ -58,5 +58,5 @@ if (axios.isAxiosError(error) && error.code === "ECONNABORTED") {
 
 - [x] Measure the complete response using a real generated DXF; compare byte identity, SHA-256, body-message count, and transfer-only overhead with the former implementation. Separate these numbers from actual cloud network throughput.
 - [x] Review the scoped diff, run whitespace checks, and record exact results plus any remaining verification limits.
-- [ ] Stage only the two source files, two test files, and three repair documents; commit and push `feat/semicircle-handles-and-quote-form-improvements` to `15090560507-spec/door-erp`.
-- [ ] Report the commit and explain that the user still needs to deploy it to Tencent cloud before live retesting.
+- [x] Stage only the two source files, two test files, and three repair documents; commit and push `feat/semicircle-handles-and-quote-form-improvements` to `15090560507-spec/door-erp`.
+- [x] Report the commit and explain that the user still needs to deploy it to Tencent cloud before live retesting.
