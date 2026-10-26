@@ -547,9 +547,19 @@ textarea:focus-visible {
 .door-form {
   align-items: start;
 }
+.door-form-trim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+@media (max-width: 640px) { .door-form-trim-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.drawing-form-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.drawing-preview-dock { min-width: 0; border: 1px solid #E2E2E8; border-radius: 8px; background: #FFF; padding: 14px; }
+.drawing-preview-dock [data-cad-preview-canvas] { max-height: 320px; }
+@media (min-width: 1700px) {
+  .drawing-form-workspace { grid-template-columns: minmax(0, 1fr) 310px; }
+  .drawing-preview-dock { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+}
 
 .door-form-section {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid #E2E2E8;
   border-radius: 8px;
   background: #FFFFFF;
@@ -557,8 +567,8 @@ textarea:focus-visible {
 }
 
 .door-form-section__title {
-  margin-bottom: 15px;
-  padding-bottom: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 9px;
   border-bottom: 1px solid #ECECEF;
   color: #242429;
   font-size: 16px;

@@ -105,7 +105,7 @@ const Checkbox = memo(function Checkbox({ label, checked, onChange }: {
 
 const Card = memo(function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="door-form-section">
+    <section className="door-form-section" data-door-section={title}>
       <h4 className="door-form-section__title">{title}</h4>
       {children}
     </section>
@@ -659,236 +659,24 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
   );
   };
 
-  return (
-    <div className="door-form grid grid-cols-1 gap-5 xl:grid-cols-3">
-      {/* 左列：订单信息 + 材质 */}
-      <div className="space-y-4">
-        <Card title="订单基础信息">
+  const hardwareSection = (
+        <Card title="五金锁具">
           <div className="grid grid-cols-2 gap-3">
-            <Combobox label="订货单抬头" required value={data.order_title} options={ORDER_TITLES} onChange={(v) => set("order_title", v)} />
-            <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
-            <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
-            <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
-            <Input label="交期" type="date" value={(data.dhrq || "").replace(/\./g, "-")} onChange={(v) => set("dhrq", v)} />
-            <Input label="数量(樘)" required value={data.sl} onChange={(v) => set("sl", v)} />
-            <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
+            <Combobox label="正面拉手" required value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
+            <Combobox label="反面拉手" required value={data.fmls} options={o("HANDLES", HANDLES).filter((handle) => !frontOnlyHandles.has(handle))} onChange={(v) => set("fmls", v)} />
+            <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
+            <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
+            <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
+            <Combobox label="开启机构" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
+          </div>
+          <div className="mt-3 grid grid-cols-2 items-end gap-3">
+            <Combobox label="配置数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
+            <Combobox label="锁芯离地高度(mm)" value={String(data.lock_core_height ?? 1050)} options={["950", "1050", "1150"]} onChange={(v) => set("lock_core_height", v)} />
           </div>
         </Card>
-
-        <Card title="材质与外观">
-          <div className="grid grid-cols-2 gap-3">
-            <Combobox label="产品名称" required value={data.product_name} options={o("PRODUCT_NAMES", PRODUCT_NAMES)} onChange={applyProductName} />
-            <Combobox label="材料" value={data.material} options={o("MATERIAL_THICKNESSES", MATERIAL_THICKNESSES)} onChange={(v) => set("material", v)} />
-            {!isSimpleProduct && <>
-              <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
-              <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
-              <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
-              <Combobox
-                label="门扇厚度(mm)"
-                required
-                value={String(data.mshd ?? "")}
-                options={["80", "100"]}
-                onChange={(v) => set("mshd", v)}
-              />
-              <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
-            </>}
-            {isSimpleProduct && <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />}
-          </div>
-          {!isSimpleProduct && <div className="mt-3 flex gap-6">
-            {o("BZ_OPTIONS", BZ_OPTIONS).map((opt) => (
-              <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                <input type="radio" name="bz" checked={data.sel_bz === opt} onChange={() => set("sel_bz", opt)} />
-                {opt}
-              </label>
-            ))}
-          </div>}
-          {isSimpleProduct && <>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Input label="宽度(mm)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-              <Input label={`${usesLengthDimension ? "长度" : "高度"}(mm)`} required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
-            </div>
-            <p className="mt-3 text-[12px] text-[#8E8E93]">牌匾、铝艺栅栏、雨棚、其他只需录入产品名称、材料、颜色、数量和尺寸；其余订货单字段自动以“/”占位。</p>
-          </>}
-        </Card>
-      </div>
-
-      {/* 中列：结构 + 尺寸 */}
-      {!isSimpleProduct && <div className="space-y-4">
-        <Card title="结构与开向">
-          <Select
-            label="门型"
-            value={data.door_type}
-            options={o("DOOR_TYPES", DOOR_TYPES)}
-            onChange={(v) => onChange(applyFrameDefaults({ ...data, door_type: v }))}
-          />
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <Select label="框套是否分体" value={data.frame_assembly ?? "框套一体"} options={["框套一体", "框套分体"]} onChange={(v) => set("frame_assembly", v)} />
-            <Select label="安装方式" value={data.installation_method ?? ""} options={["", "拉片安装", "膨胀螺丝安装"]} onChange={(v) => set("installation_method", v)} />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[#E5E5EA] pt-3 sm:grid-cols-2">
-            <div>
-              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>左右开向</div>
-              <div className="flex gap-4">
-              {o("KX_OPTIONS", KX_OPTIONS).map((opt) => (
-                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={data.sel_kx === "左右开" || data.sel_kx.includes(opt)}
-                    onChange={() => onChange(applyFrameDefaults({
-                      ...data,
-                      sel_kx: toggleOpening(data.sel_kx, opt, "左开", "右开", "左右开"),
-                    }))}
-                  />
-                  {opt}
-                </label>
-              ))}
-              </div>
-            </div>
-            <div className="border-t border-[#E5E5EA] pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>内外开向</div>
-              <div className="flex gap-4">
-              {o("NK_OPTIONS", NK_OPTIONS).map((opt) => (
-                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={data.sel_nk === "内外开" || data.sel_nk.includes(opt)}
-                    onChange={() => set("sel_nk", toggleOpening(data.sel_nk, opt, "内开", "外开", "内外开"))}
-                  />
-                  {opt}
-                </label>
-              ))}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3 mt-3">
-            <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />
-            <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
-            <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => onChange({ ...data, has_pillar: v, pillar_width_str: v && (!data.pillar_width_str || data.pillar_width_str === "55/70") ? "55/85" : data.pillar_width_str })} />
-            <Checkbox label="连体门" checked={data.is_integrated_door} onChange={(v) => set("is_integrated_door", v)} />
-            <Checkbox label="圆弧门" checked={data.is_arch_door} onChange={(v) => set("is_arch_door", v)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            {data.is_arch_door && (
-              <Input label="起弧高度" value={data.arch_spring_height} type="number" onChange={(v) => set("arch_spring_height", Number(v))} />
-            )}
-            {data.sel_qc !== "无" && (
-              <>
-                <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
-                <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
-                {data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗" && (
-                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} optionLabels={GLASS_LINE_STYLE_LABELS} onChange={(v) => set("qc_glass_style", v)} />
-                )}
-              </>
-            )}
-            <Combobox label="玻璃规格" value={data.glass_spec} options={o("GLASS_SPECS", GLASS_SPECS)} onChange={(v) => set("glass_spec", v)} />
-            {data.has_mm && (
-              <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
-            )}
-          </div>
-          {data.has_pillar && (
-            <Input label="立柱宽(小/大)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
-          )}
-          {data.is_integrated_door && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Input label="封板高度" value={data.integrated_panel_height} type="number" onChange={(v) => set("integrated_panel_height", Number(v))} />
-              <Input label="封板压框尺寸" value={data.integrated_press_top_rail} type="number" onChange={(v) => set("integrated_press_top_rail", Number(v))} />
-              <Input label="上方玻璃高度" value={data.integrated_glass_height} type="number" onChange={(v) => set("integrated_glass_height", Number(v))} />
-            </div>
-          )}
-        </Card>
-
-        <Card title="尺寸输入中心">
-          <div className="flex flex-wrap gap-4">
-            <Checkbox label="切换为见光尺寸" checked={data.use_light_size} onChange={(v) => set("use_light_size", v)} />
-            {!data.use_light_size && (
-              <Checkbox label="标注见光尺寸" checked={data.mark_light_size} onChange={(v) => set("mark_light_size", v)} />
-            )}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[12px] font-medium text-[#8E8E93]">鲁班尺版本</span>
-              <select
-                value={lubanKind}
-                onChange={(e) => setLubanKind(e.target.value as LubanRulerKind)}
-                className="rounded-md border border-[#C7C7CC] bg-[#FAFAFC] px-2 py-1.5 text-[12px] text-[#1C1C1E] outline-none focus:border-[#007AFF]"
-              >
-                {LUBAN_RULER_VERSIONS.map((version) => (
-                  <option key={version.key} value={version.key}>{version.label}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={() => setLubanOpen(true)}
-              className="rounded-md border border-[#007AFF]/30 bg-[#007AFF]/5 px-3 py-1.5 text-[12px] font-medium text-[#007AFF] hover:bg-[#007AFF]/10"
-            >
-              鲁班尺
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            {data.use_light_size ? (
-              <>
-                <div>
-                  <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
-                </div>
-                <div>
-                  <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <Input label="总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
-                </div>
-                <div>
-                  <Input label="总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
-                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
-                </div>
-              </>
-            )}
-          </div>
-          {data.door_type === "子母门" && (
-            <Input label="母门单扇宽" value={data.mother_door_width} type="number" onChange={(v) => set("mother_door_width", Number(v))} />
-          )}
-          {["四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
-            <Input
-              label="中门内空宽"
-              value={displayedMidClearWidth}
-              type="number"
-              onChange={(v) => set("mid_clear_width", Number(v))}
-            />
-          )}
-          {data.product_name === "平移门" && (
-            <Input label="中门重叠尺寸(mm)" value={data.sliding_overlap} type="number" onChange={(v) => set("sliding_overlap", Number(v))} />
-          )}
-        </Card>
-
-        <details className="door-form-section cursor-pointer">
-          <summary className="door-form-section__title mb-0 select-none">
-            门缝设置 <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
-              {data.left_gap}/{data.right_gap}/{data.top_gap}/{data.bottom_gap}
-              {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
-            </span>
-          </summary>
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <Input label="左门缝(mm)" value={data.left_gap} type="number" onChange={(v) => set("left_gap", Number(v))} />
-            <Input label="右门缝(mm)" value={data.right_gap} type="number" onChange={(v) => set("right_gap", Number(v))} />
-            <Input label="上门缝(mm)" value={data.top_gap} type="number" onChange={(v) => set("top_gap", Number(v))} />
-            <Input label="下门缝(mm)" value={data.bottom_gap} type="number" onChange={(v) => set("bottom_gap", Number(v))} />
-            {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
-              <Input label="中缝(mm)" value={data.middle_gap} type="number" onChange={(v) => set("middle_gap", Number(v))} />
-            )}
-          </div>
-        </details>
-
-        <details className="door-form-section cursor-pointer">
-          <summary className="door-form-section__title mb-0 select-none">
-            门板设置
-            <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
-              {panelPreset || panelStyle}
-            </span>
-          </summary>
+  );
+  const panelSection = (
+        <Card title="门板设置">
           <div className="grid grid-cols-2 gap-3 mt-4">
             <Select
               label="固定款式"
@@ -1035,7 +823,233 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               </>
             )}
           </div>
+        </Card>
+  );
+
+  return (
+    <div className="door-form grid grid-cols-1 gap-4 xl:grid-cols-3">
+      {/* 左列：订单信息、材质与五金 */}
+      <div className="space-y-4">
+        <Card title="订单基础信息">
+          <div className="grid grid-cols-2 gap-3">
+            <Combobox label="订货单抬头" required value={data.order_title} options={ORDER_TITLES} onChange={(v) => set("order_title", v)} />
+            <Input label="订单号" value={data.ddh} onChange={(v) => set("ddh", v)} />
+            <Input label="订货单位" required value={data.dhdw} onChange={(v) => set("dhdw", v)} />
+            <Input label="项目名称" value={data.gdmc} onChange={(v) => set("gdmc", v)} />
+            <Input label="交期" type="date" value={(data.dhrq || "").replace(/\./g, "-")} onChange={(v) => set("dhrq", v)} />
+            <Input label="数量(樘)" required value={data.sl} onChange={(v) => set("sl", v)} />
+            <Input label="制单人" value={data.hhxd} onChange={(v) => set("hhxd", v)} />
+          </div>
+        </Card>
+
+        <Card title="材质与外观">
+          <div className="grid grid-cols-2 gap-3">
+            <Combobox label="产品名称" required value={data.product_name} options={o("PRODUCT_NAMES", PRODUCT_NAMES)} onChange={applyProductName} />
+            <Combobox label="材料" value={data.material} options={o("MATERIAL_THICKNESSES", MATERIAL_THICKNESSES)} onChange={(v) => set("material", v)} />
+            {!isSimpleProduct && <>
+              <Combobox label="正面款式" required value={data.zmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("zmks", v)} />
+              <Combobox label="反面款式" required value={data.fmks} options={o("DOOR_STYLES", DOOR_STYLES)} onChange={(v) => set("fmks", v)} />
+              <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />
+              <Combobox
+                label="门扇厚度(mm)"
+                required
+                value={String(data.mshd ?? "")}
+                options={["80", "100"]}
+                onChange={(v) => set("mshd", v)}
+              />
+              <Input label="墙厚(mm)" value={data.qh} onChange={(v) => set("qh", v)} />
+            </>}
+            {isSimpleProduct && <Combobox label="颜色" required value={data.ys} options={o("COLOR_PRESETS", COLOR_PRESETS)} onChange={(v) => set("ys", v)} />}
+          </div>
+          {!isSimpleProduct && <div className="mt-3 flex gap-6">
+            {o("BZ_OPTIONS", BZ_OPTIONS).map((opt) => (
+              <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                <input type="radio" name="bz" checked={data.sel_bz === opt} onChange={() => set("sel_bz", opt)} />
+                {opt}
+              </label>
+            ))}
+          </div>}
+          {isSimpleProduct && <>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Input label="宽度(mm)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+              <Input label={`${usesLengthDimension ? "长度" : "高度"}(mm)`} required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+            </div>
+            <p className="mt-3 text-[12px] text-[#8E8E93]">牌匾、铝艺栅栏、雨棚、其他只需录入产品名称、材料、颜色、数量和尺寸；其余订货单字段自动以“/”占位。</p>
+          </>}
+        </Card>
+        {!isSimpleProduct && hardwareSection}
+      </div>
+
+      {/* 中列：结构 + 尺寸 */}
+      {!isSimpleProduct && <div className="space-y-4">
+        <Card title="结构与开向">
+          <Select
+            label="门型"
+            value={data.door_type}
+            options={o("DOOR_TYPES", DOOR_TYPES)}
+            onChange={(v) => onChange(applyFrameDefaults({ ...data, door_type: v }))}
+          />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <Select label="框套是否分体" value={data.frame_assembly ?? "框套一体"} options={["框套一体", "框套分体"]} onChange={(v) => set("frame_assembly", v)} />
+            <Select label="安装方式" value={data.installation_method ?? ""} options={["", "拉片安装", "膨胀螺丝安装"]} onChange={(v) => set("installation_method", v)} />
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[#E5E5EA] pt-3 sm:grid-cols-2">
+            <div>
+              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>左右开向</div>
+              <div className="flex gap-4">
+              {o("KX_OPTIONS", KX_OPTIONS).map((opt) => (
+                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={data.sel_kx === "左右开" || data.sel_kx.includes(opt)}
+                    onChange={() => onChange(applyFrameDefaults({
+                      ...data,
+                      sel_kx: toggleOpening(data.sel_kx, opt, "左开", "右开", "左右开"),
+                    }))}
+                  />
+                  {opt}
+                </label>
+              ))}
+              </div>
+            </div>
+            <div className="border-t border-[#E5E5EA] pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+              <div className="mb-2 text-[12px] font-medium text-[#636366]"><span className="mr-0.5 text-[#FF3B30]">*</span>内外开向</div>
+              <div className="flex gap-4">
+              {o("NK_OPTIONS", NK_OPTIONS).map((opt) => (
+                <label key={opt} className="flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={data.sel_nk === "内外开" || data.sel_nk.includes(opt)}
+                    onChange={() => set("sel_nk", toggleOpening(data.sel_nk, opt, "内开", "外开", "内外开"))}
+                  />
+                  {opt}
+                </label>
+              ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3 mt-3 [&_label]:whitespace-nowrap [&_input]:shrink-0">
+            <Select label="气窗" value={data.sel_qc} options={o("QC_OPTIONS", QC_OPTIONS)} onChange={(v) => set("sel_qc", v)} />
+            <Checkbox label="门楣" checked={data.has_mm} onChange={(v) => set("has_mm", v)} />
+            <Checkbox label="立柱" checked={data.has_pillar} onChange={(v) => onChange({ ...data, has_pillar: v, pillar_width_str: v && (!data.pillar_width_str || data.pillar_width_str === "55/70") ? "55/85" : data.pillar_width_str })} />
+            <Checkbox label="连体门" checked={data.is_integrated_door} onChange={(v) => set("is_integrated_door", v)} />
+            <Checkbox label="圆弧门" checked={data.is_arch_door} onChange={(v) => set("is_arch_door", v)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {data.is_arch_door && (
+              <Input label="起弧高度" value={data.arch_spring_height} type="number" onChange={(v) => set("arch_spring_height", Number(v))} />
+            )}
+            {data.sel_qc !== "无" && (
+              <>
+                <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
+                <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
+                {data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗" && (
+                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} optionLabels={GLASS_LINE_STYLE_LABELS} onChange={(v) => set("qc_glass_style", v)} />
+                )}
+              </>
+            )}
+            <Combobox label="玻璃规格" value={data.glass_spec} options={o("GLASS_SPECS", GLASS_SPECS)} onChange={(v) => set("glass_spec", v)} />
+            {data.has_mm && (
+              <Input label="门楣高" value={data.mm_height} type="number" onChange={(v) => set("mm_height", Number(v))} />
+            )}
+          </div>
+          {data.has_pillar && (
+            <Input label="立柱宽(小/大)" value={data.pillar_width_str} onChange={(v) => set("pillar_width_str", v)} />
+          )}
+          {data.is_integrated_door && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Input label="封板高度" value={data.integrated_panel_height} type="number" onChange={(v) => set("integrated_panel_height", Number(v))} />
+              <Input label="封板压框尺寸" value={data.integrated_press_top_rail} type="number" onChange={(v) => set("integrated_press_top_rail", Number(v))} />
+              <Input label="上方玻璃高度" value={data.integrated_glass_height} type="number" onChange={(v) => set("integrated_glass_height", Number(v))} />
+            </div>
+          )}
+        </Card>
+
+        <Card title="尺寸输入中心">
+          <div className="flex flex-wrap gap-4">
+            <Checkbox label="切换为见光尺寸" checked={data.use_light_size} onChange={(v) => set("use_light_size", v)} />
+            {!data.use_light_size && (
+              <Checkbox label="标注见光尺寸" checked={data.mark_light_size} onChange={(v) => set("mark_light_size", v)} />
+            )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] font-medium text-[#8E8E93]">鲁班尺版本</span>
+              <select
+                value={lubanKind}
+                onChange={(e) => setLubanKind(e.target.value as LubanRulerKind)}
+                className="rounded-md border border-[#C7C7CC] bg-[#FAFAFC] px-2 py-1.5 text-[12px] text-[#1C1C1E] outline-none focus:border-[#007AFF]"
+              >
+                {LUBAN_RULER_VERSIONS.map((version) => (
+                  <option key={version.key} value={version.key}>{version.label}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLubanOpen(true)}
+              className="rounded-md border border-[#007AFF]/30 bg-[#007AFF]/5 px-3 py-1.5 text-[12px] font-medium text-[#007AFF] hover:bg-[#007AFF]/10"
+            >
+              鲁班尺
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {data.use_light_size ? (
+              <>
+                <div>
+                  <Input label="见光宽(W)" value={data.light_w} type="number" onChange={(v) => set("light_w", Number(v))} />
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
+                </div>
+                <div>
+                  <Input label="见光高(H)" value={data.light_h} type="number" onChange={(v) => set("light_h", Number(v))} />
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Input label="总宽(W)" required value={data.dw} type="number" onChange={(v) => set("dw", Number(v))} />
+                  {showLubanInline && <LubanInlineResult label="见光宽" value={calculatedLightWidth} kind={lubanKind} />}
+                </div>
+                <div>
+                  <Input label="总高(H)" required value={data.dh} type="number" onChange={(v) => set("dh", Number(v))} />
+                  {showLubanInline && <LubanInlineResult label="见光高" value={calculatedLightHeight} kind={lubanKind} />}
+                </div>
+              </>
+            )}
+          </div>
+          {data.door_type === "子母门" && (
+            <Input label="母门单扇宽" value={data.mother_door_width} type="number" onChange={(v) => set("mother_door_width", Number(v))} />
+          )}
+          {["四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
+            <Input
+              label="中门内空宽"
+              value={displayedMidClearWidth}
+              type="number"
+              onChange={(v) => set("mid_clear_width", Number(v))}
+            />
+          )}
+          {data.product_name === "平移门" && (
+            <Input label="中门重叠尺寸(mm)" value={data.sliding_overlap} type="number" onChange={(v) => set("sliding_overlap", Number(v))} />
+          )}
+        </Card>
+
+        <details className="door-form-section cursor-pointer">
+          <summary className="door-form-section__title mb-0 select-none">
+            门缝设置 <span className="text-[13px] font-normal text-[#8E8E93] ml-2">
+              {data.left_gap}/{data.right_gap}/{data.top_gap}/{data.bottom_gap}
+              {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && `/${data.middle_gap}`} mm
+            </span>
+          </summary>
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <Input label="左门缝(mm)" value={data.left_gap} type="number" onChange={(v) => set("left_gap", Number(v))} />
+            <Input label="右门缝(mm)" value={data.right_gap} type="number" onChange={(v) => set("right_gap", Number(v))} />
+            <Input label="上门缝(mm)" value={data.top_gap} type="number" onChange={(v) => set("top_gap", Number(v))} />
+            <Input label="下门缝(mm)" value={data.bottom_gap} type="number" onChange={(v) => set("bottom_gap", Number(v))} />
+            {["对开门", "子母门", "四开门", "折叠四开门", "两定两开"].includes(data.door_type) && (
+              <Input label="中缝(mm)" value={data.middle_gap} type="number" onChange={(v) => set("middle_gap", Number(v))} />
+            )}
+          </div>
         </details>
+
 
         <Card title="边框与下槛截面">
           <div className="mb-3">
@@ -1074,22 +1088,9 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
         </Card>
       </div>}
 
-      {/* 右列：五金 + 包套 + 批注 */}
+      {/* 右列：门板、包套与批注 */}
       {!isSimpleProduct && <div className="space-y-4">
-        <Card title="五金锁具">
-          <div className="grid grid-cols-2 gap-3">
-            <Combobox label="正面拉手" required value={data.zmls} options={o("HANDLES", HANDLES)} onChange={(v) => set("zmls", v)} />
-            <Combobox label="反面拉手" required value={data.fmls} options={o("HANDLES", HANDLES).filter((handle) => !frontOnlyHandles.has(handle))} onChange={(v) => set("fmls", v)} />
-            <Combobox label="锁体类型" required value={data.st_val} options={o("LOCKS", LOCKS)} onChange={(v) => set("st_val", v)} />
-            <Combobox label="指纹锁" required value={data.fingerprint_lock} options={o("FINGERPRINT_LOCKS", FINGERPRINT_LOCKS)} onChange={(v) => set("fingerprint_lock", v)} />
-            <Input label="拉手尺寸" value={data.handle_size} placeholder="如 40*800" onChange={(v) => set("handle_size", v)} />
-            <Combobox label="开启机构" required value={data.sel_hys} options={o("HINGES", HINGES)} onChange={(v) => set("sel_hys", v)} />
-          </div>
-          <div className="mt-3 grid grid-cols-2 items-end gap-3">
-            <Combobox label="配置数量" value={data.hysl} options={o("HYSL_OPTIONS", HYSL_OPTIONS)} onChange={(v) => set("hysl", v)} />
-            <Combobox label="锁芯离地高度(mm)" value={String(data.lock_core_height ?? 1050)} options={["950", "1050", "1150"]} onChange={(v) => set("lock_core_height", v)} />
-          </div>
-        </Card>
+        {panelSection}
 
         <Card title="包套与附加件">
           <div className="flex flex-wrap gap-4 mb-3">
@@ -1099,7 +1100,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Checkbox label="一门一景" checked={data.has_outer_landscape} onChange={(v) => onChange({ ...data, has_outer_landscape: v, has_outer: v ? false : data.has_outer, has_outer_portal: v ? false : data.has_outer_portal, has_outer_portal2: v ? false : data.has_outer_portal2 })} />
           </div>
           {data.has_outer && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="door-form-trim-grid gap-3">
               <Input label="外包套宽" required value={data.trim_front_in} type="number" onChange={(v) => set("trim_front_in", Number(v))} />
               <Input label="左右压框" value={data.overlap_front_lr} type="number" onChange={(v) => set("overlap_front_lr", Number(v))} />
               <Input label="上压框" value={data.overlap_front_top} type="number" onChange={(v) => set("overlap_front_top", Number(v))} />
@@ -1107,7 +1108,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             </div>
           )}
           {data.has_outer_portal && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="door-form-trim-grid gap-3">
               <Input label="门柱宽度" required value={data.outer_portal_pillar_width} type="number" onChange={(v) => set("outer_portal_pillar_width", Number(v))} />
               <Input label="门头高度" required value={data.outer_portal_header_height} type="number" onChange={(v) => set("outer_portal_header_height", Number(v))} />
               <Input label="左右压框" value={data.overlap_front_lr} type="number" onChange={(v) => set("overlap_front_lr", Number(v))} />
@@ -1115,7 +1116,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             </div>
           )}
           {data.has_outer_portal2 && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="door-form-trim-grid gap-3">
               <Input label="门柱宽度" required value={data.outer_portal2_pillar_width} type="number" onChange={(v) => set("outer_portal2_pillar_width", Number(v))} />
               <Input label="门头高度" required value={data.outer_portal2_header_height} type="number" onChange={(v) => set("outer_portal2_header_height", Number(v))} />
               <Input label="左右压框" value={data.outer_portal2_lr_overlap} type="number" onChange={(v) => set("outer_portal2_lr_overlap", Number(v))} />
@@ -1136,7 +1137,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             <Checkbox label="内包套" checked={data.has_inner} onChange={(v) => set("has_inner", v)} />
           </div>
           {data.has_inner && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+            <div className="door-form-trim-grid gap-3 mt-3">
               <Input label="内包套宽" required value={data.trim_back_in} type="number" onChange={(v) => set("trim_back_in", Number(v))} />
               <Input label="左右压框" value={data.overlap_back_lr} type="number" onChange={(v) => set("overlap_back_lr", Number(v))} />
               <Input label="上压框" value={data.overlap_back_top} type="number" onChange={(v) => set("overlap_back_top", Number(v))} />

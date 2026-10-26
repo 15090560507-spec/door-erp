@@ -45,6 +45,7 @@ const metrics = params => {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const errors = [], unexpected = [];
   let savedPayload, trimRequests = 0, newTasks = 0, paramSaves = 0, failNextSave = false, renderRequests = 0, previewRequests = 0;
+  let previewDelay = 0, failPreview = false;
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=';
   const previewSvg = process.env.CAD_PREVIEW_FIXTURE ? fs.readFileSync(process.env.CAD_PREVIEW_FIXTURE, 'utf8')
     : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5000 4000"><g data-cad-view="front"><rect x="100" y="100" width="900" height="2100" fill="none" stroke="blue"/><text x="100" y="2250">900</text></g><g data-cad-view="back"><rect x="2100" y="100" width="900" height="2100" fill="none" stroke="orange"/><text x="2100" y="2250">900</text></g></svg>';
@@ -67,7 +68,10 @@ const metrics = params => {
       if (url.pathname === '/api/generate_cad_preview') {
         previewRequests++;
         assert.equal(url.searchParams.get('doors_only'), 'true');
-        return route.fulfill({ status: 200, headers, contentType: 'image/svg+xml', body: previewSvg });
+        const body = req.postDataJSON(), failing = failPreview;
+        if (previewDelay) await new Promise(resolve => setTimeout(resolve, previewDelay));
+        if (failing) return route.fulfill({ status: 500, headers, contentType: 'application/json', body: JSON.stringify({ detail: 'Mock preview failed' }) });
+        return route.fulfill({ status: 200, headers, contentType: 'image/svg+xml', body: previewSvg.replace('<svg ', `<svg data-request-width="${body.dw}" `) });
       }
       if (url.pathname === '/api/tasks/overview') return json({ total: tasks.size, customers: [], door_types: [], status_counts: {} });
       if (url.pathname === '/api/render/model-configs') return json({ configs: [{ id: 'mock-model', enabled: true, hasApiKey: true }] });
@@ -129,6 +133,7 @@ const metrics = params => {
     };
     await page.goto(`${baseUrl}/quote?taskId=outer-task`, { timeout: 120000 });
     await page.locator('textarea').filter({ hasText: '内门套（另计）' }).waitFor();
+    assert.ok(await page.getByRole('heading', { name: '图纸识别', exact: true }).evaluate(el => Boolean(document.querySelector('#quote-preview-area').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)));
     let main = await namedRow('单门'), extra = await namedRow('内门套');
     assert.equal(await input(main, 1).inputValue(), '1300');
     assert.equal(await input(main, 2).inputValue(), '2150');
@@ -344,11 +349,69 @@ const metrics = params => {
     assert.equal(tasks.get('new-2').params.dhdw, 'Second Customer');
     await page.getByRole('button', { name: '返回图纸绘制列表' }).click();
     await page.getByRole('button', { name: /新建任务/ }).waitFor();
+    await page.setViewportSize({ width: 1920, height: 1100 });
+    await page.locator('.task-list-row__main').filter({ hasText: 'Outer Customer' }).first().click();
+    await page.locator('.door-form').waitFor();
+    const dock = page.locator('[data-live-cad-preview]');
+    assert.equal(await dock.getByRole('switch', { name: '自动预览', exact: true }).isChecked(), false);
+    assert.equal(await page.locator('[data-door-section="门板设置"]').evaluate(el => Boolean(el.closest('details'))), false);
+    const columns = await page.locator('.door-form > div').evaluateAll(cols => cols.slice(0, 3).map(col => [...col.querySelectorAll(':scope > [data-door-section]')].map(el => el.dataset.doorSection)));
+    assert.ok(columns[0].includes('五金锁具')); assert.ok(columns[2].includes('门板设置'));
+    const placement = await page.locator('.drawing-form-workspace').evaluate(el => {
+      const form = el.querySelector('.door-form').getBoundingClientRect(), dock = el.querySelector('aside').getBoundingClientRect();
+      return dock.left >= form.right && getComputedStyle(el.querySelector('aside')).position === 'sticky';
+    });
+    assert.ok(placement);
+    const beforeLive = previewRequests, beforeSaves = paramSaves;
+    await page.waitForTimeout(1600); assert.equal(previewRequests, beforeLive);
+    await dock.getByRole('switch', { name: '自动预览', exact: true }).check();
+    const width = field('总宽(W)');
+    await width.fill('1100'); await width.fill('1200'); await width.fill('1300');
+    await page.waitForTimeout(600); assert.equal(previewRequests, beforeLive);
+    await dock.locator('[data-cad-preview-canvas] svg').waitFor();
+    assert.equal(previewRequests, beforeLive + 1);
+    await field('订货单位').fill('Live preview only');
+    await page.waitForTimeout(1700); assert.equal(previewRequests, beforeLive + 1);
+    await dock.getByRole('switch', { name: '自动预览', exact: true }).uncheck();
+    await width.fill('1350'); await page.waitForTimeout(1700); assert.equal(previewRequests, beforeLive + 1);
+    await dock.getByRole('switch', { name: '自动预览', exact: true }).check();
+    await page.waitForTimeout(1800); assert.equal(previewRequests, beforeLive + 2);
+    previewDelay = 1800;
+    await width.fill('1360'); await page.waitForTimeout(1700);
+    await width.fill('1370'); await page.waitForTimeout(1800);
+    assert.equal(await dock.locator('[data-cad-preview-canvas] svg').getAttribute('data-request-width'), '1350', 'stale response must not replace the last successful preview');
+    await page.waitForTimeout(2000);
+    assert.equal(await dock.locator('[data-cad-preview-canvas] svg').getAttribute('data-request-width'), '1370');
+    previewDelay = 0; failPreview = true;
+    await width.fill('1380'); await dock.getByRole('alert').waitFor();
+    assert.equal(await dock.locator('[data-cad-preview-canvas] svg').getAttribute('data-request-width'), '1370');
+    failPreview = false;
+    await dock.getByRole('button', { name: '刷新小窗', exact: true }).click();
+    await page.waitForTimeout(150);
+    assert.equal(await dock.locator('[data-cad-preview-canvas] svg').getAttribute('data-request-width'), '1380');
+    assert.equal(paramSaves, beforeSaves, 'automatic preview must never save a form');
+    await field('正面门板样式').selectOption('四边对角线条');
+    await dock.getByRole('switch', { name: '自动预览', exact: true }).uncheck();
+    await page.locator('.door-form').scrollIntoViewIfNeeded();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'three-column-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await dock.scrollIntoViewIfNeeded();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'live-preview-mobile.png') });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
+    await page.setViewportSize({ width: 1920, height: 1100 });
+    await page.getByRole('button', { name: /返回列表/ }).click();
+    await page.getByRole('button', { name: '不保存离开', exact: true }).click();
+    await page.locator('.task-list-row__main').filter({ hasText: 'Inner Customer' }).first().click();
+    await page.locator('.door-form').waitFor();
+    assert.equal(await dock.getByRole('switch', { name: '自动预览', exact: true }).isChecked(), false);
+    assert.equal(await dock.locator('[data-cad-preview-canvas]').count(), 0);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
     console.log(JSON.stringify({ largerSidePricing: true, factorEditing: true, reorderedLink: true, previewNoWrap: true,
       savedHistoryPreserved: true, splitModeUnchanged: true, unsavedCancelAndSave: true, matchingFormActions: true,
       entrySaveStays: true, repeatSaveUpdates: true, failedSaveRetry: true, entryRenderLinked: true,
       referencePreserved: true, clearStartsNewEntry: true, requestedPreviewOnly: true, sideSwitchWithoutRequests: true,
-      previewFitWithoutDistortion: true, rowQuoteNavigation: true, explicitQuoteSave: true, newTaskSaved: newTasks, errors, unexpected }));
+      previewFitWithoutDistortion: true, rowQuoteNavigation: true, explicitQuoteSave: true, recognitionAfterPreview: true,
+      threeColumnBalanced: true, panelExpanded: true, livePreviewOptIn: true, debouncedLatestOnly: true,
+      livePreviewFailureRetention: true, noAutoSave: true, newTaskSaved: newTasks, errors, unexpected }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

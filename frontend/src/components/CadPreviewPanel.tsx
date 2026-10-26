@@ -47,7 +47,7 @@ function PreviewCanvas({ svg, side, fitFrame = false }: { svg: string; side: Sid
     dangerouslySetInnerHTML={markup} />;
 }
 
-export default function CadPreviewPanel({ svg, loading }: { svg: string | null; loading: boolean }) {
+export default function CadPreviewPanel({ svg, loading, embedded = false }: { svg: string | null; loading: boolean; embedded?: boolean }) {
   const [side, setSide] = useState<Side>("both");
   const [isOpen, setIsOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -74,9 +74,9 @@ export default function CadPreviewPanel({ svg, loading }: { svg: string | null; 
     </div>
   );
   return (
-    <section data-cad-preview-panel className="rounded-lg border border-black/5 bg-white p-4 sm:p-5">
+    <section data-cad-preview-panel className={embedded ? "border-t border-[#E2E2E8] pt-3" : "rounded-lg border border-black/5 bg-white p-4 sm:p-5"}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h4 className="text-[17px] font-semibold text-[#1C1C1E]">CAD 图纸预览</h4>
+        {!embedded && <h4 className="text-[17px] font-semibold text-[#1C1C1E]">CAD 图纸预览</h4>}
         <div className="flex flex-wrap items-center gap-2">{controls}
           <button type="button" onClick={() => setIsOpen(true)} disabled={!svg || loading} title="放大查看" aria-label="放大查看"
             className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#D1D5DB] text-[#636366] hover:text-[#007AFF] disabled:opacity-40"><Maximize2 size={17} /></button>

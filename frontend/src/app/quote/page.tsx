@@ -1068,8 +1068,6 @@ export default function QuotePage() {
             </button>
           </div>
 
-          {/* AI Analysis */}
-          <AiAnalysisPanel onApply={handleApplyAnalysis} />
         </div>
 
         {/* Preview */}
@@ -1122,6 +1120,7 @@ export default function QuotePage() {
             noticeText={noticeText}
             doorGroups={doorGroups}
           />
+          <AiAnalysisPanel onApply={handleApplyAnalysis} />
         </div>
       </div>
 

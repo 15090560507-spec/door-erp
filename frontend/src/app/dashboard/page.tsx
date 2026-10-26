@@ -23,6 +23,7 @@ import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData }
 import DoorForm from "@/components/DoorForm";
 import DrawingFormActions from "@/components/DrawingFormActions";
 import CadPreviewPanel from "@/components/CadPreviewPanel";
+import DrawingFormWorkspace from "@/components/DrawingFormWorkspace";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
 import ClipboardUpload from "@/components/ClipboardUpload";
@@ -91,6 +92,7 @@ export default function DashboardPage() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
   const [entryTaskId, setEntryTaskId] = useState<string | null>(null);
+  const [entryFormRevision, setEntryFormRevision] = useState(0);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
@@ -1036,7 +1038,11 @@ export default function DashboardPage() {
           )}
 
           {/* 表单 */}
-          <DoorForm data={formData} onChange={setFormData} />
+          {activeModule === "图纸绘制" ? (
+            <DrawingFormWorkspace key={activeTaskId} data={formData}>
+              <DoorForm data={formData} onChange={setFormData} />
+            </DrawingFormWorkspace>
+          ) : <DoorForm data={formData} onChange={setFormData} />}
 
           {/* 模块特有操作 */}
           <div className="mt-6 space-y-4">
@@ -1267,7 +1273,9 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <DoorForm data={formData} onChange={setFormData} />
+              <DrawingFormWorkspace key={`entry-${entryFormRevision}`} data={formData}>
+                <DoorForm data={formData} onChange={setFormData} />
+              </DrawingFormWorkspace>
 
               <div className="mt-6 space-y-4">
                 <Card title="第 1 步：生成基准 CAD 底图">
@@ -1278,6 +1286,7 @@ export default function DashboardPage() {
                       onClick={async () => {
                         if (!(await requestAppNavigation())) return;
                         setEntryTaskId(null);
+                        setEntryFormRevision(value => value + 1);
                         setSavedEditSnapshot(null);
                         setFormData({ ...DEFAULT_FORM_DATA });
                         setRefText(""); setRefImages([]);
