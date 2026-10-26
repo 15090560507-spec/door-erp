@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import type { QuoteDoorGroup } from "@/lib/quoteTypes";
 import { quoteItemAmountText, quoteItemQuantityText, quoteDoorQuantity, quoteGroupUnitTotal, quoteGroupTotal } from "@/lib/quoteTypes";
 import {
@@ -22,6 +23,31 @@ interface Props {
 function numberText(value: number | null | undefined, digits?: number) {
   if (value === null || value === undefined || value === 0) return value === 0 ? "0" : "";
   return digits === undefined ? String(value) : Number(value).toFixed(digits);
+}
+
+function QuantityText({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const span = ref.current;
+    const cell = span?.parentElement;
+    if (!span || !cell) return;
+    let alive = true;
+    const fit = () => {
+      if (!alive) return;
+      span.style.fontSize = "14px";
+      const style = getComputedStyle(cell);
+      const available = cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      if (available > 0 && span.scrollWidth > available) {
+        span.style.fontSize = `${14 * available / span.scrollWidth}px`;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(cell);
+    void document.fonts.ready.then(fit);
+    return () => { alive = false; observer.disconnect(); };
+  }, [text]);
+  return <span ref={ref} className="inline-block whitespace-nowrap" style={{ fontSize: 14, letterSpacing: 0 }}>{text}</span>;
 }
 
 export default function QuotePreview({ customerName, projectName, quoteDate, noticeText, doorGroups }: Props) {
@@ -120,7 +146,9 @@ export default function QuotePreview({ customerName, projectName, quoteDate, not
                       <td className={itemCell}>{numberText(item.height)}</td>
                       <td className={itemCell}>{item.openDirection}</td>
                       <td className={itemCell}>{item.unit}</td>
-                      <td className={itemCell}>{quoteItemQuantityText(item)}</td>
+                      <td data-quote-quantity className="border border-black px-[0.35mm] text-center align-middle font-bold leading-tight whitespace-nowrap" style={{ wordBreak: "normal", overflowWrap: "normal" }}>
+                        <QuantityText text={quoteItemQuantityText(item)} />
+                      </td>
                       <td className={itemCell}>{numberText(item.unitPrice)}</td>
                       <td className={itemCell}>{quoteItemAmountText(item)}</td>
                     </tr>

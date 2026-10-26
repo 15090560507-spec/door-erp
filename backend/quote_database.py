@@ -8,6 +8,7 @@ import os
 import tempfile
 import threading
 import copy
+import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -376,6 +377,12 @@ class QuoteDatabaseManager:
 
         for group_index, group in enumerate(door_groups):
             quote_door_quantity(group)
+            try:
+                factor = float(group.get("extraTrimFactor", 0.7))
+            except (TypeError, ValueError):
+                raise ValueError("另一侧门套系数须为大于等于0的有效数值")
+            if not math.isfinite(factor) or factor < 0:
+                raise ValueError("另一侧门套系数须为大于等于0的有效数值")
             group_items = group.get("items") or []
             if not group_items:
                 raise ValueError(f"第 {group_index + 1} 樘门至少需要一个项目")
@@ -413,6 +420,7 @@ class QuoteDatabaseManager:
                 "taskId": str(group.get("taskId") or "").strip(),
                 "pricingMode": str(group.get("pricingMode") or "outerArea"),
                 "trimUnitPrice": float(group.get("trimUnitPrice") or 0),
+                "extraTrimFactor": float(group.get("extraTrimFactor", 0.7)),
                 "items": [],
             }
             for item in group.get("items") or []:
@@ -420,6 +428,7 @@ class QuoteDatabaseManager:
                     "id": global_row + 1,
                     "accessoryId": item.get("accessoryId"),
                     "category": str(item.get("category") or ""),
+                    "pricingRole": str(item.get("pricingRole") or ""),
                     "productName": item.get("productName", "").strip(),
                     "width": item.get("width"),
                     "height": item.get("height"),

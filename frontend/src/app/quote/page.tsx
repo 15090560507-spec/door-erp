@@ -12,7 +12,7 @@ import type {
   QuoteTrimSideMetrics,
 } from "@/lib/quoteTypes";
 import { createEmptyQuoteItem, DEFAULT_QUOTE_NOTICE_TEXT, normalizeOpenDirection, quoteDoorQuantity, quoteGroupUnitTotal, quoteGroupTotal } from "@/lib/quoteTypes";
-import { createQuote, getAccessories, getQuoteTrimMetrics, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
+import { createQuote, getAccessories, getQuoteForTask, getQuoteTrimMetrics, rememberQuoteItems, updateQuote } from "@/lib/quoteApi";
 import { api, getTask, getTasks, updateTask } from "@/lib/api";
 import type { DoorFormData, TaskItem } from "@/lib/types";
 import QuoteItemsTable from "@/components/QuoteItemsTable";
@@ -26,6 +26,7 @@ import TaskProjectCombobox from "@/components/TaskProjectCombobox";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateYmd } from "@/lib/dateTime";
 import { calculateDoorAreas } from "@/lib/doorAreas";
+import { DEFAULT_EXTRA_TRIM_FACTOR, editOuterQuoteRows, linkExtraTrimPrices, outerQuoteBasis } from "@/lib/quoteOuterPricing";
 
 type QuoteFeedback = {
   tone: "success" | "error";
@@ -85,6 +86,7 @@ function createQuoteGroup(index = 0): QuoteDoorGroup {
     taskId: "",
     pricingMode: "outerArea",
     trimUnitPrice: 0,
+    extraTrimFactor: DEFAULT_EXTRA_TRIM_FACTOR,
     items: withMinimumQuoteRows([]),
   };
 }
@@ -158,9 +160,12 @@ function buildQuoteRowsFromTask(
   pricingMode: QuotePricingMode,
   trimUnitPrice: number,
   trimMetrics: QuoteTrimMetrics | null = null,
+  extraTrimFactor = DEFAULT_EXTRA_TRIM_FACTOR,
 ): QuoteItem[] {
   const direction = normalizeOpenDirection(`${params.sel_kx || ""}${params.sel_nk || ""}`);
-  const { frameWidth, frameHeight, outerWidth, outerHeight } = calculateDoorAreas(params);
+  const areas = calculateDoorAreas(params);
+  const { frameWidth, frameHeight, outerWidth, outerHeight } = areas;
+  const outerBasis = pricingMode === "outerArea" ? outerQuoteBasis(areas, trimMetrics) : null;
   const productDisplay = [params.material, params.product_name || params.zzcl].filter(Boolean).join("的");
   const material = findPriceItem(accessories, "制作材料", params.material || params.zzcl || productDisplay);
   const style = findStyleCombo(accessories, params.zmks || "", params.fmks || "");
@@ -168,8 +173,8 @@ function buildQuoteRowsFromTask(
   const packing = findPriceItem(accessories, "包装", params.sel_bz);
   const mainUnitPrice = num(style?.unitPrice) + num(material?.unitPrice) + num(lock?.unitPrice);
 
-  const quoteWidth = pricingMode === "outerArea" ? outerWidth : frameWidth;
-  const quoteHeight = pricingMode === "outerArea" ? outerHeight : frameHeight;
+  const quoteWidth = outerBasis?.width ?? frameWidth;
+  const quoteHeight = outerBasis?.height ?? frameHeight;
   // 起算面积和商品行尺寸必须来自同一报价模式。
   const rawDoorArea = quoteWidth && quoteHeight ? quoteWidth * quoteHeight * 0.000001 : 0;
   const effectiveDoorArea = rawDoorArea > 0 && rawDoorArea < 2 ? 2 : null;
@@ -177,6 +182,7 @@ function buildQuoteRowsFromTask(
   const rows: QuoteItem[] = [{
     accessoryId: style?.id ?? null,
     category: "门类组合",
+    pricingRole: pricingMode === "outerArea" ? "mainDoor" : "",
     productName: [params.door_type, productDisplay, params.zmks, params.fmks].filter(Boolean).join(" "),
     width: quoteWidth || null,
     height: quoteHeight || null,
@@ -185,6 +191,13 @@ function buildQuoteRowsFromTask(
     unit: "m2",
     unitPrice: mainUnitPrice,
   }];
+
+  if (outerBasis?.extra && outerBasis.extra.netArea > 0) {
+    rows.push({ ...createEmptyQuoteItem(), pricingRole: "extraTrim", category: "附加门套",
+      productName: outerBasis.extra.side === "inner" ? "内门套（另计）" : "外门套（另计）",
+      quantity: outerBasis.extra.netArea, unit: "m2",
+      unitPrice: Number((mainUnitPrice * extraTrimFactor).toFixed(2)) });
+  }
 
   if (pricingMode === "framePlusTrim") {
     ([
@@ -318,12 +331,36 @@ export default function QuotePage() {
     let alive = true;
     getTasks({ limit: 100, offset: 0 })
       .then((res) => {
-        if (alive) setDrawingTasks(res.tasks || []);
+        if (alive) setDrawingTasks(current => Array.from(new Map([...(res.tasks || []), ...current].map(task => [task.id, task])).values()));
       })
       .catch((error) => {
         console.warn("load drawing tasks failed:", error);
       });
     return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const taskId = new URLSearchParams(window.location.search).get("taskId");
+    if (!taskId) return;
+    void (async () => {
+      try {
+        const quote = await getQuoteForTask(taskId);
+        if (!alive) return;
+        if (quote) {
+          handleLoadQuote(quote);
+          const task = await getTask(taskId);
+          if (alive) setDrawingTasks(current => Array.from(new Map([...current, task].map(item => [item.id, item])).values()));
+        } else {
+          await handleApplyTaskQuote(0, taskId, "outerArea", 0);
+        }
+      } catch (error) {
+        if (alive) setStatus((error as { userMessage?: string; message?: string }).userMessage || (error as Error).message || "关联项目报价加载失败");
+      }
+    })();
+    return () => { alive = false; };
+    // The task link is consumed once on page entry, never when editing quote fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const searchDrawingTasks = useCallback(async (query: string) => {
@@ -598,11 +635,12 @@ export default function QuotePage() {
     taskId: string,
     mode: QuotePricingMode,
     trimPrice: number,
+    extraFactor = DEFAULT_EXTRA_TRIM_FACTOR,
   ) {
     const requestId = (taskQuoteRequestRef.current[groupIndex] || 0) + 1;
     taskQuoteRequestRef.current[groupIndex] = requestId;
-    updateDoorGroup(groupIndex, { taskId, pricingMode: mode, trimUnitPrice: trimPrice });
     if (!taskId) {
+      updateDoorGroup(groupIndex, { taskId, pricingMode: mode, trimUnitPrice: trimPrice, extraTrimFactor: extraFactor });
       setTrimMetricsByGroup((current) => {
         const next = { ...current };
         delete next[groupIndex];
@@ -614,11 +652,14 @@ export default function QuotePage() {
     try {
       const task = await getTask(taskId);
       const params = task.params;
+      const areas = calculateDoorAreas(params);
       const [allAccessories, trimMetrics] = await Promise.all([
         getAccessories(),
-        mode === "framePlusTrim" ? getQuoteTrimMetrics(params) : Promise.resolve(null),
+        mode === "framePlusTrim" || (areas.hasFrontOuter && areas.hasInnerTrim) ? getQuoteTrimMetrics(params) : Promise.resolve(null),
       ]);
       if (taskQuoteRequestRef.current[groupIndex] !== requestId) return;
+      setDrawingTasks(current => Array.from(new Map([...current, task].map(item => [item.id, item])).values()));
+      const items = buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice, trimMetrics, extraFactor);
       if (!customerName.trim()) setCustomerName(params.dhdw || task.customer || "");
       if (!projectName.trim()) setProjectName(params.gdmc || task.project || "");
       if (groupIndex === 0) setQuoteDate((params.dhrq || localDateYmd()).replace(/\./g, "-"));
@@ -626,7 +667,8 @@ export default function QuotePage() {
         taskId,
         pricingMode: mode,
         trimUnitPrice: trimPrice,
-        items: buildQuoteRowsFromTask(params, allAccessories, mode, trimPrice, trimMetrics),
+        extraTrimFactor: extraFactor,
+        items,
       });
       setTrimMetricsByGroup((current) => {
         if (trimMetrics) return { ...current, [groupIndex]: trimMetrics };
@@ -645,9 +687,10 @@ export default function QuotePage() {
 
   async function handlePricingModeChange(groupIndex: number, nextMode: QuotePricingMode) {
     const group = doorGroups[groupIndex];
-    updateDoorGroup(groupIndex, { pricingMode: nextMode });
     if (group?.taskId) {
-      await handleApplyTaskQuote(groupIndex, group.taskId, nextMode, group.trimUnitPrice);
+      await handleApplyTaskQuote(groupIndex, group.taskId, nextMode, group.trimUnitPrice, group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR);
+    } else {
+      updateDoorGroup(groupIndex, { pricingMode: nextMode });
     }
   }
 
@@ -676,6 +719,16 @@ export default function QuotePage() {
         setStatus(err?.userMessage || err?.message || "门套单价更新失败");
       }
     }
+  }
+
+  function handleExtraTrimFactorChange(groupIndex: number, value: string) {
+    const factor = Number(value);
+    if (!Number.isFinite(factor) || factor < 0) {
+      setStatus("另一侧门套系数须为大于等于0的有效数值");
+      return;
+    }
+    const group = doorGroups[groupIndex];
+    updateDoorGroup(groupIndex, { extraTrimFactor: factor, items: linkExtraTrimPrices(group.items, factor) });
   }
 
   function addDoorGroup() {
@@ -710,6 +763,7 @@ export default function QuotePage() {
           taskId: "",
           pricingMode: "outerArea" as QuotePricingMode,
           trimUnitPrice: 0,
+          extraTrimFactor: DEFAULT_EXTRA_TRIM_FACTOR,
           items: quote.items || [],
         }];
     setDoorGroups(sourceGroups.map((group, index) => ({
@@ -718,9 +772,11 @@ export default function QuotePage() {
       taskId: group.taskId || "",
       pricingMode: group.pricingMode || "outerArea",
       trimUnitPrice: group.trimUnitPrice || 0,
+      extraTrimFactor: group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR,
       items: withMinimumQuoteRows((group.items || []).map((item) => ({
         accessoryId: item.accessoryId,
         category: item.category || "",
+        pricingRole: item.pricingRole || "",
         productName: item.productName || "",
         width: item.width ?? null,
         height: item.height ?? null,
@@ -916,6 +972,7 @@ export default function QuotePage() {
                         taskId,
                         group.pricingMode,
                         group.trimUnitPrice,
+                        group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR,
                       )}
                     />
                   </div>
@@ -957,6 +1014,15 @@ export default function QuotePage() {
                           />
                         </label>
                       )}
+                      {group.pricingMode === "outerArea" && group.items.some(item => item.pricingRole === "extraTrim") && (
+                        <label className="w-40">
+                          <span className="block text-[12px] font-medium text-[#8E8E93]">另一侧门套系数</span>
+                          <input aria-label={`第${groupIndex + 1}组另一侧门套系数`} type="number" min="0" step="0.05"
+                            value={group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR}
+                            onChange={event => handleExtraTrimFactorChange(groupIndex, event.target.value)}
+                            className="mt-1 w-full rounded-md border border-[#E5E5EA]/60 px-3 py-2 text-[13px]" />
+                        </label>
+                      )}
                     </div>
                     {group.pricingMode === "framePlusTrim" && trimMetricsByGroup[groupIndex] && (
                       <div className="mt-2 text-[12px] leading-5 text-[#636366]">
@@ -977,7 +1043,11 @@ export default function QuotePage() {
                   <QuoteItemsTable
                     items={group.items}
                     onChange={(rows) => {
-                      updateDoorGroup(groupIndex, { items: normalizeQuoteRows(rows) });
+                      const normalized = normalizeQuoteRows(rows);
+                      const linked = group.pricingMode === "outerArea"
+                        ? editOuterQuoteRows(group.items, normalized, group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR)
+                        : { items: normalized, factor: group.extraTrimFactor ?? DEFAULT_EXTRA_TRIM_FACTOR };
+                      updateDoorGroup(groupIndex, { items: linked.items, extraTrimFactor: linked.factor });
                       setQuoteDirty(true);
                     }}
                   />

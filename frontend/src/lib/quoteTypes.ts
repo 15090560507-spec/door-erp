@@ -29,6 +29,7 @@ export interface AccessoryCreate {
 }
 
 export interface QuoteItem {
+  pricingRole?: "" | "mainDoor" | "extraTrim";
   /** 仅用于前端编辑器的稳定行标识，不会写入报价数据。 */
   rowId?: string;
   accessoryId: number | null;
@@ -66,6 +67,7 @@ export interface QuoteTrimMetrics {
 }
 
 export interface QuoteDoorGroup {
+  extraTrimFactor?: number;
   groupName: string;
   doorQuantity?: number;
   taskId: string;
@@ -84,6 +86,7 @@ export interface QuoteFormData {
 }
 
 export interface QuoteItemResponse {
+  pricingRole?: "" | "mainDoor" | "extraTrim";
   id: number;
   accessoryId: number | null;
   category?: string;
@@ -98,6 +101,7 @@ export interface QuoteItemResponse {
 }
 
 export interface QuoteDoorGroupResponse {
+  extraTrimFactor?: number;
   groupName: string;
   doorQuantity?: number;
   taskId: string;

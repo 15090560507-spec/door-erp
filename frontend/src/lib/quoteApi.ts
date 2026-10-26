@@ -103,6 +103,11 @@ export async function getQuote(id: number): Promise<QuoteResponse> {
   return data.quote;
 }
 
+export async function getQuoteForTask(taskId: string): Promise<QuoteResponse | null> {
+  const { data } = await api.get<{ quote: QuoteResponse | null }>(`/quotes/by-task/${encodeURIComponent(taskId)}`);
+  return data.quote;
+}
+
 export async function deleteQuote(id: number): Promise<void> {
   await api.delete(`/quotes/${id}`);
 }

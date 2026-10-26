@@ -460,6 +460,12 @@ def update_quote(quote_id: int, data: QuoteCreate, current_user: dict = Depends(
     return {"quote": quote}
 
 
+@quote_router.get("/api/quotes/by-task/{task_id}")
+def latest_quote_for_task(task_id: str, current_user: dict = Depends(get_current_user)):
+    matches = quote_db.find_groups_by_task(task_id)
+    return {"quote": quote_db.get_by_id(matches[0]["quote_id"]) if matches else None}
+
+
 @quote_router.get("/api/quotes/{quote_id}")
 def get_quote(quote_id: int, current_user: dict = Depends(get_current_user)):
     """获取单个报价单详情（含 items）"""

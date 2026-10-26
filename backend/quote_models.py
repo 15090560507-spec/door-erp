@@ -1,7 +1,7 @@
 """
 报价系统 Pydantic 模型
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 DEFAULT_QUOTE_NOTICE_TEXT = "\u672c\u62a5\u4ef7\u4e0d\u542b\u7a0e\u5de5\u5382\u7ed3\u7b97\u4ef7\uff0c\u542b\u6728\u7bb1\u3002"
@@ -49,6 +49,7 @@ class AccessoryImport(BaseModel):
 class QuoteItemRequest(BaseModel):
     """报价明细行"""
     accessoryId: Optional[int] = None
+    pricingRole: Literal["", "mainDoor", "extraTrim"] = ""
     category: str = ""
     productName: str
     width: Optional[float] = None
@@ -66,6 +67,7 @@ class QuoteDoorGroupRequest(BaseModel):
     taskId: str = ""
     pricingMode: str = "outerArea"
     trimUnitPrice: float = 0.0
+    extraTrimFactor: float = Field(default=0.7, ge=0, allow_inf_nan=False)
     items: List[QuoteItemRequest] = Field(default_factory=list)
 
 
@@ -82,6 +84,7 @@ class QuoteCreate(BaseModel):
 class QuoteItemResponse(BaseModel):
     """报价明细响应"""
     id: int
+    pricingRole: Literal["", "mainDoor", "extraTrim"] = ""
     accessoryId: Optional[int] = None
     category: str = ""
     productName: str
@@ -101,6 +104,7 @@ class QuoteDoorGroupResponse(BaseModel):
     taskId: str = ""
     pricingMode: str = "outerArea"
     trimUnitPrice: float = 0.0
+    extraTrimFactor: float = Field(default=0.7, ge=0, allow_inf_nan=False)
     items: List[QuoteItemResponse] = Field(default_factory=list)
 
 

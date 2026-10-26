@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth, useModule } from "@/hooks/useAuth";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
@@ -31,7 +32,7 @@ import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 import { localDateCompact } from "@/lib/dateTime";
-import { Inbox, RefreshCw } from "lucide-react";
+import { Calculator, Inbox, RefreshCw } from "lucide-react";
 import { registerNavigationGuard, requestAppNavigation } from "@/lib/navigationGuard";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
@@ -80,6 +81,8 @@ function base64ImageToFile(value: string, index: number): File {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const [quoteOpening, setQuoteOpening] = useState(false);
   const activeModule = useModule();
   const { user, setModule } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -547,6 +550,27 @@ export default function DashboardPage() {
 
   const handleSaveEdit = () => {
     void saveCurrentTask(true);
+  };
+
+  const handleGoToQuote = async () => {
+    if (quoteOpening) return;
+    setQuoteOpening(true);
+    try {
+      let taskId = activeTaskId;
+      if (taskId) {
+        if (!(await requestAppNavigation())) return;
+      } else {
+        const validation = validateDoorForm(formData);
+        if (validation) { setValidationError(validation); return; }
+        const task = await createTask({ params: formData, ref_text: refText, ref_images: refImages });
+        taskId = task.id;
+      }
+      router.push(`/quote?taskId=${encodeURIComponent(taskId)}`);
+    } catch (error) {
+      flash(apiErrorMessage(error, "报价页面打开失败，请重试"), "error");
+    } finally {
+      setQuoteOpening(false);
+    }
   };
 
   const finishUnsavedNavigation = (allow: boolean) => {
@@ -1023,6 +1047,10 @@ export default function DashboardPage() {
                     >
                       保存修改
                     </button>
+                    <button type="button" onClick={() => void handleGoToQuote()} disabled={quoteOpening}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#007AFF] bg-white px-4 py-2.5 text-sm font-semibold text-[#007AFF] disabled:opacity-50">
+                      <Calculator size={16} aria-hidden="true" />{quoteOpening ? "正在打开报价..." : "去报价"}
+                    </button>
                   </div>
                   {quickRenderError && (
                     <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">
@@ -1280,24 +1308,28 @@ export default function DashboardPage() {
 
               <DoorForm data={formData} onChange={setFormData} />
 
-              <div className="grid grid-cols-8 gap-3 mt-6">
+              <div className="grid grid-cols-1 gap-3 mt-6 sm:grid-cols-2 xl:grid-cols-4">
                 <button
                   onClick={handleSubmitOrder}
                   disabled={submitting}
-                  className="col-span-3 py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-base hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-base hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? "提交中..." : "提交订单 (流转至绘图部)"}
                 </button>
                 <button
                   onClick={handleQuickCad}
                   disabled={cadLoading}
-                  className="col-span-3 py-3 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-base hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
+                  className="py-3 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-base hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
                 >
                   {cadLoading ? "生成中..." : "快速生成 CAD (仅下载不流转)"}
                 </button>
+                <button type="button" onClick={() => void handleGoToQuote()} disabled={quoteOpening || submitting}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#007AFF] bg-white px-4 py-3 font-semibold text-[#007AFF] disabled:opacity-50">
+                  <Calculator size={17} aria-hidden="true" />{quoteOpening ? "正在保存..." : "保存并报价"}
+                </button>
                 <button
                   onClick={() => { setFormData(DEFAULT_FORM_DATA); setRefText(""); setRefImages([]); setCadPreviewSvg(null); }}
-                  className="col-span-2 py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
+                  className="py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
                 >
                   清空表单
                 </button>
