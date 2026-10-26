@@ -10,4 +10,4 @@
 - [x] Reuse the saved task for quote and rendering, including save-before-render. Extend leave protection to entry forms and reset identity only when starting/clearing a new form.
 - [x] Extend mocked browser coverage for save/stay, repeated save, reference preservation, exact-task quotation, clear/new identity, failed-save retry, and matching actions across entry/editing.
 - [x] Run type checks, targeted lint and regression tests.
-- [ ] Commit, push, and provide guarded Tencent Cloud commands.
+- [x] Commit and push: feature commit `49ff38f` delivered to the approved GitHub branch. Provide guarded Tencent Cloud commands in the task close-out.
