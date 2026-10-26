@@ -44,7 +44,8 @@ const metrics = params => {
 (async () => {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const errors = [], unexpected = [];
-  let savedPayload, trimRequests = 0, newTasks = 0, paramSaves = 0;
+  let savedPayload, trimRequests = 0, newTasks = 0, paramSaves = 0, failNextSave = false, renderRequests = 0;
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=';
   try {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1100 } });
     await context.addCookies([{ name: 'auth_token', value: 'mock-quote-only', url: baseUrl }]);
@@ -62,17 +63,33 @@ const metrics = params => {
       if (url.pathname === '/api/accessories') return json({ accessories: [{ id: 1, category: '制作材料', name: '0.8mm', unitPrice: 1480, unit: 'm2' }] });
       if (url.pathname === '/api/admin/dropdown-options') return json({});
       if (url.pathname === '/api/tasks/overview') return json({ total: tasks.size, customers: [], door_types: [], status_counts: {} });
+      if (url.pathname === '/api/render/model-configs') return json({ configs: [{ id: 'mock-model', enabled: true, hasApiKey: true }] });
+      if (url.pathname.startsWith('/api/render/line-art/tasks/')) {
+        assert.ok(tasks.has(url.pathname.split('/').pop()));
+        return json({ extraction: { front: { url: '/api/mock-line-art' } } });
+      }
+      if (url.pathname === '/api/mock-line-art') return route.fulfill({ status: 200, headers, contentType: 'image/png', body: Buffer.from(png, 'base64') });
+      if (url.pathname === '/api/render/tasks' && method === 'POST') {
+        renderRequests++;
+        assert.match(req.postData(), /name="sourceTaskId"\r\n\r\nnew-1/);
+        return json({ task: { id: 'mock-render', status: 'completed', images: [{ src: `data:image/png;base64,${png}` }] } });
+      }
       if (url.pathname === '/api/render/tasks') return json({ tasks: [] });
       if (url.pathname === '/api/tasks' && method === 'GET') return json({ tasks: [...tasks.values()], total: tasks.size });
       if (url.pathname === '/api/tasks' && method === 'POST') {
         const body = req.postDataJSON();
         const task = makeTask(`new-${++newTasks}`, body.params);
+        Object.assign(task, { ref_text: body.ref_text, ref_images: body.ref_images });
         tasks.set(task.id, task); return json(task);
       }
       if (url.pathname.startsWith('/api/tasks/')) {
         const id = decodeURIComponent(url.pathname.slice('/api/tasks/'.length));
         const task = tasks.get(id); assert.ok(task, id);
         if (method === 'PUT') {
+          if (failNextSave) {
+            failNextSave = false;
+            return route.fulfill({ status: 500, headers, contentType: 'application/json', body: JSON.stringify({ detail: 'Mock save failed' }) });
+          }
           const body = req.postDataJSON();
           if (body.params) paramSaves++;
           Object.assign(task, body);
@@ -163,6 +180,9 @@ const metrics = params => {
     await page.locator('.task-list-row__main').filter({ hasText: 'Outer Customer' }).first().click();
     await page.locator('.door-form').waitFor();
     const field = label => page.locator('.door-form label').filter({ hasText: new RegExp(`^\\s*\\*?${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) }).first().locator('..').locator('input,select').first();
+    const actions = () => page.locator('[data-drawing-actions]');
+    const editActions = await actions().getByRole('button').allTextContents();
+    const editFields = await page.locator('.door-form label').allTextContents();
     await field('颜色').fill('Changed color');
     await page.getByRole('button', { name: '去报价', exact: true }).click();
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
@@ -180,7 +200,55 @@ const metrics = params => {
       '锁体类型': '连体锁', '指纹锁': '无', '开启机构': '可拆卸合页', '外包套款式': '平包套' })) await field(label).fill(value);
     await page.locator('.door-form').getByLabel('右开', { exact: true }).check();
     await page.locator('.door-form').getByLabel('内开', { exact: true }).check();
-    await page.getByRole('button', { name: '保存并报价', exact: true }).click();
+    assert.deepEqual(await actions().getByRole('button').allTextContents(), editActions);
+    const entryFields = await page.locator('.door-form label').allTextContents();
+    assert.deepEqual(entryFields, editFields.filter((label, i) => {
+      const innerStart = editFields.indexOf('内包套');
+      return i <= innerStart || i > innerStart + 4;
+    }));
+    assert.deepEqual(editActions, ['预览 DXF', '生成 DXF', '生成效果图', '保存表单', '去报价']);
+    const note = page.getByPlaceholder('在此打字或粘贴沟通要求');
+    await note.fill('Reference and customer notes stay after saving');
+    await page.getByLabel('上传图片', { exact: true }).setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await page.getByText('已上传 1 张图片，点击/粘贴/拖拽追加', { exact: true }).waitFor();
+    await page.getByRole('button', { name: '返回图纸绘制列表' }).click();
+    await page.getByRole('button', { name: '继续编辑', exact: true }).click();
+    await page.getByRole('button', { name: '保存表单', exact: true }).click();
+    await page.getByRole('heading', { name: '保存成功', exact: true }).waitFor();
+    await page.getByRole('button', { name: '知道了', exact: true }).click();
+    assert.ok(page.url().endsWith('/dashboard'));
+    assert.equal(await field('订货单位').inputValue(), 'New Customer');
+    assert.equal(await note.inputValue(), 'Reference and customer notes stay after saving');
+    assert.deepEqual(tasks.get('new-1').ref_images, [png]);
+    assert.equal(newTasks, 1);
+    await field('颜色').fill('Updated entry color');
+    failNextSave = true;
+    await page.getByRole('button', { name: '保存表单', exact: true }).click();
+    await page.getByText('Mock save failed', { exact: true }).waitFor();
+    assert.equal(newTasks, 1);
+    assert.notEqual(tasks.get('new-1').params.ys, 'Updated entry color');
+    await page.getByRole('button', { name: '保存表单', exact: true }).click();
+    await page.getByRole('heading', { name: '保存成功', exact: true }).waitFor();
+    await page.getByRole('button', { name: '知道了', exact: true }).click();
+    assert.equal(tasks.get('new-1').params.ys, 'Updated entry color');
+    assert.equal(tasks.get('new-1').ref_text, 'Reference and customer notes stay after saving');
+    assert.equal(newTasks, 1, 'repeat saves must update the entry task');
+    await page.getByRole('button', { name: '生成效果图', exact: true }).click();
+    await page.getByAltText('快速生成效果图', { exact: true }).waitFor();
+    assert.equal(renderRequests, 1);
+    assert.equal(newTasks, 1, 'rendering must reuse the saved entry task');
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await actions().scrollIntoViewIfNeeded();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'entry-actions-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await actions().scrollIntoViewIfNeeded();
+    if (artifacts) await page.screenshot({ path: path.join(artifacts, 'entry-actions-mobile.png') });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
+    const actionBoxes = await actions().getByRole('button').evaluateAll(elements => elements.map(el => {
+      const rect = el.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, fits: el.scrollWidth <= el.clientWidth };
+    }));
+    assert.ok(actionBoxes.every((box, i) => box.fits && (!i || box.top >= actionBoxes[i - 1].bottom)));
+    await page.getByRole('button', { name: '去报价', exact: true }).click();
     await page.waitForURL('**/quote?taskId=new-1');
     await page.waitForFunction(() => document.querySelector('textarea')?.value.includes('单门'));
     assert.equal(newTasks, 1);
@@ -188,8 +256,27 @@ const metrics = params => {
     await page.waitForTimeout(200);
     await screenshot('mobile.png');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await page.goto(`${baseUrl}/dashboard`);
+    await page.getByRole('button', { name: /新建任务/ }).click();
+    for (const [label, value] of Object.entries({ '订货单位': 'Second Customer', '颜色': '测试色', '门扇厚度(mm)': '80',
+      '正面款式': '平板', '反面款式': '平板', '正面拉手': '标配拉手', '反面拉手': '标配拉手',
+      '锁体类型': '连体锁', '指纹锁': '无', '开启机构': '可拆卸合页', '外包套款式': '平包套' })) await field(label).fill(value);
+    await page.locator('.door-form').getByLabel('右开', { exact: true }).check();
+    await page.locator('.door-form').getByLabel('内开', { exact: true }).check();
+    await page.getByRole('button', { name: '保存表单', exact: true }).click();
+    await page.getByRole('heading', { name: '保存成功', exact: true }).waitFor();
+    await page.getByRole('button', { name: '知道了', exact: true }).click();
+    assert.equal(newTasks, 2);
+    await page.getByRole('button', { name: '清空表单', exact: true }).click();
+    assert.equal(await field('订货单位').inputValue(), '');
+    assert.equal(tasks.get('new-2').params.dhdw, 'Second Customer');
+    await page.getByRole('button', { name: '返回图纸绘制列表' }).click();
+    await page.getByRole('button', { name: /新建任务/ }).waitFor();
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
     console.log(JSON.stringify({ largerSidePricing: true, factorEditing: true, reorderedLink: true, previewNoWrap: true,
-      savedHistoryPreserved: true, splitModeUnchanged: true, unsavedCancelAndSave: true, newTaskSaved: newTasks, errors, unexpected }));
+      savedHistoryPreserved: true, splitModeUnchanged: true, unsavedCancelAndSave: true, matchingFormActions: true,
+      entrySaveStays: true, repeatSaveUpdates: true, failedSaveRetry: true, entryRenderLinked: true,
+      referencePreserved: true, clearStartsNewEntry: true, newTaskSaved: newTasks, errors, unexpected }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -21,6 +21,7 @@ import {
 import { DEFAULT_FORM_DATA } from "@/lib/types";
 import type { TaskItem, DoorFormData, UserInfo, HistoryEntry, TaskOverviewData } from "@/lib/types";
 import DoorForm from "@/components/DoorForm";
+import DrawingFormActions from "@/components/DrawingFormActions";
 import TaskCard from "@/components/TaskCard";
 import StatusBadge from "@/components/StatusBadge";
 import ClipboardUpload from "@/components/ClipboardUpload";
@@ -32,7 +33,7 @@ import TaskOverviewDashboard from "@/components/TaskOverviewDashboard";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 import { localDateCompact } from "@/lib/dateTime";
-import { Calculator, Inbox, RefreshCw } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
 import { registerNavigationGuard, requestAppNavigation } from "@/lib/navigationGuard";
 
 const SIMPLE_PRODUCT_NAMES = ["牌匾", "铝艺栅栏", "雨棚", "其他"];
@@ -87,6 +88,7 @@ export default function DashboardPage() {
   const { user, setModule } = useAuth();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null);
+  const [entryTaskId, setEntryTaskId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
@@ -134,13 +136,15 @@ export default function DashboardPage() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationResolverRef = useRef<((allow: boolean) => void) | null>(null);
   const pendingDrawingTaskRef = useRef<string | null>(null);
+  const savePromiseRef = useRef<Promise<TaskItem | null> | null>(null);
 
   const currentEditSnapshot = useMemo(
     () => drawingEditSnapshot(formData, refText, refImages),
     [formData, refImages, refText],
   );
   const hasUnsavedChanges = Boolean(
-    activeTaskId && activeTask && savedEditSnapshot && currentEditSnapshot !== savedEditSnapshot,
+    ((activeTaskId && activeTask && savedEditSnapshot) || activeModule === "图纸信息录入") &&
+    currentEditSnapshot !== (savedEditSnapshot ?? drawingEditSnapshot(DEFAULT_FORM_DATA, "", [])),
   );
 
   useEffect(() => {
@@ -256,6 +260,8 @@ export default function DashboardPage() {
       pendingDrawingTaskRef.current = null;
       setActiveTaskId(pendingTaskId);
       setActiveTask(null);
+      setEntryTaskId(null);
+      if (activeModule === "图纸信息录入") setFormData({ ...DEFAULT_FORM_DATA });
       setTaskLoading(false);
       setRefText("");
       setRefImages([]);
@@ -331,6 +337,7 @@ export default function DashboardPage() {
   const resetTaskView = () => {
     setActiveTaskId(null);
     setActiveTask(null);
+    setEntryTaskId(null);
     setFormData({ ...DEFAULT_FORM_DATA });
     setRefText("");
     setRefImages([]);
@@ -502,51 +509,41 @@ export default function DashboardPage() {
   };
 
   // ===================== 录入模块 =====================
-  const handleSubmitOrder = async () => {
+  const persistCurrentTask = async (showSuccess = true): Promise<TaskItem | null> => {
+    if (savePromiseRef.current) return savePromiseRef.current;
     const validation = validateDoorForm(formData);
     if (validation) {
       setValidationError(validation);
-      return;
+      return null;
     }
+    const taskId = activeTaskId || entryTaskId;
+    const payload = { params: formData, ref_text: refText, ref_images: refImages };
+    const snapshot = currentEditSnapshot;
     setSubmitting(true);
-    try {
-      await createTask({ params: formData, ref_text: refText, ref_images: refImages });
-      setToast({ text: "订单提交成功，已流转至绘图部！", type: "success" });
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-      setFormData({ ...DEFAULT_FORM_DATA });
-      setRefText("");
-      setRefImages([]);
-      setModule("图纸绘制");
-      fetchTasks(filterDate, filterStatus);
-      fetchStatusCounts(filterDate);
-      fetchOverview();
-    } catch { flash("提交失败", "error"); }
-    setSubmitting(false);
+    const saving = (async () => {
+      try {
+        const updated = taskId ? await updateTask(taskId, payload) : await createTask(payload);
+        if (activeTaskId) setActiveTask(updated);
+        else setEntryTaskId(updated.id);
+        setSavedEditSnapshot(snapshot);
+        if (showSuccess) setSaveSuccessOpen(true);
+        void fetchTasks(filterDate, filterStatus);
+        void fetchStatusCounts(filterDate);
+        void fetchOverview();
+        return updated;
+      } catch (error) {
+        flash(apiErrorMessage(error, "保存失败，请重试"), "error");
+        return null;
+      } finally {
+        setSubmitting(false);
+      }
+    })();
+    savePromiseRef.current = saving;
+    try { return await saving; }
+    finally { savePromiseRef.current = null; }
   };
 
-  const saveCurrentTask = async (showSuccess = true): Promise<boolean> => {
-    if (!activeTaskId) return false;
-    const validation = validateDoorForm(formData);
-    if (validation) {
-      setValidationError(validation);
-      return false;
-    }
-    try {
-      await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
-      const updated = await getTask(activeTaskId);
-      setActiveTask(updated);
-      setSavedEditSnapshot(drawingEditSnapshot(formData, refText, refImages));
-      if (showSuccess) setSaveSuccessOpen(true);
-      fetchTasks(filterDate, filterStatus);
-      fetchStatusCounts(filterDate);
-      fetchOverview();
-      return true;
-    } catch {
-      flash("保存失败", "error");
-      return false;
-    }
-  };
+  const saveCurrentTask = async (showSuccess = true) => Boolean(await persistCurrentTask(showSuccess));
 
   const handleSaveEdit = () => {
     void saveCurrentTask(true);
@@ -560,9 +557,8 @@ export default function DashboardPage() {
       if (taskId) {
         if (!(await requestAppNavigation())) return;
       } else {
-        const validation = validateDoorForm(formData);
-        if (validation) { setValidationError(validation); return; }
-        const task = await createTask({ params: formData, ref_text: refText, ref_images: refImages });
+        const task = entryTaskId && !hasUnsavedChanges ? { id: entryTaskId } : await persistCurrentTask(false);
+        if (!task) return;
         taskId = task.id;
       }
       router.push(`/quote?taskId=${encodeURIComponent(taskId)}`);
@@ -590,27 +586,6 @@ export default function DashboardPage() {
   const handleDiscardAndLeave = () => {
     setSavedEditSnapshot(currentEditSnapshot);
     finishUnsavedNavigation(true);
-  };
-
-  const handleQuickCad = async () => {
-    const validation = validateDoorForm(formData);
-    if (validation) {
-      setValidationError(validation);
-      return;
-    }
-    setCadLoading(true);
-    setCadError(null);
-    try {
-      const blob = await generateCad(formData);
-      setCadBlob(blob);
-      setCadBlobFingerprint(cadRequestFingerprint(formData));
-      downloadCadBlob(blob, cadDownloadFilename(formData));
-      flash("CAD 生成完成！", "success");
-    } catch (error: unknown) {
-      showCadError("CAD 生成失败", error, () => void handleQuickCad());
-    } finally {
-      setCadLoading(false);
-    }
   };
 
   // ===================== 绘制模块 =====================
@@ -658,7 +633,6 @@ export default function DashboardPage() {
   };
 
   const handleGenerateEffect = async () => {
-    if (!activeTaskId) return;
     const validation = validateDoorForm(formData);
     if (validation) {
       setValidationError(validation);
@@ -672,18 +646,18 @@ export default function DashboardPage() {
     setQuickRenderError("");
     setQuickRenderTask(null);
     try {
-      const updatedTask = await updateTask(activeTaskId, { params: formData, ref_text: refText, ref_images: refImages });
-      setActiveTask(updatedTask);
-      setSavedEditSnapshot(drawingEditSnapshot(formData, refText, refImages));
+      const updatedTask = await persistCurrentTask(false);
+      if (!updatedTask) { setQuickRenderLoading(false); return; }
+      const taskId = updatedTask.id;
       const [extraction, configs] = await Promise.all([
-        extractTaskLineArt(activeTaskId),
+        extractTaskLineArt(taskId),
         listRenderModelConfigs(false),
       ]);
       const config = [...configs]
         .filter((item) => item.enabled && item.hasApiKey)
         .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
       if (!config) throw new Error("没有可用的效果渲染模型，请先在效果渲染页面配置并启用模型");
-      const lineArt = await lineArtViewToFile(extraction.front, `${activeTaskId}-front-line-art.png`);
+      const lineArt = await lineArtViewToFile(extraction.front, `${taskId}-front-line-art.png`);
       const references = refImages.map(base64ImageToFile);
       const task = await createRenderTask({
         modelConfigId: config.id,
@@ -697,7 +671,7 @@ export default function DashboardPage() {
         renderMode: "precise",
         sourceType: "task",
         sourceSide: "front",
-        sourceTaskId: activeTaskId,
+        sourceTaskId: taskId,
         referenceBindings: { panel: { assetIds: [] } },
         referenceFiles: { panel: references },
       });
@@ -791,6 +765,8 @@ export default function DashboardPage() {
   const startNewDrawing = () => {
     setActiveTaskId(null);
     setActiveTask(null);
+    setEntryTaskId(null);
+    setSavedEditSnapshot(null);
     setFormData({ ...DEFAULT_FORM_DATA });
     setRefText("");
     setRefImages([]);
@@ -817,13 +793,41 @@ export default function DashboardPage() {
     setPage(0);
   };
 
+  const drawingActions = (
+    <DrawingFormActions previewLoading={previewLoading} cadLoading={cadLoading}
+      renderLoading={quickRenderLoading} saving={submitting} quoteOpening={quoteOpening}
+      onPreview={() => void handleGeneratePreview()} onCad={() => void handleGenerateCad()}
+      onRender={() => void handleGenerateEffect()} onSave={handleSaveEdit}
+      onQuote={() => void handleGoToQuote()} />
+  );
+  const renderResult = quickRenderTask && (
+    <Card title="效果图">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-[#636366]">状态：{quickRenderTask.status === "completed" ? "已完成" : quickRenderTask.status === "failed" ? "生成失败" : "生成中"}</p>
+        <button type="button" onClick={handleGenerateEffect} disabled={quickRenderLoading || submitting}
+          className="rounded-lg border border-[#C7C7CC] bg-white px-3 py-2 text-sm font-medium text-[#1C1C1E] disabled:opacity-50">重新生成</button>
+      </div>
+      {quickRenderTask.images?.[0]?.src ? (
+        <div className="rounded-lg border border-[#E5E5EA] bg-[#F7F7FA] p-3">
+          <img src={quickRenderTask.images[0].src} alt="快速生成效果图" className="mx-auto max-h-[720px] w-full object-contain" />
+          <button type="button" onClick={() => void downloadFileFromUrl(quickRenderTask.images[0].src, `${activeTaskId || entryTaskId || "door"}-效果图.jpg`)}
+            className="mt-3 rounded-lg bg-[#1C1C1E] px-4 py-2 text-sm font-medium text-white">下载效果图</button>
+        </div>
+      ) : (
+        <div className="flex min-h-40 items-center justify-center rounded-lg bg-[#F7F7FA] text-sm text-[#8E8E93]">
+          {quickRenderTask.status === "failed" ? quickRenderTask.errorMessage || "效果图生成失败" : "正在生成效果图，请稍候..."}
+        </div>
+      )}
+    </Card>
+  );
+
   // ===================== 通用背景 =====================
   return (
     <div>
       {saveSuccessOpen && (
         <NoticeDialog
           title="保存成功"
-          message="修改已保存"
+          message="表单已保存"
           onConfirm={() => setSaveSuccessOpen(false)}
         />
       )}
@@ -997,7 +1001,7 @@ export default function DashboardPage() {
                 </div>
               )}
               <p className="text-[12px] text-[#8E8E93]">
-                修改后点击{activeModule === "图纸绘制" ? "生成操作栏右侧" : "上方"}“保存修改”。
+                修改后点击{activeModule === "图纸绘制" ? "生成操作栏右侧“保存表单”" : "上方“保存修改”"}。
               </p>
             </div>
           </details>
@@ -1018,40 +1022,7 @@ export default function DashboardPage() {
             {activeModule === "图纸绘制" && (
               <>
                 <Card title="第 1 步：生成基准 CAD 底图">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                    <button
-                      onClick={handleGeneratePreview}
-                      disabled={previewLoading || cadLoading}
-                      className="min-h-11 rounded-lg bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:bg-[#E5E5EA] disabled:opacity-50"
-                    >
-                      {previewLoading ? "正在生成预览..." : "预览 DXF"}
-                    </button>
-                    <button
-                      onClick={handleGenerateCad}
-                      disabled={cadLoading || previewLoading}
-                      className="min-h-11 rounded-lg border border-[#C7C7CC] bg-white px-4 py-2.5 text-sm font-medium text-[#1C1C1E] transition-all hover:border-[#007AFF] hover:text-[#007AFF] disabled:opacity-50"
-                    >
-                      {cadLoading ? "生成中..." : "生成 DXF"}
-                    </button>
-                    <button
-                      onClick={handleGenerateEffect}
-                      disabled={quickRenderLoading}
-                      className="min-h-11 rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
-                    >
-                      {quickRenderLoading ? "效果图生成中..." : "生成效果图"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveEdit}
-                      className="min-h-11 rounded-lg bg-[#1C1C1E] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90"
-                    >
-                      保存修改
-                    </button>
-                    <button type="button" onClick={() => void handleGoToQuote()} disabled={quoteOpening}
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#007AFF] bg-white px-4 py-2.5 text-sm font-semibold text-[#007AFF] disabled:opacity-50">
-                      <Calculator size={16} aria-hidden="true" />{quoteOpening ? "正在打开报价..." : "去报价"}
-                    </button>
-                  </div>
+                  {drawingActions}
                   {quickRenderError && (
                     <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">
                       {quickRenderError}
@@ -1059,39 +1030,7 @@ export default function DashboardPage() {
                   )}
                 </Card>
 
-                {quickRenderTask && (
-                  <Card title="精准效果图">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm text-[#636366]">
-                        状态：{quickRenderTask.status === "completed" ? "已完成" : quickRenderTask.status === "failed" ? "生成失败" : "生成中"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleGenerateEffect}
-                        disabled={quickRenderLoading}
-                        className="rounded-lg border border-[#C7C7CC] bg-white px-3 py-2 text-sm font-medium text-[#1C1C1E] disabled:opacity-50"
-                      >
-                        重新生成
-                      </button>
-                    </div>
-                    {quickRenderTask.images?.[0]?.src ? (
-                      <div className="rounded-lg border border-[#E5E5EA] bg-[#F7F7FA] p-3">
-                        <img src={quickRenderTask.images[0].src} alt="快速生成效果图" className="mx-auto max-h-[720px] w-full object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => void downloadFileFromUrl(quickRenderTask.images[0].src, `${activeTaskId || "door"}-效果图.jpg`)}
-                          className="mt-3 rounded-lg bg-[#1C1C1E] px-4 py-2 text-sm font-medium text-white"
-                        >
-                          下载效果图
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex min-h-40 items-center justify-center rounded-lg bg-[#F7F7FA] text-sm text-[#8E8E93]">
-                        {quickRenderTask.status === "failed" ? quickRenderTask.errorMessage || "效果图生成失败" : "正在生成效果图，请稍候..."}
-                      </div>
-                    )}
-                  </Card>
-                )}
+                {renderResult}
 
                 <CadPreviewPanel
                   svg={cadPreviewSvg}
@@ -1270,7 +1209,7 @@ export default function DashboardPage() {
                 >
                   ← 返回图纸绘制列表
                 </button>
-                <h4 className="text-lg font-semibold text-[#1C1C1E]">新建图纸信息</h4>
+                <h4 className="text-lg font-semibold text-[#1C1C1E]">{entryTaskId ? "图纸信息录入" : "新建图纸信息"}</h4>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <div className="bg-white rounded-xl p-5 border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
@@ -1308,31 +1247,25 @@ export default function DashboardPage() {
 
               <DoorForm data={formData} onChange={setFormData} />
 
-              <div className="grid grid-cols-1 gap-3 mt-6 sm:grid-cols-2 xl:grid-cols-4">
-                <button
-                  onClick={handleSubmitOrder}
-                  disabled={submitting}
-                  className="py-3 rounded-lg bg-[#007AFF] text-white font-semibold text-base hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? "提交中..." : "提交订单 (流转至绘图部)"}
-                </button>
-                <button
-                  onClick={handleQuickCad}
-                  disabled={cadLoading}
-                  className="py-3 rounded-lg bg-white text-[#1C1C1E] border border-[#C7C7CC] font-medium text-base hover:border-[#007AFF] hover:text-[#007AFF] transition-all disabled:opacity-50"
-                >
-                  {cadLoading ? "生成中..." : "快速生成 CAD (仅下载不流转)"}
-                </button>
-                <button type="button" onClick={() => void handleGoToQuote()} disabled={quoteOpening || submitting}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#007AFF] bg-white px-4 py-3 font-semibold text-[#007AFF] disabled:opacity-50">
-                  <Calculator size={17} aria-hidden="true" />{quoteOpening ? "正在保存..." : "保存并报价"}
-                </button>
-                <button
-                  onClick={() => { setFormData(DEFAULT_FORM_DATA); setRefText(""); setRefImages([]); setCadPreviewSvg(null); }}
-                  className="py-3 rounded-lg bg-[#F2F2F7] text-[#8E8E93] font-medium text-sm hover:bg-[#E5E5EA] hover:text-[#1C1C1E] transition-all"
-                >
-                  清空表单
-                </button>
+              <div className="mt-6 space-y-4">
+                <Card title="第 1 步：生成基准 CAD 底图">
+                  {drawingActions}
+                  {quickRenderError && <div className="mt-3 rounded-lg border border-[#FF3B30]/25 bg-[#FF3B30]/5 px-3 py-2 text-sm text-[#C93531]">{quickRenderError}</div>}
+                  <div className="mt-3 flex justify-end">
+                    <button type="button" disabled={submitting || quickRenderLoading || quoteOpening}
+                      onClick={async () => {
+                        if (!(await requestAppNavigation())) return;
+                        setEntryTaskId(null);
+                        setSavedEditSnapshot(null);
+                        setFormData({ ...DEFAULT_FORM_DATA });
+                        setRefText(""); setRefImages([]);
+                        setCadPreviewSvg(null); setCadBlob(null); setCadBlobFingerprint("");
+                        setQuickRenderTask(null); setQuickRenderError("");
+                      }}
+                      className="px-3 py-2 text-sm text-[#636366] hover:text-[#1C1C1E] disabled:opacity-50">清空表单</button>
+                  </div>
+                </Card>
+                {renderResult}
               </div>
 
               <div className="mt-6">
