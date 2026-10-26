@@ -162,9 +162,10 @@ def _translate_error(exc: Exception) -> HTTPException:
 
 
 @router.get("/dashboard")
-def dashboard(current_user: Dict = Depends(get_current_user)):
+def dashboard(include_pending: bool = True, current_user: Dict = Depends(get_current_user)):
     data = fulfillment_db.dashboard()
-    data["pending_release"] = len(pending_release_tasks())
+    if include_pending:
+        data["pending_release"] = len(pending_release_tasks())
     return data
 
 
@@ -229,11 +230,15 @@ def list_orders(
 
 
 @router.get("/orders/{order_id}")
-def get_order(order_id: int, current_user: Dict = Depends(get_current_user)):
-    order = fulfillment_db.get_order(order_id)
+def get_order(order_id: int, include_first_door: bool = False, current_user: Dict = Depends(get_current_user)):
+    order = fulfillment_db.get_order(order_id, include_snapshot=not include_first_door)
     if not order:
         raise HTTPException(status_code=404, detail="客户订单不存在")
-    return {"order": order}
+    result = {"order": order}
+    if include_first_door:
+        first = next(iter(order.get("door_units") or []), None)
+        result["door_unit"] = _with_sales_finance(fulfillment_db.get_door_unit(int(first["id"]))) if first else None
+    return result
 
 
 @router.get("/door-units/{door_id}")

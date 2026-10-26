@@ -7,6 +7,7 @@ import math
 import os
 import sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -23,6 +24,11 @@ from work_package_service import WorkPackageService
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 FULFILLMENT_SCHEMA_COMPONENT = "fulfillment"
 FULFILLMENT_SCHEMA_VERSION = 2
+ORDER_SUMMARY_FIELDS = (
+    "id", "order_no", "source_task_id", "source_revision", "customer", "project",
+    "due_date", "sales_note", "created_by", "created_at", "updated_at", "status",
+    "sales_order_id", "sales_order_no",
+)
 DOOR_STATUSES = (
     "待生产确认", "技术准备中", "备料与加工中", "可局部装配", "总装中",
     "待成品质检", "返工中", "待成品入库", "已入库待发货", "待财务放行",
@@ -203,10 +209,19 @@ def build_fulfillment_workflow(door: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+class _ClosingConnection(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
+
 class FulfillmentDatabase:
     def __init__(self, db_path: str = FULFILLMENT_DB_FILE, files_dir: str = FULFILLMENT_FILES_DIR):
         self.db_path = db_path
         self.files_dir = files_dir
+        self._read_connection: ContextVar[Optional[sqlite3.Connection]] = ContextVar(f"fulfillment-read-{id(self)}", default=None)
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         os.makedirs(files_dir, exist_ok=True)
         self._initialize()
@@ -214,7 +229,7 @@ class FulfillmentDatabase:
         self.requirement_service = RequirementService(self.inventory_db)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
+        conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None, factory=_ClosingConnection)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=30000")
@@ -875,13 +890,42 @@ class FulfillmentDatabase:
             )
 
     def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
+        active = self._read_connection.get()
+        if active is not None:
+            row = active.execute(sql, params).fetchone()
+            return dict(row) if row else None
+        conn = self._connect()
+        try:
             row = conn.execute(sql, params).fetchone()
             return dict(row) if row else None
+        finally:
+            conn.close()
 
     def fetch_all(self, sql: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
-        with self._connect() as conn:
+        active = self._read_connection.get()
+        if active is not None:
+            return [dict(row) for row in active.execute(sql, params).fetchall()]
+        conn = self._connect()
+        try:
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        finally:
+            conn.close()
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[sqlite3.Connection]:
+        active = self._read_connection.get()
+        if active is not None:
+            yield active
+            return
+        conn = self._connect()
+        token = self._read_connection.set(conn)
+        try:
+            conn.execute("BEGIN")
+            yield conn
+        finally:
+            self._read_connection.reset(token)
+            conn.rollback()
+            conn.close()
 
     def _next_order_no(self, conn: sqlite3.Connection, now: str) -> str:
         prefix = f"DD{now[:10].replace('-', '')}"
@@ -1099,7 +1143,7 @@ class FulfillmentDatabase:
                 where.append(f"d.status IN ({placeholders})")
                 params.extend(stage_statuses)
         rows = self.fetch_all(
-            f"""SELECT o.*, COUNT(d.id) AS door_count,
+            f"""SELECT {', '.join(f'o.{field}' for field in ORDER_SUMMARY_FIELDS)}, COUNT(d.id) AS door_count,
                 SUM(CASE WHEN d.status='已签收' THEN 1 ELSE 0 END) AS completed_count,
                 CASE MIN(CASE d.status
                     WHEN '待生产确认' THEN 10 WHEN '技术准备中' THEN 20
@@ -1122,17 +1166,24 @@ class FulfillmentDatabase:
         )
         return rows
 
-    def get_order(self, order_id: int) -> Optional[Dict[str, Any]]:
-        order = self.fetch_one("SELECT * FROM fulfillment_orders WHERE id=?", (order_id,))
+    def get_order(self, order_id: int, include_snapshot: bool = True) -> Optional[Dict[str, Any]]:
+        fields = "*" if include_snapshot else ", ".join(ORDER_SUMMARY_FIELDS)
+        order = self.fetch_one(f"SELECT {fields} FROM fulfillment_orders WHERE id=?", (order_id,))
         if not order:
             return None
-        order["task_snapshot"] = json_loads(order.pop("task_snapshot_json", ""), {})
+        snapshot = order.pop("task_snapshot_json", "")
+        if include_snapshot:
+            order["task_snapshot"] = json_loads(snapshot, {})
         order["door_units"] = self.fetch_all("SELECT * FROM fulfillment_door_units WHERE order_id=? ORDER BY sequence_no", (order_id,))
         for door in order["door_units"]:
             door["risk_tags"] = json_loads(door.pop("risk_tags_json", ""), [])
         return order
 
     def get_door_unit(self, door_id: int) -> Optional[Dict[str, Any]]:
+        with self.read_snapshot():
+            return self._get_door_unit(door_id)
+
+    def _get_door_unit(self, door_id: int) -> Optional[Dict[str, Any]]:
         door = self.fetch_one(
             """SELECT d.*, o.order_no, o.customer, o.project, o.sales_note, o.created_by
                FROM fulfillment_door_units d JOIN fulfillment_orders o ON o.id=d.order_id WHERE d.id=?""", (door_id,),
@@ -1171,15 +1222,17 @@ class FulfillmentDatabase:
                 component["attachments"] = json_loads(component.pop("attachments_json", ""), [])
                 component["drawing_parameters"] = json_loads(component.pop("drawing_parameter_json", ""), {})
             package["work_packages"] = self.fetch_all("SELECT * FROM fulfillment_work_packages WHERE technical_package_id=? ORDER BY sequence_no, id", (package["id"],))
+            dependencies: Dict[int, List[int]] = {}
+            for edge in self.fetch_all(
+                """SELECT dep.successor_id, dep.predecessor_id
+                   FROM fulfillment_work_package_dependencies dep
+                   JOIN fulfillment_work_packages work ON work.id=dep.successor_id
+                   WHERE work.technical_package_id=? ORDER BY dep.predecessor_id""", (package["id"],),
+            ):
+                dependencies.setdefault(int(edge["successor_id"]), []).append(int(edge["predecessor_id"]))
             for work in package["work_packages"]:
                 work["route_snapshot"] = json_loads(work.pop("route_snapshot_json", ""), {})
-                work["predecessor_ids"] = [
-                    int(item["predecessor_id"])
-                    for item in self.fetch_all(
-                        "SELECT predecessor_id FROM fulfillment_work_package_dependencies WHERE successor_id=? ORDER BY predecessor_id",
-                        (work["id"],),
-                    )
-                ]
+                work["predecessor_ids"] = dependencies.get(int(work["id"]), [])
             package["generation_warnings"] = self.fetch_all(
                 """SELECT * FROM fulfillment_bom_generation_warnings
                    WHERE technical_package_id=? ORDER BY blocking DESC, id""",
@@ -1217,8 +1270,7 @@ class FulfillmentDatabase:
         door["shipments"] = self.fetch_all("SELECT * FROM fulfillment_shipments WHERE door_unit_id=? ORDER BY created_at DESC, id DESC", (door_id,))
         door["payroll_drafts"] = self.fetch_all("SELECT * FROM fulfillment_payroll_drafts WHERE door_unit_id=? ORDER BY id", (door_id,))
         from door_piecework_service import DoorPieceworkService
-        with self._connect() as conn:
-            door["operation_fees"] = DoorPieceworkService.list(conn, door_id)
+        door["operation_fees"] = DoorPieceworkService.list(self._read_connection.get(), door_id)
         paid = self.fetch_one("SELECT COALESCE(SUM(p.amount), 0) AS total FROM fulfillment_payments p JOIN fulfillment_orders o ON o.id=p.order_id JOIN fulfillment_door_units d ON d.order_id=o.id WHERE d.id=?", (door_id,))
         door["paid_amount"] = float((paid or {"total": 0})["total"] or 0)
         allocated = self.fetch_one(

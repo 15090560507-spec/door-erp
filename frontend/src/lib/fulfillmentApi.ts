@@ -12,8 +12,8 @@ import type {
   FulfillmentCalculationItem,
 } from "./fulfillmentTypes";
 
-export async function getFulfillmentDashboard() {
-  const { data } = await api.get<FulfillmentDashboard>("/fulfillment/dashboard");
+export async function getFulfillmentDashboard(includePending = true) {
+  const { data } = await api.get<FulfillmentDashboard>("/fulfillment/dashboard", { params: { include_pending: includePending } });
   return data;
 }
 
@@ -40,6 +40,11 @@ export async function getFulfillmentOrders(params?: { q?: string; status?: strin
 export async function getFulfillmentOrder(id: number) {
   const { data } = await api.get<{ order: FulfillmentOrder }>(`/fulfillment/orders/${id}`);
   return data.order;
+}
+
+export async function getFulfillmentSelection(id: number) {
+  const { data } = await api.get<{ order: FulfillmentOrder; door_unit: DoorUnitDetail | null }>(`/fulfillment/orders/${id}`, { params: { include_first_door: true } });
+  return data;
 }
 
 export async function getDoorUnit(id: number) {

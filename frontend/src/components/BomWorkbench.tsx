@@ -16,7 +16,7 @@ import {
   Send,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmptyState from "@/components/workspace/EmptyState";
 import FilterBar from "@/components/workspace/FilterBar";
 import InlineError from "@/components/workspace/InlineError";
@@ -138,11 +138,20 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
   const [addGroupCode, setAddGroupCode] = useState<string>("hardware");
   const [versionReason, setVersionReason] = useState("");
   const [notice, setNotice] = useState<{ title: string; message: string; error?: boolean } | null>(null);
+  const detailRequest = useRef(0);
+  const listRequest = useRef(0);
 
   const loadList = useCallback(async () => {
+    if (embedded && initialDoorId) {
+      setSelectedDoorId(initialDoorId);
+      setLoadingList(false);
+      return;
+    }
+    const request = ++listRequest.current;
     setLoadingList(true);
     try {
       const result = await getBomWorkbench({ q: query, status, page_size: 100 });
+      if (request !== listRequest.current) return;
       setItems(result.items);
       setSummary(result.summary);
       setSelectedDoorId((current) => {
@@ -152,26 +161,33 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
       });
       setError("");
     } catch (requestError) {
+      if (request !== listRequest.current) return;
       setError(apiErrorMessage(requestError, "整单 BOM 列表加载失败"));
     } finally {
-      setLoadingList(false);
+      if (request === listRequest.current) setLoadingList(false);
     }
-  }, [initialDoorId, query, status]);
+  }, [embedded, initialDoorId, query, status]);
 
   const loadDetail = useCallback(async (doorId: number, version?: number) => {
+    const request = ++detailRequest.current;
     setLoadingDetail(true);
     try {
-      setDetail(await getDoorBom(doorId, version));
+      const result = await getDoorBom(doorId, version);
+      if (request !== detailRequest.current) return;
+      setDetail(result);
       setDraftDirty(false);
       setDeletedRowIds([]);
       setError("");
     } catch (requestError) {
+      if (request !== detailRequest.current) return;
       setDetail(null);
       setError(apiErrorMessage(requestError, "BOM 详情加载失败"));
     } finally {
-      setLoadingDetail(false);
+      if (request === detailRequest.current) setLoadingDetail(false);
     }
   }, []);
+
+  useEffect(() => () => { detailRequest.current++; listRequest.current++; }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadList(); }, 180);

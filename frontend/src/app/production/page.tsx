@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, Check, ChevronRight, ClipboardCheck, Factory, History, RefreshCw, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ScopedRequestCache } from "@/lib/scopedRequestCache";
 import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import BomWorkbench from "@/components/BomWorkbench";
 import CalculationWorkbench from "@/components/CalculationWorkbench";
@@ -28,7 +29,7 @@ import {
   issueFulfillmentAssemblyComponents,
   getDoorUnit,
   getFulfillmentDashboard,
-  getFulfillmentOrder,
+  getFulfillmentSelection,
   getFulfillmentOrders,
   getFulfillmentPeople,
   getPendingFulfillmentTasks,
@@ -70,60 +71,110 @@ export default function ProductionPage() {
   const [status, setStatus] = useState("");
   const [view, setView] = useState<"orders" | "personnel">("orders");
   const [loading, setLoading] = useState(true);
+  const [selectionLoading, setSelectionLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; error: boolean } | null>(null);
 
   const notify = useCallback((message: string, error = false) => setNotice({ title: error ? "操作失败" : "操作成功", message, error }), []);
-  const loadAll = useCallback(async () => {
-    const [nextDashboard, nextPending, nextOrders, nextPeople] = await Promise.all([
-      getFulfillmentDashboard(), getPendingFulfillmentTasks(), getFulfillmentOrders({ q, status }), getFulfillmentPeople(),
+  const orderCache = useRef(new ScopedRequestCache<Awaited<ReturnType<typeof getFulfillmentSelection>>>());
+  const doorCache = useRef(new ScopedRequestCache<DoorUnitDetail>());
+  const listRequest = useRef(0), overviewRequest = useRef(0), selectionRequest = useRef(0);
+  const currentOrderId = useRef<number | null>(null);
+  const currentDoorId = useRef<number | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadOverview = useCallback(async () => {
+    const request = ++overviewRequest.current;
+    const results = await Promise.allSettled([
+      getFulfillmentDashboard(false).then(value => { if (request === overviewRequest.current) setDashboard(value); }),
+      getPendingFulfillmentTasks().then(value => { if (request === overviewRequest.current) setPending(value); }),
+      getFulfillmentPeople().then(value => { if (request === overviewRequest.current) setPeople(value); }),
     ]);
-    setDashboard(nextDashboard); setPending(nextPending); setOrders(nextOrders); setPeople(nextPeople);
-  }, [q, status]);
+    const failed = results.find(item => item.status === "rejected");
+    if (request === overviewRequest.current && failed?.status === "rejected") notify(apiMessage(failed.reason, "部分履约指标加载失败，请刷新重试"), true);
+  }, [notify]);
+
+  const loadOrders = useCallback(async () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const request = ++listRequest.current;
+    setLoading(true);
+    try {
+      const result = await getFulfillmentOrders({ q, status });
+      if (request === listRequest.current) setOrders(result);
+    } catch (error) {
+      if (request === listRequest.current) notify(apiMessage(error, "订单列表加载失败"), true);
+    } finally { if (request === listRequest.current) setLoading(false); }
+  }, [q, status, notify]);
 
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      setLoading(true);
-      try { await loadAll(); }
-      catch (error) { if (!cancelled) notify(apiMessage(error, "履约数据加载失败"), true); }
-      finally { if (!cancelled) setLoading(false); }
+    const generation = overviewRequest;
+    void loadOverview();
+    return () => { generation.current++; };
+  }, [loadOverview]);
+  useEffect(() => {
+    const generation = listRequest;
+    searchTimer.current = setTimeout(() => void loadOrders(), q ? 250 : 0);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      generation.current++;
     };
-    void run();
-    return () => { cancelled = true; };
-  }, [loadAll, notify]);
+  }, [loadOrders, q]);
+  useEffect(() => () => { selectionRequest.current++; orderCache.current.clear(); doorCache.current.clear(); }, []);
 
   const chooseOrder = async (id: number) => {
-    setBusy(true);
+    const request = ++selectionRequest.current;
+    currentOrderId.current = id;
+    currentDoorId.current = null;
+    setSelectedOrder(orders.find(order => order.id === id) || null);
+    setSelectedDoor(null);
+    setSelectionLoading(true);
     try {
-      const order = await getFulfillmentOrder(id);
-      setSelectedOrder(order); setSelectedDoor(null);
-      const first = order.door_units?.[0];
-      if (first) setSelectedDoor(await getDoorUnit(first.id));
-    } catch (error) { notify(apiMessage(error, "订单详情加载失败"), true); }
-    finally { setBusy(false); }
+      const result = await orderCache.current.get(id, () => getFulfillmentSelection(id));
+      if (request !== selectionRequest.current) return;
+      currentDoorId.current = result.door_unit?.id ?? null;
+      setSelectedOrder(result.order); setSelectedDoor(result.door_unit);
+    } catch (error) { if (request === selectionRequest.current) notify(apiMessage(error, "订单详情加载失败"), true); }
+    finally { if (request === selectionRequest.current) setSelectionLoading(false); }
   };
 
   const chooseDoor = async (id: number) => {
-    setBusy(true);
-    try { setSelectedDoor(await getDoorUnit(id)); }
-    catch (error) { notify(apiMessage(error, "门樘详情加载失败"), true); }
-    finally { setBusy(false); }
+    const request = ++selectionRequest.current;
+    currentDoorId.current = id;
+    setSelectedDoor(null); setSelectionLoading(true);
+    try {
+      const door = await doorCache.current.get(id, () => getDoorUnit(id));
+      if (request === selectionRequest.current) setSelectedDoor(door);
+    }
+    catch (error) { if (request === selectionRequest.current) notify(apiMessage(error, "门樘详情加载失败"), true); }
+    finally { if (request === selectionRequest.current) setSelectionLoading(false); }
   };
 
   const openPersonnelWork = async (orderId: number, doorId: number) => {
-    setBusy(true);
+    const request = ++selectionRequest.current;
+    currentOrderId.current = orderId;
+    currentDoorId.current = doorId;
+    setSelectedOrder(orders.find(order => order.id === orderId) || null);
+    setSelectedDoor(null); setSelectionLoading(true); setView("orders");
     try {
-      const [order, door] = await Promise.all([getFulfillmentOrder(orderId), getDoorUnit(doorId)]);
-      setSelectedOrder(order); setSelectedDoor(door); setView("orders");
-    } catch (error) { notify(apiMessage(error, "对应门樘加载失败"), true); }
-    finally { setBusy(false); }
+      const [result, door] = await Promise.all([orderCache.current.get(orderId, () => getFulfillmentSelection(orderId)), doorCache.current.get(doorId, () => getDoorUnit(doorId))]);
+      if (request === selectionRequest.current) { setSelectedOrder(result.order); setSelectedDoor(door); }
+    } catch (error) { if (request === selectionRequest.current) notify(apiMessage(error, "对应门樘加载失败"), true); }
+    finally { if (request === selectionRequest.current) setSelectionLoading(false); }
   };
 
   const refresh = async (doorId?: number) => {
-    await loadAll();
-    if (selectedOrder) setSelectedOrder(await getFulfillmentOrder(selectedOrder.id));
-    if (doorId || selectedDoor) setSelectedDoor(await getDoorUnit(doorId || selectedDoor!.id));
+    orderCache.current.clear(); doorCache.current.clear();
+    const orderId = currentOrderId.current, request = ++selectionRequest.current;
+    const activeDoorId = doorId || selectedDoor?.id;
+    try {
+      await Promise.all([loadOverview(), loadOrders(), (async () => {
+        if (!orderId) return;
+        const result = await orderCache.current.get(orderId, () => getFulfillmentSelection(orderId));
+        const door = activeDoorId && activeDoorId !== result.door_unit?.id
+          ? await doorCache.current.get(activeDoorId, () => getDoorUnit(activeDoorId)) : result.door_unit;
+        if (request === selectionRequest.current) { currentDoorId.current = door?.id ?? null; setSelectedOrder(result.order); setSelectedDoor(door); }
+      })()]);
+    } catch (error) { if (request === selectionRequest.current) notify(apiMessage(error, "刷新失败，请重试"), true); }
+    finally { if (request === selectionRequest.current) setSelectionLoading(false); }
   };
 
   const activeProduction = ACTIVE_PRODUCTION_STATUSES.reduce((total, item) => total + (dashboard?.status_counts?.[item] || 0), 0);
@@ -134,11 +185,11 @@ export default function ProductionPage() {
         title="门樘履约中心"
         description="一张订单统一协调，每樘门按独立生产编号、技术版本、工作包、质检和入库记录推进。"
         context={<><Factory size={14} />经营管理 / 生产履约</>}
-        actions={<button type="button" className="ui-button ui-button--secondary" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw size={15} className={loading ? "animate-spin" : ""} />刷新数据</button>}
+        actions={<button type="button" className="ui-button ui-button--secondary" disabled={loading || busy || selectionLoading} onClick={() => void refresh()}><RefreshCw size={15} className={loading ? "animate-spin" : ""} />刷新数据</button>}
       />
 
       <MetricStrip items={[
-        { key: "release", label: "待下达订单", value: dashboard?.pending_release || 0, detail: "终审通过、等待生成生产单", icon: <ClipboardCheck size={16} />, tone: (dashboard?.pending_release || 0) ? "amber" : "neutral" },
+        { key: "release", label: "待下达订单", value: pending.length, detail: "终审通过、等待生成生产单", icon: <ClipboardCheck size={16} />, tone: pending.length ? "amber" : "neutral" },
         { key: "active", label: "生产中门樘", value: activeProduction, detail: "从技术准备至总装返工", icon: <Factory size={16} />, tone: "blue" },
         { key: "quality", label: "待检与待入库", value: (dashboard?.status_counts?.["待成品质检"] || 0) + (dashboard?.status_counts?.["待成品入库"] || 0), detail: "终检、返工确认与成品入库", icon: <ShieldCheck size={16} />, tone: "violet" },
         { key: "exceptions", label: "异常与交期风险", value: dashboard?.open_exceptions || 0, detail: `未解决异常 · 七日风险 ${dashboard?.due_risks || 0}`, icon: <AlertTriangle size={16} />, tone: (dashboard?.open_exceptions || dashboard?.due_risks || 0) ? "red" : "neutral" },
@@ -156,16 +207,16 @@ export default function ProductionPage() {
 
       <section className="grid min-h-[640px] gap-4 xl:grid-cols-[430px_minmax(0,1fr)]">
         <aside className="border border-[#D1D1D6] bg-white">
-          <div className="border-b border-[#E5E5EA] p-4"><h2 className="font-semibold">客户订单</h2><div className="mt-3 flex gap-2"><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void loadAll()} placeholder="单号、客户、项目、生产编号" className="h-9 min-w-0 flex-1 border border-[#C7C7CC] px-3 text-sm" /><select value={status} onChange={(event) => setStatus(event.target.value)} className="h-9 w-32 border border-[#C7C7CC] px-2 text-sm"><option value="">全部状态</option>{STATUS_CARDS.map((item) => <option key={item}>{item}</option>)}</select></div></div>
+          <div className="border-b border-[#E5E5EA] p-4"><h2 className="font-semibold">客户订单</h2><div className="mt-3 flex gap-2"><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void loadOrders()} placeholder="单号、客户、项目、生产编号" className="h-9 min-w-0 flex-1 border border-[#C7C7CC] px-3 text-sm" /><select value={status} onChange={(event) => setStatus(event.target.value)} className="h-9 w-32 border border-[#C7C7CC] px-2 text-sm"><option value="">全部状态</option>{STATUS_CARDS.map((item) => <option key={item}>{item}</option>)}</select></div></div>
           <div className="max-h-[710px] overflow-y-auto">
-            {loading ? <Empty text="正在加载..." /> : orders.length === 0 ? <Empty text="暂无新履约订单" /> : orders.map((order) => <button key={order.id} onClick={() => void chooseOrder(order.id)} className={`block w-full border-b border-[#E5E5EA] p-4 text-left hover:bg-[#F8F8FA] ${selectedOrder?.id === order.id ? "bg-[#EDF6FF]" : "bg-white"}`}><div className="flex items-center justify-between gap-3"><strong className="text-sm">{order.order_no}</strong><Status text={order.representative_status || order.status} /></div><div className="mt-2 truncate text-sm">{order.customer}{order.project ? ` · ${order.project}` : ""}</div><div className="mt-2 flex justify-between text-xs text-[#636366]"><span>{order.door_count} 樘 · 已完成 {order.completed_count || 0}</span><span>{order.progress || 0}%</span></div><div className="mt-2 h-1.5 bg-[#E5E5EA]"><div className="h-full bg-[#007AFF]" style={{ width: `${order.progress || 0}%` }} /></div></button>)}
+            {loading ? <Empty text="正在加载..." /> : orders.length === 0 ? <Empty text="暂无新履约订单" /> : orders.map((order) => <button key={order.id} disabled={busy} aria-label={`选择订单 ${order.order_no}`} aria-pressed={selectedOrder?.id === order.id} onClick={() => void chooseOrder(order.id)} className={`block w-full border-b border-[#E5E5EA] p-4 text-left hover:bg-[#F8F8FA] ${selectedOrder?.id === order.id ? "bg-[#EDF6FF]" : "bg-white"}`}><div className="flex items-center justify-between gap-3"><strong className="text-sm">{order.order_no}</strong><Status text={order.representative_status || order.status} /></div><div className="mt-2 truncate text-sm">{order.customer}{order.project ? ` · ${order.project}` : ""}</div><div className="mt-2 flex justify-between text-xs text-[#636366]"><span>{order.door_count} 樘 · 已完成 {order.completed_count || 0}</span><span>{order.progress || 0}%</span></div><div className="mt-2 h-1.5 bg-[#E5E5EA]"><div className="h-full bg-[#007AFF]" style={{ width: `${order.progress || 0}%` }} /></div></button>)}
           </div>
         </aside>
 
         <div className="min-w-0 border border-[#D1D1D6] bg-white">
-          {!selectedOrder ? <Empty text="选择左侧客户订单查看门樘履约详情" tall /> : <>
-            <div className="border-b border-[#E5E5EA] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold">{selectedOrder.order_no} · {selectedOrder.customer}</h2><p className="mt-1 text-sm text-[#636366]">{selectedOrder.project || "未填写项目"} · 交期 {selectedOrder.due_date || "未设置"}</p></div><span className="text-xs text-[#636366]">{selectedOrder.sales_note || "无销售备注"}</span></div><div className="mt-4 flex flex-wrap gap-2">{selectedOrder.door_units?.map((door) => <button key={door.id} onClick={() => void chooseDoor(door.id)} className={`min-w-44 border px-3 py-2 text-left ${selectedDoor?.id === door.id ? "border-[#007AFF] bg-[#EDF6FF]" : "border-[#D1D1D6] bg-white"}`}><div className="text-sm font-semibold">{door.production_no}</div><div className="mt-1 text-xs text-[#636366]">{door.product_name} · {door.specification}</div></button>)}</div></div>
-            {selectedDoor ? <DoorUnitWorkbench door={selectedDoor} busy={busy} notify={notify} onBusy={setBusy} onChanged={async (next) => { setSelectedDoor(next); await refresh(next.id); }} /> : <Empty text="选择一个门樘生产单" tall />}
+          {!selectedOrder ? <Empty text={selectionLoading ? "正在加载订单详情..." : "选择左侧客户订单查看门樘履约详情"} tall /> : <>
+            <div className="border-b border-[#E5E5EA] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold">{selectedOrder.order_no} · {selectedOrder.customer}</h2><p className="mt-1 text-sm text-[#636366]">{selectedOrder.project || "未填写项目"} · 交期 {selectedOrder.due_date || "未设置"}</p></div><span className="text-xs text-[#636366]">{selectedOrder.sales_note || "无销售备注"}</span></div><div className="mt-4 flex flex-wrap gap-2">{selectedOrder.door_units?.map((door) => <button key={door.id} disabled={busy} onClick={() => void chooseDoor(door.id)} className={`min-w-44 border px-3 py-2 text-left ${selectedDoor?.id === door.id ? "border-[#007AFF] bg-[#EDF6FF]" : "border-[#D1D1D6] bg-white"}`}><div className="text-sm font-semibold">{door.production_no}</div><div className="mt-1 text-xs text-[#636366]">{door.product_name} · {door.specification}</div></button>)}</div></div>
+            {selectionLoading ? <Empty text="正在加载门樘详情..." tall /> : selectedDoor ? <DoorUnitWorkbench door={selectedDoor} busy={busy} notify={notify} onBusy={setBusy} onChanged={async (next) => { orderCache.current.clear(); doorCache.current.clear(); if (currentOrderId.current !== next.order_id || currentDoorId.current !== next.id) return; setSelectedDoor(next); await refresh(next.id); }} /> : <Empty text="选择一个门樘生产单" tall />}
           </>}
         </div>
       </section>
