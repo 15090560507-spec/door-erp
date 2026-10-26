@@ -550,13 +550,9 @@ textarea:focus-visible {
 .door-form-trim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 @media (max-width: 640px) { .door-form-trim-grid { grid-template-columns: minmax(0, 1fr); } }
 
-.drawing-form-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-.drawing-preview-dock { min-width: 0; border: 1px solid #E2E2E8; border-radius: 8px; background: #FFF; padding: 14px; }
+.drawing-form-workspace { min-width: 0; }
+.drawing-preview-dock { position: fixed; z-index: 80; width: min(340px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; min-width: 0; border: 1px solid #D1D5DB; border-radius: 8px; background: #FFF; padding: 12px; box-shadow: 0 12px 38px rgba(22,22,27,.18); }
 .drawing-preview-dock [data-cad-preview-canvas] { max-height: 320px; }
-@media (min-width: 1700px) {
-  .drawing-form-workspace { grid-template-columns: minmax(0, 1fr) 310px; }
-  .drawing-preview-dock { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
-}
 
 .door-form-section {
   padding: 16px;
