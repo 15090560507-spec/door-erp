@@ -265,6 +265,9 @@ export async function generateCad(formData: DoorFormData): Promise<Blob> {
       response?: { data?: unknown };
       userMessage?: string;
     };
+    if (axios.isAxiosError(error) && error.code === "ECONNABORTED") {
+      requestError.userMessage = "DXF 文件生成或下载超时，请稍后重试";
+    }
     const body = requestError.response?.data;
     if (body instanceof Blob) {
       const text = await body.text();

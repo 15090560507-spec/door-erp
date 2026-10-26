@@ -1,7 +1,10 @@
+import asyncio
 import io
 import time
 import unittest
+from datetime import datetime
 from unittest.mock import patch
+from urllib.parse import quote
 
 import ezdxf
 from ezdxf.lldxf.tagwriter import TagCollector
@@ -196,6 +199,8 @@ class EditableSheetRouteTests(unittest.TestCase):
             self.assertEqual(first.status_code, 200, first.text[:300])
             self.assertEqual(first.headers['X-CAD-Download-Cache'], 'MISS')
             self.assertEqual(second.headers['X-CAD-Download-Cache'], 'HIT')
+            self.assertEqual(first.headers['Content-Length'], str(len(first.content)))
+            self.assertEqual(second.headers['Content-Length'], str(len(second.content)))
             self.assertEqual(first.content, second.content)
             self.assertIsNone(_order_form_bbox(decoded(first.content)))
             self.assertEqual(self.client.post('/api/generate_cad_preview', json=payload).status_code, 200)
@@ -203,6 +208,44 @@ class EditableSheetRouteTests(unittest.TestCase):
             svg.assert_called_once_with(self.key, self.source)
             plot.assert_called_once_with(self.key, self.source)
         self.assertEqual(main._cad_cache[self.key]['dxf'], self.source)
+
+    def test_newline_heavy_download_is_one_complete_body_with_length(self):
+        main = self.main
+        content = b'  0\nLINE\n 10\n1.000\n 20\n2.000\n' * 50000 + b'  0\nEOF\n'
+        self.assertGreater(content.count(b'\n'), 250000)
+        warning = {'X-CAD-Layout-Warning': quote('layout warning')}
+        generated_at = datetime(2026, 10, 26, 12)
+        with patch.object(main, '_cached_cad', return_value=(self.key, self.source, True)), \
+                patch.object(main, '_cached_cad_download', return_value=(content, False)), \
+                patch.object(main, '_cad_layout_headers', return_value=warning), \
+                patch.object(main, 'shanghai_now', return_value=generated_at):
+            response = main.generate_cad(self.request, current_user={'uid': 'A'})
+
+        self.assertIsNotNone(getattr(response, 'body', None),
+                             'A materialized DXF must not be iterated line by line')
+        self.assertEqual(response.body, content)
+        self.assertEqual(response.headers['Content-Length'], str(len(content)))
+        self.assertEqual(response.headers['Content-Type'], 'application/octet-stream')
+        self.assertEqual(response.headers['X-CAD-Cache'], 'HIT')
+        self.assertEqual(response.headers['X-CAD-Download-Cache'], 'MISS')
+        self.assertEqual(response.headers['X-CAD-Layout-Warning'], warning['X-CAD-Layout-Warning'])
+        filename = quote(f'{self.request.dhdw}{generated_at:%Y%m%d}.dxf')
+        self.assertEqual(response.headers['Content-Disposition'],
+                         f'attachment; filename="drawing.dxf"; filename*=UTF-8\'\'{filename}')
+
+        messages = []
+
+        async def send(message):
+            messages.append(message)
+
+        async def receive():
+            raise AssertionError('A complete Response does not require a request stream')
+
+        asyncio.run(response({'type': 'http'}, receive, send))
+        bodies = [message for message in messages if message['type'] == 'http.response.body']
+        self.assertEqual(len(bodies), 1)
+        self.assertEqual(bodies[0]['body'], content)
+        self.assertFalse(bodies[0].get('more_body', False))
 
     def test_failed_conversion_returns_error_not_partial_download(self):
         main = self.main

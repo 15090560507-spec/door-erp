@@ -2,7 +2,6 @@
 西州将军铜门 - 生产图纸协同系统 FastAPI 后端
 从 door_26.py (Streamlit 单体应用) 提取核心逻辑重构为前后端分离架构
 """
-import io
 import copy
 import json
 import os
@@ -20,7 +19,7 @@ from typing import List, Optional, Dict
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query, Depends
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -1010,7 +1009,7 @@ def quote_trim_metrics(
 def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)):
     """
     接收表单数据，调用 ezdxf 读取 template.dxf 生成图纸，
-    并以 .dxf 文件流形式返回。
+    并完整返回已生成的 .dxf 文件及其长度。
     """
     _validate_task_params(req.model_dump())
     try:
@@ -1018,8 +1017,6 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
         download_bytes, download_hit = _cached_cad_download(key, dxf_bytes)
     except Exception as exc:
         _raise_cad_error("DXF 生成", exc)
-    bytes_io = io.BytesIO(download_bytes)
-
     # 文件名 URL 编码（RFC 5987），避免中文导致的 latin-1 编码错误
     ts = shanghai_now().strftime("%Y%m%d")
     safe_customer = "".join(
@@ -1030,8 +1027,8 @@ def generate_cad(req: CADRequest, current_user: Dict = Depends(get_current_user)
     encoded_filename = quote(raw_filename)
     ascii_filename = "drawing.dxf"
 
-    return StreamingResponse(
-        bytes_io,
+    return Response(
+        content=download_bytes,
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": (
