@@ -14,4 +14,4 @@
 - [x] Remove precise creation, segmentation editing, local regeneration and PSD conversion; keep historical downloads and reference inputs.
 - [x] Verify quick-only requests, validation, historic task restoration, explicit resolution choices, and desktop/mobile controls without real provider calls.
 - [x] Run type/lint/regression checks and review scoped changes.
-- [ ] Push to the authorized GitHub branch.
+- [x] Pushed implementation `0481473` to `feat/semicircle-handles-and-quote-form-improvements`; Tencent Cloud deployment is still required.
