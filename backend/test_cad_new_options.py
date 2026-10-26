@@ -495,7 +495,7 @@ def test_rectangular_glass_line_templates():
             counts[key] = counts.get(key, 0) + 1
         return [key for key, count in counts.items() if count > 1]
 
-    def centers_of_paired_coordinates(values, expected_gap=15):
+    def centers_of_paired_coordinates(values, expected_gap=20):
         ordered = sorted(set(round(float(value), 3) for value in values))
         centers = []
         for first, second in zip(ordered, ordered[1:]):
@@ -558,12 +558,12 @@ def test_rectangular_glass_line_templates():
         transom_x_centers = centers_of_paired_coordinates(vertical_xs)
         transom_y_centers = centers_of_paired_coordinates(horizontal_ys)
         check(
-            "transom six-grid uses two vertical 15mm divider bands",
+            "transom six-grid uses two vertical configured 20mm divider bands",
             len(transom_x_centers) >= 4,
             transom_x_centers,
         )
         check(
-            "transom six-grid uses one horizontal 15mm divider band",
+            "transom six-grid uses one horizontal configured 20mm divider band",
             len(transom_y_centers) >= 1,
             transom_y_centers,
         )
@@ -610,7 +610,7 @@ def test_rectangular_glass_line_templates():
         ]
         panel_band_centers = centers_of_paired_coordinates(long_vertical_xs)
         check(
-            "vertical B2 eight-grid uses a centered 15mm divider band in both views",
+            "vertical B2 eight-grid uses a centered configured 20mm divider band",
             len(panel_band_centers) >= 1,
             panel_band_centers,
         )

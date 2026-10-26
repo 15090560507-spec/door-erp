@@ -1477,10 +1477,35 @@ def draw_door_in_frame(
         if width <= 8 or height <= 8:
             return
 
-        requested_inset = round(max(1.0, float(
+        def line(ax: float, ay: float, bx: float, by: float) -> None:
+            if math.hypot(bx - ax, by - ay) > 1e-8:
+                drawer.draw_line(off((ax, ay)), off((bx, by)), "A-DOOR-PANEL")
+
+        requested_spacing = float(
+            spacing if spacing is not None else p.get("glass_line_spacing", 20)
+        )
+        if style == "竖条":
+            if not math.isfinite(requested_spacing) or requested_spacing <= 0:
+                raise ValueError("竖条内部线距必须大于0mm")
+            if requested_spacing >= width:
+                raise ValueError(f"竖条内部线距必须小于区域宽度{width:g}mm")
+            center_x = (left + right) / 2
+            count_each_side = int((width / 2) // requested_spacing)
+            if count_each_side > 50000:
+                raise ValueError("竖条内部线距过小，线条数量过多")
+            for index in range(-count_each_side, count_each_side + 1):
+                x = center_x + index * requested_spacing
+                if left < x < right:
+                    line(x, bottom, x, top)
+            return
+
+        requested_inset = float(
             inset if inset is not None else p.get("glass_line_inset", 20)
-        ) or 1.0))
-        inset = min(requested_inset, width / 6, height / 6)
+        )
+        max_inset = (min(width, height) - 2) / 2
+        if not math.isfinite(requested_inset) or not 0 <= requested_inset < max_inset:
+            raise ValueError(f"玻璃图案外边距必须大于等于0且小于{max_inset:g}mm")
+        inset = requested_inset
         ix1, ix2 = left + inset, right - inset
         iy1, iy2 = bottom + inset, top - inset
         inner_width = ix2 - ix1
@@ -1494,9 +1519,6 @@ def draw_door_in_frame(
                 *off((ix2, iy2)),
                 hatch_library.get("玻璃填充"),
             )
-
-        def line(ax: float, ay: float, bx: float, by: float) -> None:
-            drawer.draw_line(off((ax, ay)), off((bx, by)), "A-DOOR-PANEL")
 
         def frame(ax1: float, ay1: float, ax2: float, ay2: float) -> None:
             drawer.draw_poly(
@@ -1521,7 +1543,10 @@ def draw_door_in_frame(
             line(x_start, center_y + half, x_end, center_y + half)
 
         def divided_grid(columns: int, rows: int) -> None:
-            """分隔中心严格均分，并以模板中的 15mm 双线表达花枝线带。"""
+            """Keep divider centers equally spaced; configure each paired-line gap."""
+            limit = min(inner_width / columns, inner_height / rows)
+            if requested_spacing >= limit:
+                raise ValueError(f"图案内部线距必须小于单格可用尺寸{limit:g}mm")
             for index in range(1, columns):
                 center_x = ix1 + inner_width * index / columns
                 paired_vertical(center_x, iy1, iy2)
@@ -1577,25 +1602,17 @@ def draw_door_in_frame(
         if style in ("单圈外围线", "单圈外围线(封闭)"):
             return
 
-        requested_spacing = float(
-            spacing if spacing is not None else p.get("glass_line_spacing", 20)
-        )
-        if requested_spacing <= 0:
+        if not math.isfinite(requested_spacing) or requested_spacing <= 0:
             raise ValueError("图案内部线距必须大于0mm")
-        band_width = min(15.0, inner_width / 16, inner_height / 16)
-
-        if style == "竖条":
-            center_x = (ix1 + ix2) / 2
-            count_each_side = int((inner_width / 2) // requested_spacing)
-            for offset_index in range(-count_each_side, count_each_side + 1):
-                x = center_x + offset_index * requested_spacing
-                if ix1 < x < ix2:
-                    line(x, iy1, x, iy2)
-            return
+        band_width = (requested_spacing if style in ("六格线条", "八格线条")
+                      else min(15.0, inner_width / 16, inner_height / 16))
 
         if style == "双边框":
             # 模板不是简单的两个矩形，而是四边各一条 15mm 线带。
-            border_center = min(requested_spacing, inner_width / 4, inner_height / 4)
+            border_center = requested_spacing
+            limit = min(inner_width, inner_height) / 4
+            if border_center > limit:
+                raise ValueError(f"图案内部线距不得大于{limit:g}mm")
             if border_center <= band_width:
                 raise ValueError(f"图案内部线距必须大于{band_width:g}mm")
             paired_vertical(ix1 + border_center, iy1, iy2)
@@ -1608,9 +1625,9 @@ def draw_door_in_frame(
             # 结构来自模板：左右各一条窄带，四角放带 X 的方框，
             # 两侧中部各放两个 HJ01。竖线在方框和花件处断开。
             channel_width = min(65.0, inner_width / 4, inner_height / 6)
-            side_gap = min(requested_spacing, channel_width / 3)
+            side_gap = requested_spacing
             if channel_width <= side_gap * 2:
-                return
+                raise ValueError(f"图案内部线距必须小于花件侧带宽度的一半{channel_width / 2:g}mm")
             if not _ensure_glass_template_block(drawer.doc, "HJ01"):
                 return
 
@@ -1687,7 +1704,10 @@ def draw_door_in_frame(
         if style == "四角回纹":
             # 模板由外圈、内圈和四组回折线组成。各段只连接到框边，
             # 不使用贯穿式双线，避免与内外框相互重叠。
-            frame_gap = min(requested_spacing, inner_width / 4, inner_height / 4)
+            frame_gap = requested_spacing
+            limit = min(inner_width, inner_height) / 4
+            if frame_gap > limit:
+                raise ValueError(f"图案内部线距不得大于{limit:g}mm")
             if frame_gap <= band_width:
                 raise ValueError(f"图案内部线距必须大于{band_width:g}mm")
             ring_outer_left = ix1 + frame_gap
@@ -1792,14 +1812,18 @@ def draw_door_in_frame(
     def _group_glass_value(group: str, value_type: str) -> float:
         """按门板组取玻璃参数，并保留旧反面 0=沿用正面的兼容规则。"""
         if group == "front":
-            return float(p.get(f"glass_line_{value_type}", 20) or 20)
+            value = p.get(f"glass_line_{value_type}")
+            return float(20 if value is None else value)
         if group == "back":
-            front_value = float(p.get(f"glass_line_{value_type}", 20) or 20)
+            value = p.get(f"glass_line_{value_type}")
+            front_value = float(20 if value is None else value)
             back_value = float(p.get(f"back_glass_line_{value_type}", 0) or 0)
             return back_value if back_value > 0 else front_value
         if group == "child":
-            return float(p.get(f"child_glass_line_{value_type}", 20) or 20)
-        child_value = float(p.get(f"child_glass_line_{value_type}", 20) or 20)
+            value = p.get(f"child_glass_line_{value_type}")
+            return float(20 if value is None else value)
+        value = p.get(f"child_glass_line_{value_type}")
+        child_value = float(20 if value is None else value)
         child_back_value = float(p.get(f"child_back_glass_line_{value_type}", 0) or 0)
         return child_back_value if child_back_value > 0 else child_value
 
@@ -2189,8 +2213,8 @@ def draw_door_in_frame(
                     b2_top,
                     str(settings.get("b2_glass_style", "无线条")),
                     "vertical",
-                    float(settings.get("glass_line_inset", 20) or 20),
-                    float(settings.get("glass_line_spacing", 20) or 20),
+                    float(settings["glass_line_inset"]),
+                    float(settings["glass_line_spacing"]),
                 )
                 if b4_bottom is not None and b4_top is not None:
                     draw_glass_template_rect(
@@ -2200,8 +2224,8 @@ def draw_door_in_frame(
                         b4_top,
                         str(settings.get("b4_glass_style", "无线条")),
                         "vertical",
-                        float(settings.get("glass_line_inset", 20) or 20),
-                        float(settings.get("glass_line_spacing", 20) or 20),
+                        float(settings["glass_line_inset"]),
+                        float(settings["glass_line_spacing"]),
                     )
             for y in sorted_y_lines:
                 draw_panel_line(bx1, y, bx2, y)

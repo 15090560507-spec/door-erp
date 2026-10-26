@@ -10,6 +10,7 @@ import {
 } from "@/lib/types";
 import { loadDropdownOptions } from "@/lib/api";
 import { calculateDoorAreas } from "@/lib/doorAreas";
+import { GLASS_LINE_STYLE_LABELS, panelGlassControlScope } from "@/lib/glassPatternControls";
 import LubanRulerModal from "@/components/LubanRulerModal";
 import DiscPanelFields from "@/components/DiscPanelFields";
 import { lubanResult, LUBAN_RULER_VERSIONS, DEFAULT_LUBAN_RULER_KIND, type LubanRulerKind } from "@/lib/lubanRuler";
@@ -71,8 +72,9 @@ const Input = memo(function Input({ label, value, onChange, placeholder, type = 
   );
 });
 
-const Select = memo(function Select({ label, value, options, onChange, required }: {
+const Select = memo(function Select({ label, value, options, optionLabels, onChange, required }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void; required?: boolean;
+  optionLabels?: Record<string, string>;
 }) {
   return (
     <div>
@@ -84,7 +86,7 @@ const Select = memo(function Select({ label, value, options, onChange, required 
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 text-sm rounded-md bg-[#FAFAFC] border border-[#C7C7CC] outline-none transition-all duration-200 focus:border-[#007AFF] focus:bg-white focus:shadow-[0_0_0_3px_rgba(0,122,255,0.15)]"
       >
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {options.map((o) => <option key={o} value={o}>{optionLabels?.[o] ?? o}</option>)}
       </select>
     </div>
   );
@@ -452,7 +454,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     b4GlassStyleKey: keyof DoorFormData;
     insetKey?: keyof DoorFormData;
     spacingKey?: keyof DoorFormData;
-  }) => (
+  }) => {
+    const scope = panelGlassControlScope(
+      style, String(data[b2GlassStyleKey] || "无线条"), String(data[b4GlassStyleKey] || "无线条"),
+    );
+    return (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
         {/* 第一行：门板样式选择 */}
@@ -617,6 +623,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 label={`${title}B2`}
                 value={(data[b2GlassStyleKey] as string) || "无线条"}
                 options={GLASS_LINE_STYLES}
+                optionLabels={GLASS_LINE_STYLE_LABELS}
                 onChange={(v) => setField(b2GlassStyleKey, v)}
               />
               {usesHPlusPanel(style) && (
@@ -624,33 +631,25 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                   label={`${title}B4`}
                   value={(data[b4GlassStyleKey] as string) || "无线条"}
                   options={GLASS_LINE_STYLES}
+                  optionLabels={GLASS_LINE_STYLE_LABELS}
                   onChange={(v) => setField(b4GlassStyleKey, v)}
                 />
               )}
-              {/* 玻璃图案参数仅在 H / H+ 布局显示，正反面可独立设置。 */}
-              {insetKey !== undefined && spacingKey !== undefined && (
-                <>
-                  <Input
-                    label={`${title}玻璃图案外边距(mm)`}
-                    value={(data[insetKey] as number) ?? 0}
-                    type="number"
-                    onChange={(v) => setField(insetKey, Number(v))}
-                  />
-                  <Input
-                    label={`${title}图案内部线距(mm)`}
-                    value={(data[spacingKey] as number) ?? 0}
-                    type="number"
-                    onChange={(v) => setField(spacingKey, Number(v))}
-                  />
-                  {(
-                    ["六格线条", "八格线条"].includes((data[b2GlassStyleKey] as string) || "")
-                    || (usesHPlusPanel(style) && ["六格线条", "八格线条"].includes((data[b4GlassStyleKey] as string) || ""))
-                  ) && (
-                    <div className="rounded-md bg-[#F2F2F7] px-3 py-2 text-xs text-[#636366]">
-                      六格、八格按区域固定均分，不使用图案内部线距。
-                    </div>
-                  )}
-                </>
+              {insetKey !== undefined && scope.insetRegions && (
+                <Input
+                  label={`${title}${scope.insetRegions}玻璃图案外边距(mm)`}
+                  value={(data[insetKey] as number) ?? 0}
+                  type="number"
+                  onChange={(v) => setField(insetKey, Number(v))}
+                />
+              )}
+              {spacingKey !== undefined && scope.spacingRegions && (
+                <Input
+                  label={`${title}${scope.spacingRegions}${scope.spacingIsBarsOnly ? "竖条间距" : "图案内部线距"}(mm)`}
+                  value={(data[spacingKey] as number) ?? 0}
+                  type="number"
+                  onChange={(v) => setField(spacingKey, Number(v))}
+                />
               )}
             </>
           )}
@@ -658,6 +657,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
       </div>
     </div>
   );
+  };
 
   return (
     <div className="door-form grid grid-cols-1 gap-5 xl:grid-cols-3">
@@ -776,7 +776,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
                 <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
                 <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
                 {data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗" && (
-                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} onChange={(v) => set("qc_glass_style", v)} />
+                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} optionLabels={GLASS_LINE_STYLE_LABELS} onChange={(v) => set("qc_glass_style", v)} />
                 )}
               </>
             )}
