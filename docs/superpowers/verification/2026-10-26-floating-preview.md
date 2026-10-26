@@ -15,3 +15,5 @@
 - Desktop 1920x1100 and mobile 390x1000 screenshots inspected: `F:/codex/floating-preview-verification/floating-dragged-desktop.png` and `live-preview-mobile.png`.
 - Tests use mocked API/model calls and a real pre-generated CAD SVG fixture; no paid generation or production data changes.
 - A stale local Turbopack CSS cache was identified during validation. Only the resolved `.next/dev` generated directory was moved to `F:/codex/next-dev-cache-before-floating-20261026-224348`; the owned development server was restarted and the browser tests rerun against freshly compiled styles. Source/data/templates were not removed.
+
+Delivery confirmed: `1197b80` pushed to `15090560507-spec/door-erp`, branch `feat/semicircle-handles-and-quote-form-improvements`, via GitHub SSH port 443. Standard port 22 attempts were reset. Production deployment was not performed locally.
