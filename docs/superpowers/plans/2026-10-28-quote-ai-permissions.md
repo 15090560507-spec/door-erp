@@ -29,7 +29,7 @@
 
 ## Task 3: Delivery
 
-- [ ] Record test results, inspect scoped diff, commit/push the approved branch and provide Tencent Cloud update commands.
+- [x] Record test results and inspect scoped diff. Implementation pushed as `c1bdaf8`; Tencent Cloud update commands are included below.
 
 ## Verification Results
 
