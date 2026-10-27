@@ -14,19 +14,19 @@
 - No paid network inference during tests; credentials remain server-only.
 
 ## Task 1: Recognition and Storage
-- [ ] Add failing model/geometry/job tests, including invalid/nonfinite/diagonal paths, bounds, true widths, restart/retry and role isolation.
-- [ ] Implement reference_pattern_models.py, reference_pattern_geometry.py, reference_pattern_service.py and reference_pattern_routes.py.
-- [ ] Reuse quote AI connection without changing quote prompts; add Shapely dependency and authenticated router.
+- [x] Add failing model/geometry/job tests, including invalid/nonfinite/diagonal paths, bounds, true widths, restart/retry and role isolation.
+- [x] Implement reference_pattern_models.py, reference_pattern_geometry.py, reference_pattern_service.py and reference_pattern_routes.py.
+- [x] Reuse quote AI connection without changing quote prompts; add Shapely dependency and authenticated router.
 
 ## Task 2: CAD and Persistence
-- [ ] Add typed snapshots to drawing options, task persistence and CAD parameter map.
-- [ ] Draw reviewed reference contours in B2 groups and rectangular transoms; preserve front/back/child linkage and built-in choices.
-- [ ] Verify actual DXF entities, dimensions, cache keys and task reload without AI.
+- [x] Add typed snapshots to drawing options, task persistence and CAD parameter map.
+- [x] Draw reviewed reference contours in B2 groups and rectangular transoms; preserve front/back/child linkage and built-in choices.
+- [x] Verify actual DXF entities, dimensions, cache keys and task reload without AI.
 
 ## Task 3: Interface
-- [ ] Add reference controls beside B2 and rectangular transom styles.
-- [ ] Implement paste/drop/upload, crop, model status/job recovery, source/vector comparison, parameter edits, confirmation and optional template list/save.
-- [ ] Verify real form persistence, desktop/mobile layout, errors and existing CAD regressions; no real inference calls.
+- [x] Add reference controls beside B2 and rectangular transom styles.
+- [x] Implement paste/drop/upload, crop, model status/job recovery, source/vector comparison, parameter edits, confirmation and optional template list/save.
+- [x] Verify real form persistence, desktop/mobile layout, errors and existing CAD regressions; no real inference calls.
 
 ## Task 4: Delivery
 - [ ] Record verification and any model-testing limitations, commit/push approved branch and provide Tencent Cloud commands.

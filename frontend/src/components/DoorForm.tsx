@@ -13,6 +13,8 @@ import { calculateDoorAreas } from "@/lib/doorAreas";
 import { GLASS_LINE_STYLE_LABELS, panelGlassControlScope } from "@/lib/glassPatternControls";
 import LubanRulerModal from "@/components/LubanRulerModal";
 import DiscPanelFields from "@/components/DiscPanelFields";
+import ReferencePatternField from "@/components/patterns/ReferencePatternField";
+import { REFERENCE_STYLE, type PatternSlot } from "@/lib/referencePatternTypes";
 import { lubanResult, LUBAN_RULER_VERSIONS, DEFAULT_LUBAN_RULER_KIND, type LubanRulerKind } from "@/lib/lubanRuler";
 
 interface Props {
@@ -458,6 +460,7 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
     const scope = panelGlassControlScope(
       style, String(data[b2GlassStyleKey] || "无线条"), String(data[b4GlassStyleKey] || "无线条"),
     );
+    const referenceSlot = String(b2GlassStyleKey).replace("_glass_style", "") as PatternSlot;
     return (
     <div className="col-span-2 rounded-lg border border-[#E5E5EA] bg-[#FAFAFC] p-3">
       <div className="grid grid-cols-2 gap-3">
@@ -622,10 +625,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
               <Select
                 label={`${title}B2`}
                 value={(data[b2GlassStyleKey] as string) || "无线条"}
-                options={GLASS_LINE_STYLES}
+                options={data.reference_patterns?.[referenceSlot] ? [...GLASS_LINE_STYLES, REFERENCE_STYLE] : GLASS_LINE_STYLES}
                 optionLabels={GLASS_LINE_STYLE_LABELS}
                 onChange={(v) => setField(b2GlassStyleKey, v)}
               />
+              <ReferencePatternField data={data} onChange={onChange} slot={referenceSlot} styleKey={b2GlassStyleKey} title={`${title}B2`} readOnly={readOnly} />
               {usesHPlusPanel(style) && (
                 <Select
                   label={`${title}B4`}
@@ -942,9 +946,11 @@ const DoorForm = memo(function DoorForm({ data, onChange, readOnly, children }: 
             {data.sel_qc !== "无" && (
               <>
                 <Input label="气窗高" value={data.qc_height} type="number" onChange={(v) => set("qc_height", Number(v))} />
-                <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => set("qc_shape", v)} />
+                <Select label="气窗形状" value={data.qc_shape} options={QC_SHAPE_OPTIONS} onChange={(v) => onChange({ ...data, qc_shape: v, ...(v !== "矩形气窗" && data.qc_glass_style === REFERENCE_STYLE ? { qc_glass_style: "无线条" } : {}) })} />
                 {data.sel_qc === "玻璃" && data.qc_shape === "矩形气窗" && (
-                  <Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={GLASS_LINE_STYLES} optionLabels={GLASS_LINE_STYLE_LABELS} onChange={(v) => set("qc_glass_style", v)} />
+                  <div className="space-y-2"><Select label="矩形气窗玻璃线条" value={data.qc_glass_style || "无线条"} options={data.reference_patterns?.transom ? [...GLASS_LINE_STYLES, REFERENCE_STYLE] : GLASS_LINE_STYLES} optionLabels={GLASS_LINE_STYLE_LABELS} onChange={(v) => set("qc_glass_style", v)} />
+                    <ReferencePatternField data={data} onChange={onChange} slot="transom" styleKey="qc_glass_style" title="矩形气窗" readOnly={readOnly} />
+                  </div>
                 )}
               </>
             )}

@@ -2,7 +2,7 @@ import type { DoorFormData } from "./types";
 
 export function previewFingerprint(data: DoorFormData): string {
   const params = { ...data } as Record<string, unknown>;
-  for (const key of ["dhdw", "gdmc", "dhrq", "ddh", "order_title", "hhxd", "sm", "sl"]) delete params[key];
+  for (const key of ["dhdw", "gdmc", "dhrq", "ddh", "order_title", "hhxd", "sm", "sl", "reference_pattern_jobs"]) delete params[key];
   return JSON.stringify(params);
 }
 

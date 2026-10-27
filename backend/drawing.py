@@ -18,6 +18,8 @@ from cad_occlusion import CadOcclusionManager, structural_group_for_layer
 from cad_order_layout import adapt_order_sheet
 from cad_sheet_branding import apply_order_sheet_branding
 from disc_panel import disc_geometry, disc_center_height, disc_fill, draw_disc_fill
+from reference_pattern_models import AppliedPattern, PatternPlacement, REFERENCE_STYLE
+from reference_pattern_geometry import pattern_contours
 
 from config import CONFIG, GLASS_TEMPLATE_PATH, TEMPLATE_PATH
 from trim_geometry import calculate_trim_geometry
@@ -1758,6 +1760,21 @@ def draw_door_in_frame(
             # 门板 B2 竖向较长：六格为 2 列 3 行，八格为 2 列 4 行。
             divided_grid(2, 3 if style == "六格线条" else 4)
 
+    def draw_reference_pattern(slot, x1, y1, x2, y2, mirror=False):
+        snapshot = (p.get("reference_patterns") or {}).get(slot)
+        if not snapshot:
+            raise ValueError("参考图线稿尚未识别或确认，请先打开参考图识别并应用")
+        reviewed = AppliedPattern.model_validate(snapshot)
+        placement = PatternPlacement.model_validate(reviewed.model_dump(exclude={"reviewed"}))
+        placement.mirror = bool(placement.mirror) ^ mirror
+        left, right = sorted((x1, x2))
+        bottom, top = sorted((y1, y2))
+        contours = pattern_contours(placement, right - left, top - bottom)
+        for loop in contours["loops"]:
+            drawer.draw_poly([off((left + x, bottom + y)) for x, y in loop], "A-DOOR-PANEL")
+
+    if qc_choice == "玻璃" and qc_h > 0 and is_arch_qc and p.get("qc_glass_style") == REFERENCE_STYLE:
+        raise ValueError("参考图线稿第一版仅支持矩形气窗")
     if qc_choice == "玻璃" and qc_h > 0 and not is_arch_qc:
         # 玻璃线条边距/间距按正反面独立：反面未单独设置时回退正面值
         if is_back:
@@ -1766,16 +1783,19 @@ def draw_door_in_frame(
         else:
             qc_inset = 0
             qc_spacing = 0
-        draw_glass_template_rect(
-            left_width,
-            mid_frame_top,
-            dw - right_width,
-            top_frame_bottom,
-            p.get("qc_glass_style", "无线条"),
-            "horizontal",
-            qc_inset if qc_inset > 0 else None,
-            qc_spacing if qc_spacing > 0 else None,
-        )
+        if p.get("qc_glass_style") == REFERENCE_STYLE:
+            draw_reference_pattern("transom", left_width, mid_frame_top, dw - right_width, top_frame_bottom, mirror=is_back)
+        else:
+            draw_glass_template_rect(
+                left_width,
+                mid_frame_top,
+                dw - right_width,
+                top_frame_bottom,
+                p.get("qc_glass_style", "无线条"),
+                "horizontal",
+                qc_inset if qc_inset > 0 else None,
+                qc_spacing if qc_spacing > 0 else None,
+            )
 
     front_fill_presets = {
         "紫荆花款": {"style": "两列式布局", "lock_offset_x": 150, "fills": ("紫荆花", "竖条", "")},
@@ -1868,6 +1888,7 @@ def draw_door_in_frame(
                 p.get("panel_horizontal_b_height", 300),
             ) or 0),
             "b2_glass_style": str(p.get(b2_style_key, "无线条") or "无线条"),
+            "reference_slot": "panel_b2" if group == "front" else f"{group}_panel_b2",
             "b4_glass_style": str(p.get(
                 "panel_b4_glass_style" if group == "front" else f"{group}_panel_b4_glass_style",
                 "无线条",
@@ -1910,7 +1931,10 @@ def draw_door_in_frame(
         group = "back" if use_back else "front"
         style = back_panel_style if use_back else front_panel_style
         preset = back_preset if use_back else front_preset
-        return apply_panel_preset(panel_settings(group, style), preset, group, force_panel_preset)
+        settings = panel_settings(group, style)
+        if style in ("H型布局", "H+型布局") and settings.get("b2_glass_style") == REFERENCE_STYLE:
+            return settings
+        return apply_panel_preset(settings, preset, group, force_panel_preset)
 
     def resolve_three_col_widths(panel_width: float, settings: Dict[str, float | str]):
         a = settings["three_col_a"] if settings["three_col_a"] > 0 else None
@@ -2163,6 +2187,8 @@ def draw_door_in_frame(
                 continue
             lock_line_x = lock_edge + direction * panel_lock_offset_x
             if not (px1 < lock_line_x < px2):
+                if panel_style in ("H型布局", "H+型布局") and settings.get("b2_glass_style") == REFERENCE_STYLE:
+                    raise ValueError("参考线稿的B2区域宽度无效，请调整锁边偏移")
                 continue
             draw_panel_line(lock_line_x, panel_y_bot, lock_line_x, panel_y_top)
 
@@ -2179,8 +2205,12 @@ def draw_door_in_frame(
 
             hinge_line_x = hinge_edge - direction * float(settings["hinge_offset_y"])
             if not (px1 < hinge_line_x < px2):
+                if settings.get("b2_glass_style") == REFERENCE_STYLE:
+                    raise ValueError("参考线稿的B2区域宽度无效，请调整合页边偏移")
                 continue
             if abs(hinge_line_x - lock_line_x) < 1:
+                if settings.get("b2_glass_style") == REFERENCE_STYLE:
+                    raise ValueError("参考线稿的B2区域过窄，请调整锁边和合页边偏移")
                 continue
             draw_panel_line(hinge_line_x, panel_y_bot, hinge_line_x, panel_y_top)
 
@@ -2206,16 +2236,19 @@ def draw_door_in_frame(
                 else:
                     b2_bottom, b2_top = sorted_y_lines[0], sorted_y_lines[-1]
                     b4_bottom = b4_top = None
-                draw_glass_template_rect(
-                    bx1,
-                    b2_bottom,
-                    bx2,
-                    b2_top,
-                    str(settings.get("b2_glass_style", "无线条")),
-                    "vertical",
-                    float(settings["glass_line_inset"]),
-                    float(settings["glass_line_spacing"]),
-                )
+                if settings.get("b2_glass_style") == REFERENCE_STYLE:
+                    draw_reference_pattern(settings["reference_slot"], bx1, b2_bottom, bx2, b2_top, mirror=abs(lock_edge - px1) < 1e-6)
+                else:
+                    draw_glass_template_rect(
+                        bx1,
+                        b2_bottom,
+                        bx2,
+                        b2_top,
+                        str(settings.get("b2_glass_style", "无线条")),
+                        "vertical",
+                        float(settings["glass_line_inset"]),
+                        float(settings["glass_line_spacing"]),
+                    )
                 if b4_bottom is not None and b4_top is not None:
                     draw_glass_template_rect(
                         bx1,
@@ -2227,6 +2260,8 @@ def draw_door_in_frame(
                         float(settings["glass_line_inset"]),
                         float(settings["glass_line_spacing"]),
                     )
+            elif settings.get("b2_glass_style") == REFERENCE_STYLE:
+                raise ValueError("参考线稿的B2区域高度无效，请调整中区上下偏移")
             for y in sorted_y_lines:
                 draw_panel_line(bx1, y, bx2, y)
 

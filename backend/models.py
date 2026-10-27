@@ -3,14 +3,23 @@ Pydantic 模型 - 请求/响应数据定义
 """
 from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
+from reference_pattern_models import ReferencePatternOptions
 
 
 # ===================== 表单数据模型（生成 CAD 用） =====================
-class DrawingInputOptions(BaseModel):
-    """Stored input metadata; these options do not alter CAD geometry yet."""
+class DrawingInputOptions(ReferencePatternOptions):
+    """Stored input options and reviewed reference geometry snapshots."""
     lock_core_height: float = Field(default=1050, gt=0, allow_inf_nan=False)
     frame_assembly: Literal['框套一体', '框套分体'] = '框套一体'
     installation_method: Literal['', '拉片安装', '膨胀螺丝安装'] = ''
+
+
+def normalized_drawing_options(value):
+    options = DrawingInputOptions.model_validate(value).model_dump(mode="json")
+    for key in ("reference_patterns", "reference_pattern_jobs"):
+        if key not in value:
+            options.pop(key, None)
+    return {**value, **options}
 
 
 class CADRequest(DrawingInputOptions):
@@ -266,7 +275,7 @@ class TaskCreateRequest(BaseModel):
     @field_validator('params')
     @classmethod
     def validate_drawing_input_options(cls, value: Dict[str, Any]) -> Dict[str, Any]:
-        return {**value, **DrawingInputOptions.model_validate(value).model_dump()}
+        return normalized_drawing_options(value)
 
 
 class ChangeEntry(BaseModel):
@@ -299,7 +308,7 @@ class TaskUpdateRequest(BaseModel):
     def validate_drawing_input_options(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if value is None:
             return None
-        return {**value, **DrawingInputOptions.model_validate(value).model_dump()}
+        return normalized_drawing_options(value)
 
 
 class TaskResponse(BaseModel):

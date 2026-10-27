@@ -51,6 +51,7 @@ from cad_sheet_branding import normalize_order_title
 from cad_preview import render_dxf_svg
 from utils import parse_dim_str, parse_gap_str
 from quote_routes import quote_router, quote_db
+from reference_pattern_routes import router as reference_pattern_router
 from render_routes import render_router
 from fulfillment_routes import (
     configure_sales_order_repository as configure_fulfillment_sales_orders,
@@ -104,6 +105,7 @@ app.add_middleware(
 )
 
 app.include_router(quote_router)
+app.include_router(reference_pattern_router)
 app.include_router(render_router)
 if LEGACY_PRODUCTION_ENABLED:
     app.include_router(production_router)
@@ -283,6 +285,7 @@ def _cad_cache_key(req: CADRequest) -> str:
         "layout": ORDER_LAYOUT_VERSION,
         "request": req.model_dump(mode="json"),
     }
+    payload["request"].pop("reference_pattern_jobs", None)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -817,6 +820,7 @@ def build_cad_params(req: CADRequest):
     trim_b = req.trim_back_in if req.has_inner else 0
 
     draw_params = {
+        "reference_patterns": {key: value.model_dump(mode="json") for key, value in req.reference_patterns.items()},
         "dw": dw, "dh": dh,
         "left_width_front": lwf, "right_width_front": rwf,
         "left_width_back": lwb, "right_width_back": rwb,

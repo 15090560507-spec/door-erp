@@ -1,4 +1,5 @@
 import { localDateYmd } from "./dateTime";
+import type { AppliedPattern, PatternSlot } from "./referencePatternTypes";
 
 // ===================== 用户 =====================
 export interface UserInfo {
@@ -26,6 +27,8 @@ export interface VerifyResponse {
 
 // ===================== 表单数据 =====================
 export interface DoorFormData {
+  reference_patterns?: Partial<Record<PatternSlot, AppliedPattern>>;
+  reference_pattern_jobs?: Partial<Record<PatternSlot, string>>;
   dhdw: string;
   gdmc: string;
   ddh: string;
