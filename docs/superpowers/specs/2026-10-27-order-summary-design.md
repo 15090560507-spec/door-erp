@@ -16,7 +16,7 @@ Receipt plan, actual receipts and totals remain distinct within 收款信息. Ke
 
 ## Responsive Behavior and Scope
 
-Use container-aware grids for narrow detail panels, not viewport-scaled fonts. Below compact widths, stack middle summaries under identity while keeping amounts readable; no whole-page horizontal overflow. Keep CSS scoped to the order summary so editor/production layouts do not change. No database or API schema changes.
+Use container-aware grids for narrow detail panels, not viewport-scaled fonts. Below compact widths, stack middle summaries under identity while keeping amounts readable; no whole-page horizontal overflow. Empty technical fields do not create placeholder rows. The desktop order list keeps its natural height and remains reachable when scrolling details, rather than stretching into a large empty column. Keep CSS scoped to the order workspace/summary so editor/production layouts do not change. No database or API schema changes.
 
 ## Verification
 

@@ -47,13 +47,14 @@ export default function OrderAttachmentSummary({ orderId, attachments }: {
   };
 
   return (
-    <section className="order-summary__section">
+    <section className="order-summary__section" aria-labelledby="order-attachments-heading">
       <div className="order-summary__section-title">
-        <div><h3>订单图纸附件</h3></div>
-        <strong>{attachments.length} 张</strong>
+        <span className="order-summary__section-number" aria-hidden="true">05</span>
+        <h3 id="order-attachments-heading">图纸附件</h3>
+        <span className="order-summary__section-count">{attachments.length} 张</span>
       </div>
-      <div className="order-attachments order-attachments--summary">
-        {categories.map(({ key, label }) => {
+      {!attachments.length ? <p className="order-summary__muted">暂无图纸附件</p> : <div className="order-attachments order-attachments--summary">
+        {categories.filter(({ key }) => attachments.some(item => item.category === key)).map(({ key, label }) => {
           const items = attachments.filter((item) => item.category === key);
           return (
             <div className="order-attachments__group" key={key}>
@@ -80,7 +81,7 @@ export default function OrderAttachmentSummary({ orderId, attachments }: {
             </div>
           );
         })}
-      </div>
+      </div>}
     </section>
   );
 }

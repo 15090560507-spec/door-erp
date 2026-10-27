@@ -315,7 +315,7 @@ export default function OrdersWorkspace() {
 
   const backToList = () => { if (selected) setEditor(orderToEditor(selected)); else setEditor(emptyEditor(user?.name || "")); setEditing(false); };
 
-  return <div className="min-h-screen bg-[#F5F5F7] text-[#1B1B1F]">
+  return <div className="orders-workspace min-h-screen bg-[#F5F5F7] text-[#1B1B1F]">
     <main className="workspace-page workspace-page--wide space-y-4">
       <WorkspaceHeader title="订单确认" description="关联已终审图纸及对应报价，确认后自动生成独立门樘生产编号与基础 BOM。" context={<><ClipboardCheck size={14} />经营管理 / 销售订单</>} actions={<><button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => void loadOrders()}><RefreshCw size={15} />刷新</button><button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={startNew}><Plus size={16} />新建订单</button></>} />
       {!editing && <FilterBar summary={`共 ${orders.length} 张订单`}><label className="relative min-w-64 flex-1"><Search className="absolute left-3 top-2.5 text-[#777780]" size={16} /><input className="h-9 w-full pl-9 pr-3" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="订单号、客户、项目" /></label><select className="h-9 min-w-32 px-3" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">全部状态</option>{Object.entries(salesOrderStatusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FilterBar>}
