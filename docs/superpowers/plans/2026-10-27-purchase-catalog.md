@@ -24,5 +24,5 @@
 - [x] Extend inventoryApi.ts request types; verify TypeScript, lint and browser desktop/mobile flows.
 
 ## Task 3: Delivery
-- [ ] Record verification, review scoped diff, commit and push the approved branch.
-- [ ] Provide Tencent Cloud update commands without deleting data or volumes.
+- [x] Record verification, review scoped diff, commit and push the approved branch (implementation a098170).
+- [x] Prepare Tencent Cloud update commands without deleting data or volumes; deliver with the completion response.
