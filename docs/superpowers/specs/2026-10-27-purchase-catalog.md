@@ -6,6 +6,8 @@ Saving a draft atomically creates missing supplier, material and supply relation
 
 Order confirmation updates only that supplier's supply reference price and appends price history when changed (or first confirmed price). Drafts do not update reference prices. Existing order prices remain snapshots. Orders use material base units; existing supplier purchase-unit conversion is preserved and applied to reference prices. Existing tax metadata is preserved, without adding tax calculations.
 
+If the same material appears at multiple negotiated prices in one order, preserve all line prices and publish the quantity-weighted reference price, not an arbitrary last line's price.
+
 Scoped catalog creation is authorized by production.purchase; general masterdata.write remains separately protected. New orders store supplier identity; historical orders without identity keep their previous behavior. Client request keys prevent retry-created duplicate orders and are scoped to the actor.
 
 UI: searchable choices show names/specifications/units; new material fields remain editable. Existing material fields cannot silently edit the master. Suggested supplier prices are editable and never overwrite manually entered prices. Keep existing receipt/inspection workflow unchanged. No new dependencies or destructive migrations.

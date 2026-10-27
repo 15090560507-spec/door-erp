@@ -22,7 +22,7 @@ DEFAULT_WAREHOUSES = (
     ("FINISHED", "成品仓", "成品"),
 )
 INVENTORY_SCHEMA_COMPONENT = "inventory"
-INVENTORY_SCHEMA_VERSION = 1
+INVENTORY_SCHEMA_VERSION = 2
 
 
 def inventory_now() -> str:
@@ -654,6 +654,15 @@ class InventoryDatabase:
                 END;
                 """
             )
+            order_columns = {row["name"] for row in conn.execute("PRAGMA table_info(purchase_orders)").fetchall()}
+            for name, definition in (
+                ("supplier_id", "INTEGER REFERENCES inventory_suppliers(id)"),
+                ("request_key", "TEXT"),
+                ("request_hash", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in order_columns:
+                    conn.execute(f"ALTER TABLE purchase_orders ADD COLUMN {name} {definition}")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_purchase_request ON purchase_orders(created_by, request_key) WHERE request_key IS NOT NULL")
             material_columns = {row["name"] for row in conn.execute("PRAGMA table_info(inventory_materials)").fetchall()}
             for name, definition in (
                 ("brand", "TEXT NOT NULL DEFAULT ''"),

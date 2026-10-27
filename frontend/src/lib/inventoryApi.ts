@@ -203,10 +203,14 @@ export async function getPurchaseOrder(id: number) {
 
 export async function createPurchaseOrder(payload: {
   supplier: string;
+  supplier_id?: number;
+  request_key?: string;
   expected_date: string;
   remark: string;
   items: Array<{
-    material_id: number;
+    material_id?: number;
+    material_name?: string;
+    specification?: string;
     quantity: number;
     unit: string;
     unit_price: number;

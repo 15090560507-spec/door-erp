@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
+import json
+import math
 from typing import Any, Dict, List
 
 from inventory_database import InventoryDatabase, inventory_now
 from inventory_service import InventoryService
+from purchase_catalog import ensure_supply, publish_prices, resolve_material, resolve_supplier
 from requirement_service import EPSILON, RequirementService
 
 
@@ -81,29 +85,38 @@ class PurchasingService:
             raise ValueError("采购单至少需要一条物料")
         now = inventory_now()
         with self.db.transaction() as conn:
+            request_key = str(payload.get("request_key") or "").strip() or None
+            request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            if request_key:
+                previous = conn.execute("SELECT id,request_hash FROM purchase_orders WHERE created_by=? AND request_key=?", (created_by, request_key)).fetchone()
+                if previous:
+                    if previous["request_hash"] != request_hash:
+                        raise ValueError("该保存请求已处理，内容已变更，请重新发起保存")
+                    return self.get_order(previous["id"])
+            supplier_record = resolve_supplier(conn, payload, now)
             next_id = int(conn.execute("SELECT COALESCE(MAX(id), 0)+1 AS id FROM purchase_orders").fetchone()["id"])
             order_no = f"CG{now[:10].replace('-', '')}{next_id:04d}"
             total = 0.0
             cursor = conn.execute(
                 """INSERT INTO purchase_orders(
                        order_no, supplier, expected_date, status, total_amount,
-                       remark, created_by, created_at, updated_at
-                   ) VALUES (?, ?, ?, '草稿', 0, ?, ?, ?, ?)""",
-                (order_no, supplier, str(payload.get("expected_date") or ""), str(payload.get("remark") or ""), created_by, now, now),
+                       remark, created_by, created_at, updated_at, supplier_id, request_key, request_hash
+                   ) VALUES (?, ?, ?, '草稿', 0, ?, ?, ?, ?, ?, ?, ?)""",
+                (order_no, supplier, str(payload.get("expected_date") or ""), str(payload.get("remark") or ""), created_by, now, now, supplier_record["id"], request_key, request_hash),
             )
             order_id = int(cursor.lastrowid)
             for sequence, item in enumerate(items, start=1):
-                material = conn.execute(
-                    "SELECT * FROM inventory_materials WHERE id=? AND is_active=1",
-                    (int(item["material_id"]),),
-                ).fetchone()
-                if not material:
-                    raise LookupError("采购物料不存在或已停用")
+                material = resolve_material(conn, item, now)
+                ensure_supply(conn, supplier_record, material, now)
                 quantity = float(item.get("quantity") or 0)
                 unit = str(item.get("unit") or "").strip()
                 unit_price = float(item.get("unit_price") or 0)
-                if quantity <= EPSILON:
+                if not math.isfinite(quantity) or quantity <= EPSILON:
                     raise ValueError("采购数量必须大于零")
+                if not math.isfinite(unit_price) or unit_price < 0:
+                    raise ValueError("采购单价必须为非负有限数值")
+                if not math.isfinite(total + quantity * unit_price):
+                    raise ValueError("采购金额超出有效范围")
                 if unit != str(material["unit"]):
                     raise ValueError(f"{material['name']} 的采购单位必须为 {material['unit']}")
                 allocations = list(item.get("allocations") or [])
@@ -169,6 +182,7 @@ class PurchasingService:
                 if float(allocation["quantity"] or 0) - float(requirement_item["shortage_quantity"] or 0) > EPSILON:
                     raise RuntimeError(f"{requirement_item['material_name']} 的分配数量超过当前缺口，请刷新后重新制单")
             affected_materials: set[int] = set()
+            publish_prices(conn, order, confirmed_by, now)
             for allocation in allocations:
                 conn.execute(
                     """UPDATE material_requirement_items

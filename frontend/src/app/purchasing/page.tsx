@@ -1,8 +1,11 @@
 "use client";
 
-import { ClipboardList, PackageCheck, RefreshCw, ShoppingCart, Truck } from "lucide-react";
+import { ClipboardList, PackageCheck, Plus, RefreshCw, ShoppingCart, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import PurchasingCenter from "@/components/inventory/PurchasingCenter";
+import PurchaseOrderDialog from "@/components/inventory/PurchaseOrderDialog";
+import { useAuth } from "@/hooks/useAuth";
+import { hasBusinessPermission } from "@/lib/managementAccess";
 import SupplyRequirements from "@/components/inventory/SupplyRequirements";
 import InlineError from "@/components/workspace/InlineError";
 import MetricStrip from "@/components/workspace/MetricStrip";
@@ -20,6 +23,10 @@ type PurchasingSummary = {
 const EMPTY_SUMMARY: PurchasingSummary = { shortageCount: 0, draftCount: 0, transitCount: 0, pendingInspectionCount: 0 };
 
 export default function PurchasingPage() {
+  const { user } = useAuth();
+  const canPurchase = hasBusinessPermission(user, "production.purchase");
+  const [creating, setCreating] = useState(false);
+  const [ordersVersion, setOrdersVersion] = useState(0);
   const [tab, setTab] = useState<"requirements" | "orders">("requirements");
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
   const [summary, setSummary] = useState<PurchasingSummary>(EMPTY_SUMMARY);
@@ -60,7 +67,7 @@ export default function PurchasingPage() {
       title="采购管理"
       description="统一处理生产缺料、合并采购、供应商到货和来料待检，所有进度由采购与收货事件自动汇总。"
       context={<><ShoppingCart size={14} />经营管理 / 供应协同</>}
-      actions={<button type="button" className="ui-button ui-button--secondary" disabled={refreshing} onClick={() => void loadSummary()}><RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />刷新指标</button>}
+      actions={<><button type="button" className="ui-button ui-button--secondary" disabled={refreshing} onClick={() => void loadSummary()}><RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />刷新指标</button>{canPurchase && <button type="button" className="ui-button ui-button--primary" onClick={() => setCreating(true)}><Plus size={15} />新建采购单</button>}</>}
     />
     <MetricStrip items={[
       { key: "shortage", label: "待采购缺口", value: summary.shortageCount, detail: "尚未被库存或采购覆盖", icon: <ClipboardList size={16} />, tone: summary.shortageCount ? "red" : "green" },
@@ -71,7 +78,10 @@ export default function PurchasingPage() {
     {summaryError && <InlineError title="采购指标暂不可用" message={summaryError} onRetry={() => void loadSummary()} />}
     {notice && (notice.error ? <InlineError message={notice.message} onDismiss={() => setNotice(null)} /> : <button type="button" onClick={() => setNotice(null)} className="workspace-success">{notice.message}</button>)}
     <WorkspaceTabs items={[{ key: "requirements", label: "采购需求池" }, { key: "orders", label: "采购订单与到货" }] as const} value={tab} onChange={setTab} ariaLabel="采购管理视图" />
-    {tab === "requirements" ? <SupplyRequirements notify={notify} /> : <PurchasingCenter notify={notify} />}
+    {tab === "requirements" ? <SupplyRequirements notify={notify} /> : <PurchasingCenter key={ordersVersion} notify={notify} />}
+    {creating && <PurchaseOrderDialog onClose={() => setCreating(false)} onCreated={message => {
+      setCreating(false); setOrdersVersion(value => value + 1); setTab("orders"); notify(message);
+    }} />}
   </main></div>;
 }
 

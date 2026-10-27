@@ -13,15 +13,15 @@
 - Preserve units, conversion and tax metadata; exact match deduplication only.
 
 ## Task 1: Backend
-- [ ] Add failing tests in backend/test_purchase_catalog.py for reuse, ambiguity, rollback, price history, conversion, retry and legacy behavior.
-- [ ] Add supplier identity/request key migration in inventory_database.py and optional input fields in inventory_models.py.
-- [ ] Implement backend/purchase_catalog.py and integrate create/confirm in purchasing_service.py.
-- [ ] Run focused tests and existing purchasing/security regressions.
+- [x] Add failing tests in backend/test_purchase_catalog.py for reuse, ambiguity, rollback, price history, conversion, retry and legacy behavior.
+- [x] Add supplier identity/request key migration in inventory_database.py and optional input fields in inventory_models.py.
+- [x] Implement backend/purchase_catalog.py and integrate create/confirm in purchasing_service.py.
+- [x] Run focused tests and existing purchasing/security regressions.
 
 ## Task 2: Interface
-- [ ] Extract PurchaseOrderDialog.tsx with searchable free supplier/material input, specs, units and editable suggested price.
-- [ ] Add top-right action in purchasing/page.tsx and remove old manual dialog from PurchasingCenter.tsx; preserve demand merge.
-- [ ] Extend inventoryApi.ts request types; verify TypeScript, lint and browser desktop/mobile flows.
+- [x] Extract PurchaseOrderDialog.tsx with searchable free supplier/material input, specs, units and editable suggested price.
+- [x] Add top-right action in purchasing/page.tsx and remove old manual dialog from PurchasingCenter.tsx; preserve demand merge.
+- [x] Extend inventoryApi.ts request types; verify TypeScript, lint and browser desktop/mobile flows.
 
 ## Task 3: Delivery
 - [ ] Record verification, review scoped diff, commit and push the approved branch.

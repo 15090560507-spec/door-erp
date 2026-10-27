@@ -158,16 +158,20 @@ class PurchaseAllocationInput(BaseModel):
 
 
 class PurchaseOrderItemInput(BaseModel):
-    material_id: int
+    material_id: Optional[int] = None
+    material_name: str = Field(default="", max_length=200)
+    specification: str = Field(default="", max_length=300)
     quantity: float = Field(gt=0)
     unit: str
     unit_price: float = Field(default=0, ge=0)
     remark: str = ""
-    allocations: List[PurchaseAllocationInput]
+    allocations: List[PurchaseAllocationInput] = Field(default_factory=list)
 
 
 class PurchaseOrderCreate(BaseModel):
     supplier: str
+    supplier_id: Optional[int] = None
+    request_key: Optional[str] = Field(default=None, max_length=100)
     expected_date: str = ""
     remark: str = ""
     items: List[PurchaseOrderItemInput]
