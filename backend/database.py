@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import threading
 from datetime import datetime
+from functools import wraps
 from typing import Dict, List, Optional
 
 from config import (
@@ -317,10 +318,24 @@ class ImageStore:
 
 
 # ===================== 用户权限管理 =====================
+def _user_write_locked(method):
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self._permission_lock:
+            return method(self, *args, **kwargs)
+    return locked
+
+
 class UserDatabaseManager:
+    _file_locks = {}
+    _file_locks_guard = threading.Lock()
+
     def __init__(self, file_path: str = USERS_DB_FILE, backup_dir: str = USERS_BACKUP_DIR):
         self.file_path = file_path
         self.backup_dir = backup_dir
+        with self._file_locks_guard:
+            key = os.path.normcase(os.path.realpath(file_path))
+            self._permission_lock = self._file_locks.setdefault(key, threading.RLock())
         os.makedirs(backup_dir, exist_ok=True)
         if not os.path.exists(self.file_path):
             default_users = {
@@ -370,6 +385,7 @@ class UserDatabaseManager:
                 os.unlink(tmp)
             raise
 
+    @_user_write_locked
     def _startup_ensure_and_migrate(self):
         """启动时：确保 admin 存在 + 迁移所有明文密码 + 环境变量密码覆盖"""
         try:
@@ -414,6 +430,7 @@ class UserDatabaseManager:
         except Exception as e:
             print(f"[UserDB] 启动迁移/初始化失败 ({type(e).__name__}): {e}")
 
+    @_user_write_locked
     def authenticate(self, uid: str, pwd: str) -> Optional[Dict]:
         """验证用户登录。支持哈希密码，并自动升级遗留的明文记录"""
         users = self.load_all_users()
@@ -435,6 +452,7 @@ class UserDatabaseManager:
         user_info["uid"] = uid
         return user_info
 
+    @_user_write_locked
     def add_or_update_user(self, uid: str, pwd: str, role: str, name: str, permissions: Optional[List[str]] = None):
         if uid == "admin":
             raise ValueError("内置 admin 账号不能通过普通创建接口覆盖")
@@ -447,6 +465,7 @@ class UserDatabaseManager:
             "总工": "图纸终审"
         }
         users[uid] = {
+            **users.get(uid, {}),
             "password": hash_password(pwd),
             "role": role,
             "name": name,
@@ -455,6 +474,39 @@ class UserDatabaseManager:
         }
         self.save(users)
 
+    def update_management_permissions(self, uid: str, permissions: List[str], operator: Dict, reason: str):
+        from business_permissions import ALL_BUSINESS_PERMISSIONS, business_permissions, is_business_admin
+        unknown = set(permissions) - ALL_BUSINESS_PERMISSIONS
+        if unknown:
+            raise ValueError("未知权限：" + ", ".join(sorted(unknown)))
+        if not reason.strip():
+            raise ValueError("请填写授权调整原因")
+        with self._permission_lock:
+            users = self.load_all_users()
+            if uid not in users:
+                raise LookupError("账号不存在")
+            target = {**users[uid], "uid": uid}
+            if is_business_admin(target):
+                raise ValueError("超级管理员和销售小A固定保留经营管理全权限")
+            before = sorted(business_permissions(target))
+            users[uid]["management_permissions"] = sorted(set(permissions))
+            after = sorted(business_permissions({**users[uid], "uid": uid}))
+            users[uid].setdefault("permission_audit", []).append({
+                "operator_uid": str(operator.get("uid") or ""), "before": before, "after": after,
+                "reason": reason.strip(), "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            })
+            self._atomic_save(users)
+            return users[uid]
+
+    @_user_write_locked
+    def reset_password(self, uid: str, password: str):
+        users = self.load_all_users()
+        if uid not in users:
+            raise LookupError('用户不存在')
+        users[uid]['password'] = hash_password(password)
+        self._atomic_save(users)
+
+    @_user_write_locked
     def delete_user(self, uid: str):
         users = self.load_all_users()
         if uid in users and uid != "admin":

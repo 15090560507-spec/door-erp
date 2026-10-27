@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useModule } from "@/hooks/useAuth";
+import BusinessPermissionsPanel from "@/components/BusinessPermissionsPanel";
 import {
   getTasks, getTask, createTask, updateTask, deleteTask, copyTask, getTaskOverview,
   generateCad, generateCadPreview, downloadCadBlob, downloadFileFromUrl,
@@ -1238,7 +1239,7 @@ export default function DashboardPage() {
               }}
             />
           )}
-          {activeModule === "任务总览" && <AdminSettingsPanel />}
+          {activeModule === "任务总览" && <><BusinessPermissionsPanel /><AdminSettingsPanel /></>}
 
           {/* 录入模块 */}
           {activeModule === "图纸信息录入" && (

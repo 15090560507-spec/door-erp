@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 
 from auth import get_current_user
+from management_access import require_management_access
 from inventory_database import InventoryDatabase
 from inventory_models import (
     AdjustmentCreate,
@@ -43,7 +44,7 @@ from purchasing_service import PurchasingService
 from requirement_service import RequirementService
 
 
-router = APIRouter(prefix="/api/inventory", tags=["inventory"])
+router = APIRouter(prefix="/api/inventory", tags=["inventory"], dependencies=[Depends(require_management_access)])
 inventory_db = InventoryDatabase()
 inventory_service = InventoryService(inventory_db)
 requirement_service = RequirementService(inventory_db)

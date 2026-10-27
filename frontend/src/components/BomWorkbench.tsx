@@ -26,6 +26,8 @@ import StatusChip from "@/components/workspace/StatusChip";
 import ViewportDialog from "@/components/workspace/ViewportDialog";
 import WorkspaceHeader from "@/components/workspace/WorkspaceHeader";
 import { apiErrorMessage } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { hasBusinessPermission } from "@/lib/managementAccess";
 import {
   createDoorBomVersion,
   generateDoorBom,
@@ -118,6 +120,8 @@ type BomWorkbenchProps = {
 };
 
 export default function BomWorkbench({ embedded = false, initialDoorId, onDoorChange, onChanged }: BomWorkbenchProps = {}) {
+  const { user } = useAuth();
+  const canEdit = hasBusinessPermission(user, "production.technical");
   const [items, setItems] = useState<BomWorkbenchItem[]>([]);
   const [summary, setSummary] = useState(emptySummary);
   const [query, setQuery] = useState("");
@@ -220,10 +224,10 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
     return Array.from(groups.values());
   }, [items]);
 
-  const editable = detail?.status === "草稿";
+  const editable = canEdit && detail?.status === "草稿";
   const blockers = detail?.publish_blockers || [];
   const unresolved = blockers.length;
-  const canPublish = Boolean(detail?.rows.length) && blockers.length === 0 && !draftDirty;
+  const canPublish = canEdit && Boolean(detail?.rows.length) && blockers.length === 0 && !draftDirty;
   const rowsById = useMemo(() => new Map((detail?.rows || []).map((row) => [row.id, row])), [detail?.rows]);
   const displayGroups = useMemo(() => {
     if (!detail) return [];
@@ -385,7 +389,7 @@ export default function BomWorkbench({ embedded = false, initialDoorId, onDoorCh
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => void runAction(() => generateDoorBom(detail.door_unit_id), "BOM 生成失败")}><Play size={15} />{detail.rows.length ? "重新生成" : "生成 BOM"}</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={() => setAddOpen(true)}><Plus size={15} />新增项目</button>
                   <button type="button" className="ui-button ui-button--secondary" disabled={busy || !editable} onClick={saveDraft}><Save size={15} />保存草稿</button>
-                  {detail.status === "已确认" ? <button type="button" className="ui-button ui-button--primary" disabled={busy} onClick={() => setVersionOpen(true)}><FileClock size={15} />新建版本</button> : <button type="button" className="ui-button ui-button--primary" disabled={busy || !canPublish} onClick={() => setPublishOpen(true)}><Send size={15} />发布 BOM</button>}
+                  {detail.status === "已确认" ? <button type="button" className="ui-button ui-button--primary" disabled={busy || !canEdit} onClick={() => setVersionOpen(true)}><FileClock size={15} />新建版本</button> : <button type="button" className="ui-button ui-button--primary" disabled={busy || !canPublish} onClick={() => setPublishOpen(true)}><Send size={15} />发布 BOM</button>}
                 </div>
               </div>
               {blockers.length > 0 && <div className="bom-readiness-summary"><AlertTriangle size={15} /><strong>还有 {blockers.length} 项发布前问题</strong><div>{blockers.slice(0, 6).map((blocker, index) => <button type="button" key={`${blocker.id || "bom"}-${blocker.field}-${index}`} onClick={() => focusBlocker(blocker)}>{blocker.message}</button>)}</div></div>}

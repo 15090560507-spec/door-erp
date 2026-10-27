@@ -99,13 +99,14 @@ class SalesOrderReceiptTest(unittest.TestCase):
         self.assertIn("未收款", response.json()["detail"])
 
         response = self.client.post(f"/api/fulfillment/door-units/{door_id}/shipments", json={
-            "required_payment": 0, "carrier": "自送", "authorization_reason": "客户约定月末支付", "authorized_by": "销售小A",
+            "required_payment": 0, "carrier": "自送", "authorize_release": True, "authorization_reason": "客户约定月末支付", "authorized_by": "任意文字不作为身份",
         })
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIn("欠款", response.json()["message"])
         self.assertEqual(self.sales_db.payment_summary(order["id"])["unpaid_amount"], 3000)
         shipment = response.json()["door_unit"]["shipments"][0]
         self.assertEqual(shipment["authorized"], 1)
+        self.assertEqual(shipment["authorized_by"], "A")
         self.assertEqual(shipment["required_payment"], 3000)
 
 

@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import get_current_user
+from management_access import require_management_access
 from bom_generation_service import BomGenerationService
 from door_cad.services.fulfillment_adapter import adapt_fulfillment_frame
 from fulfillment_database import FulfillmentDatabase, build_fulfillment_workflow
@@ -34,7 +35,7 @@ from fulfillment_models import (
 )
 
 
-router = APIRouter(prefix="/api/fulfillment", tags=["fulfillment"])
+router = APIRouter(prefix="/api/fulfillment", tags=["fulfillment"], dependencies=[Depends(require_management_access)])
 fulfillment_db = FulfillmentDatabase()
 task_repository: Any = None
 user_repository: Any = None
@@ -150,6 +151,8 @@ def pending_release_tasks() -> List[Dict[str, Any]]:
 
 
 def _translate_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, PermissionError):
+        return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, LookupError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, sqlite3.IntegrityError):

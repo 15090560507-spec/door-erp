@@ -88,18 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const verified = await apiVerify();
 
         if (!cancelled && verified) {
-          const cached = S.getUser();
-          if (cached) {
-            setUser({ ...cached, permissions: verified.permissions || cached.permissions || [] });
-          } else {
-            setUser({
+          const authoritativeUser = {
               uid: verified.uid,
               role: verified.role,
               name: verified.name,
               default_module: verified.default_module,
               permissions: verified.permissions || [],
-            });
-          }
+          };
+          setUser(authoritativeUser);
+          S.setUser(authoritativeUser);
           const m = S.getModule();
           if (m === "汇总看板" || m === "后台管理") {
             setModule("任务总览");
@@ -125,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth();
     return () => { cancelled = true; };
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router]);
 
   const loginFn = useCallback(async (uid: string, pwd: string): Promise<boolean> => {
     try {

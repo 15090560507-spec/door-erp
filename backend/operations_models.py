@@ -83,6 +83,8 @@ class PayrollEntryUpdate(BaseModel):
 
 class PayrollStatusUpdate(BaseModel):
     status: str
+    reason: str = Field(default='', max_length=1000)
+    expected_status: Optional[str] = None
 
 
 class PieceworkAllocationInput(BaseModel):

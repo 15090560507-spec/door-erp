@@ -7,7 +7,7 @@ export interface WorkforceEmployee {
   capabilities: string[];
   work_center: string;
   wage_type: string;
-  base_salary: number;
+  base_salary?: number;
   hire_date: string;
   leave_date: string;
   is_active: boolean;
@@ -105,6 +105,7 @@ export interface PayrollPeriod {
   approved_by?: string;
   approved_at?: string;
   entries?: PayrollEntry[];
+  audit_events?: Array<{ id: number; action: string; detail: string; operator_uid: string; operator_name: string; created_at: string }>;
 }
 
 export interface PieceworkAllocation {

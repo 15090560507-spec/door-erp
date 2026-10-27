@@ -10,6 +10,7 @@ from fastapi import Cookie, Depends, Header, HTTPException
 
 from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_HOURS
 from database import UserDatabaseManager
+from business_permissions import business_permissions, is_business_admin
 
 
 user_db = UserDatabaseManager()
@@ -26,16 +27,16 @@ PRODUCTION_PERMISSIONS = {
 
 
 def user_permissions(user_info: Dict) -> set[str]:
-    # 当前阶段生产管理向所有已登录用户开放，后续再按岗位细分权限。
-    return set(PRODUCTION_PERMISSIONS)
+    return business_permissions(user_info)
 
 def public_user_info(user_info: Dict, uid: str | None = None) -> Dict:
     """Return user data that is safe to send to the browser."""
     data = dict(user_info or {})
     data.pop("password", None)
-    data["permissions"] = sorted(user_permissions(data))
+    data.pop("permission_audit", None)
     if uid is not None:
         data["uid"] = uid
+    data["permissions"] = sorted(user_permissions(data))
     return data
 
 
@@ -137,3 +138,9 @@ def require_uids(*uids: str):
 
 
 require_super_admin = require_roles(SUPER_ADMIN_ROLE)
+
+
+def require_business_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
+    if not is_business_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅超级管理员或销售小A可配置经营权限")
+    return current_user

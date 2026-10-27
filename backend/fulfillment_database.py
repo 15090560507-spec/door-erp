@@ -19,6 +19,7 @@ from production_inventory import semi_finished_balances
 from requirement_service import RequirementService
 from schema_version import record_schema_version, schema_is_current
 from work_package_service import WorkPackageService
+from business_permissions import ensure_business_permission
 
 
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
@@ -2143,6 +2144,14 @@ class FulfillmentDatabase:
                 raise RuntimeError("该工作包属于旧技术版本，已锁定不可继续执行")
             current = str(row["status"])
             target = payload.status
+            if target == '已取消':
+                ensure_business_permission(user, 'production.manager')
+                if not str(payload.remark or '').strip():
+                    raise ValueError('取消工作包必须填写原因')
+            elif target == '已完成' and bool(row['inspection_required']):
+                ensure_business_permission(user, 'production.quality')
+            else:
+                ensure_business_permission(user, 'production.worker', 'production.schedule', 'production.manager')
             if target not in WORK_STATUSES:
                 raise ValueError("无效的工作包状态")
             if target != current and target not in WORK_TRANSITIONS.get(current, set()):
@@ -2191,6 +2200,10 @@ class FulfillmentDatabase:
         }
         if payload.action not in actions:
             raise ValueError("无效的批量动作")
+        if payload.action == '跳过':
+            ensure_business_permission(user, 'production.manager')
+        elif payload.action != '确认完成':
+            ensure_business_permission(user, 'production.worker', 'production.schedule', 'production.manager')
         if payload.action == "跳过" and not str(payload.remark or "").strip():
             raise ValueError("跳过工作包必须填写原因")
         now = fulfillment_now()
@@ -2215,6 +2228,11 @@ class FulfillmentDatabase:
             for row in rows:
                 current = str(row["status"])
                 target = actions[payload.action]
+                if payload.action == '确认完成':
+                    if bool(row['inspection_required']):
+                        ensure_business_permission(user, 'production.quality')
+                    else:
+                        ensure_business_permission(user, 'production.worker', 'production.schedule', 'production.manager')
                 if current in {"已完成", "已取消"}:
                     continue
                 if payload.action == "开始" and current not in {"待排单", "已排单", "暂停", "异常", "返工"}:
@@ -2410,6 +2428,7 @@ class FulfillmentDatabase:
         return self.get_door_unit(door_id) or {}
 
     def update_supply(self, supply_id: int, payload: Any, user: Dict[str, Any]) -> Dict[str, Any]:
+        ensure_business_permission(user, 'production.warehouse' if payload.status in {'到货待检', '已入库', '已发料'} else 'production.purchase')
         allowed = {"待处理", "办理中", "到货待检", "已入库", "已发料", "暂停", "已取消"}
         if payload.status not in allowed:
             raise ValueError("无效的供应事项状态")
@@ -2688,14 +2707,22 @@ class FulfillmentDatabase:
                 raise LookupError("门樘生产单不存在")
             if door["status"] not in {"已入库待发货", "待财务放行", "待出库"}:
                 raise RuntimeError("门樘尚未完成成品入库，不能发货")
-            authorized = bool(payload.authorization_reason.strip() and payload.authorized_by.strip())
+            requested = bool(payload.authorize_release or payload.authorization_reason.strip() or payload.authorized_by.strip())
+            if requested:
+                ensure_business_permission(user, 'finance.release')
+                if not payload.authorize_release or not payload.authorization_reason.strip():
+                    raise ValueError('欠款放行须明确确认并填写审批原因')
+                if not str(user.get('uid') or '').strip():
+                    raise PermissionError('无法确认审批账号，请重新登录')
+            authorized = bool(payload.authorize_release and requested)
+            authorized_by = str(user.get('uid') or '') if authorized else ''
             if sales_finance is not None:
                 paid = float(sales_finance.get("paid_amount") or 0)
                 unpaid = float(sales_finance.get("unpaid_amount") or 0)
                 required_payment = float(sales_finance.get("total_amount") or 0)
                 available = paid
                 if unpaid > 0.005 and not authorized:
-                    raise RuntimeError(f"订单尚有未收款 {unpaid:.2f} 元；请先在订单确认登记收款，或填写授权原因和授权人放行")
+                    raise RuntimeError(f"订单尚有未收款 {unpaid:.2f} 元；请先登记收款，或由有欠款放行权限的账号登录确认并填写原因")
             else:
                 paid = float(conn.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM fulfillment_payments WHERE order_id=?", (door["order_id"],)).fetchone()["total"] or 0)
                 allocated = float(conn.execute(
@@ -2711,7 +2738,7 @@ class FulfillmentDatabase:
             cursor = conn.execute(
                 """INSERT INTO fulfillment_shipments(door_unit_id, required_payment, paid_amount, authorized, authorization_reason, authorized_by, carrier, vehicle_no, contact, remark, created_by, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (door_id, required_payment, available, int(authorized), payload.authorization_reason, payload.authorized_by, payload.carrier, payload.vehicle_no, payload.contact, payload.remark, str(user.get("uid") or ""), now),
+                (door_id, required_payment, available, int(authorized), payload.authorization_reason.strip() if authorized else '', authorized_by, payload.carrier, payload.vehicle_no, payload.contact, payload.remark, str(user.get("uid") or ""), now),
             )
             conn.execute(
                 """INSERT INTO fulfillment_inventory_movements(door_unit_id, movement_type, item_name, warehouse, quantity, unit, remark, operator_uid, created_at)
@@ -2720,6 +2747,9 @@ class FulfillmentDatabase:
             )
             conn.execute("UPDATE fulfillment_door_units SET status='运输中', updated_at=? WHERE id=?", (now, door_id))
             detail = f"{payload.carrier or '自送'} {payload.vehicle_no}" + ("；授权放行" if authorized else "")
+            if authorized:
+                debt = unpaid if sales_finance is not None else max(0.0, required_payment - available)
+                detail += f"；审批账号 {authorized_by}；应收 {required_payment:.2f} 元，实收/可用 {available:.2f} 元，欠款 {debt:.2f} 元；原因 {payload.authorization_reason.strip()}"
             self.add_event(conn, order_id=int(door["order_id"]), door_unit_id=door_id, entity_type="shipment", entity_id=int(cursor.lastrowid), action="发货出库", detail=detail, user=user)
         return self.get_door_unit(door_id) or {}
 

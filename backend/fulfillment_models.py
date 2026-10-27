@@ -177,6 +177,7 @@ class PaymentCreate(BaseModel):
 
 
 class ShipmentCreate(BaseModel):
+    authorize_release: bool = False
     required_payment: float = Field(default=0, ge=0)
     carrier: str = ""
     vehicle_no: str = ""

@@ -9,6 +9,8 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth import get_current_user
+from management_access import require_management_access
+from business_permissions import business_permissions, ensure_business_permission
 from fulfillment_database import fulfillment_now, json_dumps
 from fulfillment_routes import fulfillment_db
 from operations_models import (
@@ -23,10 +25,12 @@ from operations_models import (
 )
 
 
-router = APIRouter(prefix="/api/operations", tags=["operations"])
+router = APIRouter(prefix="/api/operations", tags=["operations"], dependencies=[Depends(require_management_access)])
 
 
 def _fail(exc: Exception) -> HTTPException:
+    if isinstance(exc, PermissionError):
+        return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, LookupError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, (ValueError, sqlite3.IntegrityError)):
@@ -127,6 +131,9 @@ def _employee_payload(row: Dict) -> Dict:
 @router.get("/employees")
 def list_employees(current_user: Dict = Depends(get_current_user)):
     rows = fulfillment_db.fetch_all("SELECT * FROM workforce_employees ORDER BY is_active DESC, employee_no")
+    if not {'personnel.write', 'payroll.read'}.intersection(business_permissions(current_user)):
+        for row in rows:
+            row.pop('base_salary', None)
     return {"employees": [_employee_payload(row) for row in rows]}
 
 
@@ -326,7 +333,10 @@ def _payroll_payload(period_id: int) -> Dict:
            WHERE p.period_id=? ORDER BY e.employee_no""",
         (period_id,),
     )
-    return {**period, "entries": entries}
+    audit = fulfillment_db.fetch_all(
+        "SELECT * FROM fulfillment_events WHERE entity_type='payroll' AND entity_id=? ORDER BY id DESC", (period_id,),
+    )
+    return {**period, "entries": entries, "audit_events": audit}
 
 
 @router.get("/payroll")
@@ -348,8 +358,8 @@ def calculate_payroll(req: PayrollCalculateInput, current_user: Dict = Depends(g
     try:
         with fulfillment_db.transaction() as conn:
             period = conn.execute("SELECT * FROM payroll_periods WHERE month=?", (req.month,)).fetchone()
-            if period and (period["status"] == "已锁定" or (period["status"] == "已审批" and conn.execute("SELECT 1 FROM door_operation_fees WHERE status='已确认' AND completed_at LIKE ? LIMIT 1", (f"{req.month}%",)).fetchone())):
-                raise RuntimeError("该工资期间已锁定，不能重新计算")
+            if period and period['status'] != '草稿':
+                raise RuntimeError('只有草稿工资可以重新计算，请先按审批流程退回或解锁')
             if not period:
                 cursor = conn.execute(
                     "INSERT INTO payroll_periods(month, status, created_by, created_at, updated_at) VALUES (?, '草稿', ?, ?, ?)",
@@ -391,6 +401,8 @@ def calculate_payroll(req: PayrollCalculateInput, current_user: Dict = Depends(g
                      str(current["remark"] if current else ""), now),
                 )
             conn.execute("UPDATE payroll_periods SET updated_at=? WHERE id=?", (now, period_id))
+            fulfillment_db.add_event(conn, order_id=None, door_unit_id=None, entity_type='payroll', entity_id=period_id,
+                action='汇总工资', detail=json_dumps({'month': req.month, 'employee_count': len(employees)}), user=current_user)
     except Exception as exc:
         raise _fail(exc) from exc
     return {"period": _payroll_payload(period_id), "message": "月度工资已计算"}
@@ -404,8 +416,8 @@ def update_payroll_entry(entry_id: int, req: PayrollEntryUpdate, current_user: D
             row = conn.execute("SELECT p.*, period.status AS period_status FROM payroll_entries p JOIN payroll_periods period ON period.id=p.period_id WHERE p.id=?", (entry_id,)).fetchone()
             if not row:
                 raise LookupError("工资明细不存在")
-            if row["period_status"] == "已锁定":
-                raise RuntimeError("工资期间已锁定，不能修改")
+            if row['period_status'] != '草稿':
+                raise RuntimeError('待审核、已审批或已锁定工资不可直接修改，请先按审批流程退回或解锁')
             payable = float(row["base_salary"] or 0) + float(row["piecework_amount"] or 0) + req.overtime_amount + req.allowance + req.bonus - req.deduction - req.social_insurance - req.tax - req.other_withholding
             conn.execute(
                 """UPDATE payroll_entries SET overtime_amount=?, allowance=?, bonus=?, deduction=?,
@@ -415,6 +427,10 @@ def update_payroll_entry(entry_id: int, req: PayrollEntryUpdate, current_user: D
                  req.social_insurance, req.tax, req.other_withholding, payable, req.remark, now, entry_id),
             )
             period_id = int(row["period_id"])
+            fulfillment_db.add_event(conn, order_id=None, door_unit_id=None, entity_type='payroll', entity_id=period_id,
+                action='调整工资草稿', detail=json_dumps({'entry_id': entry_id,
+                    'before': {key: row[key] for key in set(req.model_dump()) | {'payable_amount'}},
+                    'after': {**req.model_dump(), 'payable_amount': payable}}), user=current_user)
     except Exception as exc:
         raise _fail(exc) from exc
     return {"period": _payroll_payload(period_id), "message": "工资调整已保存"}
@@ -422,20 +438,33 @@ def update_payroll_entry(entry_id: int, req: PayrollEntryUpdate, current_user: D
 
 @router.put("/payroll/{period_id}/status")
 def update_payroll_status(period_id: int, req: PayrollStatusUpdate, current_user: Dict = Depends(get_current_user)):
-    transitions = {"草稿": {"待审核"}, "待审核": {"草稿", "已审批"}, "已审批": {"已锁定"}, "已锁定": {"草稿"}}
+    transitions = {"草稿": {"待审核"}, "待审核": {"草稿", "已审批"}, "已审批": {"已锁定", "草稿"}, "已锁定": {"草稿"}}
     now = fulfillment_now()
     try:
         with fulfillment_db.transaction() as conn:
             row = conn.execute("SELECT * FROM payroll_periods WHERE id=?", (period_id,)).fetchone()
             if not row:
                 raise LookupError("工资期间不存在")
+            if req.expected_status is not None and req.expected_status != row['status']:
+                raise RuntimeError('工资状态已被其他人修改，请刷新后重试')
             if req.status not in transitions.get(str(row["status"]), set()):
                 raise RuntimeError(f"工资期间不能从“{row['status']}”直接变为“{req.status}”")
+            permission = 'payroll.write' if row['status'] == '草稿' else ('payroll.unlock' if req.status == '草稿' and row['status'] in {'已审批', '已锁定'} else 'payroll.approve')
+            ensure_business_permission(current_user, permission)
+            if req.status == '草稿' and not req.reason.strip():
+                raise ValueError('退回、撤销审批或解锁工资必须填写原因')
+            approved_by = str(current_user.get('uid') or '') if req.status == '已审批' else row['approved_by']
+            approved_at = now if req.status == '已审批' else row['approved_at']
+            if req.status == '草稿':
+                approved_by = ''
+                approved_at = ''
             conn.execute(
-                """UPDATE payroll_periods SET status=?, approved_by=CASE WHEN ?='已审批' THEN ? ELSE approved_by END,
-                       approved_at=CASE WHEN ?='已审批' THEN ? ELSE approved_at END, updated_at=? WHERE id=?""",
-                (req.status, req.status, str(current_user.get("uid") or ""), req.status, now, now, period_id),
+                'UPDATE payroll_periods SET status=?, approved_by=?, approved_at=?, updated_at=? WHERE id=?',
+                (req.status, approved_by, approved_at, now, period_id),
             )
+            fulfillment_db.add_event(conn, order_id=None, door_unit_id=None, entity_type='payroll', entity_id=period_id,
+                action='工资状态变更', detail=json_dumps({'from': row['status'], 'to': req.status,
+                    'reason': req.reason.strip(), 'previous_approved_by': row['approved_by'], 'previous_approved_at': row['approved_at']}), user=current_user)
     except Exception as exc:
         raise _fail(exc) from exc
     return {"period": _payroll_payload(period_id), "message": f"工资期间已更新为{req.status}"}

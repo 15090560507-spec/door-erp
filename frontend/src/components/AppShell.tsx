@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import { usePathname, useRouter } from "next/navigation";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/hooks/useAuth";
-import { canAccessManagement, isManagementPath } from "@/lib/managementAccess";
+import { canAccessManagementPath, isManagementPath } from "@/lib/managementAccess";
 
 const COLLAPSED_KEY = "door_sidebar_collapsed_v1";
 const COLLAPSED_EVENT = "door-sidebar-collapsed-change";
@@ -30,7 +30,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileState, setMobileState] = useState({ open: false, pathname });
   const mobileOpen = mobileState.open && mobileState.pathname === pathname;
   const managementPath = isManagementPath(pathname);
-  const managementBlocked = Boolean(user && managementPath && !canAccessManagement(user));
+  const managementBlocked = Boolean(user && managementPath && !canAccessManagementPath(user, pathname));
 
   useEffect(() => {
     if (!managementPath || loading) return;

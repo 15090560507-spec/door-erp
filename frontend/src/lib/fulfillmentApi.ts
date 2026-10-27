@@ -147,7 +147,7 @@ export async function recordFulfillmentPayment(doorId: number, payload: { amount
   return data;
 }
 
-export async function createFulfillmentShipment(doorId: number, payload: { required_payment: number; carrier: string; vehicle_no: string; contact: string; authorization_reason: string; authorized_by: string; remark: string }) {
+export async function createFulfillmentShipment(doorId: number, payload: { required_payment: number; carrier: string; vehicle_no: string; contact: string; authorize_release: boolean; authorization_reason: string; remark: string }) {
   const { data } = await api.post<{ door_unit: DoorUnitDetail; message: string }>(`/fulfillment/door-units/${doorId}/shipments`, payload);
   return data;
 }

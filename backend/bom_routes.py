@@ -7,7 +7,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from auth import get_current_user, require_uids
+from auth import get_current_user
+from management_access import require_management_access
 from bom_generation_service import BomGenerationService
 from bom_readiness import automatic_verification_status, bom_blockers
 from bom_models import (
@@ -24,7 +25,7 @@ from fulfillment_models import ChangeCreate
 router = APIRouter(
     prefix="/api/bom",
     tags=["whole-order-bom"],
-    dependencies=[Depends(require_uids("A"))],
+    dependencies=[Depends(require_management_access)],
 )
 
 

@@ -99,7 +99,7 @@ export default function TopNav({ collapsed, mobileOpen, onCloseMobile, onOpenMob
   const [businessOpen, setBusinessOpen] = useState(false);
 
   const availableItems = useMemo(
-    () => MODULE_OPTIONS.filter((item) => canAccessManagement(user) || !MANAGEMENT_MODULES.includes(item.module)),
+    () => MODULE_OPTIONS.filter((item) => !MANAGEMENT_MODULES.includes(item.module) || canAccessManagement(user, item.module)),
     [user],
   );
   const drawingItems = availableItems.filter((item) => !MANAGEMENT_MODULES.includes(item.module));

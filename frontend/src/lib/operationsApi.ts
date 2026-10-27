@@ -78,7 +78,7 @@ export async function updatePayrollEntry(id: number, payload: Pick<PayrollEntry,
   return data;
 }
 
-export async function updatePayrollStatus(id: number, status: PayrollPeriod["status"]) {
-  const { data } = await api.put<{ period: PayrollPeriod; message: string }>(`/operations/payroll/${id}/status`, { status });
+export async function updatePayrollStatus(id: number, status: PayrollPeriod["status"], reason = "", expected_status?: string) {
+  const { data } = await api.put<{ period: PayrollPeriod; message: string }>(`/operations/payroll/${id}/status`, { status, reason, expected_status });
   return data;
 }

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 
 from auth import get_current_user
+from management_access import require_management_access
 from config import SALES_ORDER_FILES_DIR
 from quote_routes import quote_db
 from quote_quantities import quote_door_quantity
@@ -26,7 +27,7 @@ from sales_order_models import (
 )
 
 
-router = APIRouter(prefix="/api/sales-orders", tags=["sales-orders"])
+router = APIRouter(prefix="/api/sales-orders", tags=["sales-orders"], dependencies=[Depends(require_management_access)])
 sales_order_db = SalesOrderDatabase()
 task_repository = None
 fulfillment_provisioner: Any = None

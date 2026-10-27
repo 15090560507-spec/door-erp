@@ -82,6 +82,7 @@ from erpnext_bridge import sync_order_to_erpnext
 from door_cad.router import router as door_cad_router
 from bom_routes import router as bom_router
 from operations_routes import router as operations_router
+from business_access_routes import router as business_access_router
 
 # ===================== FastAPI 应用初始化 =====================
 app = FastAPI(
@@ -112,6 +113,7 @@ app.include_router(sales_order_router)
 app.include_router(door_cad_router)
 app.include_router(bom_router)
 app.include_router(operations_router)
+app.include_router(business_access_router)
 cleanup_legacy_layered_outputs()
 
 # ===================== 数据库实例 =====================
@@ -1244,11 +1246,10 @@ def delete_user(uid: str, current_user: Dict = Depends(require_super_admin)):
 @app.put("/api/users/{uid}/reset-password")
 def reset_password(uid: str, req: ResetPasswordRequest, current_user: Dict = Depends(require_super_admin)):
     """重置用户密码"""
-    users = user_db.load_all_users()
-    if uid not in users:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    users[uid]["password"] = hash_password(req.new_pwd)
-    user_db.save(users)
+    try:
+        user_db.reset_password(uid, req.new_pwd)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"success": True, "message": f"已重置 {uid} 的密码"}
 
 
