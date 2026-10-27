@@ -27,6 +27,8 @@ import NoticeDialog from "@/components/door-cad/NoticeDialog";
 import { localDateYmd } from "@/lib/dateTime";
 import { calculateDoorAreas } from "@/lib/doorAreas";
 import { DEFAULT_EXTRA_TRIM_FACTOR, editOuterQuoteRows, linkExtraTrimPrices, outerQuoteBasis } from "@/lib/quoteOuterPricing";
+import { useAuth } from "@/hooks/useAuth";
+import { isBusinessAdmin } from "@/lib/managementAccess";
 
 type QuoteFeedback = {
   tone: "success" | "error";
@@ -296,6 +298,8 @@ async function resolveAiAccessoryRows(accessories: string[]): Promise<{
 }
 
 export default function QuotePage() {
+  const { user } = useAuth();
+  const canConfigureAi = isBusinessAdmin(user);
   const taskQuoteRequestRef = useRef<Record<number, number>>({});
   // Form state
   const [customerName, setCustomerName] = useState("");
@@ -814,12 +818,12 @@ export default function QuotePage() {
           >
             配件库
           </button>
-          <button
+          {canConfigureAi && <button
             onClick={() => setAiConfigOpen(true)}
             className="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-white border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors"
           >
             AI 模型配置
-          </button>
+          </button>}
           <button
             onClick={() => setHistoryOpen(true)}
             className="px-3.5 py-1.5 text-[13px] font-medium rounded-lg bg-white border border-[#E5E5EA]/60 text-[#1C1C1E] hover:bg-[#F2F2F7] transition-colors"
@@ -1162,7 +1166,7 @@ export default function QuotePage() {
         </div>
       )}
       <AccessoryModal open={accessoryOpen} onClose={() => setAccessoryOpen(false)} />
-      <AiConfigModal open={aiConfigOpen} onClose={() => setAiConfigOpen(false)} />
+      {canConfigureAi && aiConfigOpen && <AiConfigModal open onClose={() => setAiConfigOpen(false)} />}
       <QuoteHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onLoad={handleLoadQuote} />
     </div>
   );

@@ -25,7 +25,7 @@ from quote_models import (
 from quote_database import AccessoryDatabaseManager, QuoteDatabaseManager, AiConfigManager
 from quote_excel import generate_excel
 from quote_template_renderer import render_quote_template_artifacts
-from auth import ENTRY_ROLES, get_current_user, require_roles, require_super_admin
+from auth import ENTRY_ROLES, get_current_user, require_roles, require_business_admin
 
 quote_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -658,7 +658,7 @@ def export_quote_pdf(quote_id: int, current_user: dict = Depends(get_current_use
 # ===================== AI 配置管理 =====================
 
 @quote_router.get("/api/ai-config")
-def get_ai_config(current_user: dict = Depends(require_super_admin)):
+def get_ai_config(current_user: dict = Depends(require_business_admin)):
     """获取 AI 识别配置"""
     config = ai_config_db.get()
     return {"config": _public_ai_config(config)}
@@ -758,7 +758,7 @@ async def analyze_drawing(file: UploadFile = File(...), current_user: dict = Dep
 
 
 @quote_router.post("/api/ai-config")
-def update_ai_config(data: AiConfigUpdate, current_user: dict = Depends(require_super_admin)):
+def update_ai_config(data: AiConfigUpdate, current_user: dict = Depends(require_business_admin)):
     """更新 AI 识别配置"""
     patch = data.model_dump()
     if not (patch.get("apiKey") or "").strip():

@@ -142,5 +142,5 @@ require_super_admin = require_roles(SUPER_ADMIN_ROLE)
 
 def require_business_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
     if not is_business_admin(current_user):
-        raise HTTPException(status_code=403, detail="仅超级管理员或销售小A可配置经营权限")
+        raise HTTPException(status_code=403, detail="仅超级管理员或销售小A可执行此管理操作")
     return current_user
