@@ -27,3 +27,25 @@
 - Deployment currently uses one backend worker. Startup marks interrupted jobs failed rather than automatically charging again. Multiple backend processes would require worker leases or an external queue before scaling.
 - New storage: `DATA_DIR/reference_patterns.db`, including source images, jobs and personal templates. Include this database in the existing consistent data-backup workflow. Template ownership is private; drawing-role access to task-linked source/job IDs follows the application's shared drawing access model.
 - Rebuild both backend and frontend; backend adds Shapely. Existing task data and built-in style defaults remain compatible. No production Next.js build or Tencent deployment was performed during local verification.
+
+## Tencent Cloud Update
+
+Implementation commit: `b65bfc7`. Run on the existing Ubuntu deployment; do not remove volumes or the data directory.
+
+```bash
+bash <<'EOF'
+set -euo pipefail
+cd ~/door-erp
+BRANCH=feat/semicircle-handles-and-quote-form-improvements
+[ "$(git branch --show-current)" = "$BRANCH" ] || {
+  echo "Branch mismatch; update stopped"
+  exit 1
+}
+git pull --ff-only origin "$BRANCH"
+git merge-base --is-ancestor b65bfc7 HEAD
+sudo docker compose build backend frontend
+sudo docker compose up -d --no-deps backend frontend
+sudo docker compose restart https-proxy
+sudo docker compose ps
+EOF
+```

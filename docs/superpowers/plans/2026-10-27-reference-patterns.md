@@ -29,4 +29,4 @@
 - [x] Verify real form persistence, desktop/mobile layout, errors and existing CAD regressions; no real inference calls.
 
 ## Task 4: Delivery
-- [ ] Record verification and any model-testing limitations, commit/push approved branch and provide Tencent Cloud commands.
+- [x] Record verification and model-testing limitations; implementation pushed as b65bfc7. Tencent Cloud commands are in docs/2026-10-27-reference-pattern-verification.md.
